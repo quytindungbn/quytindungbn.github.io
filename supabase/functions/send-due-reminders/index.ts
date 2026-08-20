@@ -165,6 +165,13 @@ Deno.serve(async (req) => {
   const now = new Date();
   const result = { laiHangThang: 0, ganDenHanQuaHan: 0 };
 
+  // Tiêu đề thông báo LUÔN đồng nhất "<tên quỹ> thông báo:" cho mọi loại nhắc
+  // (không còn tiêu đề riêng theo từng loại như trước) — khớp với tiêu đề
+  // mặc định ở popup admin tự gửi tay (xem buildContractNotificationPreset()
+  // trong js/views/admin/customers.js).
+  const { data: orgRow } = await admin.from('orgs').select('short_name').limit(1).maybeSingle();
+  const NOTI_TITLE = `${orgRow?.short_name || 'Quỹ tín dụng'} thông báo:`;
+
   const { data: contracts, error: ctErr } = await admin.from('contracts').select('*');
   if (ctErr) return new Response(JSON.stringify({ ok: false, reason: ctErr.message }), { status: 500 });
 
@@ -188,7 +195,7 @@ Deno.serve(async (req) => {
     if (isMonthlyAnniversary(interestAnchorDate(ct), now)) {
       if (await shouldSend(ct.id, 'lai_hang_thang')) {
         const ok = await pushToCustomer(
-          ct.customer_id, 'Thông báo tiền lãi',
+          ct.customer_id, NOTI_TITLE,
           `Hợp đồng ${ct.code}: số tiền lãi của quý khách hiện là ${formatVND(accruedInterest(ct, now))}. Vui lòng thanh toán lãi hàng tháng đúng hạn.`,
           'lai-hang-thang'
         );
@@ -202,16 +209,14 @@ Deno.serve(async (req) => {
     const daysToDue = daysBetween(now, new Date(ct.due_date));
     if (daysToDue <= NEAR_DUE_START_DAYS && (NEAR_DUE_START_DAYS - daysToDue) % NEAR_DUE_REPEAT_DAYS === 0) {
       if (await shouldSend(ct.id, 'gan_den_han')) {
-        let title: string, body: string;
+        let body: string;
         if (daysToDue > 0) {
-          title = 'Sắp đến hạn thanh toán';
           body = `Hợp đồng ${ct.code}: Số tiền gốc gần đến hạn là ${formatVNDBold(ct.balance)} và lãi đến nay là ${formatVNDBold(accruedInterest(ct, now))}, yêu cầu thanh toán trước ngày ${formatDateVNBold(ct.due_date)}.`;
         } else {
-          title = '⚠️ QUÁ HẠN THANH TOÁN';
           const daysLate = Math.abs(daysToDue);
           body = `Hợp đồng ${ct.code} đã quá hạn ${daysLate} ngày. Yêu cầu thanh toán số tiền gốc là ${formatVNDBold(ct.balance)} và lãi là ${formatVNDBold(accruedInterest(ct, now))}. Nếu không sẽ bị phạt lãi quá hạn.`;
         }
-        const ok = await pushToCustomer(ct.customer_id, title, body, 'gan-den-han');
+        const ok = await pushToCustomer(ct.customer_id, NOTI_TITLE, body, 'gan-den-han');
         if (ok) { await logSent(ct.customer_id, ct.id, 'gan_den_han'); result.ganDenHanQuaHan++; }
       }
     }

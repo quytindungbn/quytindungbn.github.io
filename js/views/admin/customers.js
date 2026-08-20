@@ -287,28 +287,32 @@ function showCredential(customer, tempPassword) {
  *   - Chưa đến hạn (còn xa, chưa vào diện "gần đến hạn"): chỉ nhắc lãi.
  *   - Gần đến hạn (S.contractUrgency === 'gan_den_han'): nhắc gốc + lãi + hạn chót.
  *   - Trễ hạn (S.contractUrgency === 'qua_han'): nhắc gốc + lãi, giọng mạnh hơn.
+ * Tiêu đề mặc định LUÔN là "<tên quỹ> thông báo:" cho cả 3 mẫu (giống hệt
+ * thông báo tự động ở send-due-reminders) — không còn tiêu đề riêng theo
+ * từng loại nữa, cho đồng nhất.
  */
 function buildContractNotificationPreset(contract) {
   const accrued = S.accruedInterest(contract);
   const urgency = S.contractUrgency(contract);
+  const title = `${S.getOrg().shortName} thông báo:`;
   // Số tiền/ngày tháng in đậm (Unicode, xem ghi chú boldDigits() trong utils.js) để nổi bật hơn phần chữ xung quanh.
   const balanceB = boldDigits(formatVND(contract.balance));
   const accruedB = boldDigits(formatVND(accrued));
   const dueDateB = boldDigits(formatDate(contract.dueDate));
   if (urgency === 'qua_han') {
     return {
-      title: 'Hợp đồng đã trễ hạn',
+      title,
       body: `Hợp đồng ${contract.code} đã trễ hạn. Yêu cầu quý khách thanh toán Gốc là ${balanceB}, lãi là ${accruedB} đúng như cam kết.`,
     };
   }
   if (urgency === 'gan_den_han') {
     return {
-      title: 'Hợp đồng gần đến hạn',
+      title,
       body: `Hợp đồng ${contract.code} của quý khách đã gần đến hạn. Yêu cầu thanh toán gốc là ${balanceB} và lãi là ${accruedB} trước ngày ${dueDateB}.`,
     };
   }
   return {
-    title: 'Thông báo tiền lãi',
+    title,
     body: `Số tiền lãi hợp đồng ${contract.code} của quý khách đến hôm nay là: ${accruedB}. Yêu cầu quý khách thanh toán đúng hạn.`,
   };
 }
