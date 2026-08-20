@@ -8,10 +8,11 @@
 <meta name="theme-color" content="#0f6f61">
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f6f61'/%3E%3Ctext x='50' y='66' font-size='50' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'%3EBN%3C/text%3E%3C/svg%3E">
-<!-- Icon PNG thật (không phải data URI) — nhiều công cụ đóng gói app Android
-     (VD: PWABuilder) và iOS Safari "Thêm vào MH chính" cần file ảnh thật,
-     không đọc được icon dạng SVG nhúng base64 ở trên. Xem docs/dong-goi-android.md -->
+<!-- Icon chính thức hệ thống Quỹ Tín dụng Nhân dân (PCF) — file PNG thật
+     (không phải data URI): nhiều công cụ đóng gói app Android (VD:
+     PWABuilder) và iOS Safari "Thêm vào MH chính" cần file ảnh thật.
+     Xem docs/dong-goi-android.md -->
+<link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/styles.css">
 <!-- Kết nối Supabase (thay dần localStorage) — CDN ESM, giữ đúng kiến trúc
