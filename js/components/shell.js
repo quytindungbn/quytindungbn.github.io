@@ -1,5 +1,7 @@
 import { icon } from '../icons.js';
 import { openModal } from './modal.js';
+import * as S from '../state.js';
+import { initials, colorFor, maskCccd } from '../utils.js';
 
 export const CUSTOMER_NAV = [
   { path: '#/', label: 'Trang chủ', shortLabel: 'Trang chủ', icon: 'landmark' },
@@ -25,6 +27,47 @@ function matchPath(navPath, current) {
   return current === navPath || current.startsWith(navPath + '/');
 }
 
+/**
+ * Thông tin đăng nhập hiện tại (tên, chức danh, tên đăng nhập/CCCD) — dùng
+ * cho khối hồ sơ ở sidebar (desktop) và bảng "Thêm" (mobile), để người dùng
+ * luôn thấy mình đang đăng nhập bằng tài khoản nào + vai trò gì.
+ */
+function getProfileInfo() {
+  const session = S.getSession();
+  if (!session) return null;
+  if (session.role === 'admin') {
+    const admin = S.getAdmin(session.id);
+    if (!admin) return null;
+    return {
+      name: admin.name,
+      roleLabel: admin.role === 'super' ? 'Quản trị viên toàn quyền' : 'Quản trị viên chỉ xem',
+      loginId: '@' + admin.username,
+      seed: admin.id,
+    };
+  }
+  const customer = S.getCustomer(session.id);
+  if (!customer) return null;
+  return {
+    name: customer.name,
+    roleLabel: 'Khách hàng',
+    loginId: `CCCD ${maskCccd(customer.cccd)}`,
+    seed: customer.id,
+  };
+}
+
+function profileBlockHtml(info) {
+  if (!info) return '';
+  return `
+    <div class="sidebar-profile">
+      <div class="row-thumb" style="width:38px;height:38px;font-size:14px;background:${colorFor(info.seed)}">${initials(info.name)}</div>
+      <div class="row-main">
+        <div class="row-title">${info.name}</div>
+        <div class="row-sub">${info.roleLabel} · ${info.loginId}</div>
+      </div>
+    </div>
+  `;
+}
+
 export function buildShell(root, role, isSuper) {
   const nav = role === 'admin' ? [...ADMIN_NAV, ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])] : CUSTOMER_NAV;
   root.innerHTML = `
@@ -37,6 +80,7 @@ export function buildShell(root, role, isSuper) {
             <span>${role === 'admin' ? 'Trang quản trị' : 'Cổng khách hàng'}</span>
           </div>
         </div>
+        <div id="sidebar-profile-slot"></div>
         <nav class="sidebar-nav" id="sidebar-nav"></nav>
         <a href="#/doi-mat-khau" class="btn btn-outline btn-block" style="margin-top:16px">${icon('lock', 'icon-sm')} Đổi mật khẩu</a>
         <button class="btn btn-outline btn-block" id="btn-logout-side" style="margin-top:8px">${icon('logout', 'icon-sm')} Đăng xuất</button>
@@ -51,7 +95,21 @@ export function buildShell(root, role, isSuper) {
   `;
   renderSidebarNav(nav);
   renderBottomNav(nav);
+  renderSidebarProfile();
   document.getElementById('btn-logout-side').addEventListener('click', onLogoutClick);
+}
+
+/**
+ * Vẽ lại riêng khối hồ sơ (tên/chức danh/tên đăng nhập) ở sidebar — gọi lại
+ * ở MỌI lần render trang (không chỉ lúc buildShell dựng khung mới), vì
+ * shellKey ở app.js chỉ đổi khi role/isSuper đổi: 2 tài khoản CÙNG vai trò
+ * đăng nhập nối tiếp nhau (VD: nhân viên A đăng xuất, nhân viên B đăng nhập)
+ * sẽ dùng chung 1 khung sidebar đã dựng sẵn — nếu không refresh riêng khối
+ * này thì vẫn hiện tên/tài khoản của người TRƯỚC.
+ */
+export function renderSidebarProfile() {
+  const slot = document.getElementById('sidebar-profile-slot');
+  if (slot) slot.innerHTML = profileBlockHtml(getProfileInfo());
 }
 
 function renderSidebarNav(nav) {
@@ -77,6 +135,7 @@ function openMoreSheet(overflowItems) {
   openModal({
     title: 'Thêm',
     bodyHtml: `
+      ${profileBlockHtml(getProfileInfo())}
       <div class="flex-col gap-6">
         ${overflowItems.map((item) => `
           <a href="${item.path}" data-path="${item.path}" class="list-row" style="cursor:pointer;text-decoration:none;color:inherit">

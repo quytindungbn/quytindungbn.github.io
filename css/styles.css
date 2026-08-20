@@ -106,6 +106,13 @@ svg { display: block; }
 .sidebar-brand strong { font-size: 15px; }
 .sidebar-brand span { display: block; font-size: 11px; color: var(--text-muted); }
 
+.sidebar-profile {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px; margin-bottom: 14px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-sm);
+}
+
 .sidebar-nav a {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 12px; margin-bottom: 2px;
