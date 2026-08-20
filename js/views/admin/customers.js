@@ -507,13 +507,11 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           laiInput.value = formatNumber(accrued);
         }
       }
-      /** Tích "Tất toán" thì Gốc tự điền = toàn bộ dư nợ còn lại, khóa luôn cả 2 ô. */
+      /** Tích "Tất toán" thì Gốc tự điền = toàn bộ dư nợ còn lại, khóa luôn cả 2 ô; bỏ tích thì Gốc về lại 0, chỉ còn Lãi. */
       function syncSettleFull() {
         if (gocInput) gocInput.disabled = settleFull;
-        if (settleFull) {
-          gocAmount = contract.balance;
-          if (gocInput) gocInput.value = formatNumber(contract.balance);
-        }
+        gocAmount = settleFull ? contract.balance : 0;
+        if (gocInput) gocInput.value = settleFull ? formatNumber(contract.balance) : '';
         syncLaiLock();
       }
       if (settleCb) settleCb.addEventListener('change', (e) => { settleFull = e.target.checked; syncSettleFull(); refreshQr(); });
