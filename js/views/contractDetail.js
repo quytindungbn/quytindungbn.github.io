@@ -188,6 +188,7 @@ function openPaymentModal(contract, customer, accrued) {
           ` : `
             <div class="field-hint text-danger">Quỹ chưa cấu hình mã QR (mã ngân hàng). Vui lòng chuyển khoản thủ công theo thông tin ở trên, hoặc liên hệ quầy giao dịch.</div>
           `}
+          <div class="text-sm text-danger fw-700 mt-16" style="text-align:center">${icon('alert', 'icon-sm')} Khi đã thanh toán, vui lòng chờ đợi một thời gian sẽ được cập nhật thông tin (không chuyển khoản lại lần nữa).</div>
         `;
         body.querySelectorAll('[data-type]').forEach((opt) => {
           opt.addEventListener('click', () => { payType = opt.dataset.type; draw(); });
