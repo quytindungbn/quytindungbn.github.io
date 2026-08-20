@@ -84,6 +84,20 @@ function formatDateVN(iso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
+// Thông báo đẩy hệ thống (Notification API) KHÔNG hỗ trợ chữ đậm/HTML thật —
+// mọi trình duyệt/điện thoại chỉ hiện được chữ thường trong nội dung thông
+// báo, không có cách nào bật bold/markdown ở đó (giới hạn của chuẩn Web
+// Push/Notification, không phải giới hạn riêng của app). Cách gần đúng nhất
+// để số tiền/ngày "nổi bật" hơn hẳn phần chữ xung quanh: đổi CHỮ SỐ thường
+// sang bộ ký tự Unicode "Mathematical Bold" — nhìn đậm hẳn trên hầu hết máy
+// hiện đại dù về bản chất vẫn là text thường, không phải định dạng.
+const BOLD_DIGITS = ['𝟎', '𝟏', '𝟐', '𝟑', '𝟒', '𝟓', '𝟔', '𝟕', '𝟖', '𝟗'];
+function boldDigits(s: string): string {
+  return s.replace(/[0-9]/g, (d) => BOLD_DIGITS[Number(d)]);
+}
+function formatVNDBold(n: number): string { return boldDigits(formatVND(n)); }
+function formatDateVNBold(iso: string): string { return boldDigits(formatDateVN(iso)); }
+
 /**
  * Mốc "ngày trong tháng" để nhắc lãi hàng tháng — xem ghi chú lịch nhắc #1
  * ở đầu file. Bình thường lấy ngày của interest_paid_until; riêng trường hợp
@@ -191,11 +205,11 @@ Deno.serve(async (req) => {
         let title: string, body: string;
         if (daysToDue > 0) {
           title = 'Sắp đến hạn thanh toán';
-          body = `Hợp đồng ${ct.code}: số tiền gốc gần đến hạn là ${formatVND(ct.balance)}. Yêu cầu quý khách thanh toán trước ngày ${formatDateVN(ct.due_date)}.`;
+          body = `Hợp đồng ${ct.code}: Số tiền gốc gần đến hạn là ${formatVNDBold(ct.balance)} và lãi đến nay là ${formatVNDBold(accruedInterest(ct, now))}, yêu cầu thanh toán trước ngày ${formatDateVNBold(ct.due_date)}.`;
         } else {
           title = '⚠️ QUÁ HẠN THANH TOÁN';
           const daysLate = Math.abs(daysToDue);
-          body = `Hợp đồng ${ct.code} đã QUÁ HẠN ${daysLate} ngày (hạn ${formatDateVN(ct.due_date)}). Yêu cầu quý khách thanh toán NGAY số tiền gốc là ${formatVND(ct.balance)} và lãi là ${formatVND(accruedInterest(ct, now))} cho Quỹ tín dụng nhân dân. Đề nghị liên hệ thanh toán gấp để tránh phát sinh thêm chi phí.`;
+          body = `Hợp đồng ${ct.code} đã quá hạn ${daysLate} ngày. Yêu cầu thanh toán số tiền gốc là ${formatVNDBold(ct.balance)} và lãi là ${formatVNDBold(accruedInterest(ct, now))}. Nếu không sẽ bị phạt lãi quá hạn.`;
         }
         const ok = await pushToCustomer(ct.customer_id, title, body, 'gan-den-han');
         if (ok) { await logSent(ct.customer_id, ct.id, 'gan_den_han'); result.ganDenHanQuaHan++; }
