@@ -420,9 +420,18 @@ vào `localStorage`. Vì vậy chỉ cần thay **bên trong** các hàm đó:
 ## 9. Thông báo đẩy (Push) — nhắc lịch đến hạn
 
 Khách hàng bấm "Bật thông báo nhắc lịch" (trang Đổi mật khẩu) → nhận thông báo thẳng trên điện thoại
-khi hợp đồng sắp/đã đến hạn hoặc đầu mỗi tháng — **kể cả khi không mở app**, miễn đã "Thêm vào Màn
-hình chính" (xem `docs/dong-goi-android.md`). Kiến trúc dùng chuẩn **Web Push** (không phụ thuộc
-Firebase/dịch vụ ngoài trả phí nào khác):
+theo đúng lịch — **kể cả khi không mở app**, miễn đã "Thêm vào Màn hình chính" (bắt buộc với iPhone,
+xem `docs/dong-goi-android.md`). Kiến trúc dùng chuẩn **Web Push** (không phụ thuộc Firebase/dịch vụ
+ngoài trả phí nào khác). Lịch nhắc (`supabase/functions/send-due-reminders/index.ts`), quét lại **mỗi
+ngày** qua Supabase Cron:
+
+1. **Lãi**: cứ đúng mỗi **30 ngày** kể từ "Đã trả lãi đến ngày" (hoặc ngày giải ngân nếu chưa trả lãi
+   lần nào) mà khách vẫn CHƯA đóng (ngày này không đổi) thì nhắc lại — 1 lần ở ngày thứ 30, nếu vẫn
+   chưa đóng thì thêm 1 lần ở ngày 60, 90... Đóng lãi rồi (ngày này được admin cập nhật mới hơn) thì
+   chu kỳ tự tính lại từ ngày mới.
+2. **Sắp đến hạn**: đúng **5 ngày trước** ngày đến hạn của hợp đồng — nhắc **đúng 1 lần**.
+3. **Đến hạn**: đúng **ngày đến hạn** — nhắc **đúng 1 lần**.
+4. **Trễ hạn**: sau ngày đến hạn — nhắc lại **MỖI NGÀY 1 lần** cho tới khi tất toán.
 
 ```
 Trình duyệt --(xin quyền + subscribe)--> Trình duyệt tự tạo "địa chỉ nhận"
@@ -535,9 +544,14 @@ gửi thông báo — không cần làm gì thêm.
   riêng cho vai trò này (VD: "X hợp đồng quá hạn trong phạm vi bạn quản lý") — có thể bổ sung sau nếu
   cần, chỉ cần thêm đoạn quét tương ứng trong `send-due-reminders`.
 - iOS (iPhone) cần iOS 16.4 trở lên VÀ đã "Thêm vào Màn hình chính" trước mới nhận được thông báo —
-  mở bằng Safari/Chrome thường (chưa cài) sẽ không xin được quyền thông báo trên iPhone.
-- Nhắc quá hạn lặp lại mỗi 7 ngày (không phải mỗi ngày) để tránh làm phiền khách — chỉnh
-  `OVERDUE_REMIND_EVERY_DAYS` trong `send-due-reminders/index.ts` nếu muốn đổi.
+  mở bằng Safari thường (chưa cài) sẽ không xin được quyền thông báo trên iPhone. Máy tính và Android
+  (Chrome) thì nhận được bình thường, không bắt buộc phải cài.
+- Cron BẮT BUỘC chạy đúng **mỗi ngày** (không được thưa hơn) — các mốc "sắp đến hạn" (5 ngày trước)
+  và "đến hạn" (đúng ngày) chỉ khớp ĐÚNG 1 ngày duy nhất; cron bỏ lỡ ngày đó (VD: chạy cách ngày) thì
+  mốc đó coi như trôi qua, không tự bù lại. Mốc "trễ hạn" (nhắc mỗi ngày) không bị ảnh hưởng vì luôn
+  đúng miễn ngày đến hạn đã qua.
+- Đổi số ngày (chu kỳ lãi 30 ngày, nhắc trước 5 ngày...) → sửa 2 hằng số `INTEREST_CYCLE_DAYS` và
+  `NOTIFY_BEFORE_DUE_DAYS` ở đầu file `send-due-reminders/index.ts`.
 
 ---
 
