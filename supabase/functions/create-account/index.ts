@@ -434,10 +434,21 @@ Deno.serve(async (req) => {
     const contractUpserts: Record<string, unknown>[] = [];
     const touchedContractIds = new Set<string>();
     const usedCodes = new Set<string>();
+    // 1 khách hàng có thể xuất hiện ở NHIỀU dòng (mỗi dòng 1 hợp đồng) — GHI
+    // hồ sơ khách hàng CHỈ SAU KHI xử lý xong hết các dòng (dùng touchedCccds
+    // + originalCccds bên dưới để biết khách nào mới/cũ, 1 khách chỉ đẩy vào
+    // mảng upsert ĐÚNG 1 LẦN dù có bao nhiêu hợp đồng). Trước đây đẩy ngay
+    // trong vòng lặp — khách có ≥2 hợp đồng bị đẩy vào existingCustomerUpserts
+    // nhiều lần, khiến 1 lệnh upsert() chứa 2 dòng cùng "id" -> Postgres báo
+    // lỗi "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    const originalCccds = new Set(customerByCccd.keys());
+    const touchedCccds = new Set<string>();
+    const newTempPasswords = new Map<string, string>();
 
     for (const row of rows) {
       const cccd = String(row.cccd || '').trim();
       if (!cccd || !/^\d{9,12}$/.test(cccd)) { result.skipped++; continue; }
+      touchedCccds.add(cccd);
 
       let cust: any = customerByCccd.get(cccd);
       const parsedAddr = row.address ? parseAddress(row.address) : null;
@@ -449,8 +460,6 @@ Deno.serve(async (req) => {
         if (row.address) { patch.address = row.address; Object.assign(patch, parsedAddr); }
         cust = { ...cust, ...patch };
         customerByCccd.set(cccd, cust);
-        existingCustomerUpserts.push(cust);
-        result.existingCustomers++;
       } else {
         const custId = genId('cust');
         const temp = genTempPassword();
@@ -462,9 +471,7 @@ Deno.serve(async (req) => {
           failed_attempts: 0, locked_until: null,
         };
         customerByCccd.set(cccd, cust);
-        newCustomerUpserts.push(cust);
-        result.newProfiles++;
-        result.newAccounts.push({ name: cust.name, cccd, tempPassword: temp });
+        newTempPasswords.set(cccd, temp);
       }
 
       const disbursed = row.disbursedDate || new Date().toISOString().slice(0, 10);
@@ -493,6 +500,33 @@ Deno.serve(async (req) => {
       result.contracts++;
     }
 
+    // Đẩy MỖI khách hàng đúng 1 lần (dữ liệu cuối cùng sau khi đã gộp patch từ
+    // hết các dòng của khách đó) vào đúng 1 trong 2 mảng — xem ghi chú ở khai
+    // báo touchedCccds phía trên.
+    for (const cccd of touchedCccds) {
+      const cust = customerByCccd.get(cccd)!;
+      if (originalCccds.has(cccd)) {
+        existingCustomerUpserts.push(cust);
+        result.existingCustomers++;
+      } else {
+        newCustomerUpserts.push(cust);
+        result.newProfiles++;
+        result.newAccounts.push({ name: (cust as any).name, cccd, tempPassword: newTempPasswords.get(cccd)! });
+      }
+    }
+
+    // An toàn thêm lần nữa (phòng khi có nguồn trùng "id" khác chưa lường
+    // hết, VD: 2 dòng Excel trùng y hệt Số HĐTD) — 1 lệnh upsert() KHÔNG được
+    // chứa 2 dòng cùng khóa xung đột, Postgres báo lỗi "ON CONFLICT DO UPDATE
+    // command cannot affect row a second time" nếu vi phạm. Giữ dòng CUỐI
+    // cùng cho mỗi id (dữ liệu mới nhất).
+    function dedupeById(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+      const map = new Map<unknown, Record<string, unknown>>();
+      for (const r of rows) map.set((r as any).id, r);
+      return [...map.values()];
+    }
+    const contractUpsertsDeduped = dedupeById(contractUpserts);
+
     if (newCustomerUpserts.length) {
       const { error } = await admin.from('customers').upsert(newCustomerUpserts, { onConflict: 'id' });
       if (error) result.errors.push('Lỗi ghi hồ sơ khách hàng mới: ' + error.message);
@@ -501,8 +535,8 @@ Deno.serve(async (req) => {
       const { error } = await admin.from('customers').upsert(existingCustomerUpserts, { onConflict: 'id' });
       if (error) result.errors.push('Lỗi cập nhật hồ sơ khách hàng: ' + error.message);
     }
-    if (contractUpserts.length) {
-      const { error } = await admin.from('contracts').upsert(contractUpserts, { onConflict: 'id' });
+    if (contractUpsertsDeduped.length) {
+      const { error } = await admin.from('contracts').upsert(contractUpsertsDeduped, { onConflict: 'id' });
       if (error) result.errors.push('Lỗi ghi hợp đồng: ' + error.message);
     }
 
