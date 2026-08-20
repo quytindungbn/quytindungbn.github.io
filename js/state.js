@@ -535,6 +535,17 @@ export function upsertContract(args) {
   return ct;
 }
 
+/**
+ * Admin tự soạn + gửi ngay 1 thông báo đẩy (Web Push) cho 1 khách hàng —
+ * khách đó phải đã bật thông báo trên ít nhất 1 thiết bị (xem trang "Đổi mật
+ * khẩu" của khách/nút "Bật thông báo nhắc lịch"), nếu chưa sẽ báo lỗi rõ.
+ * Trả về { ok, sentCount, reason }.
+ */
+export async function sendManualNotification(customerId, title, body) {
+  const session = getSession();
+  return callCreateAccountFunction(session?.sbToken, { type: 'send-manual-notification', customerId, title, body });
+}
+
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account" — hợp đồng tự xóa theo (FK cascade). */
 export async function deleteCustomer(id) {
   const session = getSession();

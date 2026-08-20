@@ -281,6 +281,48 @@ function showCredential(customer, tempPassword) {
 }
 
 /**
+ * Admin tự soạn + gửi ngay 1 thông báo đẩy cho 1 khách hàng — tiện dùng khi
+ * cần nhắc riêng ngoài lịch tự động (VD: nhắc miệng đã hẹn, thông báo việc
+ * khác...). Khách phải đã bật thông báo trên ít nhất 1 thiết bị thì mới gửi
+ * được — báo lỗi rõ nếu chưa bật.
+ */
+function openSendNotificationModal(customer) {
+  const close = openModal({
+    title: `Gửi thông báo cho ${customer.name}`,
+    bodyHtml: `
+      <div class="field">
+        <label>Tiêu đề</label>
+        <input id="noti-title" maxlength="60" placeholder="VD: Nhắc thanh toán"/>
+      </div>
+      <div class="field">
+        <label>Nội dung</label>
+        <textarea id="noti-body" rows="4" maxlength="300" placeholder="Nội dung thông báo..." style="width:100%;border:1px solid var(--border-strong);border-radius:8px;padding:10px;font-size:13px"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block mt-8" id="btn-do-send-noti">${icon('bell', 'icon-sm')} Gửi ngay</button>
+    `,
+    onMount(sheet) {
+      sheet.querySelector('#btn-do-send-noti').addEventListener('click', async (e) => {
+        const title = sheet.querySelector('#noti-title').value.trim();
+        const body = sheet.querySelector('#noti-body').value.trim();
+        if (!title || !body) { toast('Cần nhập đủ tiêu đề và nội dung', 'error'); return; }
+        const btn = e.target.closest('button');
+        btn.disabled = true;
+        try {
+          const res = await S.sendManualNotification(customer.id, title, body);
+          if (!res.ok) { toast(res.reason || 'Gửi không thành công', 'error'); return; }
+          toast('Đã gửi thông báo tới khách hàng', 'success');
+          close();
+        } catch (err) {
+          toast(err.message || 'Có lỗi xảy ra', 'error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    },
+  });
+}
+
+/**
  * context 'customer' (mặc định, mở từ trang Khách hàng & Hợp đồng): nút xóa
  * là "Xóa khách hàng" — xóa cả hồ sơ lẫn hợp đồng.
  * context 'use' (mở từ trang Quản lý User): nút xóa là "Xóa Use" — chỉ gỡ
@@ -304,6 +346,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       ${!readOnly ? `
       <div class="flex gap-8 mt-16 mb-16" style="flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>
+        <button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>
         ${context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
         <button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} ${context === 'use' ? 'Xóa Use' : ''}</button>
       </div>` : '<div class="mt-16"></div>'}
@@ -327,6 +370,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           },
         });
       });
+      sheet.querySelector('#btn-send-noti').addEventListener('click', () => openSendNotificationModal(c));
       const editBtn = sheet.querySelector('#btn-edit-cust');
       if (editBtn) editBtn.addEventListener('click', () => { closeFn(); openCustomerForm(c); });
       sheet.querySelector('#btn-del-cust').addEventListener('click', () => {

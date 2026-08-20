@@ -2,6 +2,7 @@ import * as S from '../state.js';
 import { icon } from '../icons.js';
 import { toast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
+import { autoSubscribeIfPossible } from '../lib/push.js';
 
 let mode = 'customer';
 
@@ -78,6 +79,7 @@ export function renderLogin(root, onLoggedIn) {
         }
         S.setSession({ role: 'admin', id: res.adminId, sbToken: res.sbToken });
         toast('Đăng nhập thành công', 'success');
+        autoSubscribeIfPossible(res.sbToken); // không đợi xong, không chặn chuyển trang — xin quyền thông báo ngay, khỏi cần vào Đổi mật khẩu bật riêng
         onLoggedIn();
       } else {
         const res = await S.loginCustomer(primary, password);
@@ -88,6 +90,7 @@ export function renderLogin(root, onLoggedIn) {
         }
         S.setSession({ role: 'customer', id: res.customerId, mustChangePassword: res.mustChangePassword, sbToken: res.sbToken });
         toast('Đăng nhập thành công', 'success');
+        autoSubscribeIfPossible(res.sbToken); // không đợi xong, không chặn chuyển trang — xin quyền thông báo ngay, khỏi cần vào Đổi mật khẩu bật riêng
         onLoggedIn();
       }
     } finally {

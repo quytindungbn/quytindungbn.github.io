@@ -66,6 +66,25 @@ export async function subscribeToPush(sbToken) {
   if (!res.ok) throw new Error(res.reason || 'Không lưu được đăng ký nhận thông báo, thử lại sau.');
 }
 
+/**
+ * Tự động bật thông báo NGAY sau khi đăng nhập/mở lại app — khỏi cần khách
+ * hàng/nhân viên tự vào trang "Đổi mật khẩu" bấm nút mới bật được như trước.
+ * LƯU Ý: trình duyệt vẫn BẮT BUỘC tự người dùng bấm "Cho phép" ở đúng hộp
+ * thoại xin quyền thật của trình duyệt — không có cách nào bỏ qua bước này
+ * (quy định bảo mật chung của mọi trình duyệt/hệ điều hành, không phải giới
+ * hạn riêng của app) — nhưng giờ hộp thoại đó tự bật lên ngay, gộp vào đúng
+ * lúc đăng nhập, thay vì phải tự đi tìm trang cài đặt riêng mới thấy nút bật.
+ * Đã từ chối ("denied") trước đó thì KHÔNG tự hỏi lại nữa (trình duyệt cũng
+ * không cho hỏi lại) — cần tự vào cài đặt trình duyệt bật lại nếu đổi ý; đã
+ * bật rồi ("granted") thì âm thầm xác nhận lại đăng ký (phòng khi lần trước
+ * lưu chưa xong), không hiện gì thêm cho người dùng thấy.
+ */
+export async function autoSubscribeIfPossible(sbToken) {
+  if (!isPushSupported()) return;
+  if (Notification.permission === 'denied') return;
+  try { await subscribeToPush(sbToken); } catch (e) { console.warn('Không tự bật được thông báo:', e); }
+}
+
 /** Tắt nhận thông báo trên thiết bị này. */
 export async function unsubscribeFromPush(sbToken) {
   if (!isPushSupported()) return;

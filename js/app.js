@@ -1,7 +1,7 @@
 import * as S from './state.js';
 import { buildShell, updateActiveNav, renderSidebarProfile } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
-import { registerServiceWorker } from './lib/push.js';
+import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import { renderLogin } from './views/login.js';
 import { renderChangePassword } from './views/changePassword.js';
 
@@ -124,6 +124,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   await S.init();
   renderApp();
   startAutoRefresh();
+  // Phiên đăng nhập cũ còn lưu sẵn (mở lại app không cần đăng nhập lại) cũng
+  // tự xin quyền thông báo luôn — không đợi xong, không chặn tải app.
+  const existingSession = S.getSession();
+  if (existingSession) autoSubscribeIfPossible(existingSession.sbToken);
 });
 
 // Mọi thay đổi dữ liệu (xóa/tạo/sửa...) đều gọi notify() và kích hoạt render

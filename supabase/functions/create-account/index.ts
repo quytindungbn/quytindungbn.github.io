@@ -30,13 +30,22 @@
 //     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom? }
 //     { type: 'delete-staff', staffId }
 //     { type: 'import', fullSync, rows: [...] } — nhập Excel/dán tay hàng loạt
+//     { type: 'send-manual-notification', customerId, title, body } — admin tự
+//       soạn + gửi ngay 1 thông báo đẩy cho 1 khách hàng bất kỳ (khách đó phải
+//       đã bật thông báo trên ít nhất 1 thiết bị, xem bảng push_subscriptions)
 // password bỏ trống thì tự sinh mật khẩu tạm ngẫu nhiên (trả về trong response).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// @ts-ignore — thư viện Node "web-push" chạy được trên Deno qua npm: specifier (Supabase Edge Runtime hỗ trợ sẵn). Dùng chung VAPID secret với send-due-reminders (đã đặt sẵn ở project, không cần thêm secret mới).
+import webpush from 'npm:web-push@3.6.7';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const JWT_SECRET = Deno.env.get('CUSTOM_JWT_SECRET')!;
+const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') || '';
+const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') || '';
+const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 const LOCK_AFTER_FAILS = 5;
 const LOCK_MINUTES = 15;
@@ -309,6 +318,39 @@ Deno.serve(async (req) => {
   const { data: callerAdmin, error: callerErr } = await admin.from('admins').select('*').eq('id', claims.row_id).maybeSingle();
   if (callerErr || !callerAdmin || callerAdmin.role !== 'super') {
     return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
+  }
+
+  if (body.type === 'send-manual-notification') {
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+      return json({ ok: false, reason: 'Chưa cấu hình thông báo đẩy trên server (thiếu secret VAPID) — xem docs/supabase-migration.md mục "Thông báo đẩy".' }, 500);
+    }
+    const customerId = String(body.customerId || '').trim();
+    const title = String(body.title || '').trim();
+    const msgBody = String(body.body || '').trim();
+    if (!customerId || !title || !msgBody) return json({ ok: false, reason: 'Cần nhập đủ tiêu đề và nội dung thông báo.' }, 400);
+
+    const { data: subs, error: subsErr } = await admin.from('push_subscriptions').select('*').eq('owner_type', 'customer').eq('owner_id', customerId);
+    if (subsErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    if (!subs || !subs.length) return json({ ok: false, reason: 'Khách hàng này chưa bật thông báo trên thiết bị nào.' });
+
+    let sentCount = 0;
+    for (const sub of subs) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          JSON.stringify({ title, body: msgBody, tag: 'thong-bao-thu-cong', url: './' })
+        );
+        sentCount++;
+      } catch (e: any) {
+        if (e && (e.statusCode === 404 || e.statusCode === 410)) {
+          await admin.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+        } else {
+          console.error('manual push send error:', e?.statusCode, e?.body || e);
+        }
+      }
+    }
+    if (!sentCount) return json({ ok: false, reason: 'Gửi không thành công — thiết bị của khách có thể đã tắt/gỡ đăng ký nhận thông báo, nhờ khách vào lại app bật lại thông báo.' });
+    return json({ ok: true, sentCount });
   }
 
   if (body.type === 'customer') {

@@ -419,19 +419,32 @@ vào `localStorage`. Vì vậy chỉ cần thay **bên trong** các hàm đó:
 
 ## 9. Thông báo đẩy (Push) — nhắc lịch đến hạn
 
-Khách hàng bấm "Bật thông báo nhắc lịch" (trang Đổi mật khẩu) → nhận thông báo thẳng trên điện thoại
-theo đúng lịch — **kể cả khi không mở app**, miễn đã "Thêm vào Màn hình chính" (bắt buộc với iPhone,
-xem `docs/dong-goi-android.md`). Kiến trúc dùng chuẩn **Web Push** (không phụ thuộc Firebase/dịch vụ
-ngoài trả phí nào khác). Lịch nhắc (`supabase/functions/send-due-reminders/index.ts`), quét lại **mỗi
-ngày** qua Supabase Cron:
+Đăng nhập xong tự xin quyền thông báo NGAY (không cần tự vào trang Đổi mật khẩu bấm nút bật nữa) →
+nhận thông báo thẳng trên điện thoại theo đúng lịch — **kể cả khi không mở app**, miễn đã "Thêm vào
+Màn hình chính" (bắt buộc với iPhone, xem `docs/dong-goi-android.md`). Trình duyệt vẫn bắt buộc tự
+người dùng bấm "Cho phép" ở đúng hộp thoại xin quyền thật — không có cách nào bỏ qua bước này (quy
+định bảo mật chung của mọi trình duyệt, không phải giới hạn riêng của app); từ chối 1 lần thì trình
+duyệt tự nhớ, không hỏi lại nữa (vào cài đặt trình duyệt tự bật lại nếu đổi ý). Nút bật/tắt thủ công ở
+trang Đổi mật khẩu vẫn còn, dùng khi cần tắt hẳn hoặc bật lại sau khi đổi ý. Kiến trúc dùng chuẩn **Web
+Push** (không phụ thuộc Firebase/dịch vụ ngoài trả phí nào khác). Lịch nhắc
+(`supabase/functions/send-due-reminders/index.ts`), quét lại **mỗi ngày** qua Supabase Cron:
 
-1. **Lãi**: cứ đúng mỗi **30 ngày** kể từ "Đã trả lãi đến ngày" (hoặc ngày giải ngân nếu chưa trả lãi
-   lần nào) mà khách vẫn CHƯA đóng (ngày này không đổi) thì nhắc lại — 1 lần ở ngày thứ 30, nếu vẫn
-   chưa đóng thì thêm 1 lần ở ngày 60, 90... Đóng lãi rồi (ngày này được admin cập nhật mới hơn) thì
-   chu kỳ tự tính lại từ ngày mới.
-2. **Sắp đến hạn**: đúng **5 ngày trước** ngày đến hạn của hợp đồng — nhắc **đúng 1 lần**.
-3. **Đến hạn**: đúng **ngày đến hạn** — nhắc **đúng 1 lần**.
-4. **Trễ hạn**: sau ngày đến hạn — nhắc lại **MỖI NGÀY 1 lần** cho tới khi tất toán.
+1. **Lãi**: nhắc lại đúng **ngày trong tháng** của "Đã trả lãi đến ngày", bắt đầu từ **tháng sau** — VD:
+   trả lãi đến ngày 17/08 thì 17/09 nhắc, rồi 17/10, 17/11... nhắc liên tục mỗi tháng cho tới khi khách
+   đóng lãi (ngày "Đã trả lãi đến" đổi mới thì chu kỳ tự tính lại từ ngày mới). Riêng hợp đồng **mới giải
+   ngân** — hệ thống tự set "Đã trả lãi đến ngày" = ngày giải ngân + 1 (quy ước tính lãi, không phải
+   khách đã đóng lãi thật) — thì lấy **ngày giải ngân** làm mốc thay vì ngày bị lệch +1 đó.
+2. **Gần đến hạn / quá hạn**: bắt đầu từ đúng **10 ngày trước** ngày đến hạn, nhắc lại mỗi **3 ngày** 1
+   lần (10, 7, 4, 1 ngày trước hạn, rồi tiếp tục mỗi 3 ngày sau khi quá hạn) **liên tục cho tới khi tất
+   toán** — không dừng lại như phiên bản trước. Trước ngày đến hạn: nhắc số tiền **gốc** sắp đến hạn +
+   hạn chót thanh toán. Từ đúng ngày đến hạn trở đi: nhắc cả **gốc lẫn lãi**, lời lẽ mạnh hơn hẳn (khách
+   đã trễ hạn thật).
+
+Ngoài lịch tự động trên, **admin có thể tự soạn + gửi ngay 1 thông báo** cho 1 khách hàng bất kỳ — mở
+chi tiết khách hàng (trang Khách hàng & Hợp đồng hoặc Quản lý User) → nút **"Gửi thông báo"** → nhập
+tiêu đề + nội dung → Gửi ngay. Khách phải đã bật thông báo trên ít nhất 1 thiết bị thì mới gửi được
+(báo lỗi rõ nếu chưa bật). Dùng chung y hệt 4 secret VAPID đã đặt ở mục 9.3 bên dưới, không cần thêm
+secret nào khác.
 
 ```
 Trình duyệt --(xin quyền + subscribe)--> Trình duyệt tự tạo "địa chỉ nhận"
