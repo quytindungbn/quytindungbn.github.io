@@ -696,7 +696,7 @@ export async function loginAdmin(username, password) {
   const res = await callLoginFunction({ role: 'admin', identifier: username, password });
   if (!res.ok) return { ok: false, reason: res.reason };
   await loadAdminSessionData(res.token);
-  return { ok: true, adminId: res.id, sbToken: res.token };
+  return { ok: true, adminId: res.id, mustChangePassword: !!res.mustChangePassword, sbToken: res.token };
 }
 
 async function loadAdminSessionData(token) {
@@ -717,7 +717,7 @@ function mapAdminRow(row) {
   return {
     id: row.id, username: row.username, name: row.name, role: row.role,
     allowedThon: row.allowed_thon || [], allowedXom: row.allowed_xom || [],
-    salt: row.salt, hash: row.hash, createdAt: row.created_at,
+    salt: row.salt, hash: row.hash, mustChangePassword: !!row.must_change_password, createdAt: row.created_at,
   };
 }
 export function getAdmin(id) { return state.admins.find((a) => a.id === id); }
@@ -769,6 +769,7 @@ export async function resetStaffPassword(id, customPassword) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'reset-staff-password', staffId: id, password: customPassword });
   if (!res.ok) throw new Error(res.reason || 'Không cấp lại được mật khẩu.');
+  a.mustChangePassword = true;
   notify();
   return res.tempPassword;
 }
@@ -782,10 +783,12 @@ export async function verifyAdminPassword(id, password) {
 }
 
 /** Tự đổi mật khẩu (Quản trị viên/nhân viên tự đặt mật khẩu mới cho chính mình) — ĐÃ CHUYỂN SANG SUPABASE THẬT. */
-export async function setStaffPassword(id, newPassword) {
+export async function setStaffPassword(id, newPassword, opts = {}) {
   const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'set-own-password', newPassword });
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'set-own-password', newPassword, mustChangePassword: !!opts.mustChangePassword });
   if (!res.ok) throw new Error(res.reason || 'Không đổi được mật khẩu.');
+  const a = getAdmin(id);
+  if (a) a.mustChangePassword = !!opts.mustChangePassword;
   notify();
 }
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account" (server tự kiểm tra giữ lại ít nhất 1 super admin). */

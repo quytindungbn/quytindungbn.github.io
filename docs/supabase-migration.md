@@ -327,6 +327,32 @@ hình trước đó bị reset về rỗng. **Việc cần làm thêm**: vào **
 hưởng staff được gán theo TỪNG XÓM riêng, staff được gán theo CẢ THÔN (allowed_thon) không bị ảnh
 hưởng gì (Thôn không có vấn đề trùng tên tương tự).
 
+## 5c. Bắt buộc đổi mật khẩu lần đầu cho quản trị viên/nhân viên (BẮT BUỘC chạy nếu project đã tạo trước đoạn này)
+
+Trước đây bảng `admins` thiếu hẳn 3 cột `must_change_password`/`failed_attempts`/`locked_until` mà
+`customers` đã có — nên quản trị viên/nhân viên mới tạo (hoặc bị admin cấp lại mật khẩu) đăng nhập
+lần đầu KHÔNG bị bắt đổi mật khẩu như khách hàng, và cơ chế khóa tạm sau nhiều lần sai mật khẩu
+(code đã viết sẵn cho cả 2 vai trò, xem type: 'login' trong Edge Function) thực ra ÂM THẦM không có
+tác dụng gì với admin (lệnh `update` nhắm vào cột không tồn tại, PostgREST báo lỗi ở tầng gọi nhưng
+kết quả lỗi đó không được kiểm tra nên không ai biết). Chạy SQL sau (idempotent, chạy lại không sao):
+
+```sql
+alter table admins add column if not exists must_change_password boolean default true;
+alter table admins add column if not exists failed_attempts int default 0;
+alter table admins add column if not exists locked_until timestamptz;
+```
+
+**Lưu ý**: `default true` áp dụng cho CẢ những dòng đã có sẵn (Postgres tự điền `true` cho toàn bộ
+admin/staff hiện tại, không chỉ dòng tạo mới sau này) — nghĩa là **mọi quản trị viên/nhân viên đang
+có sẽ bị bắt đổi mật khẩu ở lần đăng nhập kế tiếp**, kể cả tài khoản đã dùng lâu. Đây là chủ đích (đồng
+bộ với khách hàng, tăng bảo mật), nhưng cần báo trước cho các quản trị viên/nhân viên khác biết để
+khỏi bất ngờ. Nếu muốn CHỈ áp dụng cho tài khoản tạo mới từ giờ trở đi (giữ nguyên tài khoản cũ không
+bị bắt đổi), chạy thêm dòng này NGAY SAU đoạn trên để đặt lại `false` cho các dòng đã có từ trước:
+
+```sql
+update admins set must_change_password = false where created_at < now();
+```
+
 ### Việc cần bạn làm để deploy Edge Function
 1. Vào Supabase Dashboard → menu ☰ → **Edge Functions** → tạo/mở function (tên gì cũng được, URL
    thật mới là thứ quan trọng — báo lại cho Claude biết URL thật để cập nhật code app).

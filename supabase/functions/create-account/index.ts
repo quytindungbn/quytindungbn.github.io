@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
       sub: row.auth_user_id, role: 'authenticated', app_role: role, row_id: row.id,
       iat: now, exp: now + SESSION_HOURS * 3600,
     });
-    return json({ ok: true, token, id: row.id, mustChangePassword: role === 'customer' ? !!row.must_change_password : false });
+    return json({ ok: true, token, id: row.id, mustChangePassword: !!row.must_change_password });
   }
 
   // ===== type: 'forgot-password' — KHÔNG cần JWT sẵn có (khách chưa đăng
@@ -257,8 +257,7 @@ Deno.serve(async (req) => {
     const newPw = String(body.newPassword || '').trim();
     if (newPw.length < 6) return json({ ok: false, reason: 'Mật khẩu mới phải từ 6 ký tự.' }, 400);
     const cred = await makeCredential(newPw);
-    const patch: Record<string, unknown> = { ...cred };
-    if (selfTable === 'customers') patch.must_change_password = !!body.mustChangePassword;
+    const patch: Record<string, unknown> = { ...cred, must_change_password: !!body.mustChangePassword };
     const { error } = await admin.from(selfTable).update(patch).eq('id', selfClaims.row_id);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     return json({ ok: true });
@@ -326,7 +325,7 @@ Deno.serve(async (req) => {
       id: staffId, username, name: body.name || username, role: finalRole,
       allowed_thon: finalRole === 'staff' && Array.isArray(body.allowedThon) ? body.allowedThon : [],
       allowed_xom: finalRole === 'staff' && Array.isArray(body.allowedXom) ? body.allowedXom : [],
-      salt: cred.salt, hash: cred.hash,
+      salt: cred.salt, hash: cred.hash, must_change_password: true,
     });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     return json({ ok: true, id: staffId, tempPassword: finalPassword });
@@ -383,7 +382,7 @@ Deno.serve(async (req) => {
     if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
     const finalPassword = body.password && String(body.password).trim() ? String(body.password).trim() : genTempPassword();
     const cred = await makeCredential(finalPassword);
-    const { error } = await admin.from('admins').update(cred).eq('id', staffId);
+    const { error } = await admin.from('admins').update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null }).eq('id', staffId);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     return json({ ok: true, tempPassword: finalPassword });
   }

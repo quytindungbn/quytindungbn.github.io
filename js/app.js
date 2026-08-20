@@ -73,6 +73,16 @@ function renderApp({ scrollTop = true } = {}) {
     }
   }
 
+  if (session.role === 'admin') {
+    const adminUser = S.getAdmin(session.id);
+    if (!adminUser) { S.logout(); renderApp(); return; }
+    if (adminUser.mustChangePassword) {
+      shellKey = null;
+      renderChangePassword(root, adminUser.id, () => renderApp(), { forced: true, role: 'admin' });
+      return;
+    }
+  }
+
   const isSuper = session.role === 'admin' ? S.isSuperAdmin(session.id) : false;
   const { path, query } = splitHash();
   const routes = session.role === 'admin' ? adminRoutes : customerRoutes;
