@@ -4,7 +4,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatVND, formatDate, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv } from '../../lib/excelLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 
@@ -453,6 +453,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         <div class="field"><label>Gốc</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
         <div class="field"><label>Lãi</label><input type="text" inputmode="numeric" id="qr-lai-input"/></div>
       </div>
+      <div class="field-hint mb-8" id="qr-lai-hint" style="display:none">Đã nhập số tiền trả gốc — Lãi tự khóa theo đúng "Lãi đến nay", không sửa tay được. Xóa ô Gốc nếu cần tự chỉnh lại Lãi.</div>
       <div class="grid-2 mb-8">
         <button type="button" class="btn btn-outline btn-block" id="btn-download-qr-ct">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
         <button type="button" class="btn btn-outline btn-block" id="btn-share-qr-ct">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
@@ -477,8 +478,23 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       // chỉ tải ảnh mới khi ngưng gõ 400ms.
       const refreshQrDebounced = debounce(refreshQr, 400);
       const gocInput = sheet.querySelector('#qr-goc-input');
-      if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; refreshQrDebounced(); });
       const laiInput = sheet.querySelector('#qr-lai-input');
+      const laiHint = sheet.querySelector('#qr-lai-hint');
+      /**
+       * Có nhập số tiền trả Gốc thì khóa cứng Lãi = đúng "Lãi đến nay" (không
+       * cho tự sửa tay) — chỉ khi Gốc để trống mới được tự chỉnh Lãi.
+       */
+      function syncLaiLock() {
+        if (!laiInput) return;
+        const locked = gocAmount > 0;
+        laiInput.disabled = locked;
+        if (laiHint) laiHint.style.display = locked ? 'block' : 'none';
+        if (locked) {
+          laiAmount = accrued;
+          laiInput.value = formatNumber(accrued);
+        }
+      }
+      if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; syncLaiLock(); refreshQrDebounced(); });
       if (laiInput) bindMoneyInput(laiInput, accrued, (v) => { laiAmount = v; refreshQrDebounced(); });
       const downloadQrBtn = sheet.querySelector('#btn-download-qr-ct');
       if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`));
