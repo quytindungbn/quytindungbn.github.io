@@ -201,14 +201,19 @@ create policy "super admin sees all customers" on customers
     )
   );
 
--- Nhân viên (role='staff') chỉ thấy khách trong Thôn/Xóm được gán
+-- Nhân viên (role='staff') chỉ thấy khách trong Thôn/Xóm được gán. LƯU Ý:
+-- so khớp Xóm phải ghép CHUNG với Thôn (dạng "Thôn||Xóm", xem xomKey() ở
+-- js/state.js) — KHÔNG được so khớp riêng mỗi tên Xóm, vì tên Xóm (VD:
+-- "Xóm 8") có thể trùng nhau giữa nhiều Thôn khác nhau; so khớp riêng lẻ sẽ
+-- cấp NHẦM quyền xem Xóm cùng tên ở Thôn khác (lỗi thật đã gặp — xem mục
+-- "Sửa lỗi trùng tên Xóm" bên dưới nếu policy trên project đang là bản cũ).
 create policy "staff sees scoped customers" on customers
   for select using (
     (auth.jwt() ->> 'app_role') = 'admin'
     and exists (
       select 1 from admins a
       where a.id = (auth.jwt() ->> 'row_id') and a.role = 'staff'
-        and (thon = any(a.allowed_thon) or xom = any(a.allowed_xom))
+        and (thon = any(a.allowed_thon) or (thon || '||' || xom) = any(a.allowed_xom))
     )
   );
 
@@ -220,7 +225,7 @@ create policy "admin sees contracts in scope" on contracts
       select 1 from customers c
       join admins a on a.id = (auth.jwt() ->> 'row_id')
       where c.id = contracts.customer_id
-        and (a.role = 'super' or c.thon = any(a.allowed_thon) or c.xom = any(a.allowed_xom))
+        and (a.role = 'super' or c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
     )
   );
 
@@ -252,7 +257,7 @@ create policy "admin sees requests in scope" on requests
       select 1 from customers c
       join admins a on a.id = (auth.jwt() ->> 'row_id')
       where c.id = requests.customer_id
-        and (a.role = 'super' or c.thon = any(a.allowed_thon) or c.xom = any(a.allowed_xom))
+        and (a.role = 'super' or c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
     )
   );
 create policy "admin updates requests" on requests
@@ -267,6 +272,60 @@ create policy "super admin updates org" on orgs
     (auth.jwt() ->> 'app_role') = 'admin'
     and exists (select 1 from admins a where a.id = (auth.jwt() ->> 'row_id') and a.role = 'super')
   );
+
+## 5b. Sửa lỗi trùng tên Xóm giữa nhiều Thôn (BẮT BUỘC chạy nếu project đã tạo trước đoạn này)
+
+**Lỗi thật đã gặp**: cấp quyền staff xem "Xóm 8" của "Thôn Bình Nguyên" thì staff đó lại xem được
+CẢ "Xóm 8" của mọi Thôn khác — vì code cũ (cả policy RLS lẫn code app) so khớp CHỈ riêng tên Xóm,
+không ghép kèm Thôn, mà tên Xóm hoàn toàn có thể trùng nhau giữa các Thôn khác nhau. Đây là lỗi lộ
+dữ liệu THẬT ở tầng RLS (server), không chỉ hiển thị sai trên giao diện — **cần chạy SQL bên dưới
+trên project Supabase thật của bạn** (không tự động áp dụng — sửa trong file này chỉ là cập nhật tài
+liệu tham khảo cho project TẠO MỚI):
+
+```sql
+drop policy if exists "staff sees scoped customers" on customers;
+create policy "staff sees scoped customers" on customers
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id') and a.role = 'staff'
+        and (thon = any(a.allowed_thon) or (thon || '||' || xom) = any(a.allowed_xom))
+    )
+  );
+
+drop policy if exists "admin sees contracts in scope" on contracts;
+create policy "admin sees contracts in scope" on contracts
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from customers c
+      join admins a on a.id = (auth.jwt() ->> 'row_id')
+      where c.id = contracts.customer_id
+        and (a.role = 'super' or c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
+    )
+  );
+
+drop policy if exists "admin sees requests in scope" on requests;
+create policy "admin sees requests in scope" on requests
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from customers c
+      join admins a on a.id = (auth.jwt() ->> 'row_id')
+      where c.id = requests.customer_id
+        and (a.role = 'super' or c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
+    )
+  );
+```
+
+**Sau khi chạy SQL trên**, dữ liệu `allowed_xom` cũ đã lưu trong bảng `admins` (dạng tên Xóm trần,
+VD: `"Xóm 8"`) sẽ KHÔNG còn khớp với policy mới nữa (policy mới cần dạng `"Thôn||Xóm"`, xem `xomKey()`
+ở `js/state.js`) — coi như quyền xem theo Xóm riêng lẻ (không phải "cả Thôn") của các staff đã cấu
+hình trước đó bị reset về rỗng. **Việc cần làm thêm**: vào **Quản lý User → mở từng quản trị viên
+"chỉ xem" đang có gán quyền theo Xóm riêng lẻ → tích lại đúng Xóm cần thiết → Lưu quyền** — chỉ ảnh
+hưởng staff được gán theo TỪNG XÓM riêng, staff được gán theo CẢ THÔN (allowed_thon) không bị ảnh
+hưởng gì (Thôn không có vấn đề trùng tên tương tự).
 
 ### Việc cần bạn làm để deploy Edge Function
 1. Vào Supabase Dashboard → menu ☰ → **Edge Functions** → tạo/mở function (tên gì cũng được, URL

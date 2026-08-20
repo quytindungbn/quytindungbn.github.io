@@ -178,8 +178,11 @@ export function listCustomers(filters = {}) {
     const admin = getAdmin(filters.adminId);
     if (admin && admin.role === 'staff') {
       const allowedThon = new Set(admin.allowedThon || []);
-      const allowedXom = new Set(admin.allowedXom || []);
-      list = list.filter((c) => allowedThon.has(c.thon) || allowedXom.has(c.xom));
+      const allowedXomKeys = new Set(admin.allowedXom || []);
+      // So khớp CẶP Thôn+Xóm (xem xomKey()) chứ KHÔNG chỉ mỗi tên Xóm — tên
+      // Xóm (VD: "Xóm 8") có thể trùng nhau giữa nhiều Thôn khác nhau, so
+      // khớp riêng lẻ tên Xóm sẽ cấp nhầm quyền xem Xóm cùng tên ở Thôn khác.
+      list = list.filter((c) => allowedThon.has(c.thon) || allowedXomKeys.has(xomKey(c.thon, c.xom)));
     }
   }
   return list;
@@ -477,6 +480,19 @@ export function distinctXom(thon) {
   const list = thonList.length ? state.customers.filter((c) => thonList.includes(c.thon)) : state.customers;
   return [...new Set(list.map((c) => c.xom).filter(Boolean))].sort(naturalXomCompare);
 }
+/**
+ * Khóa định danh 1 Xóm CỤ THỂ, gắn kèm Thôn chứa nó — tên Xóm (VD: "Xóm 8")
+ * có thể trùng nhau giữa nhiều Thôn khác nhau nên KHÔNG được dùng riêng
+ * mỗi tên Xóm để phân quyền/lọc, phải luôn đi kèm đúng Thôn của nó. Dùng
+ * khi cấp quyền staff (allowedXom lưu dạng key này, xem updateStaffPermissions)
+ * và khi lọc khách hàng theo quyền (xem listCustomers).
+ */
+export function xomKey(thon, xom) { return `${thon}||${xom}`; }
+export function parseXomKey(key) {
+  const i = String(key || '').indexOf('||');
+  return i < 0 ? { thon: '', xom: key || '' } : { thon: key.slice(0, i), xom: key.slice(i + 2) };
+}
+
 /** Cây Thôn -> danh sách Xóm trong thôn đó — dùng cho phân quyền nhân viên theo từng cấp. */
 export function thonXomTree() {
   return distinctThon().map((thon) => ({ thon, xomList: distinctXom(thon) }));

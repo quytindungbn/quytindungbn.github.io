@@ -127,9 +127,10 @@ export function render(contentEl, filterEl) {
       const q = query.trim().toLowerCase();
       list = list.filter((c) => c.name.toLowerCase().includes(q) || c.cccd.includes(q) || (c.phone || '').includes(q));
     }
-    // Gộp sẵn hợp đồng + tổng gốc (= dư nợ hiện tại)/lãi từng khách hàng — dùng để hiển thị & sắp xếp
+    // Gộp sẵn hợp đồng + tổng gốc (= dư nợ hiện tại)/lãi từng khách hàng — dùng để hiển thị & sắp xếp.
+    // Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào danh sách hiển thị nữa — bỏ hẳn ngay từ đây.
     let enriched = list.map((c) => {
-      const contracts = S.listContractsByCustomer(c.id);
+      const contracts = S.listContractsByCustomer(c.id).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
       const totalBalance = contracts.reduce((s, ct) => s + (ct.balance || 0), 0);
       const totalInterest = contracts.reduce((s, ct) => s + S.accruedInterest(ct), 0);
       return { c, contracts, totalBalance, totalInterest };
@@ -145,10 +146,7 @@ export function render(contentEl, filterEl) {
       const key = field === 'principal' ? 'totalBalance' : 'totalInterest';
       enriched.sort((a, b) => (dir === 'asc' ? a[key] - b[key] : b[key] - a[key]));
     }
-    // Chỉ đếm hợp đồng CÒN HIỆU LỰC (chưa tất toán) — khách có 2 hợp đồng
-    // nhưng 1 đã tất toán thì chỉ tính là 1 hợp đồng đang vay, khớp với tổng
-    // dư nợ bên cạnh (hợp đồng tất toán có balance=0, không góp vào số tiền).
-    const totalContracts = enriched.reduce((s, e) => s + e.contracts.filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan').length, 0);
+    const totalContracts = enriched.reduce((s, e) => s + e.contracts.length, 0);
     const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);
 
     contentEl.innerHTML = `
@@ -284,11 +282,8 @@ function showCredential(customer, tempPassword) {
  */
 export function openCustomerDetail(customerId, { readOnly = false, context = 'customer' } = {}) {
   const c = S.getCustomer(customerId);
-  const contracts = S.listContractsByCustomer(customerId);
-  // Số hiện ở tiêu đề chỉ tính hợp đồng CÒN HIỆU LỰC (chưa tất toán) — hợp
-  // đồng đã tất toán vẫn liệt kê đầy đủ bên dưới (có badge riêng) để tra
-  // cứu lịch sử, chỉ không tính vào số "đang vay" cho khỏi gây hiểu lầm.
-  const activeContractCount = contracts.filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan').length;
+  // Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào danh sách hiển thị nữa.
+  const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
   const close = openModal({
     title: c.name,
     bodyHtml: `
@@ -305,7 +300,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         ${context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
         <button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} ${context === 'use' ? 'Xóa Use' : ''}</button>
       </div>` : '<div class="mt-16"></div>'}
-      <div class="section-head"><h2 style="font-size:14px">Hợp đồng (${activeContractCount})</h2></div>
+      <div class="section-head"><h2 style="font-size:14px">Hợp đồng (${contracts.length})</h2></div>
       <div id="contract-list">${contracts.map((ct) => contractRowCompact(ct)).join('') || '<p class="text-sm text-muted">Chưa có hợp đồng — nhập từ Excel để thêm.</p>'}</div>
     `,
     onMount(sheet, closeFn) {

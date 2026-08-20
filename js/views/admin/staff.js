@@ -29,7 +29,11 @@ export function render(contentEl, filterEl) {
 }
 
 function permissionSummary(a) {
-  const parts = [...a.allowedThon, ...a.allowedXom.map((x) => `Xóm ${x}`)];
+  const xomLabels = a.allowedXom.map((key) => {
+    const { thon, xom } = S.parseXomKey(key);
+    return thon ? `${xom} (${thon})` : `Xóm ${xom}`; // fallback nếu còn dữ liệu cũ lưu bare xom (trước bản sửa lỗi trùng tên Xóm)
+  });
+  const parts = [...a.allowedThon, ...xomLabels];
   return parts.length ? parts.join(', ') : 'Chưa gán địa bàn nào';
 }
 
@@ -151,8 +155,8 @@ function permissionTreeHtml(tree, admin) {
       ${xomList.length ? `
       <div class="chip-row mt-8" style="flex-wrap:wrap">
         ${xomList.map((x) => `
-          <label class="chip xom-chip ${admin?.allowedXom.includes(x) ? 'active' : ''}" style="cursor:pointer">
-            <input type="checkbox" name="xom" value="${x}" ${admin?.allowedXom.includes(x) ? 'checked' : ''} style="position:absolute;opacity:0;width:0;height:0"/>
+          <label class="chip xom-chip ${admin?.allowedXom.includes(S.xomKey(thon, x)) ? 'active' : ''}" style="cursor:pointer">
+            <input type="checkbox" name="xom" value="${S.xomKey(thon, x)}" ${admin?.allowedXom.includes(S.xomKey(thon, x)) ? 'checked' : ''} style="position:absolute;opacity:0;width:0;height:0"/>
             ${x}
           </label>`).join('')}
       </div>` : ''}
