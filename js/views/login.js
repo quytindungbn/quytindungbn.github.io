@@ -4,7 +4,7 @@ import { toast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
 import { autoSubscribeIfPossible } from '../lib/push.js';
 import { isStandalone } from '../lib/installPwa.js';
-import { bindInstallButton, maybeAutoShowIosGuide } from '../components/installBtn.js';
+import { bindInstallButton } from '../components/installBtn.js';
 
 let mode = 'customer';
 
@@ -64,11 +64,6 @@ export function renderLogin(root, onLoggedIn) {
 
   const installBtn = root.querySelector('#btn-install-shortcut');
   if (installBtn) bindInstallButton(installBtn);
-  // Phần lớn khách đăng nhập xong ở lại luôn (phiên lưu sẵn), hiếm khi quay
-  // lại đúng trang đăng nhập này — nên chỉ tự mở hướng dẫn iPhone ở ĐÂY là
-  // không đủ, xem thêm lượt gọi thứ 2 ở buildShell() (shell.js) cho người đã
-  // đăng nhập sẵn. maybeAutoShowIosGuide() tự nhớ đã hiện chưa, không trùng.
-  maybeAutoShowIosGuide();
 
   root.querySelector('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();

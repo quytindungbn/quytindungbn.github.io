@@ -3,7 +3,7 @@ import { openModal } from './modal.js';
 import * as S from '../state.js';
 import { initials, colorFor, maskCccd } from '../utils.js';
 import { isStandalone } from '../lib/installPwa.js';
-import { bindInstallButton, maybeAutoShowIosGuide } from './installBtn.js';
+import { bindInstallButton } from './installBtn.js';
 
 export const CUSTOMER_NAV = [
   { path: '#/', label: 'Trang chủ', shortLabel: 'Trang chủ', icon: 'landmark' },
@@ -102,11 +102,6 @@ export function buildShell(root, role, isSuper) {
   document.getElementById('btn-logout-side').addEventListener('click', onLogoutClick);
   const installBtnSide = document.getElementById('btn-install-side');
   if (installBtnSide) bindInstallButton(installBtnSide);
-  // Phần lớn khách ở lại đăng nhập sẵn (phiên lưu trong localStorage), hiếm
-  // khi thấy lại trang đăng nhập (nơi cũng gọi hàm này) — cần gọi thêm ở đây
-  // để khách iPhone MỚI (máy chưa cài) vẫn được tự mời ngay khi vào app.
-  // Hàm tự nhớ đã hiện chưa (localStorage), không hiện trùng 2 lần.
-  maybeAutoShowIosGuide();
 }
 
 /**

@@ -3,6 +3,7 @@ import { buildShell, updateActiveNav, renderSidebarProfile } from './components/
 import { closeAllModals } from './components/modal.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
+import { initAutoInstallPrompt } from './components/installBtn.js';
 import { renderLogin } from './views/login.js';
 import { renderChangePassword } from './views/changePassword.js';
 
@@ -129,6 +130,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   // tự xin quyền thông báo luôn — không đợi xong, không chặn tải app.
   const existingSession = S.getSession();
   if (existingSession) autoSubscribeIfPossible(existingSession.sbToken);
+  // Tự động mời cài đặt app ngay khi vào (máy chưa cài) — gọi đúng 1 LẦN ở
+  // đây, không lặp lại ở từng trang, xem installBtn.js.
+  initAutoInstallPrompt();
 });
 
 // Mọi thay đổi dữ liệu (xóa/tạo/sửa...) đều gọi notify() và kích hoạt render
