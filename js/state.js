@@ -89,11 +89,6 @@ function mapOrgRow(row) {
   };
 }
 
-export async function resetDemoData() {
-  await seedDemoData();
-  notify();
-}
-
 // ------------------------------------------------------------
 // Mật khẩu — băm bằng Web Crypto API (SHA-256 + muối), không cần thư viện ngoài.
 // Lưu ý: đây vẫn là mô hình demo (không có backend thật đứng sau).
