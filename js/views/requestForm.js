@@ -4,6 +4,7 @@ import { pageHeader } from '../components/shell.js';
 import { statusBadge, emptyState } from '../components/ui.js';
 import { toast } from '../components/toast.js';
 import { formatVND, formatDateTime } from '../utils.js';
+import { bindMoneyInput } from './contractDetail.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Yêu cầu tư vấn' });
@@ -14,6 +15,7 @@ export function render(contentEl, filterEl, params, query) {
   const customer = S.getCustomer(session.id);
   const presetContract = query ? query.get('hop_dong') : null;
   let type = 'vay_moi';
+  let amount = 0;
 
   function draw() {
     const myRequests = S.listRequests({ customerId: customer.id });
@@ -30,10 +32,10 @@ export function render(contentEl, filterEl, params, query) {
         <form id="req-form">
           ${type === 'vay_moi' ? `
           <div class="field-row">
-            <div class="field"><label>Số tiền muốn vay (ước tính)</label><input name="amount" type="number" min="0" step="1000000" placeholder="VD: 50000000"/></div>
+            <div class="field"><label>Số tiền muốn vay (ước tính)</label><input id="amount-input" type="text" inputmode="numeric"/></div>
             <div class="field"><label>Thời hạn mong muốn (tháng)</label><input name="termMonths" type="number" min="1"/></div>
           </div>
-          <div class="field"><label>Mục đích vay</label><input name="purpose" placeholder="VD: Bổ sung vốn kinh doanh"/></div>
+          <div class="field"><label>Mục đích vay</label><input name="purpose"/></div>
           ` : ''}
           <div class="field">
             <label>Nội dung ${presetContract ? `(liên quan hợp đồng ${presetContract})` : ''}</label>
@@ -61,16 +63,20 @@ export function render(contentEl, filterEl, params, query) {
       opt.addEventListener('click', () => { type = opt.dataset.type; draw(); });
     });
 
+    const amountInput = contentEl.querySelector('#amount-input');
+    if (amountInput) bindMoneyInput(amountInput, amount, (v) => { amount = v; });
+
     contentEl.querySelector('#req-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       try {
         await S.createRequest({
           customerId: customer.id, type,
-          amount: fd.get('amount'), termMonths: fd.get('termMonths'),
+          amount, termMonths: fd.get('termMonths'),
           purpose: fd.get('purpose'), note: fd.get('note'),
         });
         toast('Đã gửi yêu cầu, nhân viên sẽ liên hệ với bạn sớm', 'success');
+        amount = 0;
         draw();
       } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
     });

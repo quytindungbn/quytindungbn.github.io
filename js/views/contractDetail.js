@@ -52,6 +52,11 @@ export function render(contentEl, filterEl, params) {
     <a href="#/yeu-cau-tu-van?hop_dong=${contract.code}" class="btn btn-outline btn-block">
       ${icon('phone', 'icon-sm')} Liên hệ tư vấn về hợp đồng này
     </a>
+
+    ${canPay ? `
+    <div class="card card-pad mt-16 text-sm text-danger fw-700" style="text-align:center">
+      ${icon('alert', 'icon-sm')} Khi đã thanh toán, vui lòng chờ đợi một thời gian sẽ được cập nhật thông tin (không chuyển khoản lại lần nữa).
+    </div>` : ''}
   `;
 
   const btnPay = contentEl.querySelector('#btn-thanh-toan');
@@ -188,7 +193,6 @@ function openPaymentModal(contract, customer, accrued) {
           ` : `
             <div class="field-hint text-danger">Quỹ chưa cấu hình mã QR (mã ngân hàng). Vui lòng chuyển khoản thủ công theo thông tin ở trên, hoặc liên hệ quầy giao dịch.</div>
           `}
-          <div class="text-sm text-danger fw-700 mt-16" style="text-align:center">${icon('alert', 'icon-sm')} Khi đã thanh toán, vui lòng chờ đợi một thời gian sẽ được cập nhật thông tin (không chuyển khoản lại lần nữa).</div>
         `;
         body.querySelectorAll('[data-type]').forEach((opt) => {
           opt.addEventListener('click', () => { payType = opt.dataset.type; draw(); });
