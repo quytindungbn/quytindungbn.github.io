@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { pageHeader, bindHeaderActions } from '../components/shell.js';
 import { statusBadge } from '../components/ui.js';
 import { openModal } from '../components/modal.js';
-import { formatVND, formatDate, formatNumber, daysUntil, stripDiacritics } from '../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, stripDiacritics, debounce } from '../utils.js';
 import { toast } from '../components/toast.js';
 
 export function renderHeader(headerEl) {
@@ -149,15 +149,29 @@ function openPaymentModal(contract, customer, accrued) {
 
       const hasBank = org.bankBin && org.bankAccountNo;
 
-      /** Chỉ cập nhật phần số tiền/nội dung/QR — không vẽ lại ô nhập để không mất focus khi đang gõ. */
-      function updateSummary() {
+      /** Cập nhật phần số tiền/nội dung chữ — luôn tức thì, không phụ thuộc mạng. */
+      function updateAmountText() {
         const { total, text } = content();
         body.querySelector('#sum-amount').textContent = formatVND(total);
         body.querySelector('#sum-content').textContent = text;
-        if (hasBank) {
-          body.querySelector('#qr-img').src = buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: total, content: text, accountName: org.bankAccountName });
-        }
       }
+      function updateQrNow() {
+        if (!hasBank) return;
+        const img = body.querySelector('#qr-img');
+        if (!img) return;
+        const { total, text } = content();
+        img.src = buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: total, content: text, accountName: org.bankAccountName });
+      }
+      // Ảnh QR tải từ dịch vụ ngoài (img.vietqr.io) — mỗi lần đổi src là 1
+      // request mạng render ảnh mới, gọi thẳng theo từng phím gõ (VD: gõ 9
+      // chữ số tiền = 9 request liên tiếp) làm popup nặng/giật. Debounce lại,
+      // chỉ tải ảnh mới khi người dùng NGƯNG gõ 400ms — số tiền/nội dung chữ
+      // (updateAmountText()) vẫn cập nhật tức thì, chỉ ảnh QR trễ chút.
+      const updateQrDebounced = debounce(updateQrNow, 400);
+      /** Dùng khi vẽ lại toàn bộ (mở popup, đổi loại thanh toán) — cần QR đúng ngay, không debounce. */
+      function updateSummary() { updateAmountText(); updateQrNow(); }
+      /** Dùng khi người dùng đang gõ số tiền — chữ tức thì, ảnh QR debounce để đỡ giật. */
+      function updateSummaryTyping() { updateAmountText(); updateQrDebounced(); }
 
       function draw() {
         body.innerHTML = `
@@ -198,9 +212,9 @@ function openPaymentModal(contract, customer, accrued) {
           opt.addEventListener('click', () => { payType = opt.dataset.type; draw(); });
         });
         const pInput = body.querySelector('#principal-input');
-        if (pInput) bindMoneyInput(pInput, principalAmount, (v) => { principalAmount = v; updateSummary(); });
+        if (pInput) bindMoneyInput(pInput, principalAmount, (v) => { principalAmount = v; updateSummaryTyping(); });
         const iInput = body.querySelector('#interest-input');
-        if (iInput) bindMoneyInput(iInput, interestAmount, (v) => { interestAmount = v; updateSummary(); });
+        if (iInput) bindMoneyInput(iInput, interestAmount, (v) => { interestAmount = v; updateSummaryTyping(); });
         const shareBtn = body.querySelector('#btn-share-qr');
         if (shareBtn) shareBtn.addEventListener('click', () => {
           const { text } = content();

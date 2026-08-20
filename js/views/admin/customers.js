@@ -74,7 +74,14 @@ export function render(contentEl, filterEl) {
       if (val === 'all') urgencyFilters.clear();
       else if (urgencyFilters.has(val)) urgencyFilters.delete(val);
       else urgencyFilters.add(val);
-      render(contentEl, filterEl);
+      // Chỉ vẽ lại phần danh sách (draw()), KHÔNG gọi lại render() — render()
+      // reset cả filterThon/filterXom/sortMode (chỉ nên xảy ra lúc mới vào
+      // trang), gọi lại nó ở đây sẽ xóa mất bộ lọc Thôn/Xóm đang chọn mỗi
+      // lần bấm "Quá hạn"/"Gần đến hạn".
+      filterEl.querySelectorAll('[data-urgency]').forEach((c) => {
+        c.classList.toggle('active', c.dataset.urgency === 'all' ? urgencyFilters.size === 0 : urgencyFilters.has(c.dataset.urgency));
+      });
+      draw();
     });
   });
 
@@ -456,15 +463,19 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const qrImgEl = sheet.querySelector('#qr-img-ct');
       let gocAmount = 0;
       let laiAmount = accrued;
-      /** Sửa ô Gốc hoặc Lãi là vẽ lại ảnh QR ngay theo tổng 2 ô cộng lại. */
+      /** Sửa ô Gốc hoặc Lãi là vẽ lại ảnh QR theo tổng 2 ô cộng lại. */
       function refreshQr() {
         if (!qrImgEl) return;
         qrImgEl.src = buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: gocAmount + laiAmount, content: buildQrContent(gocAmount, laiAmount), accountName: org.bankAccountName });
       }
+      // Ảnh QR tải từ dịch vụ ngoài — mỗi lần đổi src là 1 request mạng render
+      // ảnh mới, gọi thẳng theo từng phím gõ làm popup nặng/giật. Debounce lại,
+      // chỉ tải ảnh mới khi ngưng gõ 400ms.
+      const refreshQrDebounced = debounce(refreshQr, 400);
       const gocInput = sheet.querySelector('#qr-goc-input');
-      if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; refreshQr(); });
+      if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; refreshQrDebounced(); });
       const laiInput = sheet.querySelector('#qr-lai-input');
-      if (laiInput) bindMoneyInput(laiInput, accrued, (v) => { laiAmount = v; refreshQr(); });
+      if (laiInput) bindMoneyInput(laiInput, accrued, (v) => { laiAmount = v; refreshQrDebounced(); });
       const downloadQrBtn = sheet.querySelector('#btn-download-qr-ct');
       if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`));
       const shareQrBtn = sheet.querySelector('#btn-share-qr-ct');
