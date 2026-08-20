@@ -4,7 +4,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics, escapeHtml } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics, escapeHtml, boldDigits } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv } from '../../lib/excelLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 
@@ -291,21 +291,25 @@ function showCredential(customer, tempPassword) {
 function buildContractNotificationPreset(contract) {
   const accrued = S.accruedInterest(contract);
   const urgency = S.contractUrgency(contract);
+  // Số tiền/ngày tháng in đậm (Unicode, xem ghi chú boldDigits() trong utils.js) để nổi bật hơn phần chữ xung quanh.
+  const balanceB = boldDigits(formatVND(contract.balance));
+  const accruedB = boldDigits(formatVND(accrued));
+  const dueDateB = boldDigits(formatDate(contract.dueDate));
   if (urgency === 'qua_han') {
     return {
       title: 'Hợp đồng đã trễ hạn',
-      body: `Hợp đồng ${contract.code} đã trễ hạn. Yêu cầu quý khách thanh toán Gốc là ${formatVND(contract.balance)}, lãi là ${formatVND(accrued)} đúng như cam kết.`,
+      body: `Hợp đồng ${contract.code} đã trễ hạn. Yêu cầu quý khách thanh toán Gốc là ${balanceB}, lãi là ${accruedB} đúng như cam kết.`,
     };
   }
   if (urgency === 'gan_den_han') {
     return {
-      title: 'Hồ sơ gần đến hạn thanh toán',
-      body: `Hồ sơ hợp đồng ${contract.code} của quý khách đã gần đến hạn. Yêu cầu thanh toán gốc là ${formatVND(contract.balance)} và lãi là ${formatVND(accrued)} trước ngày ${formatDate(contract.dueDate)}.`,
+      title: 'Hợp đồng gần đến hạn',
+      body: `Hợp đồng ${contract.code} của quý khách đã gần đến hạn. Yêu cầu thanh toán gốc là ${balanceB} và lãi là ${accruedB} trước ngày ${dueDateB}.`,
     };
   }
   return {
     title: 'Thông báo tiền lãi',
-    body: `Số tiền lãi hợp đồng ${contract.code} của quý khách đến hôm nay là: ${formatVND(accrued)}. Yêu cầu quý khách thanh toán đúng hạn.`,
+    body: `Số tiền lãi hợp đồng ${contract.code} của quý khách đến hôm nay là: ${accruedB}. Yêu cầu quý khách thanh toán đúng hạn.`,
   };
 }
 

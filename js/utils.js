@@ -38,6 +38,19 @@ export function formatDate(d) {
   return `${dd}/${mm}/${dt.getFullYear()}`;
 }
 
+// Thông báo đẩy hệ thống (Notification API) KHÔNG hỗ trợ chữ đậm/HTML thật —
+// mọi trình duyệt/điện thoại chỉ hiện được chữ thường, không có cách nào bật
+// bold/markdown ở đó (giới hạn của chuẩn Web Push/Notification, không phải
+// giới hạn riêng của app — y hệt lý do đã áp dụng trong
+// supabase/functions/send-due-reminders/index.ts). Cách gần đúng nhất để số
+// tiền/ngày "nổi bật" hơn hẳn phần chữ xung quanh: đổi CHỮ SỐ thường sang bộ
+// ký tự Unicode "Mathematical Bold" — nhìn đậm hẳn trên hầu hết máy hiện đại
+// dù về bản chất vẫn là text thường, không phải định dạng.
+const BOLD_DIGITS = ['𝟎', '𝟏', '𝟐', '𝟑', '𝟒', '𝟓', '𝟔', '𝟕', '𝟖', '𝟗'];
+export function boldDigits(s) {
+  return String(s ?? '').replace(/[0-9]/g, (d) => BOLD_DIGITS[Number(d)]);
+}
+
 export function formatDateTime(d) {
   const dt = d instanceof Date ? d : new Date(d);
   const hh = String(dt.getHours()).padStart(2, '0');
