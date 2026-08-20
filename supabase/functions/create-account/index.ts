@@ -17,6 +17,12 @@
 //     'delete-push-subscription', endpoint } -> tự bật/tắt thông báo đẩy cho
 //     CHÍNH MÌNH, cần JWT hợp lệ (không cần role='super'). Việc GỬI thông
 //     báo định kỳ nằm ở Edge Function riêng "send-due-reminders".
+//   { type: 'send-manual-notification', customerId, title, body } -> BẤT KỲ
+//     admin/nhân viên nào (không cần role='super') tự soạn + gửi ngay 1
+//     thông báo đẩy cho 1 khách hàng (khách phải đã bật thông báo trên ít
+//     nhất 1 thiết bị). Nhân viên (role='staff') CHỈ gửi được cho khách
+//     trong đúng phạm vi Thôn/Xóm được gán — y hệt điều kiện RLS bảng
+//     customers, xem docs/supabase-migration.md mục 5b.
 //   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
 //   của 1 admin role='super' (xác minh lại tại server, không tin JWT mù):
 //     { type: 'customer', cccd, name?, phone?, password? }
@@ -30,9 +36,6 @@
 //     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom? }
 //     { type: 'delete-staff', staffId }
 //     { type: 'import', fullSync, rows: [...] } — nhập Excel/dán tay hàng loạt
-//     { type: 'send-manual-notification', customerId, title, body } — admin tự
-//       soạn + gửi ngay 1 thông báo đẩy cho 1 khách hàng bất kỳ (khách đó phải
-//       đã bật thông báo trên ít nhất 1 thiết bị, xem bảng push_subscriptions)
 // password bỏ trống thì tự sinh mật khẩu tạm ngẫu nhiên (trả về trong response).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -308,19 +311,24 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // ===== Mọi type khác: bắt buộc JWT admin role='super' =====
-  const authHeader = req.headers.get('Authorization') || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '');
-  const claims = token ? await verifyJwt(token) : null;
-  if (!claims || claims.app_role !== 'admin') {
-    return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
-  }
-  const { data: callerAdmin, error: callerErr } = await admin.from('admins').select('*').eq('id', claims.row_id).maybeSingle();
-  if (callerErr || !callerAdmin || callerAdmin.role !== 'super') {
-    return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
-  }
-
+  // ===== type: 'send-manual-notification' — BẤT KỲ admin/nhân viên nào đã
+  // đăng nhập (KHÔNG cần role='super') tự soạn + gửi ngay 1 thông báo đẩy
+  // cho 1 khách hàng. Nhân viên (role='staff') CHỈ gửi được cho khách trong
+  // đúng phạm vi Thôn/Xóm được gán — y hệt điều kiện RLS bảng customers (xem
+  // docs/supabase-migration.md mục 5b) — tránh gửi ra ngoài phạm vi dù biết
+  // trước customerId (client-side chỉ ẩn UI, không phải hàng rào bảo mật
+  // thật). Quản trị viên toàn quyền (role='super') không bị giới hạn gì. =====
   if (body.type === 'send-manual-notification') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') {
+      return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
+    const { data: caller, error: callerErr } = await admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerErr || !caller) {
+      return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
     if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
       return json({ ok: false, reason: 'Chưa cấu hình thông báo đẩy trên server (thiếu secret VAPID) — xem docs/supabase-migration.md mục "Thông báo đẩy".' }, 500);
     }
@@ -328,6 +336,15 @@ Deno.serve(async (req) => {
     const title = String(body.title || '').trim();
     const msgBody = String(body.body || '').trim();
     if (!customerId || !title || !msgBody) return json({ ok: false, reason: 'Cần nhập đủ tiêu đề và nội dung thông báo.' }, 400);
+
+    if (caller.role !== 'super') {
+      const { data: cust } = await admin.from('customers').select('thon, xom').eq('id', customerId).maybeSingle();
+      if (!cust) return json({ ok: false, reason: 'Không tìm thấy khách hàng.' }, 404);
+      const allowedThon: string[] = caller.allowed_thon || [];
+      const allowedXom: string[] = caller.allowed_xom || [];
+      const inScope = allowedThon.includes(cust.thon) || allowedXom.includes(`${cust.thon}||${cust.xom}`);
+      if (!inScope) return json({ ok: false, reason: 'Bạn không có quyền gửi thông báo cho khách hàng này.' }, 403);
+    }
 
     const { data: subs, error: subsErr } = await admin.from('push_subscriptions').select('*').eq('owner_type', 'customer').eq('owner_id', customerId);
     if (subsErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
@@ -351,6 +368,18 @@ Deno.serve(async (req) => {
     }
     if (!sentCount) return json({ ok: false, reason: 'Gửi không thành công — thiết bị của khách có thể đã tắt/gỡ đăng ký nhận thông báo, nhờ khách vào lại app bật lại thông báo.' });
     return json({ ok: true, sentCount });
+  }
+
+  // ===== Mọi type khác: bắt buộc JWT admin role='super' =====
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  const claims = token ? await verifyJwt(token) : null;
+  if (!claims || claims.app_role !== 'admin') {
+    return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+  }
+  const { data: callerAdmin, error: callerErr } = await admin.from('admins').select('*').eq('id', claims.row_id).maybeSingle();
+  if (callerErr || !callerAdmin || callerAdmin.role !== 'super') {
+    return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
   }
 
   if (body.type === 'customer') {
