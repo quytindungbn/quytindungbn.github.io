@@ -146,9 +146,10 @@ export function render(contentEl, filterEl) {
       enriched.sort((a, b) => (dir === 'asc' ? a[key] - b[key] : b[key] - a[key]));
     }
     const totalContracts = enriched.reduce((s, e) => s + e.contracts.length, 0);
+    const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);
 
     contentEl.innerHTML = `
-      <div class="text-sm text-muted mb-8">${enriched.length} khách hàng · ${totalContracts} hợp đồng</div>
+      <div class="text-sm text-muted mb-8">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <b style="color:var(--color-primary)">${formatVND(totalAmount)}</b></div>
       ${enriched.length ? enriched.map(({ c, contracts }) => {
         const overdueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'qua_han');
         const nearDueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'gan_den_han');
