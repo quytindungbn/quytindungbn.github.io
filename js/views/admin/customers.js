@@ -4,7 +4,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics, escapeHtml } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv } from '../../lib/excelLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 
@@ -281,38 +281,78 @@ function showCredential(customer, tempPassword) {
 }
 
 /**
- * Admin tự soạn + gửi ngay 1 thông báo đẩy cho 1 khách hàng — tiện dùng khi
- * cần nhắc riêng ngoài lịch tự động (VD: nhắc miệng đã hẹn, thông báo việc
- * khác...). Khách phải đã bật thông báo trên ít nhất 1 thiết bị thì mới gửi
- * được — báo lỗi rõ nếu chưa bật.
+ * Soạn sẵn tiêu đề + nội dung thông báo theo đúng tình trạng hiện tại của 1
+ * hợp đồng — admin vẫn sửa lại thoải mái trước khi gửi (openSendNotificationModal).
+ * 3 mẫu theo đúng yêu cầu:
+ *   - Chưa đến hạn (còn xa, chưa vào diện "gần đến hạn"): chỉ nhắc lãi.
+ *   - Gần đến hạn (S.contractUrgency === 'gan_den_han'): nhắc gốc + lãi + hạn chót.
+ *   - Trễ hạn (S.contractUrgency === 'qua_han'): nhắc gốc + lãi, giọng mạnh hơn.
  */
-function openSendNotificationModal(customer) {
-  const close = openModal({
+function buildContractNotificationPreset(contract) {
+  const accrued = S.accruedInterest(contract);
+  const urgency = S.contractUrgency(contract);
+  if (urgency === 'qua_han') {
+    return {
+      title: 'Hợp đồng đã trễ hạn',
+      body: `Hợp đồng ${contract.code} đã trễ hạn. Yêu cầu quý khách thanh toán Gốc là ${formatVND(contract.balance)}, lãi là ${formatVND(accrued)} đúng như cam kết.`,
+    };
+  }
+  if (urgency === 'gan_den_han') {
+    return {
+      title: 'Hồ sơ gần đến hạn thanh toán',
+      body: `Hồ sơ hợp đồng ${contract.code} của quý khách đã gần đến hạn. Yêu cầu thanh toán gốc là ${formatVND(contract.balance)} và lãi là ${formatVND(accrued)} trước ngày ${formatDate(contract.dueDate)}.`,
+    };
+  }
+  return {
+    title: 'Thông báo tiền lãi',
+    body: `Số tiền lãi hợp đồng ${contract.code} của quý khách đến hôm nay là: ${formatVND(accrued)}. Yêu cầu quý khách thanh toán đúng hạn.`,
+  };
+}
+
+/**
+ * Admin tự soạn + gửi ngay 1 thông báo đẩy cho 1 khách hàng — tiện dùng khi
+ * cần nhắc riêng ngoài lịch tự động. `preset` (tùy chọn) điền sẵn tiêu
+ * đề/nội dung (VD: soạn sẵn theo đúng tình trạng hợp đồng, xem
+ * buildContractNotificationPreset) — admin vẫn sửa lại thoải mái trước khi
+ * gửi. Khách phải đã bật thông báo trên ít nhất 1 thiết bị thì mới gửi được
+ * — báo lỗi rõ nếu chưa bật. Popup KHÔNG tự đóng sau khi gửi để admin thấy
+ * rõ trạng thái thành công/thất bại ngay tại chỗ.
+ */
+function openSendNotificationModal(customer, preset = {}) {
+  openModal({
     title: `Gửi thông báo cho ${customer.name}`,
     bodyHtml: `
       <div class="field">
         <label>Tiêu đề</label>
-        <input id="noti-title" maxlength="60" placeholder="VD: Nhắc thanh toán"/>
+        <input id="noti-title" maxlength="60" placeholder="VD: Nhắc thanh toán" value="${escapeHtml(preset.title || '')}"/>
       </div>
       <div class="field">
         <label>Nội dung</label>
-        <textarea id="noti-body" rows="4" maxlength="300" placeholder="Nội dung thông báo..." style="width:100%;border:1px solid var(--border-strong);border-radius:8px;padding:10px;font-size:13px"></textarea>
+        <textarea id="noti-body" rows="4" maxlength="300" placeholder="Nội dung thông báo..." style="width:100%;border:1px solid var(--border-strong);border-radius:8px;padding:10px;font-size:13px">${escapeHtml(preset.body || '')}</textarea>
       </div>
+      <div id="noti-status" class="text-sm mt-8"></div>
       <button class="btn btn-primary btn-block mt-8" id="btn-do-send-noti">${icon('bell', 'icon-sm')} Gửi ngay</button>
     `,
     onMount(sheet) {
+      const statusEl = sheet.querySelector('#noti-status');
       sheet.querySelector('#btn-do-send-noti').addEventListener('click', async (e) => {
         const title = sheet.querySelector('#noti-title').value.trim();
         const body = sheet.querySelector('#noti-body').value.trim();
         if (!title || !body) { toast('Cần nhập đủ tiêu đề và nội dung', 'error'); return; }
         const btn = e.target.closest('button');
         btn.disabled = true;
+        statusEl.innerHTML = `<span class="text-muted">Đang gửi...</span>`;
         try {
           const res = await S.sendManualNotification(customer.id, title, body);
-          if (!res.ok) { toast(res.reason || 'Gửi không thành công', 'error'); return; }
+          if (!res.ok) {
+            statusEl.innerHTML = `<span class="text-danger">${icon('x', 'icon-sm')} Gửi thất bại — ${escapeHtml(res.reason || 'có lỗi xảy ra')}</span>`;
+            toast(res.reason || 'Gửi không thành công', 'error');
+            return;
+          }
+          statusEl.innerHTML = `<span class="text-success">${icon('check', 'icon-sm')} Đã gửi thông báo thành công${res.sentCount ? ` tới ${res.sentCount} thiết bị` : ''}</span>`;
           toast('Đã gửi thông báo tới khách hàng', 'success');
-          close();
         } catch (err) {
+          statusEl.innerHTML = `<span class="text-danger">${icon('x', 'icon-sm')} Gửi thất bại — ${escapeHtml(err.message || 'có lỗi xảy ra')}</span>`;
           toast(err.message || 'Có lỗi xảy ra', 'error');
         } finally {
           btn.disabled = false;
@@ -484,6 +524,9 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       ${customer && customer.phone && canPay ? `
       <a href="${buildSmsLink(customer, contract, accrued)}" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS báo lãi cho khách</a>
       ` : ''}
+      ${customer && canPay ? `
+      <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-noti-app-ct">${icon('bell', 'icon-sm')} Thông báo cho khách hàng qua ứng dụng</button>
+      ` : ''}
       ${canPay ? `
       <div class="oc-line" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
         <span class="fw-700">Lãi đến nay</span>
@@ -565,6 +608,11 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`));
       const shareQrBtn = sheet.querySelector('#btn-share-qr-ct');
       if (shareQrBtn) shareQrBtn.addEventListener('click', () => shareQrImage(qrImgEl.src, buildQrContent(gocAmount, laiAmount, settleFull)));
+      const notiBtn = sheet.querySelector('#btn-noti-app-ct');
+      if (notiBtn) notiBtn.addEventListener('click', () => {
+        if (!customer) return;
+        openSendNotificationModal(customer, buildContractNotificationPreset(contract));
+      });
       const delBtn = sheet.querySelector('#del-contract');
       if (delBtn) delBtn.addEventListener('click', () => {
         confirmDialog({
