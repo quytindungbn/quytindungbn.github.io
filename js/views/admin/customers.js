@@ -416,7 +416,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   // cho CẢ CHUỖI (không chỉ riêng tên) để tự thay mọi ký tự đặc biệt (VD: dấu
   // "/" trong mã hợp đồng) bằng dấu cách — nội dung chuyển khoản không nên có
   // ký tự lạ, dễ gây lỗi khi ngân hàng xử lý.
-  function buildQrContent(goc, lai) {
+  function buildQrContent(goc, lai, settle = false) {
+    if (settle) return customer ? stripDiacritics(`TAT TOAN HDTD ${contract.code} ${customer.name}`) : '';
     const loai = goc > 0 && lai > 0 ? 'GOC LAI' : goc > 0 ? 'GOC' : 'LAI';
     return customer ? stripDiacritics(`THANH TOAN ${loai} HDTD ${contract.code} ${customer.name}`) : '';
   }
@@ -449,8 +450,14 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         ${d < 0 ? `${icon('alert', 'icon-sm')} Đã quá hạn ${Math.abs(d)} ngày` : `Còn ${d} ngày đến hạn thanh toán`}
       </div>` : ''}
       ${hasBank ? `
-      <div class="grid-2" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:10px">
-        <div class="field"><label>Gốc</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
+      <div class="field" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:10px">
+        <label class="flex items-center gap-8" style="cursor:pointer;font-weight:700;font-size:14px">
+          <input type="checkbox" id="settle-full-cb-ct"/>
+          Tất toán khoản vay (trả hết gốc + lãi)
+        </label>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Gốc (tối đa ${formatVND(contract.balance)})</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
         <div class="field"><label>Lãi</label><input type="text" inputmode="numeric" id="qr-lai-input"/></div>
       </div>
       <div class="field-hint mb-8" id="qr-lai-hint" style="display:none">Đã nhập số tiền trả gốc — Lãi tự khóa theo đúng "Lãi đến nay", không sửa tay được. Xóa ô Gốc nếu cần tự chỉnh lại Lãi.</div>
@@ -468,38 +475,54 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const qrImgEl = sheet.querySelector('#qr-img-ct');
       let gocAmount = 0;
       let laiAmount = accrued;
+      let settleFull = false; // Tất toán khoản vay — trả hết gốc (= dư nợ còn lại) + lãi, khóa cả 2 ô
       /** Sửa ô Gốc hoặc Lãi là vẽ lại ảnh QR theo tổng 2 ô cộng lại. */
       function refreshQr() {
         if (!qrImgEl) return;
-        qrImgEl.src = buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: gocAmount + laiAmount, content: buildQrContent(gocAmount, laiAmount), accountName: org.bankAccountName });
+        qrImgEl.src = buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: gocAmount + laiAmount, content: buildQrContent(gocAmount, laiAmount, settleFull), accountName: org.bankAccountName });
       }
       // Ảnh QR tải từ dịch vụ ngoài — mỗi lần đổi src là 1 request mạng render
       // ảnh mới, gọi thẳng theo từng phím gõ làm popup nặng/giật. Debounce lại,
       // chỉ tải ảnh mới khi ngưng gõ 400ms.
       const refreshQrDebounced = debounce(refreshQr, 400);
+      const settleCb = sheet.querySelector('#settle-full-cb-ct');
       const gocInput = sheet.querySelector('#qr-goc-input');
       const laiInput = sheet.querySelector('#qr-lai-input');
       const laiHint = sheet.querySelector('#qr-lai-hint');
       /**
-       * Có nhập số tiền trả Gốc thì khóa cứng Lãi = đúng "Lãi đến nay" (không
-       * cho tự sửa tay) — chỉ khi Gốc để trống mới được tự chỉnh Lãi.
+       * Có nhập số tiền trả Gốc (hoặc đang tất toán) thì khóa cứng Lãi = đúng
+       * "Lãi đến nay" (không cho tự sửa tay) — chỉ khi Gốc để trống mới được
+       * tự chỉnh Lãi.
        */
       function syncLaiLock() {
         if (!laiInput) return;
-        const locked = gocAmount > 0;
+        const locked = settleFull || gocAmount > 0;
         laiInput.disabled = locked;
-        if (laiHint) laiHint.style.display = locked ? 'block' : 'none';
+        // Đang tất toán thì tự hiểu là khóa cả 2 ô rồi (đã có checkbox riêng
+        // giải thích) — chỉ cần hiện dòng chú thích này cho đúng trường hợp
+        // "chỉ nhập Gốc" (chưa tất toán) để khỏi lặp ý.
+        if (laiHint) laiHint.style.display = (locked && !settleFull) ? 'block' : 'none';
         if (locked) {
           laiAmount = accrued;
           laiInput.value = formatNumber(accrued);
         }
       }
-      if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; syncLaiLock(); refreshQrDebounced(); });
+      /** Tích "Tất toán" thì Gốc tự điền = toàn bộ dư nợ còn lại, khóa luôn cả 2 ô. */
+      function syncSettleFull() {
+        if (gocInput) gocInput.disabled = settleFull;
+        if (settleFull) {
+          gocAmount = contract.balance;
+          if (gocInput) gocInput.value = formatNumber(contract.balance);
+        }
+        syncLaiLock();
+      }
+      if (settleCb) settleCb.addEventListener('change', (e) => { settleFull = e.target.checked; syncSettleFull(); refreshQr(); });
+      if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; syncLaiLock(); refreshQrDebounced(); }, contract.balance);
       if (laiInput) bindMoneyInput(laiInput, accrued, (v) => { laiAmount = v; refreshQrDebounced(); });
       const downloadQrBtn = sheet.querySelector('#btn-download-qr-ct');
       if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`));
       const shareQrBtn = sheet.querySelector('#btn-share-qr-ct');
-      if (shareQrBtn) shareQrBtn.addEventListener('click', () => shareQrImage(qrImgEl.src, buildQrContent(gocAmount, laiAmount)));
+      if (shareQrBtn) shareQrBtn.addEventListener('click', () => shareQrImage(qrImgEl.src, buildQrContent(gocAmount, laiAmount, settleFull)));
       const delBtn = sheet.querySelector('#del-contract');
       if (delBtn) delBtn.addEventListener('click', () => {
         confirmDialog({

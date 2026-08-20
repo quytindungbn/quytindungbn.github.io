@@ -117,11 +117,16 @@ export async function shareQrImage(url, text) {
   toast('Trình duyệt này không hỗ trợ chia sẻ trực tiếp — dùng nút "Tải ảnh QR" rồi mở app ngân hàng để quét từ ảnh.', 'info');
 }
 
-/** Ô nhập số tiền hiển thị có dấu chấm ngăn cách hàng nghìn (VD: 1.500.000) khi gõ. */
-export function bindMoneyInput(inputEl, initial, onChange) {
+/**
+ * Ô nhập số tiền hiển thị có dấu chấm ngăn cách hàng nghìn (VD: 1.500.000)
+ * khi gõ. `max` (tùy chọn) tự chặn không cho gõ vượt quá — VD: số tiền trả
+ * gốc không được vượt dư nợ còn lại.
+ */
+export function bindMoneyInput(inputEl, initial, onChange, max) {
   inputEl.value = initial ? formatNumber(initial) : '';
   inputEl.addEventListener('input', () => {
-    const raw = Number(inputEl.value.replace(/\D/g, '')) || 0;
+    let raw = Number(inputEl.value.replace(/\D/g, '')) || 0;
+    if (max != null && raw > max) raw = max;
     inputEl.value = raw ? formatNumber(raw) : '';
     onChange(raw);
   });
@@ -132,6 +137,7 @@ function openPaymentModal(contract, customer, accrued) {
   let payType = 'lai'; // 'goc' | 'lai'
   let principalAmount = 0;
   let interestAmount = accrued;
+  let settleFull = false; // Tất toán khoản vay — trả hết gốc (= dư nợ còn lại) + lãi cùng lúc
 
   const close = openModal({
     title: 'Thanh toán khoản vay',
@@ -140,6 +146,11 @@ function openPaymentModal(contract, customer, accrued) {
       const body = sheet.querySelector('#pay-body');
 
       function content() {
+        if (settleFull) {
+          const total = contract.balance + accrued;
+          const text = stripDiacritics(`TAT TOAN HDTD ${contract.code} ${customer.name}`);
+          return { total, text };
+        }
         const total = payType === 'goc' ? principalAmount + accrued : interestAmount;
         const loai = payType === 'goc' ? 'GOC' : 'LAI';
         // Không nhúng số tiền vào nội dung — số tiền đã có ở dòng riêng + mã QR, tránh trùng lặp.
@@ -180,6 +191,18 @@ function openPaymentModal(contract, customer, accrued) {
       function draw() {
         body.innerHTML = `
           <div class="field">
+            <label class="flex items-center gap-8" style="cursor:pointer;font-weight:700;font-size:14px">
+              <input type="checkbox" id="settle-full-cb" ${settleFull ? 'checked' : ''}/>
+              Tất toán khoản vay (trả hết gốc + lãi)
+            </label>
+          </div>
+          ${settleFull ? `
+          <div class="card card-pad mb-16" style="background:var(--surface-alt)">
+            <div class="oc-line"><span>Trả gốc</span><b>${formatVND(contract.balance)}</b></div>
+            <div class="oc-line"><span>Trả lãi</span><b>${formatVND(accrued)}</b></div>
+          </div>
+          ` : `
+          <div class="field">
             <label>Chọn loại thanh toán</label>
             <div class="radio-row">
               <div class="radio-opt ${payType === 'goc' ? 'active' : ''}" data-type="goc">Trả gốc</div>
@@ -188,10 +211,11 @@ function openPaymentModal(contract, customer, accrued) {
           </div>
           ${payType === 'goc' ? `
             <div class="field-hint mb-8">Tiền lãi tính đúng theo hợp đồng (không đổi được): <b>${formatVND(accrued)}</b></div>
-            <div class="field"><label>Số tiền gốc muốn trả</label><input type="text" inputmode="numeric" id="principal-input"/></div>
+            <div class="field"><label>Số tiền gốc muốn trả (tối đa ${formatVND(contract.balance)})</label><input type="text" inputmode="numeric" id="principal-input"/></div>
           ` : `
             <div class="field"><label>Số tiền lãi</label><input type="text" inputmode="numeric" id="interest-input"/></div>
             <div class="field-hint mb-8">Mặc định lấy theo lãi phát sinh đến hôm nay, bạn có thể sửa lại nếu cần.</div>
+          `}
           `}
           <div class="card card-pad mb-16" style="background:var(--surface-alt)">
             <div class="oc-line"><span>Ngân hàng</span><b>${org.bankName || '—'}</b></div>
@@ -212,11 +236,12 @@ function openPaymentModal(contract, customer, accrued) {
             <div class="field-hint text-danger">Quỹ chưa cấu hình mã QR (mã ngân hàng). Vui lòng chuyển khoản thủ công theo thông tin ở trên, hoặc liên hệ quầy giao dịch.</div>
           `}
         `;
+        body.querySelector('#settle-full-cb').addEventListener('change', (e) => { settleFull = e.target.checked; draw(); });
         body.querySelectorAll('[data-type]').forEach((opt) => {
           opt.addEventListener('click', () => { payType = opt.dataset.type; draw(); });
         });
         const pInput = body.querySelector('#principal-input');
-        if (pInput) bindMoneyInput(pInput, principalAmount, (v) => { principalAmount = v; updateSummaryTyping(); });
+        if (pInput) bindMoneyInput(pInput, principalAmount, (v) => { principalAmount = v; updateSummaryTyping(); }, contract.balance);
         const iInput = body.querySelector('#interest-input');
         if (iInput) bindMoneyInput(iInput, interestAmount, (v) => { interestAmount = v; updateSummaryTyping(); });
         const shareBtn = body.querySelector('#btn-share-qr');
