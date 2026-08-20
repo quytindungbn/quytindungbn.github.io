@@ -450,14 +450,14 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         ${d < 0 ? `${icon('alert', 'icon-sm')} Đã quá hạn ${Math.abs(d)} ngày` : `Còn ${d} ngày đến hạn thanh toán`}
       </div>` : ''}
       ${hasBank ? `
-      <div class="field" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:10px">
-        <label class="flex items-center gap-8" style="cursor:pointer;font-weight:700;font-size:14px">
+      <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;font-size:14px">
           <input type="checkbox" id="settle-full-cb-ct"/>
           Tất toán khoản vay (trả hết gốc + lãi)
         </label>
       </div>
       <div class="grid-2">
-        <div class="field"><label>Gốc (tối đa ${formatVND(contract.balance)})</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
+        <div class="field"><label>Gốc</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
         <div class="field"><label>Lãi</label><input type="text" inputmode="numeric" id="qr-lai-input"/></div>
       </div>
       <div class="field-hint mb-8" id="qr-lai-hint" style="display:none">Đã nhập số tiền trả gốc — Lãi tự khóa theo đúng "Lãi đến nay", không sửa tay được. Xóa ô Gốc nếu cần tự chỉnh lại Lãi.</div>
