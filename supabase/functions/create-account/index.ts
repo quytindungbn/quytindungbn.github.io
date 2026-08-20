@@ -76,6 +76,10 @@ async function verifyCredential(password: string, salt: string, hash: string): P
 function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
+/** Escape ký tự đặc biệt của LIKE/ILIKE ("%", "_", "\\") trước khi đưa vào ilike() — tránh username chứa các ký tự này bị hiểu nhầm thành wildcard. */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => '\\' + c);
+}
 function addDaysISO(iso: string, n: number): string {
   const dt = new Date(iso);
   dt.setDate(dt.getDate() + n);
@@ -164,7 +168,8 @@ Deno.serve(async (req) => {
       if (error) { console.error('query customers error:', error); return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500); }
       row = (data || []).find((c) => c.cccd === idTrim || (c.phone && c.phone.replace(/\s/g, '') === noSpace)) || null;
     } else {
-      const { data, error } = await admin.from('admins').select('*').eq('username', idTrim).maybeSingle();
+      // Tên đăng nhập quản trị viên KHÔNG phân biệt hoa/thường — dùng ilike().
+      const { data, error } = await admin.from('admins').select('*').ilike('username', escapeLike(idTrim)).maybeSingle();
       if (error) { console.error('query admins error:', error); return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500); }
       row = data;
     }
@@ -306,7 +311,10 @@ Deno.serve(async (req) => {
   if (body.type === 'staff') {
     const username = String(body.username || '').trim();
     if (!username) return json({ ok: false, reason: 'Cần nhập tên đăng nhập.' }, 400);
-    const { data: existing } = await admin.from('admins').select('id').eq('username', username).maybeSingle();
+    // Kiểm tra trùng KHÔNG phân biệt hoa/thường (khớp với ilike() lúc đăng
+    // nhập) — không cho tạo "Admin1" nếu đã có "admin1", tránh 2 tài khoản
+    // tưởng khác nhau nhưng đăng nhập lại lẫn vào nhau.
+    const { data: existing } = await admin.from('admins').select('id').ilike('username', escapeLike(username)).maybeSingle();
     if (existing) return json({ ok: false, reason: 'Tên đăng nhập đã tồn tại.' }, 409);
 
     const finalRole = body.role === 'super' ? 'super' : 'staff';
