@@ -242,11 +242,16 @@ export function contractUrgency(contract, asOf = new Date()) {
  */
 export function interestDaysAccrued(contract, asOf = new Date()) {
   const paidUntil = contract.interestPaidUntil || contract.disbursedDate;
-  let days = Math.max(0, daysBetween(new Date(paidUntil), asOf));
+  // LƯU Ý: phải cộng thêm 1 ngày đặc biệt (nếu có) TRƯỚC khi chặn số âm về 0
+  // — chặn về 0 trước rồi mới cộng sẽ sai lệch 1 ngày so với thực tế. VD:
+  // "Thu lãi đến ngày" 21/08, hôm nay 20/08 (chưa tới ngày đó) -> ra -1 ngày,
+  // rơi đúng vào trường hợp đặc biệt (= giải ngân + 1) nên cộng thêm 1 ngày
+  // -> -1 + 1 = 0 ngày mới đúng, KHÔNG PHẢI chặn -1 về 0 trước rồi mới +1 = 1.
+  let days = daysBetween(new Date(paidUntil), asOf);
   if (contract.disbursedDate && daysBetween(new Date(contract.disbursedDate), new Date(paidUntil)) === 1) {
     days += 1;
   }
-  return days;
+  return Math.max(0, days);
 }
 /**
  * Lãi phát sinh từ ngày đã trả lãi đến ngày hiện tại.
