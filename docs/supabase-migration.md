@@ -231,6 +231,10 @@ create policy "admin sees admins" on admins
 -- Yêu cầu tư vấn/vay mới: khách tự tạo + tự xem của chính mình, KHÔNG qua
 -- Edge Function nào (không nhạy cảm — chỉ cần RLS chặn đúng customer_id là
 -- của chính người gọi, không tin trình duyệt tự khai customer_id khác).
+-- NGOẠI LỆ: yêu cầu type='quen_mat_khau' (khách quên mật khẩu, bấm ở màn
+-- đăng nhập lúc CHƯA có JWT) được Edge Function "forgot-password" ghi thẳng
+-- bằng service_role (bỏ qua RLS) SAU KHI đã tự xác minh CCCD+SĐT khớp đúng
+-- 1 khách hàng có thật — xem code trong supabase/functions/create-account/index.ts.
 create policy "customer creates own request" on requests
   for insert with check (
     (auth.jwt() ->> 'app_role') = 'customer'

@@ -47,6 +47,11 @@ export async function callLoginFunction({ role, identifier, password }) {
   return callApi(null, { type: 'login', role, identifier, password });
 }
 
+/** type: 'forgot-password' — không cần JWT sẵn có (khách chưa đăng nhập). Trả về { ok, reason }. */
+export async function callForgotPasswordFunction({ cccd, phone }) {
+  return callApi(null, { type: 'forgot-password', cccd, phone });
+}
+
 /** Mọi "type" khác (tạo/xóa/sửa tài khoản...) — cần JWT của admin role='super'. */
 export async function callCreateAccountFunction(adminJwt, payload) {
   return callApi(adminJwt, payload);

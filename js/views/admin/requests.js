@@ -3,6 +3,7 @@ import { pageHeader } from '../../components/shell.js';
 import { statusBadge, emptyState, openPicker } from '../../components/ui.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDateTime } from '../../utils.js';
+import { openCustomerDetail } from './customers.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Yêu cầu tư vấn' });
@@ -41,9 +42,16 @@ export function render(contentEl, filterEl) {
       ${r.amount ? `<div class="oc-line"><span>Số tiền</span><b>${formatVND(r.amount)}</b></div>` : ''}
       <div class="oc-line"><span>Nội dung</span><b>${r.note || r.purpose || '—'}</b></div>
       <div class="oc-line"><span>Ngày gửi</span><b>${formatDateTime(r.createdAt)}</b></div>
-      <div class="oc-foot"><button class="link-more" data-update="${r.id}" style="border:none;background:none;cursor:pointer">Cập nhật trạng thái →</button></div>
+      <div class="oc-foot">
+        ${r.type === 'quen_mat_khau' && cust && !isStaff ? `<button class="link-more" data-reset-pw="${cust.id}" style="border:none;background:none;cursor:pointer;margin-right:12px">Cấp lại mật khẩu →</button>` : ''}
+        <button class="link-more" data-update="${r.id}" style="border:none;background:none;cursor:pointer">Cập nhật trạng thái →</button>
+      </div>
     </div>`;
   }).join('') : `<div class="card card-pad">${emptyState({ iconName: 'clipboard', title: 'Không có yêu cầu', message: 'Chưa có yêu cầu tư vấn nào phù hợp.' })}</div>`;
+
+  contentEl.querySelectorAll('[data-reset-pw]').forEach((btn) => {
+    btn.addEventListener('click', () => openCustomerDetail(btn.dataset.resetPw));
+  });
 
   contentEl.querySelectorAll('[data-update]').forEach((btn) => {
     btn.addEventListener('click', () => {

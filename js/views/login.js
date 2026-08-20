@@ -1,6 +1,7 @@
 import * as S from '../state.js';
 import { icon } from '../icons.js';
 import { toast } from '../components/toast.js';
+import { openModal } from '../components/modal.js';
 
 let mode = 'customer';
 
@@ -30,6 +31,7 @@ export function renderLogin(root, onLoggedIn) {
           <div class="field-error" id="login-error" style="display:none;margin-bottom:10px"></div>
           <button class="btn btn-primary btn-block" type="submit">${icon('lock', 'icon-sm')} Đăng nhập</button>
         </form>
+        <button id="btn-forgot" style="display:${mode === 'customer' ? 'block' : 'none'};background:none;border:none;color:var(--color-primary);font-size:13px;margin:14px auto 0;cursor:pointer">Quên mật khẩu?</button>
       </div>
     </div>
   `;
@@ -40,12 +42,17 @@ export function renderLogin(root, onLoggedIn) {
     root.querySelector('#label-primary').textContent = isAdmin ? 'Tên đăng nhập' : 'Số CCCD hoặc SĐT';
     root.querySelector('#input-primary').placeholder = isAdmin ? 'Nhập tên đăng nhập quản trị' : 'Nhập số CCCD hoặc SĐT của bạn';
     root.querySelector('#input-primary').inputMode = isAdmin ? 'text' : 'numeric';
+    // Chỉ khách hàng mới có "Quên mật khẩu" — quản trị viên/nhân viên liên hệ
+    // super admin khác cấp lại trực tiếp trong trang Quản lý User.
+    root.querySelector('#btn-forgot').style.display = isAdmin ? 'none' : 'block';
   }
   updateMode();
 
   root.querySelectorAll('[data-mode]').forEach((btn) => {
     btn.addEventListener('click', () => { mode = btn.dataset.mode; updateMode(); });
   });
+
+  root.querySelector('#btn-forgot').addEventListener('click', () => openForgotPasswordModal());
 
   root.querySelector('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -88,4 +95,52 @@ export function renderLogin(root, onLoggedIn) {
       if (btn) btn.disabled = false;
     }
   });
+}
+
+/**
+ * "Quên mật khẩu" — khách nhập CCCD + SĐT để tự xác minh danh tính (chưa có
+ * OTP thật nên chỉ dừng ở mức khớp 2 thông tin này), khớp đúng thì ghi 1
+ * yêu cầu vào hệ thống (hiện trong "Yêu cầu tư vấn" ở trang quản trị) — admin
+ * xem yêu cầu (có tên/SĐT khách) rồi tự gọi điện xác minh lại + cấp mật khẩu
+ * mới qua SĐT, KHÔNG tự động cấp/gửi mật khẩu ngay (chưa có kênh SMS thật).
+ */
+function openForgotPasswordModal() {
+  const close = openModal({
+    title: 'Quên mật khẩu',
+    bodyHtml: `
+      <p class="text-sm text-muted mb-8">Nhập đúng số CCCD và số điện thoại đã đăng ký để lấy lại tài khoản. Quỹ tín dụng sẽ gọi điện xác minh và cấp lại mật khẩu qua số điện thoại này.</p>
+      <div class="field"><label>Số CCCD</label><input id="forgot-cccd" inputmode="numeric" placeholder="Nhập số CCCD"/></div>
+      <div class="field"><label>Số điện thoại</label><input id="forgot-phone" inputmode="numeric" placeholder="Nhập số điện thoại đã đăng ký"/></div>
+      <div class="field-error" id="forgot-error" style="display:none;margin-bottom:10px"></div>
+    `,
+    footHtml: `<button class="btn btn-primary btn-block" data-confirm>Gửi yêu cầu</button>`,
+    onMount(sheet, closeFn) {
+      sheet.querySelector('[data-confirm]').addEventListener('click', async () => {
+        const cccd = sheet.querySelector('#forgot-cccd').value.trim();
+        const phone = sheet.querySelector('#forgot-phone').value.trim();
+        const errEl = sheet.querySelector('#forgot-error');
+        if (!cccd || !phone) {
+          errEl.textContent = 'Nhập đủ số CCCD và số điện thoại.';
+          errEl.style.display = 'block';
+          return;
+        }
+        errEl.style.display = 'none';
+        const btn = sheet.querySelector('[data-confirm]');
+        btn.disabled = true;
+        try {
+          const res = await S.requestPasswordReset(cccd, phone);
+          if (!res.ok) {
+            errEl.textContent = res.reason || 'Có lỗi xảy ra, thử lại sau.';
+            errEl.style.display = 'block';
+            return;
+          }
+          closeFn();
+          toast('Đã ghi nhận yêu cầu. Quỹ tín dụng sẽ gọi điện lại để cấp mật khẩu mới trong thời gian sớm nhất.', 'success');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    },
+  });
+  return close;
 }

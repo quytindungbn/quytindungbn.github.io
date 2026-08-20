@@ -7,6 +7,9 @@
 // Cách gọi: POST body luôn có field "type":
 //   { type: 'login', role: 'customer'|'admin', identifier, password }
 //     -> PHẢI gọi trước để lấy JWT — không cần JWT sẵn có.
+//   { type: 'forgot-password', cccd, phone } -> khách quên mật khẩu, KHÔNG
+//     cần JWT sẵn có — khớp đúng CCCD+SĐT thì ghi 1 yêu cầu "quen_mat_khau"
+//     vào bảng requests để admin gọi điện xác minh + cấp lại mật khẩu.
 //   { type: 'verify-own-password', password } / { type: 'set-own-password',
 //     newPassword, mustChangePassword? } -> tự đổi mật khẩu CHÍNH MÌNH, cần
 //     JWT hợp lệ (khách hàng hoặc admin đều được, KHÔNG cần role='super').
@@ -191,6 +194,40 @@ Deno.serve(async (req) => {
       iat: now, exp: now + SESSION_HOURS * 3600,
     });
     return json({ ok: true, token, id: row.id, mustChangePassword: role === 'customer' ? !!row.must_change_password : false });
+  }
+
+  // ===== type: 'forgot-password' — KHÔNG cần JWT sẵn có (khách chưa đăng
+  // nhập được nên chưa có JWT). Khách nhập CCCD + SĐT để "xác minh danh
+  // tính" (chưa có OTP thật nên chỉ dừng ở mức khớp 2 thông tin này, không
+  // tự đổi mật khẩu) — khớp đúng cả 2 mới ghi 1 "yêu cầu cấp lại mật khẩu"
+  // vào bảng requests, admin xem yêu cầu (có tên/SĐT khách) rồi tự gọi điện
+  // xác minh lại + cấp mật khẩu mới qua chức năng "Cấp lại mật khẩu" sẵn có
+  // ở trang Khách hàng. Không tiết lộ CCCD/SĐT nào sai để tránh dò thông tin. =====
+  if (body.type === 'forgot-password') {
+    const cccd = String(body.cccd || '').trim();
+    const phone = body.phone ? String(body.phone).replace(/\s/g, '') : '';
+    if (!cccd || !phone) return json({ ok: false, reason: 'Cần nhập đủ số CCCD và số điện thoại.' }, 400);
+
+    const { data: row, error } = await admin.from('customers').select('id, phone').eq('cccd', cccd).maybeSingle();
+    if (error) { console.error('forgot-password lookup error:', error); return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500); }
+    const notMatchMsg = 'Không tìm thấy tài khoản khớp với số CCCD và số điện thoại đã nhập. Vui lòng kiểm tra lại hoặc liên hệ trực tiếp quỹ tín dụng.';
+    if (!row || !row.phone || row.phone.replace(/\s/g, '') !== phone) {
+      return json({ ok: false, reason: notMatchMsg });
+    }
+
+    // Tránh ghi trùng nếu khách bấm nhiều lần: đã có yêu cầu "Mới" trong 24h gần nhất thì thôi, không tạo thêm.
+    const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const { data: recent } = await admin.from('requests').select('id')
+      .eq('customer_id', row.id).eq('type', 'quen_mat_khau').eq('status', 'moi').gte('created_at', since).limit(1);
+    if (!recent || !recent.length) {
+      const { error: insErr } = await admin.from('requests').insert({
+        id: genId('yc'), customer_id: row.id, type: 'quen_mat_khau',
+        purpose: 'Khách hàng bấm "Quên mật khẩu" ở màn đăng nhập, đã xác minh khớp CCCD + SĐT.',
+        status: 'moi',
+      });
+      if (insErr) { console.error('forgot-password insert error:', insErr); return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500); }
+    }
+    return json({ ok: true });
   }
 
   // ===== type: 'verify-own-password' / 'set-own-password' — tự đổi mật khẩu

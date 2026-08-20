@@ -10,13 +10,14 @@
 // thị TẠM lúc app chưa kết nối được mạng, không phải nguồn sự thật nữa.
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween } from './utils.js';
-import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction } from './lib/supabaseClient.js';
+import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
 
 export const STORAGE_KEY = 'qtd_demo_v3';
 
 export const REQUEST_TYPE = [
   { id: 'vay_moi', label: 'Yêu cầu mở khoản vay mới' },
   { id: 'tu_van', label: 'Yêu cầu tư vấn khác' },
+  { id: 'quen_mat_khau', label: 'Yêu cầu cấp lại mật khẩu' },
 ];
 export const REQUEST_STATUS = [
   { id: 'moi', label: 'Mới', badge: 'badge-blue' },
@@ -276,6 +277,21 @@ export async function loginCustomer(identifier, password) {
   if (!res.ok) return { ok: false, reason: res.reason };
   await loadCustomerSessionData(res.id, res.token);
   return { ok: true, customerId: res.id, mustChangePassword: !!res.mustChangePassword, sbToken: res.token };
+}
+
+/**
+ * Khách quên mật khẩu, gọi từ màn đăng nhập (CHƯA đăng nhập, không có JWT) —
+ * xác minh đúng CCCD + SĐT khớp 1 khách hàng có thật rồi ghi 1 "yêu cầu cấp
+ * lại mật khẩu" vào bảng requests (như 1 yêu cầu tư vấn thông thường, hiện
+ * ngay trong danh sách "Yêu cầu tư vấn" ở trang quản trị) — KHÔNG tự đổi mật
+ * khẩu, admin xem yêu cầu rồi tự gọi điện xác minh + cấp mật khẩu mới qua
+ * SĐT (chức năng "Cấp lại mật khẩu" đã có sẵn ở trang Khách hàng), vì app
+ * chưa có OTP thật để tự động hoàn toàn bước xác minh danh tính này.
+ * Toàn bộ logic tra cứu + ghi request chạy Ở SERVER (Edge Function, cùng
+ * cơ chế an toàn như "login") — trình duyệt không tự query được customers.
+ */
+export async function requestPasswordReset(cccd, phone) {
+  return callForgotPasswordFunction({ cccd, phone });
 }
 
 /** Tải hồ sơ + toàn bộ hợp đồng của 1 khách hàng từ Supabase, thay hoàn toàn state.customers/state.contracts. */
