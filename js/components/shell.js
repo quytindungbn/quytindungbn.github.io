@@ -2,6 +2,8 @@ import { icon } from '../icons.js';
 import { openModal } from './modal.js';
 import * as S from '../state.js';
 import { initials, colorFor, maskCccd } from '../utils.js';
+import { isStandalone } from '../lib/installPwa.js';
+import { bindInstallButton, maybeAutoShowIosGuide } from './installBtn.js';
 
 export const CUSTOMER_NAV = [
   { path: '#/', label: 'Trang chủ', shortLabel: 'Trang chủ', icon: 'landmark' },
@@ -82,7 +84,8 @@ export function buildShell(root, role, isSuper) {
         </div>
         <div id="sidebar-profile-slot"></div>
         <nav class="sidebar-nav" id="sidebar-nav"></nav>
-        <a href="#/doi-mat-khau" class="btn btn-outline btn-block" style="margin-top:16px">${icon('lock', 'icon-sm')} Đổi mật khẩu</a>
+        ${!isStandalone() ? `<button class="btn btn-outline btn-block" id="btn-install-side" style="margin-top:16px">${icon('download', 'icon-sm')} Cài ứng dụng</button>` : ''}
+        <a href="#/doi-mat-khau" class="btn btn-outline btn-block" style="margin-top:8px">${icon('lock', 'icon-sm')} Đổi mật khẩu</a>
         <button class="btn btn-outline btn-block" id="btn-logout-side" style="margin-top:8px">${icon('logout', 'icon-sm')} Đăng xuất</button>
       </aside>
       <div class="main-col">
@@ -97,6 +100,13 @@ export function buildShell(root, role, isSuper) {
   renderBottomNav(nav);
   renderSidebarProfile();
   document.getElementById('btn-logout-side').addEventListener('click', onLogoutClick);
+  const installBtnSide = document.getElementById('btn-install-side');
+  if (installBtnSide) bindInstallButton(installBtnSide);
+  // Phần lớn khách ở lại đăng nhập sẵn (phiên lưu trong localStorage), hiếm
+  // khi thấy lại trang đăng nhập (nơi cũng gọi hàm này) — cần gọi thêm ở đây
+  // để khách iPhone MỚI (máy chưa cài) vẫn được tự mời ngay khi vào app.
+  // Hàm tự nhớ đã hiện chưa (localStorage), không hiện trùng 2 lần.
+  maybeAutoShowIosGuide();
 }
 
 /**
@@ -144,10 +154,15 @@ function openMoreSheet(overflowItems) {
           </a>`).join('')}
       </div>
     `,
-    footHtml: `<button class="btn btn-outline btn-block" id="sheet-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>`,
+    footHtml: `
+      ${!isStandalone() ? `<button class="btn btn-outline btn-block" id="sheet-install" style="margin-bottom:8px">${icon('download', 'icon-sm')} Cài ứng dụng</button>` : ''}
+      <button class="btn btn-outline btn-block" id="sheet-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>
+    `,
     onMount(sheet, closeFn) {
       sheet.querySelectorAll('a[data-path]').forEach((a) => a.addEventListener('click', closeFn));
       sheet.querySelector('#sheet-logout').addEventListener('click', () => { closeFn(); onLogoutClick(); });
+      const installBtn = sheet.querySelector('#sheet-install');
+      if (installBtn) bindInstallButton(installBtn);
     },
   });
 }

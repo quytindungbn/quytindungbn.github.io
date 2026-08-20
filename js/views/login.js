@@ -3,9 +3,8 @@ import { icon } from '../icons.js';
 import { toast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
 import { autoSubscribeIfPossible } from '../lib/push.js';
-import { promptInstall, isStandalone, isIOS } from '../lib/installPwa.js';
-
-const IOS_PROMPT_SEEN_KEY = 'qtd_install_ios_seen';
+import { isStandalone } from '../lib/installPwa.js';
+import { bindInstallButton, maybeAutoShowIosGuide } from '../components/installBtn.js';
 
 let mode = 'customer';
 
@@ -64,25 +63,12 @@ export function renderLogin(root, onLoggedIn) {
   root.querySelector('#btn-forgot').addEventListener('click', () => openForgotPasswordModal());
 
   const installBtn = root.querySelector('#btn-install-shortcut');
-  if (installBtn) {
-    installBtn.addEventListener('click', () => runInstallFlow(installBtn));
-    // iPhone/iPad: KHÔNG có API nào ép tự cài được (giới hạn của Apple) —
-    // popup hướng dẫn 3 bước là UI CỦA CHÍNH APP (không phải API trình
-    // duyệt) nên tự mở được, an toàn — CHỈ tự mở 1 LẦN DUY NHẤT trên mỗi
-    // máy/trình duyệt (nhớ bằng localStorage) để khỏi làm phiền khách quen
-    // đã biết cách rồi mỗi lần đăng nhập — bấm nút góc phải vẫn luôn mở lại
-    // được hướng dẫn bất cứ lúc nào.
-    // Android/Chrome: KHÔNG tự động gọi hộp thoại cài đặt thật ở đây — trình
-    // duyệt CHỈ cho hiện hộp thoại đó khi được gọi đúng từ 1 cú bấm/chạm
-    // thật của người dùng (user gesture), tự động gọi sẽ bị trình duyệt âm
-    // thầm bỏ qua NHƯNG vẫn coi như đã "dùng" cơ hội đó, khiến nút bấm sau
-    // này không còn gì để hiện nữa — đây chính là lỗi "nút mất tác dụng"
-    // trước đó. Chỉ gọi promptInstall() đúng lúc khách bấm nút (bên trên).
-    if (isIOS() && !localStorage.getItem(IOS_PROMPT_SEEN_KEY)) {
-      localStorage.setItem(IOS_PROMPT_SEEN_KEY, '1');
-      openIosInstallGuide();
-    }
-  }
+  if (installBtn) bindInstallButton(installBtn);
+  // Phần lớn khách đăng nhập xong ở lại luôn (phiên lưu sẵn), hiếm khi quay
+  // lại đúng trang đăng nhập này — nên chỉ tự mở hướng dẫn iPhone ở ĐÂY là
+  // không đủ, xem thêm lượt gọi thứ 2 ở buildShell() (shell.js) cho người đã
+  // đăng nhập sẵn. maybeAutoShowIosGuide() tự nhớ đã hiện chưa, không trùng.
+  maybeAutoShowIosGuide();
 
   root.querySelector('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -126,50 +112,6 @@ export function renderLogin(root, onLoggedIn) {
       const btn = root.querySelector('#login-form button[type="submit"]');
       if (btn) btn.disabled = false;
     }
-  });
-}
-
-/**
- * Chạy luồng cài đặt thật — BẮT BUỘC chỉ gọi từ đúng 1 handler click (user
- * gesture), không được tự động gọi (xem ghi chú trong installPwa.js).
- */
-async function runInstallFlow(installBtn) {
-  installBtn.disabled = true;
-  try {
-    const outcome = await promptInstall();
-    if (outcome === 'accepted') {
-      toast('Đã cài ứng dụng thành công!', 'success');
-      installBtn.remove();
-    } else if (outcome === 'already-installed') {
-      toast('Bạn đã cài ứng dụng này rồi.', 'success');
-      installBtn.remove();
-    } else if (outcome === 'dismissed') {
-      toast('Bạn đã bỏ qua — có thể bấm lại nút này bất cứ lúc nào.', 'info');
-    } else if (outcome === 'ios-manual') {
-      openIosInstallGuide();
-    } else {
-      toast('Trình duyệt chưa sẵn sàng để cài đặt — thử tải lại trang, hoặc mở bằng Chrome (Android)/Safari (iPhone).', 'error');
-    }
-  } finally {
-    installBtn.disabled = false;
-  }
-}
-
-/**
- * iPhone/iPad (Safari) KHÔNG có API nào cho web tự thêm lối tắt được — đây
- * là giới hạn cố ý của Apple (không phải app thiếu sót), chỉ hướng dẫn
- * người dùng tự làm qua nút Chia sẻ.
- */
-function openIosInstallGuide() {
-  openModal({
-    title: 'Cài ứng dụng',
-    bodyHtml: `
-      <p class="text-sm text-muted mb-8">Trên iPhone/iPad, trình duyệt không cho web tự động cài đặt được — bạn tự làm theo 3 bước sau (nhớ mở bằng <b>Safari</b>):</p>
-      <div class="oc-line"><span>Bước 1</span><b style="text-align:right">Bấm nút <b>Chia sẻ</b> ${icon('wallet', 'icon-sm')} (hình vuông có mũi tên đi lên) ở thanh dưới màn hình</b></div>
-      <div class="oc-line"><span>Bước 2</span><b style="text-align:right">Cuộn xuống, chọn <b>"Thêm vào MH chính"</b> (Add to Home Screen)</b></div>
-      <div class="oc-line"><span>Bước 3</span><b style="text-align:right">Bấm <b>"Thêm"</b> ở góc trên bên phải</b></div>
-      <p class="text-sm text-muted mt-8">Xong là có icon riêng ngoài màn hình chính, mở lên dùng như 1 app thật.</p>
-    `,
   });
 }
 
