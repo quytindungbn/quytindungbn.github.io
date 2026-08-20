@@ -3,6 +3,7 @@ import { icon } from '../icons.js';
 import { toast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
 import { autoSubscribeIfPossible } from '../lib/push.js';
+import { promptInstall, isStandalone } from '../lib/installPwa.js';
 
 let mode = 'customer';
 
@@ -10,6 +11,11 @@ export function renderLogin(root, onLoggedIn) {
   const org = S.getOrg();
   root.innerHTML = `
     <div class="login-wrap">
+      ${!isStandalone() ? `
+      <button id="btn-install-shortcut" title="Thêm lối tắt vào màn hình chính" aria-label="Thêm lối tắt vào màn hình chính"
+        style="position:fixed;top:16px;right:16px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,0.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5">
+        ${icon('download', 'icon-sm')}
+      </button>` : ''}
       <div class="login-card">
         <div class="logo-mark">${icon('landmark', 'icon-lg')}</div>
         <h1 style="text-align:center;font-size:18px;margin-bottom:4px">${org.name}</h1>
@@ -55,6 +61,29 @@ export function renderLogin(root, onLoggedIn) {
 
   root.querySelector('#btn-forgot').addEventListener('click', () => openForgotPasswordModal());
 
+  const installBtn = root.querySelector('#btn-install-shortcut');
+  if (installBtn) installBtn.addEventListener('click', async () => {
+    installBtn.disabled = true;
+    try {
+      const outcome = await promptInstall();
+      if (outcome === 'accepted') {
+        toast('Đã thêm lối tắt vào màn hình chính thành công!', 'success');
+        installBtn.remove();
+      } else if (outcome === 'already-installed') {
+        toast('Bạn đã thêm lối tắt này rồi.', 'success');
+        installBtn.remove();
+      } else if (outcome === 'dismissed') {
+        toast('Bạn đã bỏ qua — có thể bấm lại nút này bất cứ lúc nào.', 'info');
+      } else if (outcome === 'ios-manual') {
+        openIosInstallGuide();
+      } else {
+        toast('Trình duyệt này chưa hỗ trợ tự thêm lối tắt — thử mở bằng Chrome (Android) hoặc Safari (iPhone).', 'error');
+      }
+    } finally {
+      installBtn.disabled = false;
+    }
+  });
+
   root.querySelector('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -97,6 +126,24 @@ export function renderLogin(root, onLoggedIn) {
       const btn = root.querySelector('#login-form button[type="submit"]');
       if (btn) btn.disabled = false;
     }
+  });
+}
+
+/**
+ * iPhone/iPad (Safari) KHÔNG có API nào cho web tự thêm lối tắt được — đây
+ * là giới hạn cố ý của Apple (không phải app thiếu sót), chỉ hướng dẫn
+ * người dùng tự làm qua nút Chia sẻ.
+ */
+function openIosInstallGuide() {
+  openModal({
+    title: 'Thêm lối tắt vào màn hình chính',
+    bodyHtml: `
+      <p class="text-sm text-muted mb-8">Trên iPhone/iPad, trình duyệt không cho web tự động thêm lối tắt được — bạn tự làm theo 3 bước sau (nhớ mở bằng <b>Safari</b>):</p>
+      <div class="oc-line"><span>Bước 1</span><b style="text-align:right">Bấm nút <b>Chia sẻ</b> ${icon('wallet', 'icon-sm')} (hình vuông có mũi tên đi lên) ở thanh dưới màn hình</b></div>
+      <div class="oc-line"><span>Bước 2</span><b style="text-align:right">Cuộn xuống, chọn <b>"Thêm vào MH chính"</b> (Add to Home Screen)</b></div>
+      <div class="oc-line"><span>Bước 3</span><b style="text-align:right">Bấm <b>"Thêm"</b> ở góc trên bên phải</b></div>
+      <p class="text-sm text-muted mt-8">Xong là có icon riêng ngoài màn hình chính, mở lên dùng như 1 app thật.</p>
+    `,
   });
 }
 

@@ -2,6 +2,7 @@ import * as S from './state.js';
 import { buildShell, updateActiveNav, renderSidebarProfile } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
+import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
 import { renderLogin } from './views/login.js';
 import { renderChangePassword } from './views/changePassword.js';
 
