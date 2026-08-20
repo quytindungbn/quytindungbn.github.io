@@ -3,7 +3,9 @@ import { icon } from '../icons.js';
 import { toast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
 import { autoSubscribeIfPossible } from '../lib/push.js';
-import { promptInstall, isStandalone } from '../lib/installPwa.js';
+import { promptInstall, isStandalone, isIOS, onInstallable } from '../lib/installPwa.js';
+
+const IOS_PROMPT_SEEN_KEY = 'qtd_install_ios_seen';
 
 let mode = 'customer';
 
@@ -12,7 +14,7 @@ export function renderLogin(root, onLoggedIn) {
   root.innerHTML = `
     <div class="login-wrap">
       ${!isStandalone() ? `
-      <button id="btn-install-shortcut" title="Thêm lối tắt vào màn hình chính" aria-label="Thêm lối tắt vào màn hình chính"
+      <button id="btn-install-shortcut" title="Cài ứng dụng" aria-label="Cài ứng dụng"
         style="position:fixed;top:16px;right:16px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,0.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5">
         ${icon('download', 'icon-sm')}
       </button>` : ''}
@@ -62,27 +64,26 @@ export function renderLogin(root, onLoggedIn) {
   root.querySelector('#btn-forgot').addEventListener('click', () => openForgotPasswordModal());
 
   const installBtn = root.querySelector('#btn-install-shortcut');
-  if (installBtn) installBtn.addEventListener('click', async () => {
-    installBtn.disabled = true;
-    try {
-      const outcome = await promptInstall();
-      if (outcome === 'accepted') {
-        toast('Đã thêm lối tắt vào màn hình chính thành công!', 'success');
-        installBtn.remove();
-      } else if (outcome === 'already-installed') {
-        toast('Bạn đã thêm lối tắt này rồi.', 'success');
-        installBtn.remove();
-      } else if (outcome === 'dismissed') {
-        toast('Bạn đã bỏ qua — có thể bấm lại nút này bất cứ lúc nào.', 'info');
-      } else if (outcome === 'ios-manual') {
+  if (installBtn) {
+    installBtn.addEventListener('click', () => runInstallFlow(installBtn));
+    // Tự động mời cài đặt NGAY khi vào trang — không cần đợi khách tự bấm
+    // nút góc phải. Android/Chrome: tự hiện đúng hộp thoại cài đặt thật của
+    // trình duyệt (đợi tới khi trình duyệt xác nhận "có thể cài" — có thể
+    // mất vài giây, do trình duyệt tự quyết định, không phải app chậm).
+    // iPhone/iPad: KHÔNG có API nào ép tự cài được (giới hạn của Apple) —
+    // chỉ tự mở popup hướng dẫn 3 bước, và CHỈ tự mở 1 LẦN DUY NHẤT trên
+    // mỗi máy/trình duyệt (nhớ bằng localStorage) để khỏi làm phiền khách
+    // quen đã biết cách rồi mỗi lần đăng nhập — bấm nút góc phải vẫn luôn
+    // mở lại được hướng dẫn bất cứ lúc nào.
+    if (isIOS()) {
+      if (!localStorage.getItem(IOS_PROMPT_SEEN_KEY)) {
+        localStorage.setItem(IOS_PROMPT_SEEN_KEY, '1');
         openIosInstallGuide();
-      } else {
-        toast('Trình duyệt này chưa hỗ trợ tự thêm lối tắt — thử mở bằng Chrome (Android) hoặc Safari (iPhone).', 'error');
       }
-    } finally {
-      installBtn.disabled = false;
+    } else {
+      onInstallable(() => runInstallFlow(installBtn, { silent: true }));
     }
-  });
+  }
 
   root.querySelector('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -130,15 +131,43 @@ export function renderLogin(root, onLoggedIn) {
 }
 
 /**
+ * Chạy luồng cài đặt thật (Android/Chrome/Edge) — `silent` bỏ bớt vài dòng
+ * toast không cần thiết khi được TỰ ĐỘNG kích hoạt lúc vừa vào trang (khỏi
+ * làm phiền/lặp ý với hộp thoại thật khách vừa thấy); bấm nút thủ công thì
+ * luôn hiện đủ để khách biết chuyện gì vừa xảy ra.
+ */
+async function runInstallFlow(installBtn, { silent = false } = {}) {
+  installBtn.disabled = true;
+  try {
+    const outcome = await promptInstall();
+    if (outcome === 'accepted') {
+      toast('Đã cài ứng dụng thành công!', 'success');
+      installBtn.remove();
+    } else if (outcome === 'already-installed') {
+      if (!silent) toast('Bạn đã cài ứng dụng này rồi.', 'success');
+      installBtn.remove();
+    } else if (outcome === 'dismissed') {
+      if (!silent) toast('Bạn đã bỏ qua — có thể bấm lại nút này bất cứ lúc nào.', 'info');
+    } else if (outcome === 'ios-manual') {
+      openIosInstallGuide();
+    } else if (!silent) {
+      toast('Trình duyệt chưa sẵn sàng để cài đặt — thử tải lại trang, hoặc mở bằng Chrome (Android)/Safari (iPhone).', 'error');
+    }
+  } finally {
+    installBtn.disabled = false;
+  }
+}
+
+/**
  * iPhone/iPad (Safari) KHÔNG có API nào cho web tự thêm lối tắt được — đây
  * là giới hạn cố ý của Apple (không phải app thiếu sót), chỉ hướng dẫn
  * người dùng tự làm qua nút Chia sẻ.
  */
 function openIosInstallGuide() {
   openModal({
-    title: 'Thêm lối tắt vào màn hình chính',
+    title: 'Cài ứng dụng',
     bodyHtml: `
-      <p class="text-sm text-muted mb-8">Trên iPhone/iPad, trình duyệt không cho web tự động thêm lối tắt được — bạn tự làm theo 3 bước sau (nhớ mở bằng <b>Safari</b>):</p>
+      <p class="text-sm text-muted mb-8">Trên iPhone/iPad, trình duyệt không cho web tự động cài đặt được — bạn tự làm theo 3 bước sau (nhớ mở bằng <b>Safari</b>):</p>
       <div class="oc-line"><span>Bước 1</span><b style="text-align:right">Bấm nút <b>Chia sẻ</b> ${icon('wallet', 'icon-sm')} (hình vuông có mũi tên đi lên) ở thanh dưới màn hình</b></div>
       <div class="oc-line"><span>Bước 2</span><b style="text-align:right">Cuộn xuống, chọn <b>"Thêm vào MH chính"</b> (Add to Home Screen)</b></div>
       <div class="oc-line"><span>Bước 3</span><b style="text-align:right">Bấm <b>"Thêm"</b> ở góc trên bên phải</b></div>

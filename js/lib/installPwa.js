@@ -5,6 +5,7 @@
 // HƯỚNG DẪN người dùng tự làm qua nút Chia sẻ. Xem docs/dong-goi-android.md.
 
 let deferredPrompt = null;
+const installableCallbacks = [];
 
 // Bắt sự kiện SỚM NHẤT có thể (ngay lúc file này được nạp, trước khi người
 // dùng kịp bấm gì) — bắt buộc gọi preventDefault() thì sau này mới tự gọi
@@ -13,10 +14,24 @@ let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
+  installableCallbacks.forEach((fn) => fn());
 });
 window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
 });
+
+/**
+ * Gọi `fn` ngay khi trình duyệt xác nhận "có thể cài đặt được" — nếu đã sẵn
+ * có rồi (VD: sự kiện bắt được trước khi trang này kịp render) thì gọi
+ * NGAY LẬP TỨC; chưa có thì chờ, gọi khi nào sự kiện beforeinstallprompt tới
+ * (đúng lúc trình duyệt tự quyết định, có thể sau vài giây, không cố định).
+ * Dùng để tự động mời cài đặt ngay khi vào trang, không cần đợi khách tự bấm
+ * nút — xem renderLogin() trong login.js.
+ */
+export function onInstallable(fn) {
+  if (deferredPrompt) fn();
+  else installableCallbacks.push(fn);
+}
 
 /** Đang chạy ở chế độ đã cài (mở từ icon màn hình chính) hay chưa. */
 export function isStandalone() {
