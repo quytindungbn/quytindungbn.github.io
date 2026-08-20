@@ -1,6 +1,8 @@
 import * as S from '../state.js';
+import { icon } from '../icons.js';
 import { pageHeader } from '../components/shell.js';
 import { toast } from '../components/toast.js';
+import { isPushSupported, isSubscribedOnThisDevice, subscribeToPush, unsubscribeFromPush } from '../lib/push.js';
 
 /** Màn tự đổi mật khẩu (tự chọn, dùng bất cứ lúc nào) — áp dụng cho mọi loại User: khách hàng và quản trị viên/nhân viên. */
 export function renderHeader(headerEl) {
@@ -12,6 +14,12 @@ export function render(contentEl) {
   const isAdmin = session.role === 'admin';
 
   contentEl.innerHTML = `
+    <div class="card card-pad mb-16" style="max-width:420px">
+      <div class="section-head"><h2>Thông báo nhắc lịch</h2></div>
+      <p class="text-sm text-muted mb-8">Nhận thông báo ngay trên điện thoại khi hợp đồng sắp/đã đến hạn thanh toán — kể cả khi không mở app (cần đã "Thêm vào Màn hình chính" trước, xem docs/dong-goi-android.md).</p>
+      <button class="btn btn-outline btn-block" id="btn-push-toggle" disabled>Đang kiểm tra...</button>
+    </div>
+
     <div class="card card-pad" style="max-width:420px">
       <p class="text-sm text-muted mb-16">Đặt mật khẩu mới cho tài khoản của bạn. Cần nhập đúng mật khẩu hiện tại để xác nhận.</p>
       <form id="self-pw-form">
@@ -32,6 +40,39 @@ export function render(contentEl) {
       </form>
     </div>
   `;
+
+  const pushBtn = contentEl.querySelector('#btn-push-toggle');
+  /** Vẽ lại đúng trạng thái nút theo thiết bị này đã bật/tắt thông báo hay chưa. */
+  async function refreshPushUi() {
+    if (!isPushSupported()) {
+      pushBtn.textContent = 'Trình duyệt/thiết bị này không hỗ trợ thông báo đẩy';
+      pushBtn.disabled = true;
+      return;
+    }
+    const subscribed = await isSubscribedOnThisDevice();
+    pushBtn.innerHTML = subscribed
+      ? `${icon('bell', 'icon-sm')} Đã bật thông báo trên thiết bị này — Bấm để tắt`
+      : `${icon('bell', 'icon-sm')} Bật thông báo nhắc lịch`;
+    pushBtn.dataset.action = subscribed ? 'unsub' : 'sub';
+    pushBtn.disabled = false;
+  }
+  refreshPushUi();
+  pushBtn.addEventListener('click', async () => {
+    pushBtn.disabled = true;
+    try {
+      if (pushBtn.dataset.action === 'sub') {
+        await subscribeToPush(session.sbToken);
+        toast('Đã bật thông báo nhắc lịch', 'success');
+      } else {
+        await unsubscribeFromPush(session.sbToken);
+        toast('Đã tắt thông báo trên thiết bị này', 'success');
+      }
+    } catch (err) {
+      toast(err.message || 'Có lỗi xảy ra', 'error');
+    } finally {
+      refreshPushUi();
+    }
+  });
 
   contentEl.querySelector('#self-pw-form').addEventListener('submit', async (e) => {
     e.preventDefault();

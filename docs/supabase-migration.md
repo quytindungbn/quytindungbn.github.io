@@ -417,7 +417,131 @@ vào `localStorage`. Vì vậy chỉ cần thay **bên trong** các hàm đó:
 - [ ] Bật **Point-in-time Recovery** / backup định kỳ trong Supabase (gói trả phí).
 - [ ] Security review độc lập trước khi cho khách hàng thật dùng (đã ghi trong README).
 
+## 9. Thông báo đẩy (Push) — nhắc lịch đến hạn
+
+Khách hàng bấm "Bật thông báo nhắc lịch" (trang Đổi mật khẩu) → nhận thông báo thẳng trên điện thoại
+khi hợp đồng sắp/đã đến hạn hoặc đầu mỗi tháng — **kể cả khi không mở app**, miễn đã "Thêm vào Màn
+hình chính" (xem `docs/dong-goi-android.md`). Kiến trúc dùng chuẩn **Web Push** (không phụ thuộc
+Firebase/dịch vụ ngoài trả phí nào khác):
+
+```
+Trình duyệt --(xin quyền + subscribe)--> Trình duyệt tự tạo "địa chỉ nhận"
+  --(gửi lên)--> Edge Function "create-account" (type: save-push-subscription)
+  --(lưu)--> bảng push_subscriptions
+                                                                    |
+Supabase Cron (chạy định kỳ, VD: mỗi ngày 8h sáng) ------------------
+  --> gọi Edge Function "send-due-reminders" --> quét contracts + push_subscriptions
+  --> gửi Web Push thật (ký bằng khóa VAPID) --> Service Worker (sw.js) nhận & hiện thông báo
+```
+
+### 9.1. Schema (SQL Editor)
+
+```sql
+create table push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  owner_type text not null check (owner_type in ('customer', 'admin')),
+  owner_id text not null,
+  endpoint text not null unique, -- 1 thiết bị/trình duyệt = 1 endpoint riêng, unique tự chống đăng ký trùng
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz default now()
+);
+create index on push_subscriptions (owner_type, owner_id);
+
+create table notification_log (
+  id uuid primary key default gen_random_uuid(),
+  owner_id text not null,
+  kind text not null, -- 'gan_den_han' | 'qua_han' | 'monthly'
+  contract_id text references contracts(id) on delete cascade, -- null với kind='monthly' (nhắc chung, không gắn 1 hợp đồng)
+  sent_at timestamptz not null default now()
+);
+create index on notification_log (owner_id, kind, contract_id, sent_at);
+
+alter table push_subscriptions enable row level security;
+alter table notification_log enable row level security;
+
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on push_subscriptions, notification_log to anon, authenticated, service_role;
+
+-- Chỉ chính chủ (qua JWT tự ký, xem mục 5) mới thấy/sửa được subscription của
+-- mình — thực tế app luôn gọi qua Edge Function (service_role, bỏ qua RLS)
+-- nên policy này là lớp phòng thủ thêm, không phải đường đi chính.
+create policy "owner manages own push subscription" on push_subscriptions
+  for all using (owner_id = (auth.jwt() ->> 'row_id'))
+  with check (owner_id = (auth.jwt() ->> 'row_id'));
+
+-- notification_log KHÔNG có policy nào cho anon/authenticated — RLS bật mà
+-- không có policy = chặn hết với 2 vai trò đó, CHỦ ĐÍCH: bảng này chỉ
+-- Edge Function "send-due-reminders" (dùng service_role, tự bỏ qua RLS) được
+-- đọc/ghi, không ai qua trình duyệt cần đụng tới.
+```
+
+### 9.2. Tạo khóa VAPID (chữ ký cho Web Push — làm 1 lần duy nhất)
+
+Đã tự sinh sẵn 1 cặp khóa thật cho bạn (không phải để trống chờ bạn tự tạo) — **Claude đã gửi riêng
+2 giá trị `VAPID_PRIVATE_KEY` và `CRON_SECRET` trong tin nhắn chat**, không lưu trong file này/repo vì
+đây là bí mật thật. Khóa CÔNG KHAI đã có sẵn trong code (`js/lib/push.js`), không cần làm gì thêm với
+khóa đó.
+
+*(Nếu muốn tự tạo cặp khóa khác về sau — VD: đổi sang project Supabase khác — chạy `npx web-push
+generate-vapid-keys` bằng Node, rồi thay khóa công khai mới vào `js/lib/push.js` + khóa riêng mới vào
+secret `VAPID_PRIVATE_KEY` bên dưới.)*
+
+### 9.3. Việc cần bạn làm để deploy
+
+1. Chạy SQL ở mục 9.1 trên Supabase Dashboard → SQL Editor.
+2. Deploy Edge Function **`send-due-reminders`** (function MỚI, khác với `create-account`):
+   Supabase Dashboard → Edge Functions → **Create a new function**, đặt tên `send-due-reminders` →
+   copy toàn bộ nội dung `supabase/functions/send-due-reminders/index.ts` trong repo → **Deploy**.
+   (Function `create-account` cũng có thay đổi nhỏ — nhớ deploy lại function đó nữa, xem mục 5
+   "Việc cần bạn làm để deploy Edge Function".)
+3. Vào **Edge Functions → Secrets**, thêm các secret sau (dùng chung cho mọi function trong project):
+   - `VAPID_PUBLIC_KEY` — dán giá trị Claude gửi (khớp đúng khóa công khai đã có sẵn trong
+     `js/lib/push.js`).
+   - `VAPID_PRIVATE_KEY` — dán giá trị Claude gửi riêng trong chat. **Không dán vào đây bất kỳ đâu
+     khác, không commit lên git.**
+   - `VAPID_SUBJECT` — 1 email liên hệ thật dạng `mailto:ten@email.com` (dịch vụ push dùng liên hệ
+     nếu key có vấn đề, không hiện ra cho khách hàng thấy).
+   - `CRON_SECRET` — dán giá trị Claude gửi riêng trong chat (chuỗi ngẫu nhiên, dùng để Cron Job xác
+     thực với `send-due-reminders`, chặn người ngoài gọi tràn lan gửi thông báo giả).
+4. Đặt lịch chạy định kỳ — **Supabase Dashboard → Database → Cron Jobs** (hoặc chạy SQL sau trong SQL
+   Editor nếu bản Dashboard chưa có mục này, cần bật extension `pg_cron` + `pg_net` trước — Dashboard
+   thường tự bật sẵn 2 extension này):
+
+```sql
+select cron.schedule(
+  'send-due-reminders-daily',
+  '0 1 * * *', -- 1h sáng UTC = 8h sáng giờ Việt Nam
+  $$
+  select net.http_post(
+    url := 'https://<project-ref>.supabase.co/functions/v1/send-due-reminders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', '<CRON_SECRET_giống_hệt_secret_đã_đặt_ở_bước_3>'
+    )
+  );
+  $$
+);
+```
+
+Thay `<project-ref>` bằng đúng project ref của bạn (xem trong URL Supabase Dashboard), và
+`<CRON_SECRET_...>` bằng đúng giá trị Claude đã gửi. Chạy xong, mỗi ngày 8h sáng hệ thống tự quét và
+gửi thông báo — không cần làm gì thêm.
+
+### 9.4. Giới hạn hiện tại (v1)
+
+- Chỉ gửi cho **khách hàng** (nhắc lịch hợp đồng của chính họ) — quản trị viên/nhân viên đã có sẵn hạ
+  tầng đăng ký (bảng `push_subscriptions` hỗ trợ `owner_type='admin'`) nhưng CHƯA có nội dung nhắc
+  riêng cho vai trò này (VD: "X hợp đồng quá hạn trong phạm vi bạn quản lý") — có thể bổ sung sau nếu
+  cần, chỉ cần thêm đoạn quét tương ứng trong `send-due-reminders`.
+- iOS (iPhone) cần iOS 16.4 trở lên VÀ đã "Thêm vào Màn hình chính" trước mới nhận được thông báo —
+  mở bằng Safari/Chrome thường (chưa cài) sẽ không xin được quyền thông báo trên iPhone.
+- Nhắc quá hạn lặp lại mỗi 7 ngày (không phải mỗi ngày) để tránh làm phiền khách — chỉnh
+  `OVERDUE_REMIND_EVERY_DAYS` trong `send-due-reminders/index.ts` nếu muốn đổi.
+
 ---
 
-*Tài liệu hướng dẫn — chưa có code triển khai thật trong repo này. Cần tạo project Supabase thật
-(mục 2) và cung cấp Project URL + anon key thì mới viết được code kết nối cụ thể ở mục 6-7.*
+*Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
+`supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
+trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
+Dashboard — sửa code trong repo không tự áp dụng lên project Supabase đang chạy.*

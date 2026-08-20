@@ -13,6 +13,10 @@
 //   { type: 'verify-own-password', password } / { type: 'set-own-password',
 //     newPassword, mustChangePassword? } -> tự đổi mật khẩu CHÍNH MÌNH, cần
 //     JWT hợp lệ (khách hàng hoặc admin đều được, KHÔNG cần role='super').
+//   { type: 'save-push-subscription', endpoint, p256dh, auth } / { type:
+//     'delete-push-subscription', endpoint } -> tự bật/tắt thông báo đẩy cho
+//     CHÍNH MÌNH, cần JWT hợp lệ (không cần role='super'). Việc GỬI thông
+//     báo định kỳ nằm ở Edge Function riêng "send-due-reminders".
 //   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
 //   của 1 admin role='super' (xác minh lại tại server, không tin JWT mù):
 //     { type: 'customer', cccd, name?, phone?, password? }
@@ -259,6 +263,38 @@ Deno.serve(async (req) => {
     const cred = await makeCredential(newPw);
     const patch: Record<string, unknown> = { ...cred, must_change_password: !!body.mustChangePassword };
     const { error } = await admin.from(selfTable).update(patch).eq('id', selfClaims.row_id);
+    if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    return json({ ok: true });
+  }
+
+  // ===== type: 'save-push-subscription' / 'delete-push-subscription' — tự
+  // đăng ký/hủy nhận thông báo đẩy (Web Push) CHO CHÍNH MÌNH, cần JWT hợp lệ
+  // (khách hàng hoặc admin/nhân viên đều được, KHÔNG cần role='super') — bảng
+  // push_subscriptions, xem docs/supabase-migration.md mục "Thông báo đẩy". =====
+  if (body.type === 'save-push-subscription' || body.type === 'delete-push-subscription') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || !selfClaims.app_role) {
+      return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
+
+    if (body.type === 'delete-push-subscription') {
+      const endpoint = String(body.endpoint || '').trim();
+      if (!endpoint) return json({ ok: false, reason: 'Thiếu endpoint.' }, 400);
+      // Chỉ xóa đúng subscription của CHÍNH người gọi (khớp cả endpoint lẫn owner_id).
+      await admin.from('push_subscriptions').delete().eq('endpoint', endpoint).eq('owner_id', selfClaims.row_id);
+      return json({ ok: true });
+    }
+
+    const endpoint = String(body.endpoint || '').trim();
+    const p256dh = String(body.p256dh || '').trim();
+    const authKey = String(body.auth || '').trim();
+    if (!endpoint || !p256dh || !authKey) return json({ ok: false, reason: 'Thiếu thông tin đăng ký nhận thông báo.' }, 400);
+    const { error } = await admin.from('push_subscriptions').upsert({
+      endpoint, p256dh, auth: authKey,
+      owner_type: selfClaims.app_role, owner_id: selfClaims.row_id,
+    }, { onConflict: 'endpoint' });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     return json({ ok: true });
   }

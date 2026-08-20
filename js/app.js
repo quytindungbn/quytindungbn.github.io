@@ -1,6 +1,7 @@
 import * as S from './state.js';
 import { buildShell, updateActiveNav, renderSidebarProfile } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
+import { registerServiceWorker } from './lib/push.js';
 import { renderLogin } from './views/login.js';
 import { renderChangePassword } from './views/changePassword.js';
 
@@ -119,6 +120,7 @@ window.addEventListener('qtd:logout', () => { closeAllModals(); S.logout(); loca
 
 window.addEventListener('DOMContentLoaded', async () => {
   root = document.getElementById('root');
+  registerServiceWorker(); // Đăng ký nhận thông báo đẩy — không đợi xong, không chặn tải app.
   await S.init();
   renderApp();
 });
