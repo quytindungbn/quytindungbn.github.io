@@ -123,6 +123,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   registerServiceWorker(); // Đăng ký nhận thông báo đẩy — không đợi xong, không chặn tải app.
   await S.init();
   renderApp();
+  startAutoRefresh();
 });
 
 // Mọi thay đổi dữ liệu (xóa/tạo/sửa...) đều gọi notify() và kích hoạt render
@@ -131,3 +132,18 @@ window.addEventListener('DOMContentLoaded', async () => {
 S.subscribe(() => {
   if (root) renderApp({ scrollTop: false });
 });
+
+// Tự động tải lại dữ liệu mới nhất định kỳ — để khách/nhân viên KHÔNG cần
+// thoát ra vào lại mới thấy dữ liệu mới (VD: admin vừa sửa hợp đồng ở máy
+// khác). Chỉ chạy khi tab đang mở/hiện (document.visibilityState) để đỡ tốn
+// mạng/pin lúc tab bị ẩn (chuyển app khác, tắt màn hình...); mỗi lần quay lại
+// tab cũng tự làm mới ngay, không cần đợi tới mốc định kỳ kế tiếp.
+const AUTO_REFRESH_MS = 30000;
+function startAutoRefresh() {
+  setInterval(() => {
+    if (document.visibilityState === 'visible') S.refreshSessionData();
+  }, AUTO_REFRESH_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') S.refreshSessionData();
+  });
+}

@@ -706,6 +706,32 @@ export async function loginAdmin(username, password) {
   return { ok: true, adminId: res.id, mustChangePassword: !!res.mustChangePassword, sbToken: res.token };
 }
 
+/**
+ * Tự động tải lại dữ liệu mới nhất từ Supabase — gọi định kỳ từ app.js (xem
+ * startAutoRefresh()) để KHÔNG cần thoát ra vào lại mới thấy dữ liệu mới
+ * (VD: admin vừa sửa/nhập Excel ở máy khác, khách vừa có yêu cầu tư vấn
+ * mới...). Không làm gì nếu chưa đăng nhập. Nếu người dùng đang gõ dở trong
+ * 1 ô nhập liệu NGOÀI modal (trong modal/bottom-sheet thì an toàn, vì
+ * notify() chỉ vẽ lại #app-content, không đụng tới modal — modal luôn gắn
+ * thẳng vào <body>) thì vẫn tải dữ liệu mới về nhưng HOÃN vẽ lại màn hình để
+ * khỏi xóa mất chữ đang gõ dở, dữ liệu mới sẽ tự hiện ở lần làm mới kế tiếp.
+ */
+export async function refreshSessionData() {
+  if (!state || !state.session) return;
+  const session = state.session;
+  const active = document.activeElement;
+  const isTypingOutsideModal = active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) && !active.closest('.modal-overlay');
+  try {
+    if (session.role === 'admin') await loadAdminSessionData(session.sbToken);
+    else await loadCustomerSessionData(session.id, session.sbToken);
+  } catch (e) {
+    console.warn('Không tự làm mới được dữ liệu, sẽ thử lại ở lần sau.', e);
+    return;
+  }
+  if (isTypingOutsideModal) persist(); // lưu tạm, chưa vẽ lại ngay
+  else notify();
+}
+
 async function loadAdminSessionData(token) {
   const sb = getSupabaseClient(token);
   const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }] = await Promise.all([
