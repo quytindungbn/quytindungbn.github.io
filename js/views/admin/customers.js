@@ -412,9 +412,13 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   // khách trả gộp cả gốc lẫn lãi, hoặc trả 1 phần gốc).
   const org = S.getOrg();
   const hasBank = canPay && org.bankBin && org.bankAccountNo;
+  // "THANH TOAN..." đứng trước, Tên khách ghép sau. stripDiacritics() áp dụng
+  // cho CẢ CHUỖI (không chỉ riêng tên) để tự thay mọi ký tự đặc biệt (VD: dấu
+  // "/" trong mã hợp đồng) bằng dấu cách — nội dung chuyển khoản không nên có
+  // ký tự lạ, dễ gây lỗi khi ngân hàng xử lý.
   function buildQrContent(goc, lai) {
     const loai = goc > 0 && lai > 0 ? 'GOC LAI' : goc > 0 ? 'GOC' : 'LAI';
-    return customer ? `${stripDiacritics(customer.name)} THANH TOAN ${loai} HDTD ${contract.code}` : '';
+    return customer ? stripDiacritics(`THANH TOAN ${loai} HDTD ${contract.code} ${customer.name}`) : '';
   }
   const qrUrl = hasBank ? buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: accrued, content: buildQrContent(0, accrued), accountName: org.bankAccountName }) : '';
 

@@ -143,7 +143,11 @@ function openPaymentModal(contract, customer, accrued) {
         const total = payType === 'goc' ? principalAmount + accrued : interestAmount;
         const loai = payType === 'goc' ? 'GOC' : 'LAI';
         // Không nhúng số tiền vào nội dung — số tiền đã có ở dòng riêng + mã QR, tránh trùng lặp.
-        const text = `${stripDiacritics(customer.name)} THANH TOAN ${loai} HDTD ${contract.code}`;
+        // "THANH TOAN..." đứng trước, Tên khách ghép sau. stripDiacritics() áp
+        // dụng cho CẢ CHUỖI (không chỉ riêng tên) để tự thay mọi ký tự đặc biệt
+        // (VD: dấu "/" trong mã hợp đồng) bằng dấu cách — nội dung chuyển
+        // khoản không nên có ký tự lạ, dễ gây lỗi khi ngân hàng xử lý.
+        const text = stripDiacritics(`THANH TOAN ${loai} HDTD ${contract.code} ${customer.name}`);
         return { total, text };
       }
 
