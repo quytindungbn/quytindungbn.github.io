@@ -672,6 +672,13 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
   // thật sau khi nhập — chắc chắn đúng hơn tự tính lại ở trình duyệt vì mọi
   // quyết định thêm/sửa/xóa đều đã xảy ra ở server.
   await loadAdminSessionData(session.sbToken);
+  // BẮT BUỘC gọi notify() để lưu dữ liệu vừa tải về vào localStorage — thiếu
+  // dòng này thì màn hình vẫn hiện đúng dữ liệu mới (nhờ redraw thủ công ở
+  // UI), nhưng dữ liệu mới đó CHỈ nằm trong bộ nhớ tạm của tab đang mở; bấm
+  // tải lại trang (F5) sẽ đọc lại đúng localStorage cũ (từ lần notify() gần
+  // nhất trước đó, VD: lúc đăng nhập) -> tưởng như dữ liệu vừa nhập "biến
+  // mất", dù trong Supabase vẫn đúng, không hề mất gì.
+  notify();
 
   return {
     newProfiles: res.newProfiles || 0, existingCustomers: res.existingCustomers || 0, contracts: res.contracts || 0,
