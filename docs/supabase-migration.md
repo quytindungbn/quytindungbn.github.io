@@ -370,6 +370,21 @@ update admins set must_change_password = false where created_at < now();
    drop constraint if exists customers_auth_user_id_fkey;` và tương tự cho `admins` trước khi thêm
    lại default `gen_random_uuid()` nếu cần).
 
+## 5d. Cho phép nhân viên "chỉ xem" được cấp thêm quyền Quản lý User (BẮT BUỘC chạy nếu project đã tạo trước đoạn này)
+
+Trước đây trang "Quản lý User" (tạo/sửa/xóa Use + nhân viên khác, đổi vai trò) chỉ quản trị viên
+**toàn quyền** vào được. Giờ thêm 1 cột `can_manage_users` trên bảng `admins` — tích cờ này cho 1 nhân
+viên "chỉ xem" thì họ vào được hẳn trang Quản lý User, coi như "toàn quyền thu nhỏ" (KHÔNG tự tạo/đụng
+được vào tài khoản Toàn quyền nào, server tự chặn). Chạy SQL sau (idempotent, chạy lại không sao):
+
+```sql
+alter table admins add column if not exists can_manage_users boolean default false;
+```
+
+Sau khi chạy xong, **deploy lại Edge Function `create-account`** (đã sửa thêm 2 type mới
+`update-staff-role` và mở rộng `update-staff-permissions`/`staff` để hỗ trợ cờ này) — xem hướng dẫn
+deploy ở mục 5 phía trên (copy code mới dán đè, Deploy).
+
 ## 6. Gắn Supabase JS client vào code (giữ đúng kiến trúc "0 dependency, ES Module thuần")
 
 Dự án hiện không dùng bundler/npm — vẫn giữ được điều đó bằng import map trỏ tới CDN ESM:

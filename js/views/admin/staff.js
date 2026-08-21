@@ -1,7 +1,11 @@
 // Trang "Quản lý User" — quản lý TẤT CẢ tài khoản trong hệ thống ở 1 chỗ:
 // "Use" (tài khoản khách hàng) và "Quản trị viên" (super toàn quyền hoặc
-// staff chỉ xem, có phân quyền theo Thôn/Xóm). Chỉ quản trị viên toàn quyền
-// mới vào được trang này (route đã đặt superOnly ở app.js).
+// staff chỉ xem, có phân quyền theo Thôn/Xóm). Vào được trang này: quản trị
+// viên toàn quyền, HOẶC nhân viên "chỉ xem" được cấp riêng cờ
+// canManageUsers (xem checkbox "Cho phép quản lý User" trong
+// adminPermissionSectionHtml()) — route đã đặt requiresManageUsers ở
+// app.js. Nhân viên có cờ này không tự tạo/đụng được tài khoản Toàn quyền
+// nào (server tự chặn, xem create-account/index.ts).
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
@@ -117,7 +121,7 @@ function adminRowHtml(a) {
     <div class="list-row" data-open-admin="${a.id}" style="cursor:pointer">
       <div class="row-thumb" style="background:${colorFor(a.id)}">${initials(a.name)}</div>
       <div class="row-main">
-        <div class="row-title">${a.name} <span class="badge ${a.role === 'super' ? 'badge-purple' : 'badge-green'}">Quản trị viên · ${roleLabel}</span></div>
+        <div class="row-title">${a.name} <span class="badge ${a.role === 'super' ? 'badge-purple' : 'badge-green'}">Quản trị viên · ${roleLabel}</span>${a.role === 'staff' && a.canManageUsers ? ' <span class="badge badge-blue">+ Quản lý User</span>' : ''}</div>
         <div class="row-sub">@${a.username}${a.role === 'staff' ? ' · Xem được: ' + permissionSummary(a) : ''}</div>
       </div>
     </div>`;
@@ -182,18 +186,64 @@ function bindPermissionTreeChips(sheet) {
   });
 }
 
+/**
+ * Khối "Địa bàn được xem" — chỉ có ý nghĩa với role='staff'. Kèm thêm 1
+ * checkbox riêng "Cho phép quản lý User" — nhân viên chỉ xem được tích thêm
+ * quyền này thì vào được hẳn trang Quản lý User (tạo/sửa/xóa Use + nhân
+ * viên khác), coi như "toàn quyền thu nhỏ", không cần nâng hẳn lên Toàn
+ * quyền. Gộp chung 1 form với cây Thôn/Xóm, lưu cùng lúc bằng 1 nút.
+ */
+function adminPermissionSectionHtml(admin, tree) {
+  if (admin.role !== 'staff') return `<p class="field-hint mt-16">Quản trị viên toàn quyền xem được mọi địa bàn và quản lý User, không cần gán riêng.</p>`;
+  return `
+    <div class="section-head mt-16"><h2 style="font-size:14px">Địa bàn được xem</h2></div>
+    <form id="perm-form">
+      ${permissionTreeHtml(tree, admin)}
+      <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
+        <input type="checkbox" name="canManageUsers" ${admin.canManageUsers ? 'checked' : ''}/>
+        Cho phép quản lý User
+      </label>
+      <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền, không đụng được tài khoản Toàn quyền khác).</div>
+    </form>
+    <button class="btn btn-primary btn-block mt-16" id="btn-save-perm">Lưu quyền</button>
+  `;
+}
+function bindSavePermButton(sheet, admin, closeFn, contentEl) {
+  const saveBtn = sheet.querySelector('#btn-save-perm');
+  if (!saveBtn) return;
+  saveBtn.addEventListener('click', async () => {
+    const fd = new FormData(sheet.querySelector('#perm-form'));
+    try {
+      await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), fd.get('canManageUsers') === 'on');
+      toast('Đã cập nhật quyền', 'success');
+      closeFn();
+      draw(contentEl);
+    } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+  });
+}
+
 function openAdminDetail(admin, tree, contentEl) {
-  const isSelf = S.getSession()?.id === admin.id;
+  const session = S.getSession();
+  const isSelf = session?.id === admin.id;
+  const viewerIsSuper = S.isSuperAdmin(session?.id);
+  let pendingRole = admin.role; // chỉ đổi cục bộ trong popup, lưu khi bấm "Lưu vai trò"
+
   const close = openModal({
     title: admin.name,
     bodyHtml: `
       <div class="oc-line"><span>Tên đăng nhập</span><b>@${admin.username}</b></div>
-      <div class="oc-line"><span>Vai trò</span><b>${admin.role === 'super' ? 'Quản trị viên toàn quyền' : 'Quản trị viên chỉ xem'}</b></div>
-      ${admin.role === 'staff' ? `
-      <div class="section-head mt-16"><h2 style="font-size:14px">Địa bàn được xem</h2></div>
-      <form id="perm-form">${permissionTreeHtml(tree, admin)}</form>
-      <button class="btn btn-primary btn-block mt-16" id="btn-save-perm">Lưu quyền</button>
-      ` : `<p class="field-hint mt-16">Quản trị viên toàn quyền xem được mọi địa bàn, không cần gán riêng.</p>`}
+      ${viewerIsSuper && !isSelf ? `
+      <div class="field">
+        <label>Vai trò</label>
+        <div class="radio-row" id="role-radio-row">
+          <div class="radio-opt ${admin.role === 'staff' ? 'active' : ''}" data-role="staff">Chỉ xem (nhân viên)</div>
+          <div class="radio-opt ${admin.role === 'super' ? 'active' : ''}" data-role="super">Toàn quyền</div>
+        </div>
+      </div>
+      <button class="btn btn-outline btn-block" id="btn-save-role" disabled>Lưu vai trò</button>
+      ` : `<div class="oc-line"><span>Vai trò</span><b>${admin.role === 'super' ? 'Quản trị viên toàn quyền' : 'Quản trị viên chỉ xem'}</b></div>
+      ${isSelf ? `<p class="field-hint">Không thể tự đổi vai trò của chính mình đang đăng nhập.</p>` : ''}`}
+      <div id="perm-section">${adminPermissionSectionHtml(admin, tree)}</div>
       <div class="flex gap-8 mt-16">
         <button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>
         ${!isSelf ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-admin">${icon('trash', 'icon-sm')} Xóa</button>` : ''}
@@ -202,16 +252,30 @@ function openAdminDetail(admin, tree, contentEl) {
     `,
     onMount(sheet, closeFn) {
       bindPermissionTreeChips(sheet);
-      const saveBtn = sheet.querySelector('#btn-save-perm');
-      if (saveBtn) saveBtn.addEventListener('click', async () => {
-        const fd = new FormData(sheet.querySelector('#perm-form'));
-        try {
-          await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'));
-          toast('Đã cập nhật quyền xem', 'success');
-          closeFn();
-          draw(contentEl);
-        } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-      });
+      bindSavePermButton(sheet, admin, closeFn, contentEl);
+
+      const roleRow = sheet.querySelector('#role-radio-row');
+      const saveRoleBtn = sheet.querySelector('#btn-save-role');
+      if (roleRow && saveRoleBtn) {
+        roleRow.querySelectorAll('[data-role]').forEach((opt) => opt.addEventListener('click', () => {
+          pendingRole = opt.dataset.role;
+          roleRow.querySelectorAll('[data-role]').forEach((o) => o.classList.toggle('active', o.dataset.role === pendingRole));
+          saveRoleBtn.disabled = pendingRole === admin.role;
+        }));
+        saveRoleBtn.addEventListener('click', async () => {
+          saveRoleBtn.disabled = true;
+          try {
+            await S.updateStaffRole(admin.id, pendingRole);
+            toast('Đã đổi vai trò', 'success');
+            closeFn();
+            draw(contentEl);
+          } catch (err) {
+            toast(err.message || 'Có lỗi xảy ra', 'error');
+            saveRoleBtn.disabled = false;
+          }
+        });
+      }
+
       sheet.querySelector('#btn-reset-pw').addEventListener('click', () => {
         openResetPasswordModal({
           title: 'Cấp lại mật khẩu',
@@ -245,6 +309,11 @@ function openAdminDetail(admin, tree, contentEl) {
 function openCreateUserModal(tree, contentEl) {
   let kind = 'use'; // 'use' | 'admin'
   let adminRole = 'staff'; // 'staff' | 'super'
+  // Nhân viên có cờ canManageUsers (không phải Toàn quyền thật) vào được
+  // trang này nhưng KHÔNG được tự tạo tài khoản Toàn quyền — server cũng tự
+  // chặn lại (403/ép về staff) nếu cố tình gửi lên, đây chỉ là ẩn lựa chọn
+  // đó khỏi giao diện cho đỡ rối, tránh tưởng nhầm là tạo được.
+  const viewerIsSuper = S.isSuperAdmin(S.getSession()?.id);
 
   const close = openModal({
     title: 'Tạo User',
@@ -279,6 +348,7 @@ function openCreateUserModal(tree, contentEl) {
               <label>Mật khẩu</label>
               <input name="password" placeholder="Để trống sẽ tự sinh mật khẩu"/>
             </div>
+            ${viewerIsSuper ? `
             <div class="field">
               <label>Vai trò</label>
               <div class="radio-row">
@@ -286,11 +356,17 @@ function openCreateUserModal(tree, contentEl) {
                 <div class="radio-opt ${adminRole === 'super' ? 'active' : ''}" data-admin-role="super">Toàn quyền</div>
               </div>
             </div>
+            ` : ''}
             ${adminRole === 'staff' ? `
             <div class="field">
               <label>Địa bàn được xem</label>
               <div class="field-hint mb-8">Tích cả Thôn để xem toàn bộ Xóm trong Thôn đó, hoặc bấm riêng từng Xóm nếu chỉ cần xem 1 phần của Thôn.</div>
               ${permissionTreeHtml(tree, null)}
+              <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
+                <input type="checkbox" name="canManageUsers"/>
+                Cho phép quản lý User
+              </label>
+              <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền).</div>
             </div>
             ` : `<p class="field-hint">Quản trị viên toàn quyền xem được mọi địa bàn và truy cập Cài đặt, Quản lý User.</p>`}
           </form>
@@ -324,6 +400,7 @@ function openCreateUserModal(tree, contentEl) {
             const { staff, tempPassword } = await S.addStaffAdmin({
               username: fd.get('username'), name: fd.get('name'), password: fd.get('password'),
               role: adminRole, allowedThon: fd.getAll('thon'), allowedXom: fd.getAll('xom'),
+              canManageUsers: fd.get('canManageUsers') === 'on',
             });
             closeFn();
             toast('Đã tạo quản trị viên', 'success');

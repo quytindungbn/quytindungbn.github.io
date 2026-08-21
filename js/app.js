@@ -30,7 +30,7 @@ const adminRoutes = [
   { re: /^#\/admin\/khach-hang$/, view: AdminCustomers },
   { re: /^#\/admin\/yeu-cau$/, view: AdminRequests },
   { re: /^#\/admin\/cai-dat$/, view: AdminSettings, superOnly: true },
-  { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, superOnly: true },
+  { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];
 
@@ -49,7 +49,7 @@ function matchRoute(path, routes) {
     if (m) {
       const params = {};
       (r.params || []).forEach((name, i) => { params[name] = decodeURIComponent(m[i + 1]); });
-      return { view: r.view, params, superOnly: !!r.superOnly };
+      return { view: r.view, params, superOnly: !!r.superOnly, requiresManageUsers: !!r.requiresManageUsers };
     }
   }
   return null;
@@ -87,19 +87,20 @@ function renderApp({ scrollTop = true } = {}) {
   }
 
   const isSuper = session.role === 'admin' ? S.isSuperAdmin(session.id) : false;
+  const canManageUsers = session.role === 'admin' ? S.canManageUsers(session.id) : false;
   const { path, query } = splitHash();
   const routes = session.role === 'admin' ? adminRoutes : customerRoutes;
   const defaultPath = session.role === 'admin' ? '#/admin' : '#/';
   let match = matchRoute(path, routes);
-  if (!match || (match.superOnly && !isSuper)) {
+  if (!match || (match.superOnly && !isSuper) || (match.requiresManageUsers && !canManageUsers)) {
     // Trang không hợp lệ / không đủ quyền với vai trò hiện tại -> về trang mặc định
     if (location.hash !== defaultPath) { location.hash = defaultPath; return; }
     match = matchRoute(defaultPath, routes);
   }
 
-  const newShellKey = session.role + ':' + isSuper;
+  const newShellKey = session.role + ':' + isSuper + ':' + canManageUsers;
   if (shellKey !== newShellKey) {
-    buildShell(root, session.role, isSuper);
+    buildShell(root, session.role, isSuper, canManageUsers);
     shellKey = newShellKey;
   }
   document.getElementById('brand-name').textContent = S.getOrg().shortName;

@@ -16,8 +16,13 @@ export const ADMIN_NAV = [
   { path: '#/admin/khach-hang', label: 'Khách hàng & Hợp đồng', shortLabel: 'Khách hàng', icon: 'users' },
   { path: '#/admin/yeu-cau', label: 'Yêu cầu tư vấn', shortLabel: 'Yêu cầu', icon: 'clipboard' },
 ];
-export const ADMIN_NAV_SUPER_ONLY = [
+// "Quản lý User" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được
+// cấp riêng cờ canManageUsers (xem js/views/admin/staff.js) — không còn
+// bó cứng "chỉ toàn quyền" như "Cài đặt" nữa.
+export const ADMIN_NAV_MANAGE_USERS = [
   { path: '#/admin/nhan-vien', label: 'Quản lý User', shortLabel: 'User', icon: 'idCard' },
+];
+export const ADMIN_NAV_SUPER_ONLY = [
   { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings' },
 ];
 // Số mục tối đa hiện trực tiếp trên thanh menu dưới (mobile) — còn lại gộp vào "Thêm"
@@ -40,9 +45,11 @@ function getProfileInfo() {
   if (session.role === 'admin') {
     const admin = S.getAdmin(session.id);
     if (!admin) return null;
+    const roleLabel = admin.role === 'super' ? 'Quản trị viên toàn quyền'
+      : admin.canManageUsers ? 'Quản trị viên chỉ xem · Quản lý User' : 'Quản trị viên chỉ xem';
     return {
       name: admin.name,
-      roleLabel: admin.role === 'super' ? 'Quản trị viên toàn quyền' : 'Quản trị viên chỉ xem',
+      roleLabel,
       loginId: '@' + admin.username,
       seed: admin.id,
     };
@@ -70,8 +77,10 @@ function profileBlockHtml(info) {
   `;
 }
 
-export function buildShell(root, role, isSuper) {
-  const nav = role === 'admin' ? [...ADMIN_NAV, ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])] : CUSTOMER_NAV;
+export function buildShell(root, role, isSuper, canManageUsers) {
+  const nav = role === 'admin'
+    ? [...ADMIN_NAV, ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
+    : CUSTOMER_NAV;
   root.innerHTML = `
     <div class="app-shell">
       <aside class="sidebar">

@@ -24,18 +24,27 @@
 //     trong đúng phạm vi Thôn/Xóm được gán — y hệt điều kiện RLS bảng
 //     customers, xem docs/supabase-migration.md mục 5b.
 //   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
-//   của 1 admin role='super' (xác minh lại tại server, không tin JWT mù):
-//     { type: 'customer', cccd, name?, phone?, password? }
-//     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom? }
+//   của 1 admin đã đăng nhập (xác minh lại tại server, không tin JWT mù) —
+//   2 nhóm quyền khác nhau:
+//   - CHỈ role='super' (toàn quyền) mới gọi được:
 //     { type: 'update-customer-profile', cccd, name?, phone?, address? }
+//     { type: 'delete-contract', contractId }
+//     { type: 'import', fullSync, rows: [...] } — nhập Excel/dán tay hàng loạt
+//     { type: 'update-staff-role', staffId, role } — đổi Toàn quyền <-> Chỉ
+//       xem cho 1 tài khoản đã có sẵn (giữ lại ít nhất 1 toàn quyền)
+//   - role='super' HOẶC nhân viên "chỉ xem" được cấp cờ canManageUsers=true
+//     (xem { type: 'update-staff-permissions', ..., canManageUsers }) đều
+//     gọi được — nhân viên có cờ này KHÔNG được tự tạo/đụng vào tài khoản
+//     role='super' nào (server tự ép về 'staff'/chặn 403), coi như "toàn
+//     quyền thu nhỏ" chỉ trong phạm vi quản lý Use + nhân viên khác:
+//     { type: 'customer', cccd, name?, phone?, password? }
+//     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom?, canManageUsers? }
 //     { type: 'reset-customer-password', customerId, password? }
 //     { type: 'deactivate-customer', customerId }
 //     { type: 'delete-customer', customerId }
-//     { type: 'delete-contract', contractId }
 //     { type: 'reset-staff-password', staffId, password? }
-//     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom? }
+//     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom?, canManageUsers? }
 //     { type: 'delete-staff', staffId }
-//     { type: 'import', fullSync, rows: [...] } — nhập Excel/dán tay hàng loạt
 // password bỏ trống thì tự sinh mật khẩu tạm ngẫu nhiên (trả về trong response).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -370,7 +379,9 @@ Deno.serve(async (req) => {
     return json({ ok: true, sentCount });
   }
 
-  // ===== Mọi type khác: bắt buộc JWT admin role='super' =====
+  // ===== Mọi type khác: bắt buộc JWT của 1 admin đã đăng nhập (super HOẶC
+  // staff) — phân quyền chi tiết theo từng "type" ngay bên dưới, không còn
+  // chặn cứng "chỉ super" ở 1 chỗ như trước nữa. =====
   const authHeader = req.headers.get('Authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   const claims = token ? await verifyJwt(token) : null;
@@ -378,8 +389,44 @@ Deno.serve(async (req) => {
     return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
   }
   const { data: callerAdmin, error: callerErr } = await admin.from('admins').select('*').eq('id', claims.row_id).maybeSingle();
-  if (callerErr || !callerAdmin || callerAdmin.role !== 'super') {
+  if (callerErr || !callerAdmin) {
+    return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+  }
+  const isSuper = callerAdmin.role === 'super';
+  // Nhân viên "chỉ xem" được cấp thêm cờ can_manage_users -> coi như "toàn
+  // quyền thu nhỏ" CHỈ trong phạm vi trang Quản lý User (tạo/sửa/xóa Use +
+  // nhân viên khác) — KHÔNG được tự cấp/đổi vai trò 'super' cho ai (kể cả
+  // chính mình) và KHÔNG đụng được vào tài khoản 'super' khác, xem từng chỗ
+  // kiểm tra bên dưới.
+  const canManageUsers = isSuper || callerAdmin.can_manage_users === true;
+  // Các "type" sau LUÔN bắt buộc đúng quản trị viên toàn quyền, không có
+  // ngoại lệ cho canManageUsers — sửa cấu hình quỹ/nhập hàng loạt/đổi vai
+  // trò đều là hành động nhạy cảm hơn hẳn việc quản lý Use thông thường.
+  const SUPER_ONLY_TYPES = ['update-customer-profile', 'delete-contract', 'import', 'update-staff-role'];
+  if (SUPER_ONLY_TYPES.includes(body.type) && !isSuper) {
     return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
+  }
+  // Các "type" còn lại (quản lý Use/nhân viên) cần ít nhất canManageUsers.
+  if (!canManageUsers) {
+    return json({ ok: false, reason: 'Bạn không có quyền thực hiện thao tác này — liên hệ quản trị viên toàn quyền để được cấp quyền "Quản lý User".' }, 403);
+  }
+
+  // ===== type: 'update-staff-role' — CHỈ super — đổi vai trò Toàn quyền <->
+  // Chỉ xem cho 1 tài khoản đã có sẵn. Hạ 1 tài khoản 'super' xuống 'staff'
+  // thì phải còn lại ít nhất 1 'super' khác, giữ đúng bất biến như delete-staff. =====
+  if (body.type === 'update-staff-role') {
+    const staffId = String(body.staffId || '').trim();
+    const newRole = body.role === 'super' ? 'super' : 'staff';
+    if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
+    const { data: target } = await admin.from('admins').select('role').eq('id', staffId).maybeSingle();
+    if (!target) return json({ ok: false, reason: 'Không tìm thấy tài khoản.' }, 404);
+    if (target.role === 'super' && newRole === 'staff') {
+      const { count } = await admin.from('admins').select('id', { count: 'exact', head: true }).eq('role', 'super');
+      if ((count || 0) <= 1) return json({ ok: false, reason: 'Phải giữ lại ít nhất 1 quản trị viên toàn quyền.' }, 409);
+    }
+    const { error } = await admin.from('admins').update({ role: newRole }).eq('id', staffId);
+    if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    return json({ ok: true });
   }
 
   if (body.type === 'customer') {
@@ -423,7 +470,9 @@ Deno.serve(async (req) => {
     const { data: existing } = await admin.from('admins').select('id').ilike('username', escapeLike(username)).maybeSingle();
     if (existing) return json({ ok: false, reason: 'Tên đăng nhập đã tồn tại.' }, 409);
 
-    const finalRole = body.role === 'super' ? 'super' : 'staff';
+    // Nhân viên chỉ có canManageUsers (không phải super) KHÔNG được tự tạo
+    // tài khoản 'super' — ép về 'staff' bất kể client gửi gì lên.
+    const finalRole = (isSuper && body.role === 'super') ? 'super' : 'staff';
     const finalPassword = body.password && String(body.password).trim() ? String(body.password).trim() : genTempPassword();
     const cred = await makeCredential(finalPassword);
     const staffId = genId('staff');
@@ -432,6 +481,7 @@ Deno.serve(async (req) => {
       id: staffId, username, name: body.name || username, role: finalRole,
       allowed_thon: finalRole === 'staff' && Array.isArray(body.allowedThon) ? body.allowedThon : [],
       allowed_xom: finalRole === 'staff' && Array.isArray(body.allowedXom) ? body.allowedXom : [],
+      can_manage_users: finalRole === 'staff' ? !!body.canManageUsers : false,
       salt: cred.salt, hash: cred.hash, must_change_password: true,
     });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
@@ -487,6 +537,10 @@ Deno.serve(async (req) => {
   if (body.type === 'reset-staff-password') {
     const staffId = String(body.staffId || '').trim();
     if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
+    if (!isSuper) {
+      const { data: target } = await admin.from('admins').select('role').eq('id', staffId).maybeSingle();
+      if (target?.role === 'super') return json({ ok: false, reason: 'Không có quyền với tài khoản toàn quyền.' }, 403);
+    }
     const finalPassword = body.password && String(body.password).trim() ? String(body.password).trim() : genTempPassword();
     const cred = await makeCredential(finalPassword);
     const { error } = await admin.from('admins').update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null }).eq('id', staffId);
@@ -500,6 +554,7 @@ Deno.serve(async (req) => {
     const { error } = await admin.from('admins').update({
       allowed_thon: Array.isArray(body.allowedThon) ? body.allowedThon : [],
       allowed_xom: Array.isArray(body.allowedXom) ? body.allowedXom : [],
+      can_manage_users: !!body.canManageUsers,
     }).eq('id', staffId).eq('role', 'staff');
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     return json({ ok: true });
@@ -510,6 +565,7 @@ Deno.serve(async (req) => {
     if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
     const { data: target } = await admin.from('admins').select('role').eq('id', staffId).maybeSingle();
     if (target && target.role === 'super') {
+      if (!isSuper) return json({ ok: false, reason: 'Không có quyền với tài khoản toàn quyền.' }, 403);
       const { count } = await admin.from('admins').select('id', { count: 'exact', head: true }).eq('role', 'super');
       if ((count || 0) <= 1) return json({ ok: false, reason: 'Phải giữ lại ít nhất 1 quản trị viên toàn quyền.' }, 409);
     }

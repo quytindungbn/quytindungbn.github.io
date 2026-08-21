@@ -761,12 +761,23 @@ function mapAdminRow(row) {
   return {
     id: row.id, username: row.username, name: row.name, role: row.role,
     allowedThon: row.allowed_thon || [], allowedXom: row.allowed_xom || [],
+    canManageUsers: !!row.can_manage_users,
     salt: row.salt, hash: row.hash, mustChangePassword: !!row.must_change_password, createdAt: row.created_at,
   };
 }
 export function getAdmin(id) { return state.admins.find((a) => a.id === id); }
 export function listAdmins() { return state.admins; }
 export function isSuperAdmin(id) { return getAdmin(id)?.role === 'super'; }
+/**
+ * Nhân viên "chỉ xem" có thể được cấp THÊM quyền vào trang "Quản lý User"
+ * (tạo/sửa/xóa Use + nhân viên khác) mà KHÔNG cần lên hẳn "Toàn quyền" —
+ * xem cờ `canManageUsers` (cột can_manage_users). Toàn quyền thì mặc định
+ * luôn có quyền này, không cần cấp riêng.
+ */
+export function canManageUsers(id) {
+  const a = getAdmin(id);
+  return !!a && (a.role === 'super' || !!a.canManageUsers);
+}
 
 /**
  * Tạo tài khoản quản trị (role 'super' toàn quyền hoặc 'staff' chỉ xem) —
@@ -780,10 +791,10 @@ export function isSuperAdmin(id) { return getAdmin(id)?.role === 'super'; }
  * cùng cơ chế với activateCustomerAccount() ở trên (qua Edge Function
  * "create-account", chỉ admin role='super' gọi được).
  */
-export async function addStaffAdmin({ username, name, password, role, allowedThon, allowedXom }) {
+export async function addStaffAdmin({ username, name, password, role, allowedThon, allowedXom, canManageUsers: canManage }) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, {
-    type: 'staff', username, name, password, role, allowedThon, allowedXom,
+    type: 'staff', username, name, password, role, allowedThon, allowedXom, canManageUsers: !!canManage,
   });
   if (!res.ok) throw new Error(res.reason || 'Không tạo được tài khoản.');
   const sb = getSupabaseClient(session.sbToken);
@@ -795,14 +806,31 @@ export async function addStaffAdmin({ username, name, password, role, allowedTho
   return { staff, tempPassword: res.tempPassword };
 }
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
-export async function updateStaffPermissions(id, allowedThon, allowedXom) {
+export async function updateStaffPermissions(id, allowedThon, allowedXom, canManage) {
   const a = getAdmin(id);
   if (!a || a.role !== 'staff') return;
   const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-staff-permissions', staffId: id, allowedThon, allowedXom });
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-staff-permissions', staffId: id, allowedThon, allowedXom, canManageUsers: !!canManage });
   if (!res.ok) throw new Error(res.reason || 'Không cập nhật được quyền xem.');
   a.allowedThon = Array.isArray(allowedThon) ? allowedThon : [];
   a.allowedXom = Array.isArray(allowedXom) ? allowedXom : [];
+  a.canManageUsers = !!canManage;
+  notify();
+}
+/**
+ * Đổi vai trò (Toàn quyền <-> Chỉ xem) cho 1 tài khoản quản trị/nhân viên
+ * ĐÃ CÓ SẴN — chỉ quản trị viên TOÀN QUYỀN mới gọi được (server tự xác minh
+ * lại, không tin JWT mù), tránh 1 nhân viên "được cấp quyền Quản lý User" tự
+ * nâng cấp mình/người khác lên Toàn quyền. Server cũng tự giữ lại ít nhất 1
+ * quản trị viên toàn quyền, không cho hạ hết xuống Chỉ xem.
+ */
+export async function updateStaffRole(id, role) {
+  const a = getAdmin(id);
+  if (!a) return;
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-staff-role', staffId: id, role });
+  if (!res.ok) throw new Error(res.reason || 'Không đổi được vai trò.');
+  a.role = role;
   notify();
 }
 /** Cấp lại mật khẩu cho quản trị viên/nhân viên — có thể tự nhập mật khẩu cụ thể, để trống thì tự sinh ngẫu nhiên. */
