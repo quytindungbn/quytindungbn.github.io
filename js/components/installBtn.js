@@ -37,7 +37,13 @@ async function runInstallFlow(btn) {
     } else if (outcome === 'ios-manual') {
       openIosInstallGuide();
     } else {
-      toast('Trình duyệt chưa sẵn sàng để cài đặt — thử tải lại trang, hoặc mở bằng Chrome (Android)/Safari (iPhone).', 'error');
+      // 'unsupported' — KHÔNG chắc chắn được lý do thật (trình duyệt không
+      // chủ động cho biết): phần lớn trường hợp trên Android/Chrome là do
+      // ĐÃ CÀI SẴN RỒI (Chrome cố ý không cho hiện lại hộp thoại nữa) — chỉ
+      // thật sự "chưa hỗ trợ" nếu dùng trình duyệt khác (VD: Firefox, Safari
+      // máy tính). Ghi rõ cả 2 khả năng, không đổ oan cho trình duyệt.
+      if (btn) btn.remove();
+      toast('Có thể bạn đã cài ứng dụng này rồi (kiểm tra màn hình chính) — nếu chưa, thử mở bằng Chrome (Android) hoặc Safari (iPhone).', 'info');
     }
   } finally {
     if (btn) btn.disabled = false;
