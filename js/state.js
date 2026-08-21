@@ -54,6 +54,7 @@ function migrateState() {
     if (!Array.isArray(a.allowedThon)) a.allowedThon = [];
     if (!Array.isArray(a.allowedXom)) a.allowedXom = [];
   });
+  if (!Array.isArray(state.pushSubscribedCustomerIds)) state.pushSubscribedCustomerIds = [];
 }
 
 export async function init() {
@@ -149,12 +150,23 @@ export function parseAddress(raw) {
   const parts = withoutNote.split(',').map((s) => s.trim()).filter(Boolean);
   const result = { xom: '', thon: '', xa: '', tinh: '' };
   const rest = [];
+  // Mỗi phần cách nhau bởi dấu phẩy KHÔNG nhất thiết là 1 trường riêng — VD
+  // "Xóm 5, Bắc Biên, thôn Bình Nguyên, ..." thì "Bắc Biên" vẫn thuộc về Xóm
+  // (chỉ là người nhập lỡ chấm phẩy giữa chừng), không phải Xã/Thôn. Quy tắc:
+  // 1 phần bắt đầu bằng từ khóa (Xóm/Thôn/Xã/Tỉnh...) thì MỞ trường mới; phần
+  // không có từ khóa thì nối tiếp vào trường đang mở dở — nên "Xóm" sẽ lấy
+  // TRỌN VẸN mọi thứ trước từ khóa "thôn" kế tiếp, dù có mấy dấu phẩy đi nữa.
+  let currentField = null;
   for (const p of parts) {
     const low = p.toLowerCase();
-    if (low.startsWith('xóm') || low.startsWith('xom')) result.xom = p;
-    else if (low.startsWith('thôn') || low.startsWith('thon')) result.thon = p;
-    else if (low.startsWith('xã') || low.startsWith('xa ') || low.startsWith('phường') || low.startsWith('thị trấn') || low.startsWith('huyện')) result.xa = p;
-    else if (low.startsWith('tỉnh') || low.startsWith('tp') || low.startsWith('thành phố')) result.tinh = p;
+    let field = null;
+    if (low.startsWith('xóm') || low.startsWith('xom')) field = 'xom';
+    else if (low.startsWith('thôn') || low.startsWith('thon')) field = 'thon';
+    else if (low.startsWith('xã') || low.startsWith('xa ') || low.startsWith('phường') || low.startsWith('thị trấn') || low.startsWith('huyện')) field = 'xa';
+    else if (low.startsWith('tỉnh') || low.startsWith('tp') || low.startsWith('thành phố')) field = 'tinh';
+
+    if (field) { result[field] = p; currentField = field; }
+    else if (currentField) result[currentField] += ', ' + p;
     else rest.push(p);
   }
   // Dự phòng theo vị trí nếu không nhận ra từ khóa (địa chỉ ghi tắt, không tiền tố)
@@ -434,9 +446,12 @@ export async function activateCustomerAccount({ cccd, name, phone, password }) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'customer', cccd, name, phone, password });
   if (!res.ok) throw new Error(res.reason || 'Không tạo được tài khoản.');
-  const sb = getSupabaseClient(session.sbToken);
-  const { data: row } = await sb.from('customers').select('*').eq('id', res.id).maybeSingle();
-  const customer = row ? mapCustomerRow(row) : { id: res.id, cccd };
+  // Dùng thẳng dòng khách hàng mà server trả về (đọc bằng service role, xem
+  // create-account/index.ts) thay vì tự SELECT lại bằng token của người gọi:
+  // nhân viên "chỉ xem" được cấp canManageUsers có thể không có quyền RLS
+  // xem khách mới tạo (chưa có Thôn/Xóm) — tự SELECT lại sẽ ra rỗng và làm
+  // tài khoản mới tạo "biến mất" khỏi trang Quản lý User dù đã tạo thành công.
+  const customer = res.customer ? mapCustomerRow(res.customer) : { id: res.id, cccd };
   const idx = state.customers.findIndex((c) => c.id === customer.id);
   if (idx >= 0) state.customers[idx] = customer; else state.customers.push(customer);
   notify();
@@ -745,16 +760,27 @@ export async function refreshSessionData() {
 
 async function loadAdminSessionData(token) {
   const sb = getSupabaseClient(token);
-  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }] = await Promise.all([
+  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes] = await Promise.all([
     sb.from('admins').select('*'),
     sb.from('customers').select('*'),
     sb.from('contracts').select('*'),
     sb.from('requests').select('*'),
+    // Chỉ cần biết CÓ hay KHÔNG (không cần chi tiết endpoint) — dùng cho 2
+    // chấm trạng thái (đăng nhập/bật thông báo) ở trang Khách hàng & Hợp đồng
+    // và Quản lý User. Cần policy RLS riêng cho phép admin đọc (xem mục 9
+    // trong docs/supabase-migration.md) — lỗi (chưa chạy policy) thì bỏ qua,
+    // coi như chưa biết ai bật thông báo, không chặn tải các dữ liệu khác.
+    sb.from('push_subscriptions').select('owner_type, owner_id').eq('owner_type', 'customer').then((r) => r, () => ({ data: [] })),
   ]);
   state.admins = (adminRows || []).map(mapAdminRow);
   state.customers = (customerRows || []).map(mapCustomerRow);
   state.contracts = (contractRows || []).map(mapContractRow);
   state.requests = (requestRows || []).map(mapRequestRow);
+  // Mảng thường (KHÔNG phải Set) — state được JSON.stringify() vào
+  // localStorage mỗi lần persist()/notify(), Set sẽ bị mất sạch dữ liệu khi
+  // serialize (JSON.stringify(new Set(...)) ra "{}"), lần tải lại từ cache sẽ
+  // gọi .has() trên object thường và văng lỗi ngay khi vẽ trang.
+  state.pushSubscribedCustomerIds = [...new Set((pushRes?.data || []).map((r) => r.owner_id))];
 }
 
 function mapAdminRow(row) {
@@ -875,6 +901,20 @@ export async function deleteStaffAdmin(id) {
 }
 /** Tài khoản khách hàng có đang bị tạm khóa hay không (do nhập sai mật khẩu nhiều lần). */
 export function isCustomerLocked(c) { return !!(c.lockedUntil && c.lockedUntil > Date.now()); }
+
+/**
+ * "Đã đăng nhập" (cho 2 chấm trạng thái ở trang Khách hàng & Hợp đồng / Quản
+ * lý User) — chưa có cột "lần đăng nhập gần nhất" riêng trong CSDL nên dùng
+ * đúng cờ mustChangePassword sẵn có làm dấu hiệu: cờ này CHỈ tắt (false) sau
+ * khi khách đăng nhập thành công VÀ tự đặt xong mật khẩu mới (bắt buộc ngay
+ * sau lần đăng nhập đầu) — mỗi lần admin cấp lại mật khẩu cũng tự bật lại cờ
+ * này, đúng nghĩa "chưa đăng nhập lại bằng mật khẩu mới". Chưa có tài khoản
+ * (chưa "Tạo User") thì chắc chắn cũng chưa đăng nhập được.
+ */
+export function hasCustomerLoggedIn(c) { return !!(c && c.salt && c.hash && !c.mustChangePassword); }
+
+/** "Đã bật thông báo" — khách có ít nhất 1 thiết bị đã subscribe push (xem loadAdminSessionData()). */
+export function hasPushEnabled(customerId) { return !!(state.pushSubscribedCustomerIds && state.pushSubscribedCustomerIds.includes(customerId)); }
 
 // ------------------------------------------------------------
 // Yêu cầu tư vấn / mở khoản vay
@@ -1018,5 +1058,5 @@ async function seedDemoData() {
     },
   ];
 
-  state = { org, admins, customers, contracts, requests, session: null };
+  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [] };
 }

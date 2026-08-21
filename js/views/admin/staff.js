@@ -9,7 +9,7 @@
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, openResetPasswordModal } from '../../components/ui.js';
+import { emptyState, openResetPasswordModal, statusDotsHtml } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { initials, colorFor, maskCccd, formatNumber, debounce } from '../../utils.js';
@@ -32,6 +32,15 @@ export function render(contentEl, filterEl) {
   draw(contentEl);
 }
 
+/**
+ * Có dữ liệu mới nhưng vẫn đang đứng ở trang này (xem renderApp() trong
+ * app.js) — chỉ vẽ lại danh sách bằng draw(), KHÔNG gọi render() nên bộ lọc
+ * (Tất cả/Use/Quản trị viên) và ô tìm kiếm đang gõ được giữ nguyên.
+ */
+export function refresh(contentEl) {
+  draw(contentEl);
+}
+
 function permissionSummary(a) {
   const xomLabels = a.allowedXom.map((key) => {
     const { thon, xom } = S.parseXomKey(key);
@@ -48,6 +57,8 @@ function draw(contentEl) {
   const customers = S.getState().customers.filter((c) => c.salt && c.hash);
   const admins = S.listAdmins();
   const lockedCount = customers.filter((c) => S.isCustomerLocked(c)).length;
+  const loggedInCount = customers.filter((c) => S.hasCustomerLoggedIn(c)).length;
+  const pushOnCount = customers.filter((c) => S.hasPushEnabled(c.id)).length;
   const tree = S.thonXomTree();
 
   let rows = [];
@@ -61,7 +72,7 @@ function draw(contentEl) {
   }
 
   contentEl.innerHTML = `
-    <div class="grid-2 mb-16">
+    <div class="grid-4 mb-16">
       <div class="stat-tile c-blue">
         <div class="stat-label">Use đã tạo</div>
         <div class="stat-value">${formatNumber(customers.length)}</div>
@@ -71,6 +82,16 @@ function draw(contentEl) {
         <div class="stat-label">Quản trị viên đã tạo</div>
         <div class="stat-value">${formatNumber(admins.length)}</div>
         <div class="stat-trend">${formatNumber(admins.filter((a) => a.role === 'super').length)} toàn quyền · ${formatNumber(admins.filter((a) => a.role === 'staff').length)} chỉ xem</div>
+      </div>
+      <div class="stat-tile c-green">
+        <div class="stat-label">Use đã đăng nhập</div>
+        <div class="stat-value">${formatNumber(loggedInCount)}</div>
+        <div class="stat-trend">/ ${formatNumber(customers.length)} Use</div>
+      </div>
+      <div class="stat-tile c-orange">
+        <div class="stat-label">Use đã bật thông báo</div>
+        <div class="stat-value">${formatNumber(pushOnCount)}</div>
+        <div class="stat-trend">/ ${formatNumber(customers.length)} Use</div>
       </div>
     </div>
 
@@ -112,6 +133,7 @@ function userRowHtml(c) {
         <div class="row-title">${c.name} <span class="badge badge-blue">Use</span>${locked ? ' <span class="badge badge-red">Đang khóa</span>' : ''}</div>
         <div class="row-sub">${maskCccd(c.cccd)} · ${c.phone || 'Chưa có SĐT'}</div>
       </div>
+      ${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}
     </div>`;
 }
 

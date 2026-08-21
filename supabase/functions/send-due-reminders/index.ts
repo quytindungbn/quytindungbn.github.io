@@ -2,11 +2,14 @@
 // docs/supabase-migration.md mục "Thông báo đẩy") — quét toàn bộ hợp đồng
 // còn dư nợ, gửi thông báo đẩy (Web Push) cho ĐÚNG khách hàng đã bật thông
 // báo trên thiết bị của họ (bảng push_subscriptions). Lịch nhắc:
-//   1. Lãi: nhắc lại ĐÚNG NGÀY (trong tháng) của "Đã trả lãi đến ngày" mỗi
-//      tháng 1 lần, bắt đầu từ THÁNG SAU — VD: trả lãi đến ngày 17/08 thì
-//      17/09 nhắc, rồi 17/10, 17/11... nhắc liên tục mỗi tháng cho tới khi
-//      khách đóng lãi (interest_paid_until đổi ngày mới thì tự tính lại chu
-//      kỳ từ ngày mới). Trường hợp mới giải ngân — hệ thống tự set
+//   1. Lãi (nợ trong hạn): bắt đầu từ ĐÚNG NGÀY (trong tháng) của "Đã trả lãi
+//      đến ngày", THÁNG SAU — VD: trả lãi đến ngày 17/08 thì 17/09 bắt đầu
+//      nhắc. Nếu CHƯA đóng thì nhắc liên tiếp 3 NGÀY (17,18,19/09), rồi
+//      NGƯNG cho tới đợt tháng sau nữa (17/10) — nếu vẫn chưa đóng thì lại
+//      nhắc liên tiếp 3 ngày (17,18,19/10) — cứ thế lặp lại mỗi tháng, KHÔNG
+//      dừng, cho tới khi khách đóng lãi (interest_paid_until đổi ngày mới
+//      thì tự tính lại chu kỳ từ ngày mới, đợt nhắc dở dang trước đó tự dừng
+//      luôn vì mốc đã đổi). Trường hợp mới giải ngân — hệ thống tự set
 //      interest_paid_until = disbursed_date + 1 ngày (quy ước tính lãi, xem
 //      interestDaysAccrued() trong js/state.js) — thì lấy NGÀY GIẢI NGÂN làm
 //      mốc (không lấy interest_paid_until, vì lúc đó nó bị lệch 1 ngày do quy
@@ -43,6 +46,7 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET'); // tùy chọn nhưng khuyến 
 
 const NEAR_DUE_START_DAYS = 10; // Bắt đầu nhắc "gần đến hạn/quá hạn" từ đúng X ngày trước hạn
 const NEAR_DUE_REPEAT_DAYS = 3; // ...rồi lặp lại mỗi X ngày, cả trước lẫn sau ngày đến hạn, tới khi tất toán
+const MONTHLY_BURST_DAYS = 3; // Lãi (nợ trong hạn): mỗi tháng nhắc liên tiếp X ngày kể từ đúng ngày mốc, nếu chưa đóng
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -112,19 +116,37 @@ function interestAnchorDate(contract: any): Date {
 }
 
 /**
- * true nếu "today" đúng là "ngày này" của 1 tháng SAU (hoặc sau nữa) tháng
- * chứa anchorDate — tự xử lý tháng thiếu ngày (VD: mốc ngày 31 thì tháng chỉ
- * có 30 ngày sẽ tính là ngày cuối tháng đó, kiểu quy ước ngày thu phí định kỳ
- * thông thường).
+ * Ngày mốc nhắc lãi hàng tháng của ĐỢT GẦN NHẤT đã tới (<= today), tính từ
+ * anchorDate — tự xử lý tháng thiếu ngày (VD: mốc ngày 31 thì tháng chỉ có 30
+ * ngày sẽ tính là ngày cuối tháng đó, kiểu quy ước ngày thu phí định kỳ thông
+ * thường). Trả về null nếu chưa qua tới đợt tháng sau đầu tiên.
  */
-function isMonthlyAnniversary(anchorDate: Date, today: Date): boolean {
+function latestMonthlyOccurrence(anchorDate: Date, today: Date): Date | null {
   const ay = anchorDate.getFullYear(), am = anchorDate.getMonth(), ad = anchorDate.getDate();
-  const ty = today.getFullYear(), tm = today.getMonth(), td = today.getDate();
-  const monthDiff = (ty - ay) * 12 + (tm - am);
-  if (monthDiff < 1) return false; // chưa qua tới tháng sau
-  const daysInTargetMonth = new Date(ty, tm + 1, 0).getDate();
-  const expectedDay = Math.min(ad, daysInTargetMonth);
-  return td === expectedDay;
+  const ty = today.getFullYear(), tm = today.getMonth();
+  const occDayThisMonth = Math.min(ad, new Date(ty, tm + 1, 0).getDate());
+  let occ = new Date(ty, tm, occDayThisMonth);
+  if (occ > today) {
+    // Chưa tới ngày mốc của tháng này -> đợt gần nhất là tháng TRƯỚC.
+    const py = tm === 0 ? ty - 1 : ty, pm = tm === 0 ? 11 : tm - 1;
+    occ = new Date(py, pm, Math.min(ad, new Date(py, pm + 1, 0).getDate()));
+  }
+  const monthDiff = (occ.getFullYear() - ay) * 12 + (occ.getMonth() - am);
+  if (monthDiff < 1) return null; // chưa qua tới đợt tháng sau đầu tiên
+  return occ;
+}
+
+/**
+ * true nếu "today" nằm trong đợt nhắc lãi liên tiếp MONTHLY_BURST_DAYS ngày
+ * của tháng gần nhất (VD: mốc ngày 17, burst 3 ngày -> đúng 17/18/19 mỗi
+ * tháng là true, còn lại trong tháng là false) — xem ghi chú lịch nhắc #1 ở
+ * đầu file.
+ */
+function isMonthlyBurstDay(anchorDate: Date, today: Date): boolean {
+  const occ = latestMonthlyOccurrence(anchorDate, today);
+  if (!occ) return false;
+  const d = daysBetween(occ, today);
+  return d >= 0 && d < MONTHLY_BURST_DAYS;
 }
 
 async function sendPush(sub: { endpoint: string; p256dh: string; auth: string }, payload: Record<string, unknown>): Promise<boolean> {
@@ -191,8 +213,9 @@ Deno.serve(async (req) => {
     const status = effectiveStatus(ct, now);
     if (status === 'da_tat_toan') continue;
 
-    // 1) Lãi — đúng ngày trong tháng của mốc lãi, mỗi tháng 1 lần, liên tục.
-    if (isMonthlyAnniversary(interestAnchorDate(ct), now)) {
+    // 1) Lãi — mỗi tháng nhắc liên tiếp MONTHLY_BURST_DAYS ngày kể từ đúng
+    // ngày mốc, nếu chưa đóng thì lặp lại y hệt vào đợt tháng sau, liên tục.
+    if (isMonthlyBurstDay(interestAnchorDate(ct), now)) {
       if (await shouldSend(ct.id, 'lai_hang_thang')) {
         const ok = await pushToCustomer(
           ct.customer_id, NOTI_TITLE,

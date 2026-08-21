@@ -118,12 +118,17 @@ function parseAddress(raw: string) {
   const parts = withoutNote.split(',').map((s) => s.trim()).filter(Boolean);
   const result = { xom: '', thon: '', xa: '', tinh: '' } as Record<string, string>;
   const rest: string[] = [];
+  let currentField: string | null = null;
   for (const p of parts) {
     const low = p.toLowerCase();
-    if (low.startsWith('xóm') || low.startsWith('xom')) result.xom = p;
-    else if (low.startsWith('thôn') || low.startsWith('thon')) result.thon = p;
-    else if (low.startsWith('xã') || low.startsWith('xa ') || low.startsWith('phường') || low.startsWith('thị trấn') || low.startsWith('huyện')) result.xa = p;
-    else if (low.startsWith('tỉnh') || low.startsWith('tp') || low.startsWith('thành phố')) result.tinh = p;
+    let field: string | null = null;
+    if (low.startsWith('xóm') || low.startsWith('xom')) field = 'xom';
+    else if (low.startsWith('thôn') || low.startsWith('thon')) field = 'thon';
+    else if (low.startsWith('xã') || low.startsWith('xa ') || low.startsWith('phường') || low.startsWith('thị trấn') || low.startsWith('huyện')) field = 'xa';
+    else if (low.startsWith('tỉnh') || low.startsWith('tp') || low.startsWith('thành phố')) field = 'tinh';
+
+    if (field) { result[field] = p; currentField = field; }
+    else if (currentField) result[currentField] += ', ' + p;
     else rest.push(p);
   }
   if (!result.tinh && parts.length) result.tinh = parts[parts.length - 1];
@@ -458,7 +463,14 @@ Deno.serve(async (req) => {
       });
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     }
-    return json({ ok: true, id: customerId, tempPassword: finalPassword });
+    // Trả thẳng dòng khách hàng vừa tạo (đọc bằng service role, KHÔNG qua RLS
+    // của người gọi) — vì người gọi có thể là nhân viên "chỉ xem" đã được cấp
+    // canManageUsers, mà khách mới tạo (chưa có địa chỉ/Thôn/Xóm) không nằm
+    // trong phạm vi Thôn/Xóm được gán cho họ, nên nếu để client tự SELECT lại
+    // bằng token của người gọi thì RLS sẽ trả về rỗng — tài khoản coi như
+    // "biến mất" khỏi trang Quản lý User dù đã tạo thành công thật trong CSDL.
+    const { data: newRow } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
+    return json({ ok: true, id: customerId, tempPassword: finalPassword, customer: newRow });
   }
 
   if (body.type === 'staff') {

@@ -1,7 +1,7 @@
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal } from '../../components/ui.js';
+import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics, escapeHtml, boldDigits } from '../../utils.js';
@@ -46,11 +46,7 @@ export function render(contentEl, filterEl) {
   filterEl.innerHTML = `
     <div style="padding:10px 14px 0">
       <div class="search-box mb-8">${icon('search', 'icon-sm')}<input id="search-input" placeholder="Tìm theo tên, số CCCD, SĐT..." value="${query}"/></div>
-      <div class="filter-row" style="padding:0 0 8px">
-        ${pillSelectHtml('pill-thon', 'Thôn: Tất cả')}
-        ${pillSelectHtml('pill-xom', 'Xóm: Tất cả')}
-        ${pillSelectHtml('pill-sort', 'Sắp xếp: Mặc định')}
-      </div>
+      <div class="filter-row" style="padding:0 0 8px" id="filter-pills-row"></div>
       <div class="chip-row mb-8">
         <button class="chip ${urgencyFilters.size === 0 ? 'active' : ''}" data-urgency="all">Tất cả</button>
         <button class="chip ${urgencyFilters.has('qua_han') ? 'active' : ''}" data-urgency="qua_han">${icon('alert', 'icon-sm')} Nợ quá hạn</button>
@@ -85,6 +81,33 @@ export function render(contentEl, filterEl) {
     });
   });
 
+  /**
+   * Vẽ lại cả 3 pill (Thôn/Xóm/Sắp xếp) theo đúng trạng thái lọc hiện tại rồi
+   * gắn lại sự kiện — gọi mỗi khi có gì thay đổi (chọn lọc mới HOẶC bấm "x" bỏ
+   * lọc) để dấu "x" hiện/ẩn đúng, KHÔNG động gì đến draw()/danh sách bên dưới
+   * nếu không cần (tách riêng cho rõ: đổi lọc luôn kéo theo draw() lại, còn
+   * đây chỉ là vẽ lại chính cái pill).
+   */
+  function renderFilterPills() {
+    const wrap = filterEl.querySelector('#filter-pills-row');
+    wrap.innerHTML = `
+      ${pillSelectHtml('pill-thon', multiPillLabel('Thôn', filterThon), filterThon.length > 0)}
+      ${pillSelectHtml('pill-xom', multiPillLabel('Xóm', filterXom), filterXom.length > 0)}
+      ${pillSelectHtml('pill-sort', `Sắp xếp: ${SORT_LABEL[sortMode]} `, sortMode !== 'default')}
+    `;
+    bindPickers();
+    wrap.querySelectorAll('[data-pill-clear]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // không cho nổi bọt lên nút pill (sẽ mở nhầm picker)
+        const id = btn.dataset.pillClear;
+        if (id === 'pill-thon') { filterThon = []; filterXom = []; }
+        else if (id === 'pill-xom') { filterXom = []; }
+        else if (id === 'pill-sort') { sortMode = 'default'; }
+        renderFilterPills();
+        draw();
+      });
+    });
+  }
   function bindPickers() {
     filterEl.querySelector('#pill-thon').addEventListener('click', () => {
       const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
@@ -93,7 +116,7 @@ export function render(contentEl, filterEl) {
         options: allowedThon.map((t) => ({ value: t, label: t })),
         onSelect: (vals) => {
           filterThon = vals; filterXom = [];
-          filterEl.querySelector('#pill-thon').firstChild.textContent = multiPillLabel('Thôn', filterThon);
+          renderFilterPills();
           draw();
         },
       });
@@ -105,7 +128,7 @@ export function render(contentEl, filterEl) {
         options: xomList.map((x) => ({ value: x, label: x })),
         onSelect: (vals) => {
           filterXom = vals;
-          filterEl.querySelector('#pill-xom').firstChild.textContent = multiPillLabel('Xóm', filterXom);
+          renderFilterPills();
           draw();
         },
       });
@@ -116,13 +139,13 @@ export function render(contentEl, filterEl) {
         options: SORT_OPTIONS,
         onSelect: (val) => {
           sortMode = val;
-          filterEl.querySelector('#pill-sort').firstChild.textContent = `Sắp xếp: ${SORT_LABEL[val]} `;
+          renderFilterPills();
           draw();
         },
       });
     });
   }
-  bindPickers();
+  renderFilterPills();
 
   function draw() {
     let list = S.listCustomers({
@@ -155,9 +178,12 @@ export function render(contentEl, filterEl) {
     }
     const totalContracts = enriched.reduce((s, e) => s + e.contracts.length, 0);
     const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);
+    const loggedInCount = enriched.filter((e) => S.hasCustomerLoggedIn(e.c)).length;
+    const pushOnCount = enriched.filter((e) => S.hasPushEnabled(e.c.id)).length;
 
     contentEl.innerHTML = `
       <div class="text-sm text-muted mb-8">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <b style="color:var(--color-primary)">${formatVND(totalAmount)}</b></div>
+      <div class="text-sm text-muted mb-8">${formatNumber(loggedInCount)}/${formatNumber(enriched.length)} đã đăng nhập · ${formatNumber(pushOnCount)}/${formatNumber(enriched.length)} đã bật thông báo</div>
       ${enriched.length ? enriched.map(({ c, contracts }) => {
         const overdueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'qua_han');
         const nearDueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'gan_den_han');
@@ -172,6 +198,7 @@ export function render(contentEl, filterEl) {
             <span style="font-size:15px;font-weight:700">${c.name}</span>
             ${hasOverdue ? `<span class="badge badge-red">Quá hạn ${mostOverdueDays} ngày</span>` : ''}
             ${hasNearDue ? `<span class="badge badge-yellow">Gần đến hạn ${mostNearDueDays} ngày</span>` : ''}
+            <span style="margin-left:auto">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
           </div>
           <div class="list-row" data-id="${c.id}" style="cursor:pointer;padding:0">
             <div class="row-thumb" style="background:${colorFor(c.id)}">${initials(c.name)}</div>
@@ -202,6 +229,16 @@ export function render(contentEl, filterEl) {
   }
   draw();
   window.__qtdRedrawCustomers = draw;
+}
+
+/**
+ * Gọi khi có dữ liệu mới nhưng admin vẫn đang đứng ở trang này (xem
+ * renderApp() trong app.js) — CHỈ vẽ lại danh sách bằng draw() hiện có, KHÔNG
+ * gọi render() nên bộ lọc Thôn/Xóm/Sắp xếp/Quá hạn đang chọn (và ô tìm kiếm
+ * đang gõ) được giữ nguyên, không tự nhảy về "Tất cả" nữa.
+ */
+export function refresh() {
+  if (window.__qtdRedrawCustomers) window.__qtdRedrawCustomers();
 }
 
 function openCustomerForm(customer) {

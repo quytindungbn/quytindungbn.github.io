@@ -263,6 +263,42 @@ create policy "admin sees requests in scope" on requests
 create policy "admin updates requests" on requests
   for update using ((auth.jwt() ->> 'app_role') = 'admin');
 ```
+
+**Nếu gặp lỗi "Không thể gửi yêu cầu tư vấn" (khách bấm Gửi mà báo lỗi) hoặc
+"admin bấm Cập nhật trạng thái mà không có gì xảy ra"**: nhiều khả năng dự án
+đang thiếu đúng 3 policy ở trên (`customer creates own request`,
+`customer sees own requests`, `admin updates requests`) — có thể vì được thêm
+vào tài liệu SAU lúc bạn đã chạy SQL ban đầu nên chưa chạy riêng đoạn này.
+Chạy lại đoạn idempotent sau trong SQL Editor (an toàn chạy lại nhiều lần):
+```sql
+drop policy if exists "customer creates own request" on requests;
+create policy "customer creates own request" on requests
+  for insert with check (
+    (auth.jwt() ->> 'app_role') = 'customer'
+    and customer_id = (auth.jwt() ->> 'row_id')
+  );
+drop policy if exists "customer sees own requests" on requests;
+create policy "customer sees own requests" on requests
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'customer'
+    and customer_id = (auth.jwt() ->> 'row_id')
+  );
+drop policy if exists "admin sees requests in scope" on requests;
+create policy "admin sees requests in scope" on requests
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from customers c
+      join admins a on a.id = (auth.jwt() ->> 'row_id')
+      where c.id = requests.customer_id
+        and (a.role = 'super' or c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
+    )
+  );
+drop policy if exists "admin updates requests" on requests;
+create policy "admin updates requests" on requests
+  for update using ((auth.jwt() ->> 'app_role') = 'admin');
+```
+
 -- orgs (banner + thông tin ngân hàng): ai cũng xem được (kể cả chưa đăng
 -- nhập — màn đăng nhập cần hiện tên quỹ), không nhạy cảm vì số tài khoản
 -- ngân hàng vốn phải công khai để khách chuyển khoản. CHỈ super admin sửa.
@@ -506,6 +542,28 @@ grant select, insert, update, delete on push_subscriptions, notification_log to 
 create policy "owner manages own push subscription" on push_subscriptions
   for all using (owner_id = (auth.jwt() ->> 'row_id'))
   with check (owner_id = (auth.jwt() ->> 'row_id'));
+
+-- (Thêm mới) Cho phép admin/nhân viên XEM (chỉ select) ai đã bật thông báo —
+-- dùng cho "2 chấm trạng thái" (đăng nhập/bật thông báo) ở trang Khách hàng &
+-- Hợp đồng và Quản lý User. Nhân viên "chỉ xem" chỉ thấy trong đúng Thôn/Xóm
+-- được gán, giống hệt cách "staff sees scoped customers" ở mục 5 lọc phạm vi.
+create policy "admin sees push subscriptions in scope" on push_subscriptions
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and owner_type = 'customer'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (
+          a.role = 'super'
+          or exists (
+            select 1 from customers c
+            where c.id = push_subscriptions.owner_id
+              and (c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
+          )
+        )
+    )
+  );
 
 -- notification_log KHÔNG có policy nào cho anon/authenticated — RLS bật mà
 -- không có policy = chặn hết với 2 vai trò đó, CHỦ ĐÍCH: bảng này chỉ

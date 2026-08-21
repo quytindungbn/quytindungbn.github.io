@@ -36,6 +36,11 @@ const adminRoutes = [
 
 let root;
 let shellKey = null;
+// Đường dẫn (hash) đã render() ĐẦY ĐỦ gần nhất — dùng để phân biệt "vừa mới
+// vào trang này" (cần render() đầy đủ, có reset bộ lọc) với "vẫn đang đứng ở
+// trang này nhưng có dữ liệu mới" (chỉ nên vẽ lại danh sách, giữ nguyên mọi
+// bộ lọc/ô đang gõ — xem renderApp() và refresh() của từng view bên dưới).
+let lastRoutePath = null;
 
 function splitHash() {
   const raw = location.hash || '#/';
@@ -57,7 +62,7 @@ function matchRoute(path, routes) {
 
 function clearFabs() { document.querySelectorAll('.fab').forEach((el) => el.remove()); }
 
-function renderApp({ scrollTop = true } = {}) {
+function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   const session = S.getSession();
 
   if (!session) {
@@ -109,12 +114,26 @@ function renderApp({ scrollTop = true } = {}) {
   const headerEl = document.getElementById('app-header');
   const filterEl = document.getElementById('filter-slot');
   const contentEl = document.getElementById('app-content');
+
+  // Có dữ liệu mới nhưng vẫn đang đứng nguyên ở trang này: nếu trang có khai
+  // báo refresh() riêng thì chỉ gọi nó (vẽ lại danh sách bằng dữ liệu mới,
+  // giữ nguyên mọi bộ lọc/tìm kiếm đang chọn) — KHÔNG gọi lại render() đầy đủ,
+  // vì render() luôn reset bộ lọc về mặc định (chỉ nên xảy ra lúc mới vào
+  // trang). Trang chưa có refresh() thì vẫn render() lại như cũ (không có gì
+  // để giữ).
+  if (dataOnly && lastRoutePath === path && typeof match.view.refresh === 'function') {
+    match.view.refresh(contentEl, filterEl, match.params, query);
+    updateActiveNav(path);
+    return;
+  }
+
   clearFabs();
   filterEl.innerHTML = '';
   if (scrollTop) window.scrollTo(0, 0);
 
   if (match.view.renderHeader) match.view.renderHeader(headerEl, match.params);
   match.view.render(contentEl, filterEl, match.params, query);
+  lastRoutePath = path;
   updateActiveNav(path);
 }
 
@@ -140,19 +159,16 @@ window.addEventListener('DOMContentLoaded', async () => {
 // lại ở đây — nhưng đây KHÔNG phải là chuyển trang, nên không cuộn lên đầu,
 // để thao tác xong người dùng vẫn đang đứng đúng chỗ vừa thao tác.
 S.subscribe(() => {
-  if (root) renderApp({ scrollTop: false });
+  if (root) renderApp({ scrollTop: false, dataOnly: true });
 });
 
-// Tự động tải lại dữ liệu mới nhất định kỳ — để khách/nhân viên KHÔNG cần
-// thoát ra vào lại mới thấy dữ liệu mới (VD: admin vừa sửa hợp đồng ở máy
-// khác). Chỉ chạy khi tab đang mở/hiện (document.visibilityState) để đỡ tốn
-// mạng/pin lúc tab bị ẩn (chuyển app khác, tắt màn hình...); mỗi lần quay lại
-// tab cũng tự làm mới ngay, không cần đợi tới mốc định kỳ kế tiếp.
-const AUTO_REFRESH_MS = 30000;
+// Tự động tải lại dữ liệu mới — để khách/nhân viên KHÔNG cần thoát ra vào lại
+// mới thấy dữ liệu mới (VD: admin vừa sửa hợp đồng ở máy khác). CHỈ làm mới
+// khi có tín hiệu thật là người dùng có thể cần thấy dữ liệu mới (quay lại
+// tab/app) — KHÔNG dùng bộ đếm thời gian (setInterval) nữa, vì cứ vài chục
+// giây lại tự tải lại 1 lần sẽ làm mất bộ lọc đang chọn (Thôn/Xóm/sắp xếp...)
+// và dữ liệu đang gõ dở, dù đã có cơ chế né ô đang gõ — vẫn gây khó chịu.
 function startAutoRefresh() {
-  setInterval(() => {
-    if (document.visibilityState === 'visible') S.refreshSessionData();
-  }, AUTO_REFRESH_MS);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') S.refreshSessionData();
   });
