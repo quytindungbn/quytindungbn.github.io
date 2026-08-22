@@ -95,15 +95,13 @@ function openContractListModal(title, contracts, isStaff, colorVar) {
         const dueBadgeClass = d < 0 ? 'badge-red' : 'badge-yellow';
         const addressLabel = cust ? ([cust.xom, cust.thon, cust.tinh].filter(Boolean).join(', ') || cust.address || 'Chưa có địa bàn') : '—';
         return `
-        <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer">
-          <div class="row-main">
-            <div class="flex items-center gap-6" style="flex-wrap:nowrap">
-              <span style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">${cust ? cust.name : '—'} · ${ct.code}</span>
-              <span class="badge ${dueBadgeClass}" style="flex-shrink:0">${dueLabel}</span>
-            </div>
-            <div class="row-sub">${addressLabel}</div>
+        <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:2px">
+          <div class="flex items-center gap-6" style="flex-wrap:nowrap">
+            <span style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">${cust ? cust.name : '—'} · ${ct.code}</span>
+            <span class="badge ${dueBadgeClass}" style="flex-shrink:0">${dueLabel}</span>
           </div>
-          <div class="row-end"><b style="color:${colorVar}">${formatVND(ct.balance)}</b></div>
+          <div class="row-sub">${addressLabel}</div>
+          <div style="text-align:right"><b style="color:${colorVar}">${formatVND(ct.balance)}</b></div>
         </div>`;
       }).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Danh sách hiện đang trống.' })}
     `,
