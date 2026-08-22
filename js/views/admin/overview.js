@@ -97,9 +97,9 @@ function openContractListModal(title, contracts, isStaff, colorVar) {
         return `
         <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer">
           <div class="row-main">
-            <div class="flex items-center gap-6" style="flex-wrap:wrap">
-              <span style="font-size:14px;font-weight:700">${cust ? cust.name : '—'} · ${ct.code}</span>
-              <span class="badge ${dueBadgeClass}">${dueLabel}</span>
+            <div class="flex items-center gap-6" style="flex-wrap:nowrap">
+              <span style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">${cust ? cust.name : '—'} · ${ct.code}</span>
+              <span class="badge ${dueBadgeClass}" style="flex-shrink:0">${dueLabel}</span>
             </div>
             <div class="row-sub">${addressLabel}</div>
           </div>
