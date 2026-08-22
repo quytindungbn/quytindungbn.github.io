@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
       if (await shouldSend(ct.id, 'lai_hang_thang')) {
         const ok = await pushToCustomer(
           ct.customer_id, NOTI_TITLE,
-          `Hợp đồng ${ct.code}: số tiền lãi của quý khách hiện là ${formatVND(accruedInterest(ct, now))}. Vui lòng thanh toán lãi hàng tháng đúng hạn.`,
+          `Hợp đồng ${ct.code} của quý khách số tiền lãi đến nay là: ${formatVND(accruedInterest(ct, now))}. Vui lòng thanh toán lãi hàng tháng đúng hạn.`,
           'lai-hang-thang'
         );
         if (ok) { await logSent(ct.customer_id, ct.id, 'lai_hang_thang'); result.laiHangThang++; }
