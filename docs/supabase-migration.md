@@ -410,8 +410,10 @@ update admins set must_change_password = false where created_at < now();
 
 Trước đây trang "Quản lý User" (tạo/sửa/xóa Use + nhân viên khác, đổi vai trò) chỉ quản trị viên
 **toàn quyền** vào được. Giờ thêm 1 cột `can_manage_users` trên bảng `admins` — tích cờ này cho 1 nhân
-viên "chỉ xem" thì họ vào được hẳn trang Quản lý User, coi như "toàn quyền thu nhỏ" (KHÔNG tự tạo/đụng
-được vào tài khoản Toàn quyền nào, server tự chặn). Chạy SQL sau (idempotent, chạy lại không sao):
+viên "chỉ xem" thì họ vào được hẳn trang Quản lý User, nhưng **CHỈ quản lý được Use KHÁCH HÀNG**
+(tạo/cấp lại mật khẩu/khóa/xóa) — KHÔNG được tạo/sửa/xóa/xem chi tiết bất kỳ tài khoản Quản trị
+viên/nhân viên nào khác (kể cả 1 nhân viên chỉ xem khác), server tự chặn 403 nếu cố gọi, UI cũng tự ẩn
+hết nút liên quan. Chạy SQL sau (idempotent, chạy lại không sao):
 
 ```sql
 alter table admins add column if not exists can_manage_users boolean default false;

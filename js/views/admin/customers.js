@@ -1,7 +1,7 @@
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml } from '../../components/ui.js';
+import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics, escapeHtml, boldDigits } from '../../utils.js';
@@ -45,12 +45,12 @@ export function render(contentEl, filterEl) {
 
   filterEl.innerHTML = `
     <div style="padding:10px 14px 0">
-      <div class="search-box mb-8">${icon('search', 'icon-sm')}<input id="search-input" placeholder="Tìm theo tên, số CCCD, SĐT..." value="${query}"/></div>
+      ${searchBoxHtml('search-input', 'Tìm theo tên, số CCCD, SĐT...', query)}
       <div class="filter-row" style="padding:0 0 8px" id="filter-pills-row"></div>
-      <div class="chip-row mb-8">
-        <button class="chip ${urgencyFilters.size === 0 ? 'active' : ''}" data-urgency="all">Tất cả</button>
-        <button class="chip ${urgencyFilters.has('qua_han') ? 'active' : ''}" data-urgency="qua_han">${icon('alert', 'icon-sm')} Nợ quá hạn</button>
-        <button class="chip ${urgencyFilters.has('gan_den_han') ? 'active' : ''}" data-urgency="gan_den_han">Gần đến hạn</button>
+      <div class="segmented-row mb-8">
+        <button class="${urgencyFilters.size === 0 ? 'active' : ''}" data-urgency="all">Tất cả</button>
+        <button class="${urgencyFilters.has('qua_han') ? 'active' : ''}" data-urgency="qua_han">${icon('alert', 'icon-sm')} Nợ quá hạn</button>
+        <button class="${urgencyFilters.has('gan_den_han') ? 'active' : ''}" data-urgency="gan_den_han">Gần đến hạn</button>
       </div>
       ${!isStaff ? `
       <div class="flex gap-8 mb-8">
@@ -59,7 +59,7 @@ export function render(contentEl, filterEl) {
       </div>` : `<p class="field-hint mb-8">Tài khoản nhân viên — chỉ xem, không chỉnh sửa được dữ liệu.</p>`}
     </div>
   `;
-  filterEl.querySelector('#search-input').addEventListener('input', debounce((e) => { query = e.target.value; draw(); }, 200));
+  bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(); });
   if (!isStaff) {
     filterEl.querySelector('#btn-import').addEventListener('click', openImportModal);
     filterEl.querySelector('#btn-add').addEventListener('click', () => openCustomerForm());

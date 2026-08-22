@@ -1,18 +1,21 @@
-// Trang "Quản lý User" — quản lý TẤT CẢ tài khoản trong hệ thống ở 1 chỗ:
-// "Use" (tài khoản khách hàng) và "Quản trị viên" (super toàn quyền hoặc
-// staff chỉ xem, có phân quyền theo Thôn/Xóm). Vào được trang này: quản trị
-// viên toàn quyền, HOẶC nhân viên "chỉ xem" được cấp riêng cờ
-// canManageUsers (xem checkbox "Cho phép quản lý User" trong
-// adminPermissionSectionHtml()) — route đã đặt requiresManageUsers ở
-// app.js. Nhân viên có cờ này không tự tạo/đụng được tài khoản Toàn quyền
-// nào (server tự chặn, xem create-account/index.ts).
+// Trang "Quản lý User" — quản lý tài khoản trong hệ thống ở 1 chỗ: "Use"
+// (tài khoản khách hàng) và "Quản trị viên" (super toàn quyền hoặc staff chỉ
+// xem, có phân quyền theo Thôn/Xóm). Vào được trang này: quản trị viên toàn
+// quyền, HOẶC nhân viên "chỉ xem" được cấp riêng cờ canManageUsers (xem
+// checkbox "Cho phép quản lý User" trong adminPermissionSectionHtml()) —
+// route đã đặt requiresManageUsers ở app.js. NHƯNG nhân viên có cờ này CHỈ
+// quản lý được Use KHÁCH HÀNG (tạo/cấp lại mật khẩu/khóa/xóa) — KHÔNG được
+// tạo/sửa/xóa/xem chi tiết bất kỳ tài khoản Quản trị viên/nhân viên nào
+// khác (kể cả 1 nhân viên chỉ xem khác), server tự chặn 403 nếu cố gọi
+// (xem SUPER_ONLY_TYPES trong create-account/index.ts) — UI cũng tự ẩn hết
+// các lựa chọn/nút liên quan tới tài khoản Quản trị viên với nhóm này.
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, openResetPasswordModal, statusDotsHtml } from '../../components/ui.js';
+import { emptyState, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { initials, colorFor, maskCccd, formatNumber, debounce } from '../../utils.js';
+import { initials, colorFor, maskCccd, formatNumber } from '../../utils.js';
 import { openCustomerDetail } from './customers.js';
 
 export function renderHeader(headerEl) {
@@ -27,8 +30,8 @@ export function render(contentEl, filterEl) {
   query = '';
   // Ô tìm kiếm nằm ở filterEl (không bị vẽ lại cùng danh sách) để không mất
   // focus/con trỏ mỗi khi gõ — giống cách trang Khách hàng & Hợp đồng làm.
-  filterEl.innerHTML = `<div style="padding:10px 14px 0"><div class="search-box mb-8">${icon('search', 'icon-sm')}<input id="search-input" placeholder="Tìm theo tên, CCCD, SĐT, tên đăng nhập..." value=""/></div></div>`;
-  filterEl.querySelector('#search-input').addEventListener('input', debounce((e) => { query = e.target.value; draw(contentEl); }, 200));
+  filterEl.innerHTML = `<div style="padding:10px 14px 0">${searchBoxHtml('search-input', 'Tìm theo tên, CCCD, SĐT, tên đăng nhập...', '')}</div>`;
+  bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(contentEl); });
   draw(contentEl);
 }
 
@@ -83,15 +86,15 @@ function draw(contentEl) {
         <div class="stat-value">${formatNumber(admins.length)}</div>
         <div class="stat-trend">${formatNumber(admins.filter((a) => a.role === 'super').length)} toàn quyền · ${formatNumber(admins.filter((a) => a.role === 'staff').length)} chỉ xem</div>
       </div>
-      <div class="stat-tile c-green">
+      <div class="stat-tile c-green" data-stat="logged-in" style="cursor:pointer">
         <div class="stat-label">Use đã đăng nhập</div>
         <div class="stat-value">${formatNumber(loggedInCount)}</div>
         <div class="stat-trend">/ ${formatNumber(customers.length)} Use</div>
       </div>
-      <div class="stat-tile c-orange">
+      <div class="stat-tile c-orange" data-stat="push-on" style="cursor:pointer">
         <div class="stat-label">Use đã bật thông báo</div>
         <div class="stat-value">${formatNumber(pushOnCount)}</div>
-        <div class="stat-trend">/ ${formatNumber(customers.length)} Use</div>
+        <div class="stat-trend">/ ${formatNumber(loggedInCount)} đã đăng nhập</div>
       </div>
     </div>
 
@@ -121,6 +124,23 @@ function draw(contentEl) {
   });
   contentEl.querySelectorAll('[data-open-admin]').forEach((row) => {
     row.addEventListener('click', () => openAdminDetail(S.getAdmin(row.dataset.openAdmin), tree, contentEl));
+  });
+  const loggedInTile = contentEl.querySelector('[data-stat="logged-in"]');
+  if (loggedInTile) loggedInTile.addEventListener('click', () => openStatListModal('Use đã đăng nhập', customers.filter((c) => S.hasCustomerLoggedIn(c))));
+  const pushOnTile = contentEl.querySelector('[data-stat="push-on"]');
+  if (pushOnTile) pushOnTile.addEventListener('click', () => openStatListModal('Use đã bật thông báo', customers.filter((c) => S.hasPushEnabled(c.id))));
+}
+
+/** Bấm vào ô thống kê "Use đã đăng nhập"/"Use đã bật thông báo" — ra đúng danh sách những Use đó, bấm vào 1 dòng mở luôn chi tiết Use đó. */
+function openStatListModal(title, list) {
+  openModal({
+    title: `${title} (${list.length})`,
+    bodyHtml: list.length ? list.map((c) => userRowHtml(c)).join('') : emptyState({ iconName: 'idCard', title: 'Chưa có Use nào', message: 'Danh sách hiện đang trống.' }),
+    onMount(sheet, closeFn) {
+      sheet.querySelectorAll('[data-open-use]').forEach((row) => {
+        row.addEventListener('click', () => { closeFn(); openCustomerDetail(row.dataset.openUse, { readOnly: false, context: 'use' }); });
+      });
+    },
   });
 }
 
@@ -246,6 +266,26 @@ function openAdminDetail(admin, tree, contentEl) {
   const session = S.getSession();
   const isSelf = session?.id === admin.id;
   const viewerIsSuper = S.isSuperAdmin(session?.id);
+
+  // Nhân viên "chỉ xem" có quyền Quản lý User (không phải Toàn quyền thật)
+  // CHỈ quản lý được Use KHÁCH HÀNG — không được đụng vào bất kỳ tài khoản
+  // Quản trị viên/nhân viên nào khác (server cũng tự chặn 403 nếu cố gọi,
+  // xem SUPER_ONLY_TYPES trong create-account/index.ts). Ở đây chỉ hiện
+  // thông tin, không có nút thao tác nào — tránh hiện nút mà bấm vào lại
+  // báo lỗi, gây hiểu nhầm là làm được.
+  if (!viewerIsSuper) {
+    openModal({
+      title: admin.name,
+      bodyHtml: `
+        <div class="oc-line"><span>Tên đăng nhập</span><b>@${admin.username}</b></div>
+        <div class="oc-line"><span>Vai trò</span><b>${admin.role === 'super' ? 'Quản trị viên toàn quyền' : 'Quản trị viên chỉ xem'}</b></div>
+        ${admin.role === 'staff' ? `<div class="oc-line" style="align-items:flex-start"><span>Địa bàn được xem</span><b style="text-align:right;max-width:65%">${permissionSummary(admin)}</b></div>` : ''}
+        <p class="field-hint mt-16">Bạn chỉ quản lý được Use khách hàng — chỉ quản trị viên toàn quyền mới quản lý được tài khoản Quản trị viên/nhân viên khác.</p>
+      `,
+    });
+    return;
+  }
+
   let pendingRole = admin.role; // chỉ đổi cục bộ trong popup, lưu khi bấm "Lưu quyền"
   // Chỉ hiện nút "Lưu quyền" khi có gì đó THẬT SỰ có thể lưu: hoặc người xem
   // đổi được vai trò (viewerIsSuper && !isSelf — dù target đang là Toàn
@@ -375,6 +415,7 @@ function openCreateUserModal(tree, contentEl) {
       const body = sheet.querySelector('#cu-body');
       function draw2() {
         body.innerHTML = `
+          ${viewerIsSuper ? `
           <div class="field">
             <label>Loại tài khoản</label>
             <div class="radio-row">
@@ -382,6 +423,7 @@ function openCreateUserModal(tree, contentEl) {
               <div class="radio-opt ${kind === 'admin' ? 'active' : ''}" data-kind="admin">Quản trị viên</div>
             </div>
           </div>
+          ` : ''}
           ${kind === 'use' ? `
           <form id="use-form">
             <div class="field"><label>Số CCCD</label><input name="cccd" required pattern="\\d{9,12}"/></div>

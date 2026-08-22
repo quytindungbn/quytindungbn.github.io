@@ -26,25 +26,26 @@
 //   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
 //   của 1 admin đã đăng nhập (xác minh lại tại server, không tin JWT mù) —
 //   2 nhóm quyền khác nhau:
-//   - CHỈ role='super' (toàn quyền) mới gọi được:
+//   - CHỈ role='super' (toàn quyền) mới gọi được — gồm MỌI thao tác đụng đến
+//     tài khoản QUẢN TRỊ VIÊN/nhân viên (tạo/xóa/đổi vai trò/đổi quyền/cấp
+//     lại mật khẩu), không có ngoại lệ cho canManageUsers: nhân viên "chỉ
+//     xem" được cấp cờ này CHỈ quản lý được Use KHÁCH HÀNG, không được đụng
+//     tới tài khoản Quản trị viên nào khác (kể cả nhân viên chỉ xem khác):
 //     { type: 'update-customer-profile', cccd, name?, phone?, address? }
 //     { type: 'delete-contract', contractId }
 //     { type: 'import', fullSync, rows: [...] } — nhập Excel/dán tay hàng loạt
 //     { type: 'update-staff-role', staffId, role } — đổi Toàn quyền <-> Chỉ
 //       xem cho 1 tài khoản đã có sẵn (giữ lại ít nhất 1 toàn quyền)
-//   - role='super' HOẶC nhân viên "chỉ xem" được cấp cờ canManageUsers=true
-//     (xem { type: 'update-staff-permissions', ..., canManageUsers }) đều
-//     gọi được — nhân viên có cờ này KHÔNG được tự tạo/đụng vào tài khoản
-//     role='super' nào (server tự ép về 'staff'/chặn 403), coi như "toàn
-//     quyền thu nhỏ" chỉ trong phạm vi quản lý Use + nhân viên khác:
-//     { type: 'customer', cccd, name?, phone?, password? }
 //     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom?, canManageUsers? }
-//     { type: 'reset-customer-password', customerId, password? }
-//     { type: 'deactivate-customer', customerId }
-//     { type: 'delete-customer', customerId }
 //     { type: 'reset-staff-password', staffId, password? }
 //     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom?, canManageUsers? }
 //     { type: 'delete-staff', staffId }
+//   - role='super' HOẶC nhân viên "chỉ xem" được cấp cờ canManageUsers=true
+//     đều gọi được — CHỈ giới hạn trong phạm vi Use KHÁCH HÀNG:
+//     { type: 'customer', cccd, name?, phone?, password? }
+//     { type: 'reset-customer-password', customerId, password? }
+//     { type: 'deactivate-customer', customerId }
+//     { type: 'delete-customer', customerId }
 // password bỏ trống thì tự sinh mật khẩu tạm ngẫu nhiên (trả về trong response).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -409,19 +410,23 @@ Deno.serve(async (req) => {
   }
   const isSuper = callerAdmin.role === 'super';
   // Nhân viên "chỉ xem" được cấp thêm cờ can_manage_users -> coi như "toàn
-  // quyền thu nhỏ" CHỈ trong phạm vi trang Quản lý User (tạo/sửa/xóa Use +
-  // nhân viên khác) — KHÔNG được tự cấp/đổi vai trò 'super' cho ai (kể cả
-  // chính mình) và KHÔNG đụng được vào tài khoản 'super' khác, xem từng chỗ
-  // kiểm tra bên dưới.
+  // quyền thu nhỏ" CHỈ trong phạm vi Use KHÁCH HÀNG (tạo/cấp lại mật khẩu/
+  // khóa/xóa) — KHÔNG được đụng vào bất kỳ tài khoản QUẢN TRỊ VIÊN nào khác
+  // (kể cả 1 nhân viên chỉ xem khác), xem SUPER_ONLY_TYPES ngay dưới đây.
   const canManageUsers = isSuper || callerAdmin.can_manage_users === true;
   // Các "type" sau LUÔN bắt buộc đúng quản trị viên toàn quyền, không có
-  // ngoại lệ cho canManageUsers — sửa cấu hình quỹ/nhập hàng loạt/đổi vai
-  // trò đều là hành động nhạy cảm hơn hẳn việc quản lý Use thông thường.
-  const SUPER_ONLY_TYPES = ['update-customer-profile', 'delete-contract', 'import', 'update-staff-role'];
+  // ngoại lệ cho canManageUsers — gồm CẢ sửa cấu hình quỹ/nhập hàng loạt LẪN
+  // mọi thao tác đụng tới tài khoản Quản trị viên/nhân viên khác (tạo/xóa/
+  // đổi vai trò/đổi quyền/cấp lại mật khẩu) — nhân viên có canManageUsers
+  // chỉ được quản lý Use khách hàng, không được quản lý Use Quản trị viên.
+  const SUPER_ONLY_TYPES = [
+    'update-customer-profile', 'delete-contract', 'import', 'update-staff-role',
+    'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff',
+  ];
   if (SUPER_ONLY_TYPES.includes(body.type) && !isSuper) {
     return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
   }
-  // Các "type" còn lại (quản lý Use/nhân viên) cần ít nhất canManageUsers.
+  // Các "type" còn lại (quản lý Use khách hàng) cần ít nhất canManageUsers.
   if (!canManageUsers) {
     return json({ ok: false, reason: 'Bạn không có quyền thực hiện thao tác này — liên hệ quản trị viên toàn quyền để được cấp quyền "Quản lý User".' }, 403);
   }

@@ -1,5 +1,38 @@
 import { icon } from '../icons.js';
 import { openModal } from './modal.js';
+import { debounce } from '../utils.js';
+
+/**
+ * Ô tìm kiếm chuẩn (icon kính lúp + input + nút "x" xóa nhanh ở cuối ô) —
+ * nút "x" chỉ hiện khi đang có chữ trong ô, bấm vào xóa sạch ngay lập tức
+ * (không cần tự xóa từng chữ). Dùng chung `bindSearchBox()` bên dưới để gắn
+ * sự kiện (debounce gõ chữ + xử lý nút "x").
+ */
+export function searchBoxHtml(id, placeholder, value = '') {
+  return `
+    <div class="search-box mb-8">
+      ${icon('search', 'icon-sm')}
+      <input id="${id}" placeholder="${placeholder}" value="${value}"/>
+      <button type="button" class="search-clear-btn" id="${id}-clear" style="display:${value ? 'flex' : 'none'}" title="Xóa">${icon('x', 'icon-sm')}</button>
+    </div>`;
+}
+/** Gắn sự kiện cho ô tìm kiếm dựng bằng searchBoxHtml() — `onChange(text)` gọi mỗi khi giá trị đổi (có debounce lúc gõ, tức thì khi bấm nút "x"). */
+export function bindSearchBox(root, id, onChange, { debounceMs = 200 } = {}) {
+  const input = root.querySelector('#' + id);
+  const clearBtn = root.querySelector('#' + id + '-clear');
+  if (!input) return;
+  const debounced = debounce((v) => onChange(v), debounceMs);
+  input.addEventListener('input', () => {
+    if (clearBtn) clearBtn.style.display = input.value ? 'flex' : 'none';
+    debounced(input.value);
+  });
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    input.value = '';
+    clearBtn.style.display = 'none';
+    input.focus();
+    onChange('');
+  });
+}
 
 export function emptyState({ iconName = 'box', title, message }) {
   return `
