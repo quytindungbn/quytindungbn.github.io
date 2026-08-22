@@ -432,10 +432,12 @@ svg { display: block; }
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px; border-bottom: 1px solid var(--border);
 }
-/* line-height rộng hơn mặc định của trình duyệt (~1.15) để không bị cắt mất
-   dấu tiếng Việt phía trên chữ in hoa (VD: Ẫ, Ữ, Ố...) — dấu các chữ này cao
-   hơn hẳn chữ thường, dễ bị hụt trên nếu khung dòng quá sát. */
-.modal-head h3 { font-size: 16px; font-weight: 700; line-height: 1.4; }
+/* line-height rộng hơn hẳn mặc định của trình duyệt (~1.15) + thêm chút
+   padding-top để không bị cắt mất dấu tiếng Việt phía trên chữ in hoa (VD:
+   NGUYỄN, Ẫ, Ữ, Ố...) — dấu các chữ này cao hơn hẳn chữ thường, đặc biệt
+   dấu ghép (ễ = mũ + ngã chồng nhau) cần nhiều khoảng trên hơn tưởng, 1.4
+   vẫn chưa đủ nên tăng hẳn lên 1.8. */
+.modal-head h3 { font-size: 16px; font-weight: 700; line-height: 1.8; padding-top: 2px; }
 .modal-body { padding: 16px; overflow-y: auto; }
 .modal-foot { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
