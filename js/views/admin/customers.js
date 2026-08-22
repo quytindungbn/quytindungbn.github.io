@@ -193,15 +193,15 @@ export function render(contentEl, filterEl) {
         const mostOverdueDays = hasOverdue ? Math.max(...overdueContracts.map((ct) => Math.abs(daysUntil(ct.dueDate)))) : 0;
         const mostNearDueDays = hasNearDue ? Math.min(...nearDueContracts.map((ct) => daysUntil(ct.dueDate))) : 0;
         return `
-        <div class="card card-pad mb-8">
-          <div class="flex items-center gap-6 mb-8" style="flex-wrap:wrap">
+        <div class="card mb-8" style="padding:12px 16px">
+          <div class="flex items-center gap-6 mb-6" style="flex-wrap:wrap">
             <span style="font-size:15px;font-weight:700">${c.name}</span>
             ${hasOverdue ? `<span class="badge badge-red">Quá hạn ${mostOverdueDays} ngày</span>` : ''}
             ${hasNearDue ? `<span class="badge badge-yellow">Gần đến hạn ${mostNearDueDays} ngày</span>` : ''}
             <span style="margin-left:auto">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
           </div>
-          <div class="list-row" data-id="${c.id}" style="cursor:pointer;padding:0">
-            <div class="row-thumb" style="background:${colorFor(c.id)}">${initials(c.name)}</div>
+          <div class="list-row" data-id="${c.id}" style="cursor:pointer;padding:0;gap:8px">
+            <div class="row-thumb" style="width:34px;height:34px;font-size:13px;background:${colorFor(c.id)}">${initials(c.name)}</div>
             <div class="row-main">
               <div class="row-sub" style="white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${[c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn'}</div>
             </div>
