@@ -137,7 +137,18 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   updateActiveNav(path);
 }
 
-window.addEventListener('hashchange', () => { closeAllModals(); renderApp(); });
+window.addEventListener('hashchange', () => {
+  closeAllModals();
+  renderApp();
+  // Mỗi lần chuyển trang cũng tranh thủ tải lại dữ liệu quyền/phạm vi Thôn-Xóm
+  // của CHÍNH người đang đăng nhập — để khi admin khác vừa đổi quyền cho họ
+  // (VD: cấp thêm Thôn/Xóm được xem, bật/tắt quyền Quản lý User) thì họ thấy
+  // đúng ngay ở lần bấm menu kế tiếp, KHÔNG cần đăng xuất/đăng nhập lại. Chạy
+  // ngầm (không await) — refreshSessionData() tự gọi notify() khi xong, kích
+  // hoạt vẽ lại (xem S.subscribe bên dưới); trang không còn đủ quyền (VD: bị
+  // rút quyền khi đang đứng ở đó) sẽ tự bị renderApp() điều hướng về mặc định.
+  S.refreshSessionData();
+});
 window.addEventListener('qtd:logout', () => { closeAllModals(); S.logout(); location.hash = '#/'; renderApp(); });
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -163,11 +174,12 @@ S.subscribe(() => {
 });
 
 // Tự động tải lại dữ liệu mới — để khách/nhân viên KHÔNG cần thoát ra vào lại
-// mới thấy dữ liệu mới (VD: admin vừa sửa hợp đồng ở máy khác). CHỈ làm mới
-// khi có tín hiệu thật là người dùng có thể cần thấy dữ liệu mới (quay lại
-// tab/app) — KHÔNG dùng bộ đếm thời gian (setInterval) nữa, vì cứ vài chục
-// giây lại tự tải lại 1 lần sẽ làm mất bộ lọc đang chọn (Thôn/Xóm/sắp xếp...)
-// và dữ liệu đang gõ dở, dù đã có cơ chế né ô đang gõ — vẫn gây khó chịu.
+// mới thấy dữ liệu mới (VD: admin vừa sửa hợp đồng/đổi quyền ở máy khác). CHỈ
+// làm mới khi có tín hiệu thật là người dùng có thể cần thấy dữ liệu mới
+// (quay lại tab/app, hoặc chuyển trang — xem thêm listener 'hashchange' ở
+// trên) — KHÔNG dùng bộ đếm thời gian (setInterval) nữa, vì cứ vài chục giây
+// lại tự tải lại 1 lần sẽ làm mất bộ lọc đang chọn (Thôn/Xóm/sắp xếp...) và
+// dữ liệu đang gõ dở, dù đã có cơ chế né ô đang gõ — vẫn gây khó chịu.
 function startAutoRefresh() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') S.refreshSessionData();
