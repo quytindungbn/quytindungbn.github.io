@@ -65,7 +65,14 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) webpush.setVapidDetails(VAPID_SUBJECT
 
 const LOCK_AFTER_FAILS = 5;
 const LOCK_MINUTES = 15;
-const SESSION_HOURS = 8;
+// Thời hạn phiên đăng nhập (JWT tự ký) — trước là 8 tiếng, khách/nhân viên
+// đóng app rồi mở lại sau vài tiếng bị bắt đăng nhập lại liên tục, gây khó
+// chịu. Đổi lên 1 năm — coi như "đăng nhập 1 lần, duy trì lâu dài", không
+// còn bị bắt đăng nhập lại chỉ vì tắt app. Đánh đổi: JWT bị lộ (máy bị mất/
+// lộ) thì còn dùng được lâu hơn hẳn — chấp nhận được với quy mô app này
+// (không có gì thay thế được vì không dùng cơ chế thu hồi token/refresh
+// token riêng). Đổi mật khẩu KHÔNG tự vô hiệu hóa JWT cũ đang có sẵn.
+const SESSION_HOURS = 24 * 365;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 

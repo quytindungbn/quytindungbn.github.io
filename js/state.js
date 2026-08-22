@@ -904,11 +904,17 @@ export async function deleteStaffAdmin(id) {
 /** Tài khoản khách hàng có đang bị tạm khóa hay không (do nhập sai mật khẩu nhiều lần). */
 export function isCustomerLocked(c) { return !!(c.lockedUntil && c.lockedUntil > Date.now()); }
 
-// Khớp đúng SESSION_HOURS ở create-account/index.ts — dùng làm mốc tự coi là
-// "đã đăng xuất" nếu khách tắt app/rớt mạng/đóng trình duyệt mà KHÔNG bấm nút
-// "Đăng xuất" (server không có cách nào chủ động biết để tự tắt is_online lúc
-// đó — JWT chỉ âm thầm hết hạn, không báo về đâu cả).
-const CUSTOMER_SESSION_HOURS = 8;
+// Khớp đúng SESSION_HOURS ở create-account/index.ts (1 năm — đăng nhập 1 lần
+// duy trì lâu dài, không tự bắt đăng nhập lại chỉ vì tắt app) — dùng làm mốc
+// tự coi là "đã đăng xuất" NẾU khách tắt app/rớt mạng/đóng trình duyệt mà
+// KHÔNG bấm nút "Đăng xuất" (server không có cách nào chủ động biết để tự
+// tắt is_online lúc đó — JWT chỉ âm thầm hết hạn, không báo về đâu cả). Nói
+// cách khác: chấm chỉ tự chuyển đỏ khi JWT THẬT SỰ hết hạn (khớp đúng thời
+// hạn phiên thật), không phải một mốc ngắn tùy tiện — vẫn cần giữ đồng bộ với
+// SESSION_HOURS chứ không bỏ hẳn, vì bỏ hẳn sẽ khiến chấm hiện xanh mãi dù
+// JWT đã hết hạn thật (server đã từ chối, khách phải đăng nhập lại) — sai
+// lệch với thực tế còn hơn cả trước.
+const CUSTOMER_SESSION_HOURS = 24 * 365;
 
 /**
  * "Đã đăng nhập" (cho 2 chấm trạng thái ở trang Khách hàng & Hợp đồng / Quản
