@@ -440,6 +440,27 @@ Sau khi chạy xong, **deploy lại Edge Function `create-account`** (bản mớ
 TRƯỚC lúc chạy đoạn này vẫn hiện "chưa đăng nhập" cho tới khi họ đăng nhập lại lần kế tiếp (dữ liệu cũ
 không có cách nào suy ngược lại được vì DB trước đó không lưu mốc này).
 
+## 5f. Chấm "đã đăng nhập" chuyển thành "đang đăng nhập" (BẮT BUỘC chạy nếu project đã tạo trước đoạn này)
+
+Mục 5e ở trên cho chấm "đã đăng nhập" (lịch sử, không đổi khi khách đăng xuất). Giờ đổi sang nghĩa
+"ĐANG đăng nhập" (còn phiên hoạt động) — bật NGAY lúc đăng nhập, tắt NGAY lúc khách bấm "Đăng xuất".
+Thêm cột `is_online` trên bảng `customers`. Chạy SQL sau (idempotent, chạy lại không sao):
+
+```sql
+alter table customers add column if not exists is_online boolean default false;
+```
+
+Sau khi chạy xong, **deploy lại Edge Function `create-account`** (bản mới nhất — thêm type
+`customer-logout`, mở rộng type `login`) — xem hướng dẫn deploy ở mục 5 phía trên. Khách nào đang có
+phiên đăng nhập TỪ TRƯỚC lúc chạy đoạn này (chưa đăng nhập lại) sẽ hiện "chưa đăng nhập" cho tới khi
+họ đăng nhập lại 1 lần nữa — không có cách nào suy ngược lại được.
+
+Lưu ý: nếu khách tắt app/đóng trình duyệt/rớt mạng mà KHÔNG bấm nút "Đăng xuất", server không có cách
+nào chủ động biết để tắt `is_online` ngay — trường hợp này chấm vẫn hiện xanh cho tới khi phiên hết hạn
+tự nhiên (8 tiếng, xem `hasCustomerLoggedIn()` trong `js/state.js` — tự so `last_login_at`, không cần
+server dọn). Đây là giới hạn tự nhiên của cách đăng nhập bằng JWT (không có kết nối trực tiếp/thường trực
+tới server để biết khách còn mở app hay không), không phải lỗi.
+
 ## 6. Gắn Supabase JS client vào code (giữ đúng kiến trúc "0 dependency, ES Module thuần")
 
 Dự án hiện không dùng bundler/npm — vẫn giữ được điều đó bằng import map trỏ tới CDN ESM:

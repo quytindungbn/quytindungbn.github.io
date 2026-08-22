@@ -337,6 +337,7 @@ function mapCustomerRow(row) {
     failedAttempts: row.failed_attempts || 0,
     lockedUntil: row.locked_until ? new Date(row.locked_until).getTime() : null,
     lastLoginAt: row.last_login_at || null,
+    isOnline: !!row.is_online,
     createdAt: row.created_at,
   };
 }
@@ -903,23 +904,30 @@ export async function deleteStaffAdmin(id) {
 /** Tài khoản khách hàng có đang bị tạm khóa hay không (do nhập sai mật khẩu nhiều lần). */
 export function isCustomerLocked(c) { return !!(c.lockedUntil && c.lockedUntil > Date.now()); }
 
+// Khớp đúng SESSION_HOURS ở create-account/index.ts — dùng làm mốc tự coi là
+// "đã đăng xuất" nếu khách tắt app/rớt mạng/đóng trình duyệt mà KHÔNG bấm nút
+// "Đăng xuất" (server không có cách nào chủ động biết để tự tắt is_online lúc
+// đó — JWT chỉ âm thầm hết hạn, không báo về đâu cả).
+const CUSTOMER_SESSION_HOURS = 8;
+
 /**
  * "Đã đăng nhập" (cho 2 chấm trạng thái ở trang Khách hàng & Hợp đồng / Quản
- * lý User) — dựa vào last_login_at (ghi lại NGAY khi xác minh mật khẩu đúng,
- * xem Edge Function create-account, type 'login'). TRƯỚC ĐÂY suy ra từ
- * mustChangePassword=false — SAI vì khách có thể đăng nhập thành công rồi
- * thoát ngang khi CHƯA đổi xong mật khẩu (màn bắt buộc đổi mật khẩu lần đầu),
- * lúc đó vẫn bị tính nhầm là "chưa đăng nhập" dù thực tế đã đăng nhập được.
- * last_login_at là mốc THẬT, không đổi khi khách đăng xuất — đúng nghĩa
- * "từng đăng nhập" chứ không phải "đang có phiên hoạt động".
+ * lý User) — nghĩa là "HIỆN ĐANG đăng nhập" (còn phiên hoạt động), KHÔNG phải
+ * "đã từng đăng nhập" (lịch sử) như bản trước: dựa vào cờ is_online — bật lên
+ * true NGAY lúc xác minh mật khẩu đúng (Edge Function create-account, type
+ * 'login'), tắt về false NGAY lúc khách bấm "Đăng xuất" (type
+ * 'customer-logout', xem hàm logout() ở trên). Kèm 1 lớp phòng hờ: nếu
+ * last_login_at đã quá CUSTOMER_SESSION_HOURS giờ thì coi như hết phiên luôn
+ * dù is_online lỡ chưa kịp tắt (khách đóng app/mất mạng, không bấm "Đăng
+ * xuất" nên server không có cách nào tự biết). KHÔNG còn suy ra từ
+ * hasPushEnabled() nữa — bật thông báo là chuyện RIÊNG, khách bật xong tắt
+ * app vẫn còn đăng ký nhận thông báo dù không còn "đang đăng nhập" nữa.
  */
-// Đã bật thông báo (subscribe push) THÌ CHẮC CHẮN đã từng đăng nhập — muốn
-// bật được thông báo bắt buộc phải đăng nhập vào app trước, không có đường
-// nào khác. Vì vậy hasCustomerLoggedIn() LUÔN coi là true nếu hasPushEnabled()
-// true, dù last_login_at (cột mới thêm) lỡ chưa kịp ghi cho lần đăng nhập
-// TRƯỚC lúc thêm cột này — tránh tình trạng vô lý "chấm bật thông báo xanh
-// nhưng chấm đăng nhập lại đỏ" trong giai đoạn dữ liệu cũ chưa có mốc mới.
-export function hasCustomerLoggedIn(c) { return !!(c && (c.lastLoginAt || hasPushEnabled(c.id))); }
+export function hasCustomerLoggedIn(c) {
+  if (!c || !c.isOnline) return false;
+  if (!c.lastLoginAt) return true; // phòng hờ dữ liệu cũ chưa kịp có mốc thời gian
+  return (Date.now() - new Date(c.lastLoginAt).getTime()) < CUSTOMER_SESSION_HOURS * 3600 * 1000;
+}
 
 /** "Đã bật thông báo" — khách có ít nhất 1 thiết bị đã subscribe push (xem loadAdminSessionData()). */
 export function hasPushEnabled(customerId) { return !!(state.pushSubscribedCustomerIds && state.pushSubscribedCustomerIds.includes(customerId)); }
@@ -976,7 +984,21 @@ function mapRequestRow(row) {
 // ------------------------------------------------------------
 export function getSession() { return state.session; }
 export function setSession(session) { state.session = session; notify(); }
-export function logout() { state.session = null; notify(); }
+/**
+ * Đăng xuất — với khách hàng, báo luôn cho server biết để tắt cờ is_online
+ * NGAY (dùng cho chấm "đã đăng nhập" ở trang admin) — bắn đi KHÔNG chờ kết
+ * quả (fire-and-forget) để không làm chậm/kẹt thao tác đăng xuất ở máy này
+ * nếu mạng yếu/rớt mạng; đăng xuất tại đây luôn xử lý xong ngay lập tức bất
+ * kể server có nhận được hay không.
+ */
+export function logout() {
+  const session = state.session;
+  if (session && session.role === 'customer') {
+    callCreateAccountFunction(session.sbToken, { type: 'customer-logout' }).catch(() => {});
+  }
+  state.session = null;
+  notify();
+}
 
 // ============================================================
 // Sinh dữ liệu DEMO — toàn bộ tên/CCCD/số liệu dưới đây là GIẢ,

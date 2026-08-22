@@ -17,6 +17,9 @@
 //     'delete-push-subscription', endpoint } -> tự bật/tắt thông báo đẩy cho
 //     CHÍNH MÌNH, cần JWT hợp lệ (không cần role='super'). Việc GỬI thông
 //     báo định kỳ nằm ở Edge Function riêng "send-due-reminders".
+//   { type: 'customer-logout' } -> khách hàng bấm "Đăng xuất", cần JWT hợp
+//     lệ — tắt cờ is_online NGAY để 2 chấm trạng thái ở trang admin chuyển
+//     sang "chưa đăng nhập" ngay lập tức, không cần đợi hết hạn phiên.
 //   { type: 'send-manual-notification', customerId, title, body } -> BẤT KỲ
 //     admin/nhân viên nào (không cần role='super') tự soạn + gửi ngay 1
 //     thông báo đẩy cho 1 khách hàng (khách phải đã bật thông báo trên ít
@@ -222,16 +225,15 @@ Deno.serve(async (req) => {
       return json({ ok: false, reason: role === 'customer' ? 'Số CCCD/số điện thoại hoặc mật khẩu không đúng.' : 'Sai tên đăng nhập hoặc mật khẩu.' });
     }
 
-    // last_login_at CHỈ ghi cho customer — dùng làm "đã đăng nhập" thật sự ở
-    // 2 chấm trạng thái (Khách hàng & Hợp đồng / Quản lý User), KHÔNG dùng
-    // must_change_password nữa: trước đây suy ra "đã đăng nhập" từ
-    // must_change_password=false, nhưng khách có thể đăng nhập thành công rồi
-    // thoát ngang mà CHƯA đổi xong mật khẩu (màn bắt buộc đổi) — lúc đó vẫn
-    // tính là "chưa đăng nhập" dù thực tế đã đăng nhập được, sai lệch với
-    // thực tế. Ghi timestamp NGAY khi xác minh mật khẩu đúng, không đợi đổi
-    // xong mật khẩu.
+    // last_login_at + is_online CHỈ ghi cho customer — dùng cho 2 chấm trạng
+    // thái ở trang Khách hàng & Hợp đồng / Quản lý User. is_online bật NGAY
+    // ở đây (chấm "đã đăng nhập" nghĩa là ĐANG có phiên hoạt động, không phải
+    // "đã từng đăng nhập") — tắt lại NGAY lúc khách bấm "Đăng xuất" (type
+    // 'customer-logout' bên dưới) hoặc coi như hết hạn sau SESSION_HOURS nếu
+    // khách tắt app/rớt mạng mà không bấm đăng xuất (xem hasCustomerLoggedIn()
+    // trong js/state.js — tự so last_login_at, không cần server dọn is_online).
     const loginPatch: Record<string, unknown> = { failed_attempts: 0, locked_until: null };
-    if (role === 'customer') loginPatch.last_login_at = new Date().toISOString();
+    if (role === 'customer') { loginPatch.last_login_at = new Date().toISOString(); loginPatch.is_online = true; }
     await admin.from(table).update(loginPatch).eq('id', row.id);
 
     const now = Math.floor(Date.now() / 1000);
@@ -333,6 +335,23 @@ Deno.serve(async (req) => {
       owner_type: selfClaims.app_role, owner_id: selfClaims.row_id,
     }, { onConflict: 'endpoint' });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    return json({ ok: true });
+  }
+
+  // ===== type: 'customer-logout' — khách hàng CHỦ ĐỘNG bấm "Đăng xuất" —
+  // tắt is_online NGAY để chấm "đã đăng nhập" ở trang admin chuyển sang
+  // "chưa đăng nhập" ngay lập tức (xem hasCustomerLoggedIn() trong
+  // js/state.js). Gọi bằng JWT SẮP hết hiệu lực (đang đăng xuất) nên vẫn
+  // chấp nhận claims hết hạn 1 chút cũng được — không sao, đây không phải
+  // hành động nhạy cảm, chỉ để cập nhật đúng trạng thái hiển thị. =====
+  if (body.type === 'customer-logout') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'customer') {
+      return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
+    await admin.from('customers').update({ is_online: false }).eq('id', selfClaims.row_id);
     return json({ ok: true });
   }
 
