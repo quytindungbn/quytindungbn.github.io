@@ -97,12 +97,12 @@ function openContractListModal(title, contracts, isStaff, colorVar) {
         return `
         <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:2px">
           <div class="flex items-center gap-6" style="flex-wrap:nowrap">
-            <span style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">${cust ? cust.name : '—'} · ${ct.code}</span>
+            <span style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">${cust ? cust.name : '—'}</span>
             <span class="badge ${dueBadgeClass}" style="flex-shrink:0">${dueLabel}</span>
           </div>
           <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
             <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${addressLabel}</span>
-            <b style="color:${colorVar};flex-shrink:0">${formatVND(ct.balance)}</b>
+            <b style="color:${colorVar};font-size:13px;flex-shrink:0">${formatVND(ct.balance)}</b>
           </div>
         </div>`;
       }).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Danh sách hiện đang trống.' })}
