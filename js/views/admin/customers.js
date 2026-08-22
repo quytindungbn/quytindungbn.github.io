@@ -342,12 +342,12 @@ function buildContractNotificationPreset(contract) {
   if (urgency === 'gan_den_han') {
     return {
       title,
-      body: `Hợp đồng ${contract.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${balanceB} và lãi đến nay là: ${accruedB}. Yêu cầu thanh toán trước ngày ${dueDateB}.`,
+      body: `Hợp đồng ${contract.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${balanceB} và lãi đến nay là: ${accruedB}. Quý khách vui lòng thanh toán trước ngày ${dueDateB}.`,
     };
   }
   return {
     title,
-    body: `Số tiền lãi hợp đồng ${contract.code} của quý khách đến hôm nay là: ${accruedB}. Yêu cầu quý khách thanh toán đúng hạn.`,
+    body: `Số tiền lãi hợp đồng ${contract.code} của quý khách đến hôm nay là: ${accruedB}. Quý khách vui lòng thanh toán đúng hạn.`,
   };
 }
 
