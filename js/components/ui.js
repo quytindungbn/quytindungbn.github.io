@@ -45,14 +45,17 @@ export function emptyState({ iconName = 'box', title, message }) {
 
 /**
  * 2 chấm trạng thái của 1 Use — chấm trái = đã đăng nhập hay chưa, chấm phải
- * = đã bật thông báo hay chưa. Xanh = đã có (tốt), đỏ = chưa. Di chuột vào
- * (hoặc chạm giữ trên điện thoại) hiện chú thích (thuộc tính title) giải
- * thích rõ từng chấm. Dùng ở trang "Khách hàng & Hợp đồng" (ngang hàng tên
- * khách, lề phải) và "Quản lý User".
+ * = đã bật thông báo hay chưa. Xanh = đã có (tốt), đỏ = chưa. Chú thích gộp
+ * chung 1 dòng, gắn trên cả CỤM (không gắn riêng từng chấm) — di chuột vào
+ * (hoặc chạm giữ trên điện thoại) bất kỳ đâu trong vùng 2 chấm đều hiện đủ cả
+ * 2 ý cùng lúc, không cần rê trúng chính xác từng chấm 9px nhỏ xíu. Dùng ở
+ * trang "Khách hàng & Hợp đồng" (ngang hàng tên khách, lề phải) và "Quản lý
+ * User".
  */
 export function statusDotsHtml(loggedIn, pushOn) {
-  const dot = (on, label) => `<span title="${label}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${on ? 'var(--success)' : 'var(--danger)'};flex:none"></span>`;
-  return `<span class="status-dots" style="display:inline-flex;gap:5px;align-items:center">${dot(loggedIn, loggedIn ? 'Đã đăng nhập' : 'Chưa đăng nhập')}${dot(pushOn, pushOn ? 'Đã bật thông báo' : 'Chưa bật thông báo')}</span>`;
+  const dot = (on) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${on ? 'var(--success)' : 'var(--danger)'};flex:none"></span>`;
+  const tooltip = `${loggedIn ? 'Đã đăng nhập' : 'Chưa đăng nhập'} · ${pushOn ? 'Đã bật thông báo' : 'Chưa bật thông báo'}`;
+  return `<span class="status-dots" title="${tooltip}" style="display:inline-flex;gap:5px;align-items:center;padding:4px">${dot(loggedIn)}${dot(pushOn)}</span>`;
 }
 
 export function statusBadge(statusObj) {

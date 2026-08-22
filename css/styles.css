@@ -504,6 +504,11 @@ svg { display: block; }
   .app-header { padding: 0 24px; }
   .fab { right: 32px; bottom: 32px; }
   .grid-4.dash-stats { grid-template-columns: repeat(4, 1fr); }
+  /* Trên máy tính, .app-content rộng hơn hẳn điện thoại — 3 nút chia đều
+     "Tất cả/Nợ quá hạn/Gần đến hạn" (segmented-row) sẽ bị kéo giãn quá dài
+     nếu vẫn để full-width như trên điện thoại. Giữ đúng kích thước vừa mắt,
+     không cần trải hết chiều ngang màn hình. */
+  .segmented-row { max-width: 420px; }
 }
 @media (max-width: 899px) {
   .grid-4 { grid-template-columns: 1fr 1fr; }
