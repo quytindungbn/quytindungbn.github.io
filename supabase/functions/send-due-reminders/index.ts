@@ -235,7 +235,7 @@ Deno.serve(async (req) => {
       if (await shouldSend(ct.id, 'gan_den_han')) {
         let body: string;
         if (daysToDue > 0) {
-          body = `Hợp đồng ${ct.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${formatVNDBold(ct.balance)} và lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Yêu cầu thanh toán trước ngày ${formatDateVNBold(ct.due_date)}.`;
+          body = `Hợp đồng ${ct.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${formatVNDBold(ct.balance)} và lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Vui lòng thanh toán trước ngày ${formatDateVNBold(ct.due_date)}.`;
         } else {
           body = `Hợp đồng ${ct.code} ĐÃ TRỄ HẠN. Số tiền gốc là ${formatVNDBold(ct.balance)}, lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.`;
         }
