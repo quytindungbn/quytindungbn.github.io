@@ -133,7 +133,11 @@ export function stripDiacriticsKeepCase(str) {
   return String(str || '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/đ/g, 'd').replace(/Đ/g, 'D');
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    // Ký hiệu tiền "₫" (dấu Đồng, VD: formatVND() trả về "48.000 ₫") là 1 KÝ
+    // TỰ RIÊNG (U+20AB), KHÔNG phải chữ "đ" có dấu nên .normalize('NFD') ở
+    // trên không đụng tới — phải tự thay tay, không sẽ lọt dấu ra tin nhắn.
+    .replace(/\s*₫/g, 'd');
 }
 /** Bỏ dấu tiếng Việt, in hoa, bỏ luôn dấu câu — dùng cho nội dung chuyển khoản ngân hàng (thường yêu cầu không dấu, không ký tự lạ). */
 export function stripDiacritics(str) {
