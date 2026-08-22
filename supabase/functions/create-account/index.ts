@@ -221,7 +221,17 @@ Deno.serve(async (req) => {
       return json({ ok: false, reason: role === 'customer' ? 'Số CCCD/số điện thoại hoặc mật khẩu không đúng.' : 'Sai tên đăng nhập hoặc mật khẩu.' });
     }
 
-    await admin.from(table).update({ failed_attempts: 0, locked_until: null }).eq('id', row.id);
+    // last_login_at CHỈ ghi cho customer — dùng làm "đã đăng nhập" thật sự ở
+    // 2 chấm trạng thái (Khách hàng & Hợp đồng / Quản lý User), KHÔNG dùng
+    // must_change_password nữa: trước đây suy ra "đã đăng nhập" từ
+    // must_change_password=false, nhưng khách có thể đăng nhập thành công rồi
+    // thoát ngang mà CHƯA đổi xong mật khẩu (màn bắt buộc đổi) — lúc đó vẫn
+    // tính là "chưa đăng nhập" dù thực tế đã đăng nhập được, sai lệch với
+    // thực tế. Ghi timestamp NGAY khi xác minh mật khẩu đúng, không đợi đổi
+    // xong mật khẩu.
+    const loginPatch: Record<string, unknown> = { failed_attempts: 0, locked_until: null };
+    if (role === 'customer') loginPatch.last_login_at = new Date().toISOString();
+    await admin.from(table).update(loginPatch).eq('id', row.id);
 
     const now = Math.floor(Date.now() / 1000);
     const token = await signJwt({

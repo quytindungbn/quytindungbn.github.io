@@ -215,28 +215,42 @@ function bindPermissionTreeChips(sheet) {
  * viên khác), coi như "toàn quyền thu nhỏ", không cần nâng hẳn lên Toàn
  * quyền. Gộp chung 1 form với cây Thôn/Xóm, lưu cùng lúc bằng 1 nút.
  */
-function adminPermissionSectionHtml(admin, tree) {
+function adminPermissionSectionHtml(admin, tree, isSelf = false) {
   if (admin.role !== 'staff') return `<p class="field-hint mt-16">Quản trị viên toàn quyền xem được mọi địa bàn và quản lý User, không cần gán riêng.</p>`;
+  // Khóa cứng checkbox "Cho phép quản lý User" khi tự xem CHÍNH MÌNH — nếu
+  // không khóa, nhân viên đang có quyền này có thể tự bỏ tích rồi lưu, LẬP
+  // TỨC mất quyền vào trang này ngay giữa chừng (route tự đá về trang mặc
+  // định do không còn đủ quyền requiresManageUsers) — đúng lỗi "đang sửa xong
+  // tự nhảy ra trang ngoài" đã gặp. Y hệt cách khối đổi vai trò đã tự chặn
+  // isSelf ở trên.
+  const lockCheckbox = isSelf ? 'checked disabled' : (admin.canManageUsers ? 'checked' : '');
   return `
     <div class="section-head mt-16"><h2 style="font-size:14px">Địa bàn được xem</h2></div>
     <form id="perm-form">
       ${permissionTreeHtml(tree, admin)}
-      <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
-        <input type="checkbox" name="canManageUsers" ${admin.canManageUsers ? 'checked' : ''}/>
+      <label class="flex items-center gap-8 mt-16" style="cursor:${isSelf ? 'default' : 'pointer'};font-weight:700;font-size:14px">
+        <input type="checkbox" name="canManageUsers" ${lockCheckbox}/>
         Cho phép quản lý User
       </label>
-      <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền, không đụng được tài khoản Toàn quyền khác).</div>
+      ${isSelf
+        ? `<div class="field-hint">Không thể tự bỏ quyền này của chính mình (sẽ tự mất quyền vào trang này ngay lập tức) — cần quản trị viên toàn quyền hoặc 1 nhân viên khác có quyền này thao tác giúp.</div>`
+        : `<div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền, không đụng được tài khoản Toàn quyền khác).</div>`}
     </form>
     <button class="btn btn-primary btn-block mt-16" id="btn-save-perm">Lưu quyền</button>
   `;
 }
-function bindSavePermButton(sheet, admin, closeFn, contentEl) {
+function bindSavePermButton(sheet, admin, closeFn, contentEl, isSelf = false) {
   const saveBtn = sheet.querySelector('#btn-save-perm');
   if (!saveBtn) return;
   saveBtn.addEventListener('click', async () => {
     const fd = new FormData(sheet.querySelector('#perm-form'));
+    // Checkbox "canManageUsers" bị khóa (disabled) khi tự xem chính mình —
+    // input disabled KHÔNG được đưa vào FormData, nên fd.get() trả về null ở
+    // đây dù đang tích sẵn -> phải tự giữ nguyên giá trị cũ, không được đọc
+    // từ form (nếu không sẽ vô tình gửi lên false, tự xóa quyền của chính mình).
+    const canManage = isSelf ? admin.canManageUsers : fd.get('canManageUsers') === 'on';
     try {
-      await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), fd.get('canManageUsers') === 'on');
+      await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), canManage);
       toast('Đã cập nhật quyền', 'success');
       closeFn();
       draw(contentEl);
@@ -265,7 +279,7 @@ function openAdminDetail(admin, tree, contentEl) {
       <button class="btn btn-outline btn-block" id="btn-save-role" disabled>Lưu vai trò</button>
       ` : `<div class="oc-line"><span>Vai trò</span><b>${admin.role === 'super' ? 'Quản trị viên toàn quyền' : 'Quản trị viên chỉ xem'}</b></div>
       ${isSelf ? `<p class="field-hint">Không thể tự đổi vai trò của chính mình đang đăng nhập.</p>` : ''}`}
-      <div id="perm-section">${adminPermissionSectionHtml(admin, tree)}</div>
+      <div id="perm-section">${adminPermissionSectionHtml(admin, tree, isSelf)}</div>
       <div class="flex gap-8 mt-16">
         <button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>
         ${!isSelf ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-admin">${icon('trash', 'icon-sm')} Xóa</button>` : ''}
@@ -274,7 +288,7 @@ function openAdminDetail(admin, tree, contentEl) {
     `,
     onMount(sheet, closeFn) {
       bindPermissionTreeChips(sheet);
-      bindSavePermButton(sheet, admin, closeFn, contentEl);
+      bindSavePermButton(sheet, admin, closeFn, contentEl, isSelf);
 
       const roleRow = sheet.querySelector('#role-radio-row');
       const saveRoleBtn = sheet.querySelector('#btn-save-role');

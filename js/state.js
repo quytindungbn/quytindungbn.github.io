@@ -336,6 +336,7 @@ function mapCustomerRow(row) {
     mustChangePassword: !!row.must_change_password,
     failedAttempts: row.failed_attempts || 0,
     lockedUntil: row.locked_until ? new Date(row.locked_until).getTime() : null,
+    lastLoginAt: row.last_login_at || null,
     createdAt: row.created_at,
   };
 }
@@ -904,14 +905,15 @@ export function isCustomerLocked(c) { return !!(c.lockedUntil && c.lockedUntil >
 
 /**
  * "Đã đăng nhập" (cho 2 chấm trạng thái ở trang Khách hàng & Hợp đồng / Quản
- * lý User) — chưa có cột "lần đăng nhập gần nhất" riêng trong CSDL nên dùng
- * đúng cờ mustChangePassword sẵn có làm dấu hiệu: cờ này CHỈ tắt (false) sau
- * khi khách đăng nhập thành công VÀ tự đặt xong mật khẩu mới (bắt buộc ngay
- * sau lần đăng nhập đầu) — mỗi lần admin cấp lại mật khẩu cũng tự bật lại cờ
- * này, đúng nghĩa "chưa đăng nhập lại bằng mật khẩu mới". Chưa có tài khoản
- * (chưa "Tạo User") thì chắc chắn cũng chưa đăng nhập được.
+ * lý User) — dựa vào last_login_at (ghi lại NGAY khi xác minh mật khẩu đúng,
+ * xem Edge Function create-account, type 'login'). TRƯỚC ĐÂY suy ra từ
+ * mustChangePassword=false — SAI vì khách có thể đăng nhập thành công rồi
+ * thoát ngang khi CHƯA đổi xong mật khẩu (màn bắt buộc đổi mật khẩu lần đầu),
+ * lúc đó vẫn bị tính nhầm là "chưa đăng nhập" dù thực tế đã đăng nhập được.
+ * last_login_at là mốc THẬT, không đổi khi khách đăng xuất — đúng nghĩa
+ * "từng đăng nhập" chứ không phải "đang có phiên hoạt động".
  */
-export function hasCustomerLoggedIn(c) { return !!(c && c.salt && c.hash && !c.mustChangePassword); }
+export function hasCustomerLoggedIn(c) { return !!(c && c.lastLoginAt); }
 
 /** "Đã bật thông báo" — khách có ít nhất 1 thiết bị đã subscribe push (xem loadAdminSessionData()). */
 export function hasPushEnabled(customerId) { return !!(state.pushSubscribedCustomerIds && state.pushSubscribedCustomerIds.includes(customerId)); }

@@ -421,6 +421,23 @@ Sau khi chạy xong, **deploy lại Edge Function `create-account`** (đã sửa
 `update-staff-role` và mở rộng `update-staff-permissions`/`staff` để hỗ trợ cờ này) — xem hướng dẫn
 deploy ở mục 5 phía trên (copy code mới dán đè, Deploy).
 
+## 5e. Ghi lại "lần đăng nhập" thật cho khách hàng (BẮT BUỘC chạy nếu project đã tạo trước đoạn này)
+
+Cho 2 chấm trạng thái (đăng nhập/bật thông báo) ở trang Khách hàng & Hợp đồng / Quản lý User: trước
+đây suy ra "đã đăng nhập" từ cờ `must_change_password` (sai — khách đăng nhập thành công rồi thoát
+ngang khi CHƯA đổi xong mật khẩu bắt buộc lần đầu vẫn bị tính nhầm là "chưa đăng nhập"). Giờ thêm cột
+`last_login_at`, ghi lại NGAY khi khách xác minh mật khẩu đúng (Edge Function `create-account`, type
+`login`). Chạy SQL sau (idempotent, chạy lại không sao):
+
+```sql
+alter table customers add column if not exists last_login_at timestamptz;
+```
+
+Sau khi chạy xong, **deploy lại Edge Function `create-account`** (bản mới nhất, xem cuối tin nhắn có
+đoạn code) rồi báo khách hàng nào đăng nhập lại 1 lần thì chấm mới đúng — các khách đã đăng nhập từ
+TRƯỚC lúc chạy đoạn này vẫn hiện "chưa đăng nhập" cho tới khi họ đăng nhập lại lần kế tiếp (dữ liệu cũ
+không có cách nào suy ngược lại được vì DB trước đó không lưu mốc này).
+
 ## 6. Gắn Supabase JS client vào code (giữ đúng kiến trúc "0 dependency, ES Module thuần")
 
 Dự án hiện không dùng bundler/npm — vẫn giữ được điều đó bằng import map trỏ tới CDN ESM:
