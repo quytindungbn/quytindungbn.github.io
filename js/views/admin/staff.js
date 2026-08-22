@@ -213,7 +213,10 @@ function bindPermissionTreeChips(sheet) {
  * checkbox riêng "Cho phép quản lý User" — nhân viên chỉ xem được tích thêm
  * quyền này thì vào được hẳn trang Quản lý User (tạo/sửa/xóa Use + nhân
  * viên khác), coi như "toàn quyền thu nhỏ", không cần nâng hẳn lên Toàn
- * quyền. Gộp chung 1 form với cây Thôn/Xóm, lưu cùng lúc bằng 1 nút.
+ * quyền. `admin` truyền vào có thể là vai trò ĐANG CHỌN THỬ (pendingRole,
+ * chưa lưu) chứ không nhất thiết vai trò thật đang lưu trong CSDL — xem
+ * openAdminDetail(): đổi vai trò tại chỗ là đổi luôn khối này theo, không
+ * cần lưu xong mở lại mới thấy cây Thôn/Xóm để chọn.
  */
 function adminPermissionSectionHtml(admin, tree, isSelf = false) {
   if (admin.role !== 'staff') return `<p class="field-hint mt-16">Quản trị viên toàn quyền xem được mọi địa bàn và quản lý User, không cần gán riêng.</p>`;
@@ -236,33 +239,21 @@ function adminPermissionSectionHtml(admin, tree, isSelf = false) {
         ? `<div class="field-hint">Không thể tự bỏ quyền này của chính mình (sẽ tự mất quyền vào trang này ngay lập tức) — cần quản trị viên toàn quyền hoặc 1 nhân viên khác có quyền này thao tác giúp.</div>`
         : `<div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền, không đụng được tài khoản Toàn quyền khác).</div>`}
     </form>
-    <button class="btn btn-primary btn-block mt-16" id="btn-save-perm">Lưu quyền</button>
   `;
-}
-function bindSavePermButton(sheet, admin, closeFn, contentEl, isSelf = false) {
-  const saveBtn = sheet.querySelector('#btn-save-perm');
-  if (!saveBtn) return;
-  saveBtn.addEventListener('click', async () => {
-    const fd = new FormData(sheet.querySelector('#perm-form'));
-    // Checkbox "canManageUsers" bị khóa (disabled) khi tự xem chính mình —
-    // input disabled KHÔNG được đưa vào FormData, nên fd.get() trả về null ở
-    // đây dù đang tích sẵn -> phải tự giữ nguyên giá trị cũ, không được đọc
-    // từ form (nếu không sẽ vô tình gửi lên false, tự xóa quyền của chính mình).
-    const canManage = isSelf ? admin.canManageUsers : fd.get('canManageUsers') === 'on';
-    try {
-      await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), canManage);
-      toast('Đã cập nhật quyền', 'success');
-      closeFn();
-      draw(contentEl);
-    } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-  });
 }
 
 function openAdminDetail(admin, tree, contentEl) {
   const session = S.getSession();
   const isSelf = session?.id === admin.id;
   const viewerIsSuper = S.isSuperAdmin(session?.id);
-  let pendingRole = admin.role; // chỉ đổi cục bộ trong popup, lưu khi bấm "Lưu vai trò"
+  let pendingRole = admin.role; // chỉ đổi cục bộ trong popup, lưu khi bấm "Lưu quyền"
+  // Chỉ hiện nút "Lưu quyền" khi có gì đó THẬT SỰ có thể lưu: hoặc người xem
+  // đổi được vai trò (viewerIsSuper && !isSelf — dù target đang là Toàn
+  // quyền, vẫn cần nút để hạ xuống Chỉ xem), hoặc target là "staff" nên có
+  // cây Thôn/Xóm để sửa. Không rơi vào 2 trường hợp này (VD: nhân viên chỉ
+  // xem thường tự mở xem 1 quản trị viên toàn quyền khác) thì không có gì để
+  // lưu, ẩn hẳn nút đi — y hệt hành vi cũ.
+  const canShowSaveBtn = (viewerIsSuper && !isSelf) || admin.role === 'staff';
 
   const close = openModal({
     title: admin.name,
@@ -276,10 +267,10 @@ function openAdminDetail(admin, tree, contentEl) {
           <div class="radio-opt ${admin.role === 'super' ? 'active' : ''}" data-role="super">Toàn quyền</div>
         </div>
       </div>
-      <button class="btn btn-outline btn-block" id="btn-save-role" disabled>Lưu vai trò</button>
       ` : `<div class="oc-line"><span>Vai trò</span><b>${admin.role === 'super' ? 'Quản trị viên toàn quyền' : 'Quản trị viên chỉ xem'}</b></div>
       ${isSelf ? `<p class="field-hint">Không thể tự đổi vai trò của chính mình đang đăng nhập.</p>` : ''}`}
-      <div id="perm-section">${adminPermissionSectionHtml(admin, tree, isSelf)}</div>
+      <div id="perm-section">${adminPermissionSectionHtml({ ...admin, role: pendingRole }, tree, isSelf)}</div>
+      ${canShowSaveBtn ? `<button class="btn btn-primary btn-block mt-16" id="btn-save-perm">Lưu quyền</button>` : ''}
       <div class="flex gap-8 mt-16">
         <button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>
         ${!isSelf ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-admin">${icon('trash', 'icon-sm')} Xóa</button>` : ''}
@@ -288,26 +279,47 @@ function openAdminDetail(admin, tree, contentEl) {
     `,
     onMount(sheet, closeFn) {
       bindPermissionTreeChips(sheet);
-      bindSavePermButton(sheet, admin, closeFn, contentEl, isSelf);
 
       const roleRow = sheet.querySelector('#role-radio-row');
-      const saveRoleBtn = sheet.querySelector('#btn-save-role');
-      if (roleRow && saveRoleBtn) {
+      const permSection = sheet.querySelector('#perm-section');
+      if (roleRow) {
         roleRow.querySelectorAll('[data-role]').forEach((opt) => opt.addEventListener('click', () => {
           pendingRole = opt.dataset.role;
           roleRow.querySelectorAll('[data-role]').forEach((o) => o.classList.toggle('active', o.dataset.role === pendingRole));
-          saveRoleBtn.disabled = pendingRole === admin.role;
+          // Đổi vai trò tại chỗ là đổi luôn khối "Địa bàn được xem" theo —
+          // chọn "Chỉ xem" hiện ngay cây Thôn/Xóm để chọn, không cần lưu
+          // xong mở lại; chọn "Toàn quyền" thì khối này ẩn đi luôn.
+          permSection.innerHTML = adminPermissionSectionHtml({ ...admin, role: pendingRole }, tree, isSelf);
+          bindPermissionTreeChips(sheet);
         }));
-        saveRoleBtn.addEventListener('click', async () => {
-          saveRoleBtn.disabled = true;
+      }
+
+      const saveBtn = sheet.querySelector('#btn-save-perm');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+          saveBtn.disabled = true;
           try {
-            await S.updateStaffRole(admin.id, pendingRole);
-            toast('Đã đổi vai trò', 'success');
+            // Đổi vai trò TRƯỚC (nếu có) — server chỉ nhận cập nhật Thôn/Xóm
+            // cho tài khoản ĐANG LÀ 'staff', nên nếu vừa hạ Toàn quyền xuống
+            // Chỉ xem thì phải đổi vai trò xong xuôi rồi mới lưu quyền theo.
+            if (pendingRole !== admin.role) await S.updateStaffRole(admin.id, pendingRole);
+            if (pendingRole === 'staff') {
+              const formEl = sheet.querySelector('#perm-form');
+              const fd = formEl ? new FormData(formEl) : new FormData();
+              // Checkbox "canManageUsers" bị khóa (disabled) khi tự xem chính
+              // mình — input disabled KHÔNG được đưa vào FormData, nên
+              // fd.get() trả về null dù đang tích sẵn -> phải tự giữ nguyên
+              // giá trị cũ, không đọc từ form (không sẽ vô tình gửi lên
+              // false, tự xóa quyền của chính mình).
+              const canManage = isSelf ? admin.canManageUsers : fd.get('canManageUsers') === 'on';
+              await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), canManage);
+            }
+            toast('Đã lưu quyền', 'success');
             closeFn();
             draw(contentEl);
           } catch (err) {
             toast(err.message || 'Có lỗi xảy ra', 'error');
-            saveRoleBtn.disabled = false;
+            saveBtn.disabled = false;
           }
         });
       }
@@ -345,6 +357,10 @@ function openAdminDetail(admin, tree, contentEl) {
 function openCreateUserModal(tree, contentEl) {
   let kind = 'use'; // 'use' | 'admin'
   let adminRole = 'staff'; // 'staff' | 'super'
+  // Đổi Vai trò (data-admin-role) vẽ lại cả form -> phải tự giữ lại những gì
+  // đã gõ (tên đăng nhập/họ tên/mật khẩu) trước khi vẽ lại, không thì mất
+  // trắng mỗi lần đổi qua lại giữa "Chỉ xem"/"Toàn quyền".
+  let adminUsername = '', adminName = '', adminPassword = '';
   // Nhân viên có cờ canManageUsers (không phải Toàn quyền thật) vào được
   // trang này nhưng KHÔNG được tự tạo tài khoản Toàn quyền — server cũng tự
   // chặn lại (403/ép về staff) nếu cố tình gửi lên, đây chỉ là ẩn lựa chọn
@@ -378,11 +394,11 @@ function openCreateUserModal(tree, contentEl) {
           </form>
           ` : `
           <form id="admin-form">
-            <div class="field"><label>Tên đăng nhập</label><input name="username" required placeholder="VD: nhanvien2"/></div>
-            <div class="field"><label>Họ tên</label><input name="name" required/></div>
+            <div class="field"><label>Tên đăng nhập</label><input name="username" required placeholder="VD: nhanvien2" value="${esc(adminUsername)}"/></div>
+            <div class="field"><label>Họ tên</label><input name="name" required value="${esc(adminName)}"/></div>
             <div class="field">
               <label>Mật khẩu</label>
-              <input name="password" placeholder="Để trống sẽ tự sinh mật khẩu"/>
+              <input name="password" placeholder="Để trống sẽ tự sinh mật khẩu" value="${esc(adminPassword)}"/>
             </div>
             ${viewerIsSuper ? `
             <div class="field">
@@ -409,7 +425,17 @@ function openCreateUserModal(tree, contentEl) {
           `}
         `;
         body.querySelectorAll('[data-kind]').forEach((opt) => opt.addEventListener('click', () => { kind = opt.dataset.kind; draw2(); }));
-        body.querySelectorAll('[data-admin-role]').forEach((opt) => opt.addEventListener('click', () => { adminRole = opt.dataset.adminRole; draw2(); }));
+        body.querySelectorAll('[data-admin-role]').forEach((opt) => opt.addEventListener('click', () => {
+          // Giữ lại dữ liệu đã nhập trước khi vẽ lại form theo vai trò mới.
+          const form = body.querySelector('#admin-form');
+          if (form) {
+            adminUsername = form.username.value;
+            adminName = form.name.value;
+            adminPassword = form.password.value;
+          }
+          adminRole = opt.dataset.adminRole;
+          draw2();
+        }));
         bindPermissionTreeChips(body);
       }
       draw2();

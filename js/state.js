@@ -913,7 +913,13 @@ export function isCustomerLocked(c) { return !!(c.lockedUntil && c.lockedUntil >
  * last_login_at là mốc THẬT, không đổi khi khách đăng xuất — đúng nghĩa
  * "từng đăng nhập" chứ không phải "đang có phiên hoạt động".
  */
-export function hasCustomerLoggedIn(c) { return !!(c && c.lastLoginAt); }
+// Đã bật thông báo (subscribe push) THÌ CHẮC CHẮN đã từng đăng nhập — muốn
+// bật được thông báo bắt buộc phải đăng nhập vào app trước, không có đường
+// nào khác. Vì vậy hasCustomerLoggedIn() LUÔN coi là true nếu hasPushEnabled()
+// true, dù last_login_at (cột mới thêm) lỡ chưa kịp ghi cho lần đăng nhập
+// TRƯỚC lúc thêm cột này — tránh tình trạng vô lý "chấm bật thông báo xanh
+// nhưng chấm đăng nhập lại đỏ" trong giai đoạn dữ liệu cũ chưa có mốc mới.
+export function hasCustomerLoggedIn(c) { return !!(c && (c.lastLoginAt || hasPushEnabled(c.id))); }
 
 /** "Đã bật thông báo" — khách có ít nhất 1 thiết bị đã subscribe push (xem loadAdminSessionData()). */
 export function hasPushEnabled(customerId) { return !!(state.pushSubscribedCustomerIds && state.pushSubscribedCustomerIds.includes(customerId)); }
