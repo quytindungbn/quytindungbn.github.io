@@ -2,7 +2,7 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge } from '../../components/ui.js';
-import { formatVND, formatNumber, formatDate, formatDateTime, daysUntil, initials, colorFor } from '../../utils.js';
+import { formatVND, formatNumber, formatDateTime, daysUntil, initials, colorFor } from '../../utils.js';
 import { openContractView } from './customers.js';
 
 export function renderHeader(headerEl) {
@@ -89,11 +89,16 @@ function openContractListModal(title, contracts, isStaff, colorVar) {
       ${contracts.length ? contracts.map((ct) => {
         const cust = S.getCustomer(ct.customerId);
         const d = daysUntil(ct.dueDate);
+        // Cùng cách hiện "Quá hạn/Gần đến hạn X ngày" và địa chỉ (Xóm, Thôn,
+        // Tỉnh) như ở mục Khách hàng & Hợp đồng, để 2 nơi nhất quán với nhau.
+        const dueLabel = d < 0 ? `Quá hạn ${Math.abs(d)} ngày` : `Gần đến hạn ${d} ngày`;
+        const addressLabel = cust ? ([cust.xom, cust.thon, cust.tinh].filter(Boolean).join(', ') || cust.address || 'Chưa có địa bàn') : '—';
         return `
         <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer">
           <div class="row-main">
             <div class="row-title">${cust ? cust.name : '—'} · ${ct.code}</div>
-            <div class="row-sub">Đến hạn ${formatDate(ct.dueDate)} · ${d < 0 ? `Quá hạn ${Math.abs(d)} ngày` : `Còn ${d} ngày`}</div>
+            <div class="row-sub" style="color:${colorVar}">${dueLabel}</div>
+            <div class="row-sub">${addressLabel}</div>
           </div>
           <div class="row-end"><b style="color:${colorVar}">${formatVND(ct.balance)}</b></div>
         </div>`;
