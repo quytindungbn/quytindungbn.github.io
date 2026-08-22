@@ -904,16 +904,15 @@ export async function deleteStaffAdmin(id) {
 /** Tài khoản khách hàng có đang bị tạm khóa hay không (do nhập sai mật khẩu nhiều lần). */
 export function isCustomerLocked(c) { return !!(c.lockedUntil && c.lockedUntil > Date.now()); }
 
-// Khớp đúng SESSION_HOURS ở create-account/index.ts (1 năm — đăng nhập 1 lần
-// duy trì lâu dài, không tự bắt đăng nhập lại chỉ vì tắt app) — dùng làm mốc
-// tự coi là "đã đăng xuất" NẾU khách tắt app/rớt mạng/đóng trình duyệt mà
-// KHÔNG bấm nút "Đăng xuất" (server không có cách nào chủ động biết để tự
-// tắt is_online lúc đó — JWT chỉ âm thầm hết hạn, không báo về đâu cả). Nói
-// cách khác: chấm chỉ tự chuyển đỏ khi JWT THẬT SỰ hết hạn (khớp đúng thời
-// hạn phiên thật), không phải một mốc ngắn tùy tiện — vẫn cần giữ đồng bộ với
-// SESSION_HOURS chứ không bỏ hẳn, vì bỏ hẳn sẽ khiến chấm hiện xanh mãi dù
-// JWT đã hết hạn thật (server đã từ chối, khách phải đăng nhập lại) — sai
-// lệch với thực tế còn hơn cả trước.
+// Phiên đăng nhập (JWT) giờ KHÔNG còn tự hết hạn theo thời gian nữa (xem
+// create-account/index.ts — token không còn field "exp") — đăng nhập 1 lần
+// là duy trì mãi mãi, chỉ hết khi bấm "Đăng xuất" thật. Mốc này vì vậy KHÔNG
+// còn mô phỏng 1 hạn phiên thật nào cả — chỉ là 1 mốc HIỂN THỊ thuần túy, để
+// chấm "đã đăng nhập" không kẹt xanh MÃI MÃI trên màn hình admin nếu khách
+// tắt app/rớt mạng/mất máy mà không bấm "Đăng xuất" (server không có cách
+// nào chủ động biết để tự tắt is_online lúc đó). Chọn 1 năm là hợp lý cho
+// mục đích hiển thị này (đủ dài để không làm phiền, đủ ngắn để dọn dần các
+// tài khoản có vẻ đã bỏ dùng).
 const CUSTOMER_SESSION_HOURS = 24 * 365;
 
 /**
@@ -922,11 +921,11 @@ const CUSTOMER_SESSION_HOURS = 24 * 365;
  * "đã từng đăng nhập" (lịch sử) như bản trước: dựa vào cờ is_online — bật lên
  * true NGAY lúc xác minh mật khẩu đúng (Edge Function create-account, type
  * 'login'), tắt về false NGAY lúc khách bấm "Đăng xuất" (type
- * 'customer-logout', xem hàm logout() ở trên). Kèm 1 lớp phòng hờ: nếu
- * last_login_at đã quá CUSTOMER_SESSION_HOURS giờ thì coi như hết phiên luôn
- * dù is_online lỡ chưa kịp tắt (khách đóng app/mất mạng, không bấm "Đăng
- * xuất" nên server không có cách nào tự biết). KHÔNG còn suy ra từ
- * hasPushEnabled() nữa — bật thông báo là chuyện RIÊNG, khách bật xong tắt
+ * 'customer-logout', xem hàm logout() ở trên). Kèm 1 lớp phòng hờ THUẦN HIỂN
+ * THỊ: nếu last_login_at đã quá CUSTOMER_SESSION_HOURS giờ thì coi như hết
+ * phiên (chỉ trên màn hình admin) dù is_online lỡ chưa kịp tắt — phiên đăng
+ * nhập THẬT của khách vẫn còn nguyên, không hề bị ảnh hưởng. KHÔNG còn suy ra
+ * từ hasPushEnabled() nữa — bật thông báo là chuyện RIÊNG, khách bật xong tắt
  * app vẫn còn đăng ký nhận thông báo dù không còn "đang đăng nhập" nữa.
  */
 export function hasCustomerLoggedIn(c) {

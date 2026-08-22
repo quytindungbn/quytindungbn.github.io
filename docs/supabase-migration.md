@@ -456,27 +456,31 @@ phiên đăng nhập TỪ TRƯỚC lúc chạy đoạn này (chưa đăng nhập
 họ đăng nhập lại 1 lần nữa — không có cách nào suy ngược lại được.
 
 Lưu ý: nếu khách tắt app/đóng trình duyệt/rớt mạng mà KHÔNG bấm nút "Đăng xuất", server không có cách
-nào chủ động biết để tắt `is_online` ngay — trường hợp này chấm vẫn hiện xanh cho tới khi phiên hết hạn
-tự nhiên (**1 năm** — xem mục 5g bên dưới, `SESSION_HOURS` đã tăng lên để "duy trì đăng nhập" lâu dài,
-không còn 8 tiếng như trước; `hasCustomerLoggedIn()` trong `js/state.js` tự so `last_login_at`, không cần
-server dọn). Đây là giới hạn tự nhiên của cách đăng nhập bằng JWT (không có kết nối trực tiếp/thường trực
-tới server để biết khách còn mở app hay không), không phải lỗi.
+nào chủ động biết để tắt `is_online` ngay — trường hợp này chấm vẫn hiện xanh cho tới khi qua mốc hiển
+thị 1 năm (thuần túy để chấm không kẹt xanh mãi trên màn hình admin — xem `CUSTOMER_SESSION_HOURS` trong
+`js/state.js`; **không phải hạn phiên đăng nhập thật**, xem mục 5g bên dưới — phiên đăng nhập thật giờ
+không tự hết hạn nữa). Đây là giới hạn tự nhiên của cách đăng nhập bằng JWT (không có kết nối trực
+tiếp/thường trực tới server để biết khách còn mở app hay không), không phải lỗi.
 
-## 5g. Duy trì đăng nhập lâu dài — bỏ bắt đăng nhập lại sau 8 tiếng
+## 5g. Bỏ hẳn tự động đăng xuất theo thời gian — duy trì đăng nhập vĩnh viễn
 
-Trước đây phiên đăng nhập (JWT) chỉ có hiệu lực 8 tiếng — khách/nhân viên tắt app rồi mở lại sau vài
-tiếng bị bắt đăng nhập lại, gây khó chịu. Đã tăng `SESSION_HOURS` trong `create-account/index.ts` lên
-**1 năm** (`24 * 365`) — đăng nhập 1 lần là duy trì lâu dài, không tự bắt đăng nhập lại chỉ vì tắt app.
+Trước đây phiên đăng nhập (JWT) có hiệu lực 8 tiếng, sau đó tăng lên 1 năm — khách/nhân viên vẫn có thể
+bị bắt đăng nhập lại sau 1 khoảng thời gian dài. Giờ **bỏ hẳn** mốc thời gian này: JWT cấp ra không còn
+field `exp` (hết hạn) nữa — đăng nhập 1 lần là **duy trì vĩnh viễn**, không bao giờ tự bắt đăng nhập lại
+chỉ vì thời gian trôi qua. Chỉ hết khi khách/nhân viên **tự bấm "Đăng xuất"**, hoặc tự xóa dữ liệu trình
+duyệt (localStorage) trên máy đó.
+
 Không cần đổi gì trong CSDL — chỉ cần **deploy lại Edge Function `create-account`** (bản mới nhất, xem
-cuối tin nhắn có đoạn code) là áp dụng ngay cho các lượt đăng nhập MỚI (JWT đã cấp từ trước vẫn giữ
-nguyên thời hạn cũ đã ký vào lúc đăng nhập đó, không tự gia hạn ngược — khách cần đăng nhập lại 1 lần
-mới nhận JWT thời hạn mới).
+cuối tin nhắn có đoạn code) là áp dụng ngay cho các lượt đăng nhập MỚI (JWT đã cấp từ trước lúc deploy
+vẫn giữ nguyên hạn cũ đã ký — 8 tiếng hoặc 1 năm tùy lúc đăng nhập — không tự gỡ hạn ngược; khách/nhân
+viên cần đăng nhập lại 1 lần mới nhận được JWT không hạn).
 
-Đánh đổi cần biết: JWT bị lộ (máy bị mất/lộ) thì kẻ xấu dùng được lâu hơn hẳn (tới 1 năm thay vì 8
-tiếng) — chấp nhận được với quy mô app này. Đổi mật khẩu KHÔNG tự vô hiệu hóa JWT cũ đang có sẵn (không
-có cơ chế thu hồi token) — muốn thật sự "đăng xuất mọi nơi" cho 1 tài khoản thì hiện tại chưa hỗ trợ,
-cần đổi `CUSTOM_JWT_SECRET` (sẽ làm mọi JWT đang có của TẤT CẢ tài khoản hết hiệu lực cùng lúc, không
-riêng 1 người) — chỉ nên làm khi thật sự cần thiết (nghi lộ khóa bí mật).
+Đánh đổi cần biết: JWT bị lộ (máy bị mất/lộ) thì kẻ xấu dùng được **vĩnh viễn**, không tự hết hạn —
+chấp nhận được với quy mô app này (khách hàng quen biết, không phải app tài chính công khai quy mô
+lớn). Đổi mật khẩu KHÔNG tự vô hiệu hóa JWT cũ đang có sẵn (không có cơ chế thu hồi token) — muốn thật
+sự "đăng xuất mọi nơi" cho 1 tài khoản thì hiện tại chưa hỗ trợ, cần đổi `CUSTOM_JWT_SECRET` (sẽ làm
+MỌI JWT đang có của TẤT CẢ tài khoản hết hiệu lực cùng lúc, không riêng 1 người) — chỉ nên làm khi thật
+sự cần thiết (nghi lộ khóa bí mật).
 
 ## 6. Gắn Supabase JS client vào code (giữ đúng kiến trúc "0 dependency, ES Module thuần")
 

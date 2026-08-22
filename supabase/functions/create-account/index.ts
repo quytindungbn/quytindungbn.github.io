@@ -65,14 +65,14 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) webpush.setVapidDetails(VAPID_SUBJECT
 
 const LOCK_AFTER_FAILS = 5;
 const LOCK_MINUTES = 15;
-// Thời hạn phiên đăng nhập (JWT tự ký) — trước là 8 tiếng, khách/nhân viên
-// đóng app rồi mở lại sau vài tiếng bị bắt đăng nhập lại liên tục, gây khó
-// chịu. Đổi lên 1 năm — coi như "đăng nhập 1 lần, duy trì lâu dài", không
-// còn bị bắt đăng nhập lại chỉ vì tắt app. Đánh đổi: JWT bị lộ (máy bị mất/
-// lộ) thì còn dùng được lâu hơn hẳn — chấp nhận được với quy mô app này
-// (không có gì thay thế được vì không dùng cơ chế thu hồi token/refresh
-// token riêng). Đổi mật khẩu KHÔNG tự vô hiệu hóa JWT cũ đang có sẵn.
-const SESSION_HOURS = 24 * 365;
+// Phiên đăng nhập (JWT tự ký) KHÔNG còn tự động hết hạn theo thời gian nữa
+// (bỏ hẳn theo yêu cầu — trước lần lượt là 8 tiếng rồi 1 năm, giờ bỏ luôn
+// mốc thời gian, xem signJwt()/verifyJwt() bên dưới: token không còn field
+// "exp"). Đăng nhập 1 lần là duy trì mãi mãi, chỉ hết khi khách/nhân viên tự
+// bấm "Đăng xuất" hoặc tự xóa dữ liệu trình duyệt. Đánh đổi: JWT bị lộ (máy
+// bị mất/lộ) thì dùng được vĩnh viễn — chấp nhận được với quy mô app này
+// (không có cơ chế thu hồi token/refresh token riêng). Đổi mật khẩu KHÔNG tự
+// vô hiệu hóa JWT cũ đang có sẵn.
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -178,7 +178,13 @@ async function verifyJwt(token: string): Promise<Record<string, any> | null> {
   const ok = await crypto.subtle.verify('HMAC', key, base64urlDecode(encSig), new TextEncoder().encode(`${encHeader}.${encPayload}`));
   if (!ok) return null;
   const payload = JSON.parse(new TextDecoder().decode(base64urlDecode(encPayload)));
-  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
+  // Không còn tự động hết hạn theo thời gian nữa (bỏ theo yêu cầu — "duy trì
+  // đăng nhập", không bắt đăng nhập lại) — JWT cấp ra (xem 'login' bên dưới)
+  // KHÔNG còn field "exp" nữa nên payload.exp luôn undefined, chỉ còn xác
+  // minh đúng chữ ký (ok ở trên). CHỈ khi nào exp CÓ MẶT (JWT cũ cấp từ
+  // trước lúc đổi, vẫn còn "exp") mới kiểm tra hết hạn như trước, để không
+  // làm hỏng phiên đăng nhập đang có sẵn của khách/nhân viên.
+  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
   return payload;
 }
 
@@ -236,17 +242,24 @@ Deno.serve(async (req) => {
     // thái ở trang Khách hàng & Hợp đồng / Quản lý User. is_online bật NGAY
     // ở đây (chấm "đã đăng nhập" nghĩa là ĐANG có phiên hoạt động, không phải
     // "đã từng đăng nhập") — tắt lại NGAY lúc khách bấm "Đăng xuất" (type
-    // 'customer-logout' bên dưới) hoặc coi như hết hạn sau SESSION_HOURS nếu
-    // khách tắt app/rớt mạng mà không bấm đăng xuất (xem hasCustomerLoggedIn()
-    // trong js/state.js — tự so last_login_at, không cần server dọn is_online).
+    // 'customer-logout' bên dưới). Trường hợp khách tắt app/rớt mạng mà
+    // KHÔNG bấm đăng xuất, server không có cách nào tự biết để tắt is_online
+    // — hasCustomerLoggedIn() (js/state.js) tự đặt 1 mốc hiển thị riêng (chỉ
+    // để chấm không kẹt xanh mãi trên màn hình, KHÔNG phải hạn phiên đăng
+    // nhập thật — phiên đăng nhập giờ không còn tự hết hạn nữa, xem trên).
     const loginPatch: Record<string, unknown> = { failed_attempts: 0, locked_until: null };
     if (role === 'customer') { loginPatch.last_login_at = new Date().toISOString(); loginPatch.is_online = true; }
     await admin.from(table).update(loginPatch).eq('id', row.id);
 
     const now = Math.floor(Date.now() / 1000);
+    // KHÔNG còn field "exp" (thời hạn) — bỏ hẳn tự động đăng xuất theo thời
+    // gian, đăng nhập 1 lần là duy trì mãi mãi (chỉ hết khi khách/nhân viên
+    // tự bấm "Đăng xuất", hoặc tự xóa dữ liệu trình duyệt). Xem verifyJwt()
+    // ở trên — thiếu "exp" giờ được hiểu là "không hết hạn", không còn bị từ
+    // chối như trước.
     const token = await signJwt({
       sub: row.auth_user_id, role: 'authenticated', app_role: role, row_id: row.id,
-      iat: now, exp: now + SESSION_HOURS * 3600,
+      iat: now,
     });
     return json({ ok: true, token, id: row.id, mustChangePassword: !!row.must_change_password });
   }
