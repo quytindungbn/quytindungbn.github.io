@@ -178,12 +178,9 @@ export function render(contentEl, filterEl) {
     }
     const totalContracts = enriched.reduce((s, e) => s + e.contracts.length, 0);
     const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);
-    const loggedInCount = enriched.filter((e) => S.hasCustomerLoggedIn(e.c)).length;
-    const pushOnCount = enriched.filter((e) => S.hasPushEnabled(e.c.id)).length;
 
     contentEl.innerHTML = `
       <div class="text-sm text-muted mb-8">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <b style="color:var(--color-primary)">${formatVND(totalAmount)}</b></div>
-      <div class="text-sm text-muted mb-8">${formatNumber(loggedInCount)}/${formatNumber(enriched.length)} đã đăng nhập · ${formatNumber(pushOnCount)}/${formatNumber(enriched.length)} đã bật thông báo</div>
       ${enriched.length ? enriched.map(({ c, contracts }) => {
         const overdueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'qua_han');
         const nearDueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'gan_den_han');
