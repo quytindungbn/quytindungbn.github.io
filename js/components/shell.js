@@ -163,7 +163,13 @@ function openMoreSheet(overflowItems) {
       <button class="btn btn-outline btn-block" id="sheet-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>
     `,
     onMount(sheet, closeFn) {
-      sheet.querySelectorAll('a[data-path]').forEach((a) => a.addEventListener('click', closeFn));
+      // KHÔNG gắn closeFn (đóng modal kiểu có history.back()) cho các link
+      // điều hướng #/... — click vào <a href> đã tự đổi hash (tự đẩy 1 mục
+      // lịch sử mới) rồi, nếu đồng thời closeFn cũng gọi history.back() thì
+      // 2 thao tác đổi lịch sử này đá nhau, có thể khiến việc chuyển trang bị
+      // hủy/lùi ngược lại — đúng lỗi "bấm mục trong Thêm không vào được".
+      // Bảng "Thêm" vẫn tự đóng bình thường vì app.js đã gọi closeAllModals()
+      // (chỉ dọn DOM, không đụng lịch sử) mỗi khi hashchange.
       sheet.querySelector('#sheet-logout').addEventListener('click', () => { closeFn(); onLogoutClick(); });
       const installBtn = sheet.querySelector('#sheet-install');
       if (installBtn) bindInstallButton(installBtn);
