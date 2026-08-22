@@ -2,12 +2,12 @@
 // docs/supabase-migration.md mục "Thông báo đẩy") — quét toàn bộ hợp đồng
 // còn dư nợ, gửi thông báo đẩy (Web Push) cho ĐÚNG khách hàng đã bật thông
 // báo trên thiết bị của họ (bảng push_subscriptions). Lịch nhắc:
-//   1. Lãi (nợ trong hạn): bắt đầu từ ĐÚNG NGÀY (trong tháng) của "Đã trả lãi
-//      đến ngày", THÁNG SAU — VD: trả lãi đến ngày 17/08 thì 17/09 bắt đầu
-//      nhắc. Nếu CHƯA đóng thì nhắc liên tiếp 3 NGÀY (17,18,19/09), rồi
-//      NGƯNG cho tới đợt tháng sau nữa (17/10) — nếu vẫn chưa đóng thì lại
-//      nhắc liên tiếp 3 ngày (17,18,19/10) — cứ thế lặp lại mỗi tháng, KHÔNG
-//      dừng, cho tới khi khách đóng lãi (interest_paid_until đổi ngày mới
+//   1. Lãi (nợ trong hạn): đúng 2 LẦN mỗi tháng — lần 1 vào ĐÚNG NGÀY (trong
+//      tháng) của "Đã trả lãi đến ngày", THÁNG SAU (VD: trả lãi đến ngày
+//      13/08 thì 13/09 nhắc lần 1); lần 2 đúng 2 NGÀY sau đó (15/09), rồi
+//      NGƯNG hẳn cho tới đợt tháng sau nữa (13/10 nhắc lần 1, 15/10 nhắc lần
+//      2) — cứ thế lặp lại mỗi tháng, KHÔNG phải nhắc liên tục nhiều ngày
+//      liền, cho tới khi khách đóng lãi (interest_paid_until đổi ngày mới
 //      thì tự tính lại chu kỳ từ ngày mới, đợt nhắc dở dang trước đó tự dừng
 //      luôn vì mốc đã đổi). Trường hợp mới giải ngân — hệ thống tự set
 //      interest_paid_until = disbursed_date + 1 ngày (quy ước tính lãi, xem
@@ -46,7 +46,7 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET'); // tùy chọn nhưng khuyến 
 
 const NEAR_DUE_START_DAYS = 10; // Bắt đầu nhắc "gần đến hạn/quá hạn" từ đúng X ngày trước hạn
 const NEAR_DUE_REPEAT_DAYS = 3; // ...rồi lặp lại mỗi X ngày, cả trước lẫn sau ngày đến hạn, tới khi tất toán
-const MONTHLY_BURST_DAYS = 3; // Lãi (nợ trong hạn): mỗi tháng nhắc liên tiếp X ngày kể từ đúng ngày mốc, nếu chưa đóng
+const MONTHLY_REMINDER_OFFSETS = [0, 2]; // Lãi (nợ trong hạn): mỗi tháng nhắc đúng 2 LẦN — ngay ngày mốc (offset 0) và 2 ngày sau đó (offset 2), KHÔNG liên tục — nếu chưa đóng
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -137,16 +137,17 @@ function latestMonthlyOccurrence(anchorDate: Date, today: Date): Date | null {
 }
 
 /**
- * true nếu "today" nằm trong đợt nhắc lãi liên tiếp MONTHLY_BURST_DAYS ngày
- * của tháng gần nhất (VD: mốc ngày 17, burst 3 ngày -> đúng 17/18/19 mỗi
- * tháng là true, còn lại trong tháng là false) — xem ghi chú lịch nhắc #1 ở
- * đầu file.
+ * true nếu "today" ĐÚNG là 1 trong 2 ngày nhắc lãi của tháng gần nhất (ngày
+ * mốc, hoặc đúng 2 ngày sau ngày mốc — xem MONTHLY_REMINDER_OFFSETS) — VD:
+ * mốc ngày 13 -> đúng 13 và 15 mỗi tháng là true, còn lại trong tháng
+ * (14, 16, 17...) là false, KHÔNG nhắc liên tục nhiều ngày liền. Xem ghi chú
+ * lịch nhắc #1 ở đầu file.
  */
-function isMonthlyBurstDay(anchorDate: Date, today: Date): boolean {
+function isMonthlyReminderDay(anchorDate: Date, today: Date): boolean {
   const occ = latestMonthlyOccurrence(anchorDate, today);
   if (!occ) return false;
   const d = daysBetween(occ, today);
-  return d >= 0 && d < MONTHLY_BURST_DAYS;
+  return MONTHLY_REMINDER_OFFSETS.includes(d);
 }
 
 async function sendPush(sub: { endpoint: string; p256dh: string; auth: string }, payload: Record<string, unknown>): Promise<boolean> {
@@ -213,9 +214,9 @@ Deno.serve(async (req) => {
     const status = effectiveStatus(ct, now);
     if (status === 'da_tat_toan') continue;
 
-    // 1) Lãi — mỗi tháng nhắc liên tiếp MONTHLY_BURST_DAYS ngày kể từ đúng
-    // ngày mốc, nếu chưa đóng thì lặp lại y hệt vào đợt tháng sau, liên tục.
-    if (isMonthlyBurstDay(interestAnchorDate(ct), now)) {
+    // 1) Lãi — mỗi tháng nhắc đúng 2 lần (ngày mốc + 2 ngày sau đó), nếu
+    // chưa đóng thì lặp lại y hệt vào đợt tháng sau, không nhắc liên tục.
+    if (isMonthlyReminderDay(interestAnchorDate(ct), now)) {
       if (await shouldSend(ct.id, 'lai_hang_thang')) {
         const ok = await pushToCustomer(
           ct.customer_id, NOTI_TITLE,

@@ -16,7 +16,10 @@ export function render(contentEl) {
   const customers = S.listCustomers({ adminId: isStaff ? admin.id : undefined });
   const customerIds = new Set(customers.map((c) => c.id));
   const contracts = S.getState().contracts.filter((c) => !isStaff || customerIds.has(c.customerId));
-  const requests = S.listRequests({}).filter((r) => !isStaff || customerIds.has(r.customerId));
+  // "Yêu cầu mới nhất" chỉ để nhắc việc CẦN LÀM — yêu cầu đã chuyển "Đã liên
+  // hệ" (xử lý xong) tự ẩn khỏi đây, xem đầy đủ (kể cả đã xử lý) ở trang
+  // "Yêu cầu tư vấn" qua nút "Xem tất cả".
+  const requests = S.listRequests({}).filter((r) => (!isStaff || customerIds.has(r.customerId)) && r.status !== 'da_lien_he');
   // "Tổng khách hàng" chỉ tính khách còn dư nợ > 0 — khớp đúng với số khách
   // hàng thực sự hiện ra ở trang Khách hàng & Hợp đồng (trang đó cũng ẩn
   // khách hết dư nợ), để 2 nơi luôn đồng bộ với nhau.

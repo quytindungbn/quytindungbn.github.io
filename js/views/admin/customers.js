@@ -4,7 +4,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics, escapeHtml, boldDigits } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, maskCccd, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv } from '../../lib/excelLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 
@@ -41,7 +41,10 @@ function currentAdmin() {
 export function render(contentEl, filterEl) {
   const admin = currentAdmin();
   const isStaff = admin.role === 'staff';
-  filterThon = []; filterXom = []; sortMode = 'default'; // reset bộ lọc mỗi lần vào trang
+  // KHÔNG reset filterThon/filterXom/sortMode ở đây nữa — giữ nguyên bộ lọc
+  // đang chọn khi chuyển qua trang khác rồi quay lại, giống hệt cách
+  // urgencyFilters (Quá hạn/Gần đến hạn) và query (ô tìm kiếm) đã làm từ
+  // trước (2 biến đó cũng không hề bị reset ở render()).
 
   filterEl.innerHTML = `
     <div style="padding:10px 14px 0">
@@ -510,10 +513,18 @@ function contractRowCompact(ct) {
     </div>`;
 }
 
-/** Soạn sẵn tin nhắn SMS báo lãi cho khách hàng — mở app nhắn tin sẵn có trên điện thoại quản trị viên, không cần dịch vụ SMS ngoài. */
+/**
+ * Soạn sẵn tin nhắn SMS báo lãi cho khách hàng — mở app nhắn tin sẵn có trên
+ * điện thoại quản trị viên, không cần dịch vụ SMS ngoài. Nội dung CHỈ tiếng
+ * Việt không dấu — máy điện thoại đời cũ/mạng SMS truyền thống không hiển
+ * thị đúng được tiếng Việt có dấu (dễ vỡ chữ, mất chữ). Câu chữ tĩnh trong
+ * message đã tự gõ sẵn không dấu, nhưng bọc thêm stripDiacriticsKeepCase()
+ * ra ngoài CẢ CHUỖI để chắc chắn luôn — vì tên quỹ (org.shortName), hotline,
+ * số tiền (có chữ "đ") đều là dữ liệu ĐỘNG, có thể chứa dấu tiếng Việt.
+ */
 function buildSmsLink(customer, contract, accrued) {
   const org = S.getOrg();
-  const msg = `${org.shortName}: Hop dong ${contract.code}, lai tinh den ngay ${formatDate(new Date())} la ${formatVND(accrued)}. Quy khach vui long thanh toan dung han. Hotline: ${org.hotline}`;
+  const msg = stripDiacriticsKeepCase(`${org.shortName}: Hop dong ${contract.code}, lai tinh den ngay ${formatDate(new Date())} la ${formatVND(accrued)}. Quy khach vui long thanh toan dung han. Hotline: ${org.hotline}`);
   return `sms:${customer.phone.replace(/\s/g, '')}?body=${encodeURIComponent(msg)}`;
 }
 

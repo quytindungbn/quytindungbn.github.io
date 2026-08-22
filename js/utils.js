@@ -128,12 +128,16 @@ export function debounce(fn, ms = 250) {
   };
 }
 
-/** Bỏ dấu tiếng Việt, in hoa — dùng cho nội dung chuyển khoản ngân hàng (thường yêu cầu không dấu). */
-export function stripDiacritics(str) {
+/** Chỉ bỏ dấu tiếng Việt — GIỮ NGUYÊN chữ hoa/thường + dấu câu (: . , ...). Dùng cho nội dung cần đọc tự nhiên (VD: tin nhắn SMS). */
+export function stripDiacriticsKeepCase(str) {
   return String(str || '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D');
+}
+/** Bỏ dấu tiếng Việt, in hoa, bỏ luôn dấu câu — dùng cho nội dung chuyển khoản ngân hàng (thường yêu cầu không dấu, không ký tự lạ). */
+export function stripDiacritics(str) {
+  return stripDiacriticsKeepCase(str)
     .toUpperCase()
     .replace(/[^A-Z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
