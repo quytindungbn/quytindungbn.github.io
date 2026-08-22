@@ -92,12 +92,15 @@ function openContractListModal(title, contracts, isStaff, colorVar) {
         // Cùng cách hiện "Quá hạn/Gần đến hạn X ngày" và địa chỉ (Xóm, Thôn,
         // Tỉnh) như ở mục Khách hàng & Hợp đồng, để 2 nơi nhất quán với nhau.
         const dueLabel = d < 0 ? `Quá hạn ${Math.abs(d)} ngày` : `Gần đến hạn ${d} ngày`;
+        const dueBadgeClass = d < 0 ? 'badge-red' : 'badge-yellow';
         const addressLabel = cust ? ([cust.xom, cust.thon, cust.tinh].filter(Boolean).join(', ') || cust.address || 'Chưa có địa bàn') : '—';
         return `
         <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer">
           <div class="row-main">
-            <div class="row-title">${cust ? cust.name : '—'} · ${ct.code}</div>
-            <div class="row-sub" style="color:${colorVar}">${dueLabel}</div>
+            <div class="flex items-center gap-6" style="flex-wrap:wrap">
+              <span style="font-size:14px;font-weight:700">${cust ? cust.name : '—'} · ${ct.code}</span>
+              <span class="badge ${dueBadgeClass}">${dueLabel}</span>
+            </div>
             <div class="row-sub">${addressLabel}</div>
           </div>
           <div class="row-end"><b style="color:${colorVar}">${formatVND(ct.balance)}</b></div>
