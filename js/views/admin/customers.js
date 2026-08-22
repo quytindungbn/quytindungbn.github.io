@@ -561,7 +561,10 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const qrUrl = hasBank ? buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: accrued, content: buildQrContent(0, accrued), accountName: org.bankAccountName }) : '';
 
   const close = openModal({
-    title: `Hợp đồng ${contract.code}`,
+    // Kèm thêm tên khách hàng vào tiêu đề để đỡ nhầm giữa nhiều hợp đồng đang
+    // mở/xem liên tiếp (VD: khách có nhiều hợp đồng, hoặc mở hợp đồng từ danh
+    // sách quá hạn/gần đến hạn ở Tổng quan) — trước đây chỉ có mã hợp đồng.
+    title: `Hợp đồng ${contract.code}${customer ? ` - ${customer.name}` : ''}`,
     bodyHtml: `
       <div class="flex justify-between items-center mb-10">
         <span class="fw-700">Trạng thái</span>
