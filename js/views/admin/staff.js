@@ -15,7 +15,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { initials, colorFor, maskCccd, formatNumber } from '../../utils.js';
+import { initials, colorFor, maskCccd, formatNumber, escapeHtml } from '../../utils.js';
 import { openCustomerDetail } from './customers.js';
 
 export function renderHeader(headerEl) {
@@ -436,11 +436,11 @@ function openCreateUserModal(tree, contentEl) {
           </form>
           ` : `
           <form id="admin-form">
-            <div class="field"><label>Tên đăng nhập</label><input name="username" required placeholder="VD: nhanvien2" value="${esc(adminUsername)}"/></div>
-            <div class="field"><label>Họ tên</label><input name="name" required value="${esc(adminName)}"/></div>
+            <div class="field"><label>Tên đăng nhập</label><input name="username" required placeholder="VD: nhanvien2" value="${escapeHtml(adminUsername)}"/></div>
+            <div class="field"><label>Họ tên</label><input name="name" required value="${escapeHtml(adminName)}"/></div>
             <div class="field">
               <label>Mật khẩu</label>
-              <input name="password" placeholder="Để trống sẽ tự sinh mật khẩu" value="${esc(adminPassword)}"/>
+              <input name="password" placeholder="Để trống sẽ tự sinh mật khẩu" value="${escapeHtml(adminPassword)}"/>
             </div>
             ${viewerIsSuper ? `
             <div class="field">
