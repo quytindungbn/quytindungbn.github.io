@@ -31,6 +31,16 @@ export function render(contentEl) {
   const nearDue = contracts.filter((c) => S.contractUrgency(c) === 'gan_den_han');
   const overdueTotal = overdue.reduce((s, c) => s + c.balance, 0);
   const nearDueTotal = nearDue.reduce((s, c) => s + c.balance, 0);
+  // Danh sách hiện trong popup khi bấm vào ô "Gần đến hạn" — KHÁC với nearDue
+  // ở trên (ô thống kê + tổng tiền trên Tổng quan giữ nguyên đúng trong
+  // NEAR_DUE_DAYS ngày như cũ, không đổi): popup này liệt kê TIẾP cả những
+  // hợp đồng còn xa hơn nữa (16, 17, 18 ngày...), sắp xếp gần nhất trước, để
+  // xem trước được lịch sắp tới — chỉ hợp đồng trong đúng NEAR_DUE_DAYS ngày
+  // mới tô khung vàng cảnh báo như cũ (xem highlightWithinDays ở
+  // openContractListModal), phần còn lại hiện chữ nhỏ bình thường.
+  const upcoming = contracts
+    .filter((c) => S.effectiveContractStatus(c) === 'dang_vay')
+    .sort((a, b) => daysUntil(a.dueDate) - daysUntil(b.dueDate));
 
   contentEl.innerHTML = `
     <div class="grid-4 mb-16">
@@ -71,7 +81,7 @@ export function render(contentEl) {
   // thông tin số lượng + tổng tiền + danh sách vào chung 1 chỗ cho gọn,
   // không cần 2 bảng riêng bên dưới nữa.
   contentEl.querySelector('#tile-overdue').addEventListener('click', () => openContractListModal('Hợp đồng quá hạn', overdue, isStaff, 'var(--danger)'));
-  contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', nearDue, isStaff, 'var(--warning)'));
+  contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', upcoming, isStaff, 'var(--warning)', { highlightWithinDays: S.NEAR_DUE_DAYS }));
 }
 
 /**
@@ -79,8 +89,16 @@ export function render(contentEl) {
  * — bấm vào 1 dòng để mở thẳng chi tiết hợp đồng. Bên phải hiện thẳng số
  * tiền (tô màu theo nhóm) thay vì nhãn trạng thái, kèm tổng cộng cả nhóm ở
  * đầu danh sách để dễ theo dõi.
+ *
+ * `opts.highlightWithinDays` (tùy chọn, chỉ dùng cho danh sách "Gần đến
+ * hạn"): nếu có, CHỈ những hợp đồng còn trong đúng số ngày này mới tô khung
+ * vàng cảnh báo như cũ — hợp đồng còn xa hơn (vẫn hiện tiếp trong cùng danh
+ * sách để xem trước lịch sắp tới) chỉ hiện chữ nhỏ bình thường, không khung.
+ * Không truyền (mặc định, dùng cho "Hợp đồng quá hạn") thì LUÔN tô khung như
+ * trước giờ, không đổi gì.
  */
-function openContractListModal(title, contracts, isStaff, colorVar) {
+function openContractListModal(title, contracts, isStaff, colorVar, opts = {}) {
+  const { highlightWithinDays } = opts;
   const total = contracts.reduce((s, ct) => s + ct.balance, 0);
   openModal({
     title: `${title} (${contracts.length})`,
@@ -93,12 +111,15 @@ function openContractListModal(title, contracts, isStaff, colorVar) {
         // Tỉnh) như ở mục Khách hàng & Hợp đồng, để 2 nơi nhất quán với nhau.
         const dueLabel = d < 0 ? `Quá hạn ${Math.abs(d)} ngày` : `Gần đến hạn ${d} ngày`;
         const dueBadgeClass = d < 0 ? 'badge-red' : 'badge-yellow';
+        const highlight = highlightWithinDays == null || d <= highlightWithinDays;
         const addressLabel = cust ? ([cust.xom, cust.thon, cust.tinh].filter(Boolean).join(', ') || cust.address || 'Chưa có địa bàn') : '—';
         return `
         <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:2px">
           <div class="flex items-center gap-6" style="flex-wrap:nowrap">
             <span style="font-size:14px;font-weight:700;line-height:1.8;padding-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${cust ? cust.name : '—'}</span>
-            <span class="badge ${dueBadgeClass}" style="flex-shrink:0">${dueLabel}</span>
+            ${highlight
+              ? `<span class="badge ${dueBadgeClass}" style="flex-shrink:0">${dueLabel}</span>`
+              : `<span class="text-sm text-muted" style="flex-shrink:0">${dueLabel}</span>`}
           </div>
           <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
             <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${addressLabel}</span>
