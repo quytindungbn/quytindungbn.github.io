@@ -169,6 +169,19 @@ function isMonthlyReminderDay(anchorDate: Date, today: Date): boolean {
   return MONTHLY_REMINDER_OFFSETS.includes(d);
 }
 
+/**
+ * Y HỆT isMonthlyReminderDay() nhưng CHỈ đúng 1 LẦN/tháng — đúng ngày mốc
+ * (offset 0), KHÔNG lặp lại 2 ngày sau như thông báo đẩy — dùng riêng cho
+ * Zalo OA mục "Báo lãi tự động hàng tháng" (điều kiện gửi giống hệt thông
+ * báo đẩy trong hạn — "đúng ngày này tháng sau" — chỉ khác đúng ở việc
+ * không nhắc lặp lại lần 2).
+ */
+function isMonthlyReminderDayOnce(anchorDate: Date, today: Date): boolean {
+  const occ = latestMonthlyOccurrence(anchorDate, today);
+  if (!occ) return false;
+  return daysBetween(occ, today) === 0;
+}
+
 async function sendPush(sub: { endpoint: string; p256dh: string; auth: string }, payload: Record<string, unknown>): Promise<boolean> {
   try {
     await webpush.sendNotification(
@@ -388,10 +401,14 @@ Deno.serve(async (req) => {
         );
         if (ok) { await logSent(ct.customer_id, ct.id, 'lai_hang_thang'); result.laiHangThang++; }
       }
+    }
 
-      // Zalo OA — mục "Báo lãi tự động hàng tháng" (Tầng 2), CHỈ gửi cho hợp
-      // đồng admin đã tự chọn vào ĐÚNG mục này (autoSendMap), theo ĐÚNG lịch
-      // nhắc lãi hàng tháng sẵn có ở trên (isMonthlyReminderDay).
+    // Zalo OA — mục "Báo lãi tự động hàng tháng" (Tầng 2): điều kiện gửi
+    // GIỐNG HỆT thông báo đẩy trong hạn ở trên ("đúng ngày này tháng sau",
+    // dùng chung interestAnchorDate) nhưng CHỈ gửi ĐÚNG 1 LẦN/tháng (không
+    // lặp lại lần 2 như push) — xem isMonthlyReminderDayOnce(). CHỈ gửi cho
+    // hợp đồng admin đã tự chọn vào ĐÚNG mục này (autoSendMap).
+    if (isMonthlyReminderDayOnce(interestAnchorDate(ct), now)) {
       const autoEntry = autoSendMap.get(ct.id);
       if (autoEntry?.kind === 'lai_hang_thang_auto' && zaloAccessToken && orgRow?.zalo_template_interest_id) {
         const customer = customerMap.get(ct.customer_id);

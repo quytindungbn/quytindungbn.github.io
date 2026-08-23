@@ -18,13 +18,14 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, openPicker, pillSelectHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatDateTime, formatVND, colorFor, initials, maskCccd } from '../../utils.js';
-import { openCustomerDetail } from './customers.js';
+import { formatDateTime, formatVND, colorFor, initials } from '../../utils.js';
+import { openCustomerDetail, openContractView } from './customers.js';
 
 const AUTO_SEND_SECTIONS = [
   { kind: 'lai_hang_thang_auto', title: 'Báo lãi tự động hàng tháng', addLabel: '+ Thêm hợp đồng' },
   { kind: 'lai_hang_thang_custom_day', title: 'Gửi theo ngày cụ thể', addLabel: '+ Thêm hợp đồng' },
 ];
+const PAGE_SIZE = 20; // hiện ít trước, bấm "Xem thêm" mới tải thêm — tránh dồn cả danh sách dài gây chậm/khó kéo
 
 let activeTab = 'oa';
 let filterThon = [];
@@ -63,34 +64,39 @@ export function render(contentEl) {
   else drawConfigTab(slot);
 }
 
-function thonXomFilterPillsHtml(idPrefix) {
+// ------------------------------------------------------------
+// Bộ lọc Thôn/Xóm dùng chung — KHÔNG gắn cứng vào 1 biến module-level, để
+// dùng lại được cho cả bộ lọc ở tab lẫn bộ lọc RIÊNG bên trong từng popup
+// (mỗi nơi tự giữ state của mình qua get/set, tránh đụng lẫn nhau).
+// ------------------------------------------------------------
+function thonXomFilterPillsHtml(idPrefix, thon, xom) {
   return `
-    ${pillSelectHtml(`${idPrefix}-thon`, multiPillLabel('Thôn', filterThon), filterThon.length > 0)}
-    ${pillSelectHtml(`${idPrefix}-xom`, multiPillLabel('Xóm', filterXom), filterXom.length > 0)}
+    ${pillSelectHtml(`${idPrefix}-thon`, multiPillLabel('Thôn', thon), thon.length > 0)}
+    ${pillSelectHtml(`${idPrefix}-xom`, multiPillLabel('Xóm', xom), xom.length > 0)}
   `;
 }
-function bindThonXomFilterPills(wrap, idPrefix, allowedThon, onChange) {
+function bindThonXomFilterPills(wrap, idPrefix, allowedThon, getState, setState, onChange) {
   wrap.querySelector(`#${idPrefix}-thon`).addEventListener('click', () => {
     openPicker({
-      title: 'Chọn Thôn (chọn được nhiều)', selected: filterThon, multiSelect: true,
+      title: 'Chọn Thôn (chọn được nhiều)', selected: getState().thon, multiSelect: true,
       options: allowedThon.map((t) => ({ value: t, label: t })),
-      onSelect: (vals) => { filterThon = vals; filterXom = []; onChange(); },
+      onSelect: (vals) => { setState(vals, []); onChange(); },
     });
   });
   wrap.querySelector(`#${idPrefix}-xom`).addEventListener('click', () => {
-    const xomList = S.distinctXom(filterThon.length ? filterThon : undefined);
+    const xomList = S.distinctXom(getState().thon.length ? getState().thon : undefined);
     openPicker({
-      title: 'Chọn Xóm (chọn được nhiều)', selected: filterXom, multiSelect: true,
+      title: 'Chọn Xóm (chọn được nhiều)', selected: getState().xom, multiSelect: true,
       options: xomList.map((x) => ({ value: x, label: x })),
-      onSelect: (vals) => { filterXom = vals; onChange(); },
+      onSelect: (vals) => { setState(getState().thon, vals); onChange(); },
     });
   });
   wrap.querySelectorAll('[data-pill-clear]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = btn.dataset.pillClear;
-      if (id === `${idPrefix}-thon`) { filterThon = []; filterXom = []; }
-      else if (id === `${idPrefix}-xom`) { filterXom = []; }
+      if (id === `${idPrefix}-thon`) setState([], []);
+      else if (id === `${idPrefix}-xom`) setState(getState().thon, []);
       onChange();
     });
   });
@@ -113,21 +119,24 @@ function drawOATab(slot, admin) {
     <div class="filter-row mb-8" id="oa-filter-pills"></div>
     <div id="oa-list"></div>
   `;
-  slot.querySelector('#btn-add-oa').addEventListener('click', () => openAddCustomerToOAModal(drawList));
+  slot.querySelector('#btn-add-oa').addEventListener('click', () => openAddCustomerToOAModal(admin, drawList));
   renderPills();
   drawList();
 
   function renderPills() {
     const wrap = slot.querySelector('#oa-filter-pills');
-    wrap.innerHTML = thonXomFilterPillsHtml('oa-pill');
-    bindThonXomFilterPills(wrap, 'oa-pill', allowedThon, () => { renderPills(); drawList(); });
+    wrap.innerHTML = thonXomFilterPillsHtml('oa-pill', filterThon, filterXom);
+    bindThonXomFilterPills(wrap, 'oa-pill', allowedThon,
+      () => ({ thon: filterThon, xom: filterXom }),
+      (t, x) => { filterThon = t; filterXom = x; },
+      () => { renderPills(); drawList(); });
   }
 
   function drawList() {
     const listEl = slot.querySelector('#oa-list');
     let rows = S.listZaloCustomers().map((r) => ({ r, customer: S.getCustomer(r.customerId) })).filter((x) => x.customer);
     if (filterThon.length) rows = rows.filter((x) => filterThon.includes(x.customer.thon));
-    if (filterXom.length) rows = rows.filter((x) => filterXom.includes(`${x.customer.thon}||${x.customer.xom}`));
+    if (filterXom.length) rows = rows.filter((x) => filterXom.includes(x.customer.xom));
 
     listEl.innerHTML = `
       <div class="text-sm text-muted mb-8">${rows.length} khách hàng trong danh sách OA</div>
@@ -138,54 +147,109 @@ function drawOATab(slot, admin) {
             <div class="row-title">${customer.name}</div>
             <div class="row-sub">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
           </div>
-          ${customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" class="icon-btn" data-stop-row title="Gọi/tìm Zalo nhanh" style="color:var(--color-primary)">${icon('phone', 'icon-sm')}</a>` : ''}
+          ${customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" data-stop-row title="Gọi/tìm Zalo nhanh" style="color:var(--color-primary);font-weight:700;white-space:nowrap;text-decoration:none">${customer.phone}</a>` : ''}
         </div>
       `).join('') : emptyState({ iconName: 'message', title: 'Chưa có khách hàng nào', message: 'Bấm "Thêm khách hàng vào OA" ở trên, hoặc thêm ở chi tiết khách hàng (mục Khách hàng & Hợp đồng).' })}
     `;
     listEl.querySelectorAll('[data-open]').forEach((row) => {
       row.addEventListener('click', () => openCustomerDetail(row.dataset.open, { readOnly: false, context: 'customer' }));
     });
-    // Nút gọi điện nằm TRONG dòng bấm-để-xem — chặn nổi bọt để bấm gọi không mở luôn chi tiết khách hàng.
+    // SĐT nằm TRONG dòng bấm-để-xem — chặn nổi bọt để bấm gọi không mở luôn chi tiết khách hàng.
     listEl.querySelectorAll('[data-stop-row]').forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
   }
 }
 
-/** Popup tìm + thêm khách hàng vào Tầng 1 "Danh sách OA". */
-function openAddCustomerToOAModal(onDone) {
+/** Popup tìm + thêm (chọn nhiều) khách hàng vào Tầng 1 "Danh sách OA". */
+function openAddCustomerToOAModal(admin, onDone) {
   const zaloIds = new Set(S.listZaloCustomers().map((r) => r.customerId));
+  const isStaff = admin.role === 'staff';
+  const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
   let query = '';
+  let pThon = [];
+  let pXom = [];
+  let visibleCount = PAGE_SIZE;
+  const selected = new Set();
+
   const close = openModal({
     title: 'Thêm khách hàng vào OA',
     bodyHtml: `
       ${searchBoxHtml('add-oa-search', 'Tìm theo tên, số CCCD, SĐT...', '')}
+      <div class="filter-row mb-8" id="add-oa-pills"></div>
       <div id="add-oa-list" class="mt-8"></div>
+      <button class="btn btn-outline btn-sm btn-block mt-8" id="add-oa-more" style="display:none">Xem thêm</button>
     `,
-    onMount(sheet) {
-      function draw() {
-        let list = S.listCustomers().filter((c) => !zaloIds.has(c.id));
+    footHtml: `<button class="btn btn-primary btn-block" id="add-oa-confirm" disabled>Thêm đã chọn (0)</button>`,
+    onMount(sheet, closeFn) {
+      function getFiltered() {
+        let list = S.listCustomers({ adminId: isStaff ? admin.id : undefined }).filter((c) => !zaloIds.has(c.id));
+        if (pThon.length) list = list.filter((c) => pThon.includes(c.thon));
+        if (pXom.length) list = list.filter((c) => pXom.includes(c.xom));
         if (query) {
           const q = query.toLowerCase();
           list = list.filter((c) => c.name.toLowerCase().includes(q) || (c.cccd || '').includes(query) || (c.phone || '').includes(query));
         }
-        list = list.slice(0, 50);
+        return list;
+      }
+      function renderPills() {
+        const wrap = sheet.querySelector('#add-oa-pills');
+        wrap.innerHTML = thonXomFilterPillsHtml('add-oa-pill', pThon, pXom);
+        bindThonXomFilterPills(wrap, 'add-oa-pill', allowedThon,
+          () => ({ thon: pThon, xom: pXom }),
+          (t, x) => { pThon = t; pXom = x; },
+          () => { visibleCount = PAGE_SIZE; renderPills(); draw(); });
+      }
+      function updateConfirmBtn() {
+        const btn = sheet.querySelector('#add-oa-confirm');
+        btn.textContent = `Thêm đã chọn (${selected.size})`;
+        btn.disabled = selected.size === 0;
+      }
+      function draw() {
+        const all = getFiltered();
+        const list = all.slice(0, visibleCount);
         sheet.querySelector('#add-oa-list').innerHTML = list.length ? list.map((c) => `
-          <div class="list-row" data-add="${c.id}" style="cursor:pointer;padding:8px 4px">
+          <div class="list-row" data-row="${c.id}" style="cursor:pointer;padding:8px 4px">
+            <input type="checkbox" data-check="${c.id}" ${selected.has(c.id) ? 'checked' : ''} style="width:18px;height:18px;flex-shrink:0"/>
             <div class="row-thumb" style="background:${colorFor(c.id)}">${initials(c.name)}</div>
-            <div class="row-main"><div class="row-title" style="font-size:13.5px">${c.name}</div><div class="row-sub">${maskCccd(c.cccd)}</div></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:13.5px">${c.name}</div>
+              <div class="row-sub">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
+            </div>
+            ${c.phone ? `<span style="color:var(--text-muted);font-size:12.5px;white-space:nowrap">${c.phone}</span>` : ''}
           </div>
         `).join('') : `<p class="text-sm text-muted">Không có khách hàng phù hợp (đã lọc bớt khách đã có sẵn trong danh sách OA).</p>`;
-        sheet.querySelectorAll('[data-add]').forEach((row) => {
-          row.addEventListener('click', async () => {
-            try {
-              await S.addZaloCustomer(row.dataset.add);
-              toast('Đã thêm vào danh sách OA', 'success');
-              if (onDone) onDone();
-              draw(); // vẽ lại danh sách trong popup luôn (bớt đi 1 người vừa thêm), cho thêm tiếp được liền tay
-            } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+        sheet.querySelector('#add-oa-more').style.display = all.length > visibleCount ? '' : 'none';
+        sheet.querySelectorAll('[data-row]').forEach((row) => {
+          row.addEventListener('click', (e) => {
+            if (e.target.matches('[data-check]')) return; // để checkbox tự xử lý, khỏi bấm 2 lần
+            const id = row.dataset.row;
+            if (selected.has(id)) selected.delete(id); else selected.add(id);
+            row.querySelector('[data-check]').checked = selected.has(id);
+            updateConfirmBtn();
+          });
+        });
+        sheet.querySelectorAll('[data-check]').forEach((cb) => {
+          cb.addEventListener('change', () => {
+            if (cb.checked) selected.add(cb.dataset.check); else selected.delete(cb.dataset.check);
+            updateConfirmBtn();
           });
         });
       }
-      bindSearchBox(sheet, 'add-oa-search', (v) => { query = v; draw(); });
+      sheet.querySelector('#add-oa-more').addEventListener('click', () => { visibleCount += PAGE_SIZE; draw(); });
+      sheet.querySelector('#add-oa-confirm').addEventListener('click', async () => {
+        const ids = [...selected];
+        if (!ids.length) return;
+        const btn = sheet.querySelector('#add-oa-confirm');
+        btn.disabled = true;
+        let okCount = 0;
+        for (const id of ids) {
+          try { await S.addZaloCustomer(id); okCount++; } catch (err) { toast(`${err.message || 'Lỗi'} (bỏ qua, tiếp tục thêm phần còn lại)`, 'error'); }
+        }
+        if (okCount) toast(`Đã thêm ${okCount} khách hàng vào danh sách OA`, 'success');
+        closeFn();
+        if (onDone) onDone();
+      });
+      bindSearchBox(sheet, 'add-oa-search', (v) => { query = v; visibleCount = PAGE_SIZE; draw(); });
+      renderPills();
       draw();
     },
   });
@@ -196,7 +260,7 @@ function openAddCustomerToOAModal(onDone) {
 // Tab "Gửi tin tự động" (Tầng 2) — CHỈ hiện lựa chọn của CHÍNH người đang
 // xem (server/RLS đã tự lọc). 2 mục quản lý riêng, loại trừ nhau.
 // ------------------------------------------------------------
-function drawAutoTab(slot) {
+function drawAutoTab(slot, admin) {
   slot.innerHTML = `
     <p class="text-sm text-muted mb-8">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại. 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
     ${AUTO_SEND_SECTIONS.map((s) => `
@@ -209,7 +273,7 @@ function drawAutoTab(slot) {
   `;
   AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind));
   slot.querySelectorAll('[data-add-kind]').forEach((btn) => {
-    btn.addEventListener('click', () => openAddAutoSendModal(btn.dataset.addKind, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind))));
+    btn.addEventListener('click', () => openAddAutoSendModal(btn.dataset.addKind, admin, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind))));
   });
 
   function drawSection(kind) {
@@ -218,16 +282,27 @@ function drawAutoTab(slot) {
       .map((r) => ({ r, customer: S.getCustomer(r.customerId), contract: S.getContract(r.contractId) }))
       .filter((x) => x.customer && x.contract);
     listEl.innerHTML = rows.length ? rows.map(({ r, customer, contract }) => `
-      <div class="list-row" style="padding:8px 4px">
+      <div class="list-row" data-row="${r.id}" data-contract="${contract.id}" data-customer="${customer.id}" style="cursor:pointer;padding:8px 4px">
         <div class="row-main">
           <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}</div>
-          <div class="row-sub">${formatVND(contract.balance)}${r.customDay ? ` · Ngày ${r.customDay} hàng tháng` : ''}</div>
+          <div class="row-sub">${formatVND(contract.balance)}${r.customDay ? ` · Ngày ${r.customDay} hàng tháng (bấm để sửa ngày)` : ''}</div>
         </div>
         <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách">${icon('trash', 'icon-sm')}</button>
       </div>
     `).join('') : `<p class="text-sm text-muted">Chưa có hợp đồng nào.</p>`;
+    listEl.querySelectorAll('[data-row]').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('[data-remove]')) return;
+        if (kind === 'lai_hang_thang_custom_day') {
+          openEditCustomDayModal(row.dataset.row, () => drawSection(kind));
+        } else {
+          openContractView(row.dataset.customer, S.getContract(row.dataset.contract), { readOnly: true });
+        }
+      });
+    });
     listEl.querySelectorAll('[data-remove]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         confirmDialog({
           title: 'Bỏ khỏi danh sách gửi tự động?',
           message: 'Hợp đồng này sẽ không còn được tự động gửi tin Zalo nữa (vẫn gửi tay được bình thường).',
@@ -242,11 +317,38 @@ function drawAutoTab(slot) {
   }
 }
 
+/** Popup sửa ngày gửi (mục "Gửi theo ngày cụ thể"). */
+function openEditCustomDayModal(id, onDone) {
+  const row = S.listZaloAutoSend().find((r) => r.id === id);
+  const close = openModal({
+    title: 'Sửa ngày gửi hàng tháng',
+    bodyHtml: `<div class="field"><label>Ngày trong tháng (1-28)</label><input type="number" id="edit-day-input" min="1" max="28" value="${row ? row.customDay || 1 : 1}"/></div>`,
+    footHtml: `<button class="btn btn-primary btn-block" id="edit-day-confirm">Lưu</button>`,
+    onMount(sheet, closeFn) {
+      sheet.querySelector('#edit-day-confirm').addEventListener('click', async () => {
+        const day = Number(sheet.querySelector('#edit-day-input').value) || 1;
+        try {
+          await S.updateZaloAutoSendDay(id, day);
+          toast('Đã sửa ngày gửi', 'success');
+          closeFn();
+          if (onDone) onDone();
+        } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+      });
+    },
+  });
+  return close;
+}
+
 /** Popup tìm + thêm 1 hợp đồng vào 1 trong 2 mục Tầng 2 — chỉ liệt kê hợp đồng của khách ĐÃ ở Tầng 1 và CHƯA ở mục nào (loại trừ nhau). */
-function openAddAutoSendModal(kind, onDone) {
+function openAddAutoSendModal(kind, admin, onDone) {
   const zaloCustomerIds = [...new Set(S.listZaloCustomers().map((r) => r.customerId))];
   const usedContractIds = new Set(S.listZaloAutoSend().map((r) => r.contractId));
+  const isStaff = admin.role === 'staff';
+  const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
   let query = '';
+  let pThon = [];
+  let pXom = [];
+  let visibleCount = PAGE_SIZE;
   const isCustomDay = kind === 'lai_hang_thang_custom_day';
 
   const close = openModal({
@@ -254,7 +356,9 @@ function openAddAutoSendModal(kind, onDone) {
     bodyHtml: `
       ${isCustomDay ? `<div class="field"><label>Ngày trong tháng (1-28) — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label><input type="number" id="day-input" min="1" max="28" value="1"/></div>` : ''}
       ${searchBoxHtml('add-auto-search', 'Tìm theo tên khách hoặc mã hợp đồng...', '')}
+      <div class="filter-row mb-8" id="add-auto-pills"></div>
       <div id="add-auto-list" class="mt-8"></div>
+      <button class="btn btn-outline btn-sm btn-block mt-8" id="add-auto-more" style="display:none">Xem thêm</button>
     `,
     onMount(sheet) {
       function getRows() {
@@ -262,6 +366,8 @@ function openAddAutoSendModal(kind, onDone) {
         for (const custId of zaloCustomerIds) {
           const customer = S.getCustomer(custId);
           if (!customer) continue;
+          if (pThon.length && !pThon.includes(customer.thon)) continue;
+          if (pXom.length && !pXom.includes(customer.xom)) continue;
           const contracts = S.listContractsByCustomer(custId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan' && !usedContractIds.has(ct.id));
           for (const contract of contracts) rows.push({ customer, contract });
         }
@@ -271,16 +377,27 @@ function openAddAutoSendModal(kind, onDone) {
         }
         return rows;
       }
+      function renderPills() {
+        const wrap = sheet.querySelector('#add-auto-pills');
+        wrap.innerHTML = thonXomFilterPillsHtml('add-auto-pill', pThon, pXom);
+        bindThonXomFilterPills(wrap, 'add-auto-pill', allowedThon,
+          () => ({ thon: pThon, xom: pXom }),
+          (t, x) => { pThon = t; pXom = x; },
+          () => { visibleCount = PAGE_SIZE; renderPills(); draw(); });
+      }
       function draw() {
-        const rows = getRows();
+        const all = getRows();
+        const rows = all.slice(0, visibleCount);
         sheet.querySelector('#add-auto-list').innerHTML = rows.length ? rows.map(({ customer, contract }) => `
           <div class="list-row" data-add="${contract.id}" style="cursor:pointer;padding:8px 4px">
             <div class="row-main">
               <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}</div>
-              <div class="row-sub">${formatVND(contract.balance)}</div>
+              <div class="row-sub">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
             </div>
+            <b style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>
           </div>
         `).join('') : `<p class="text-sm text-muted">Không có hợp đồng nào để thêm — khách phải có trong Danh sách OA, có hợp đồng còn hoạt động, và chưa ở mục nào khác.</p>`;
+        sheet.querySelector('#add-auto-more').style.display = all.length > visibleCount ? '' : 'none';
         sheet.querySelectorAll('[data-add]').forEach((row) => {
           row.addEventListener('click', async () => {
             const customDay = isCustomDay ? (Number(sheet.querySelector('#day-input').value) || 1) : null;
@@ -294,7 +411,9 @@ function openAddAutoSendModal(kind, onDone) {
           });
         });
       }
-      bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; draw(); });
+      sheet.querySelector('#add-auto-more').addEventListener('click', () => { visibleCount += PAGE_SIZE; draw(); });
+      bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; draw(); });
+      renderPills();
       draw();
     },
   });

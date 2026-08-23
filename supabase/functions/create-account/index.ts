@@ -31,10 +31,11 @@
 //     ai có canManageZaloOA/super cũng thêm/bỏ được (trong đúng Thôn/Xóm).
 //   { type: 'add-zalo-auto-send', contractId, kind? ('lai_hang_thang_auto'
 //     mặc định | 'lai_hang_thang_custom_day'), customDay? } / { type:
-//     'remove-zalo-auto-send', id } -> Tầng 2 "Gửi tin tự động" — CHỈ còn 2
-//     mục báo lãi (KHÔNG còn 'đến hạn' — đến hạn giờ tự động theo Tầng 1,
-//     xem send-due-reminders/index.ts), loại trừ nhau (1 hợp đồng chỉ ở 1
-//     trong 2 mục). RIÊNG TƯ theo từng người chọn (chỉ người tự thêm mới xóa
+//     'remove-zalo-auto-send', id } / { type: 'update-zalo-auto-send-day', id,
+//     customDay } -> Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi (KHÔNG
+//     còn 'đến hạn' — đến hạn giờ tự động theo Tầng 1, xem
+//     send-due-reminders/index.ts), loại trừ nhau (1 hợp đồng chỉ ở 1 trong
+//     2 mục). RIÊNG TƯ theo từng người chọn (chỉ người tự thêm mới xóa/sửa
 //     được lựa chọn của mình; add tự đảm bảo khách đã ở Tầng 1, trùng hợp
 //     đồng với người khác thì bị chặn kèm tên người đã chọn + mục họ chọn).
 //   { type: 'send-zalo-manual', contractId } -> gửi tay ngay 1 khách, TỰ
@@ -575,7 +576,7 @@ Deno.serve(async (req) => {
   // trong đúng phạm vi Thôn/Xóm được gán — y hệt kiểu kiểm tra ở
   // 'send-manual-notification' phía trên. =====
   if (body.type === 'add-zalo-auto-send' || body.type === 'remove-zalo-auto-send' || body.type === 'send-zalo-manual'
-    || body.type === 'add-zalo-customer' || body.type === 'remove-zalo-customer') {
+    || body.type === 'add-zalo-customer' || body.type === 'remove-zalo-customer' || body.type === 'update-zalo-auto-send-day') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
     const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
@@ -689,6 +690,21 @@ Deno.serve(async (req) => {
         return json({ ok: false, reason: 'Bạn không có quyền bỏ lựa chọn của người khác.' }, 403);
       }
       const { error } = await admin.from('zalo_auto_send_list').delete().eq('id', id);
+      if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      return json({ ok: true });
+    }
+
+    if (body.type === 'update-zalo-auto-send-day') {
+      const id = String(body.id || '').trim();
+      const customDay = Number(body.customDay) || null;
+      if (!id || !customDay || customDay < 1 || customDay > 28) return json({ ok: false, reason: 'Ngày không hợp lệ (1-28).' }, 400);
+      const { data: row } = await admin.from('zalo_auto_send_list').select('*').eq('id', id).maybeSingle();
+      if (!row) return json({ ok: false, reason: 'Không tìm thấy lựa chọn này (có thể đã bị xóa).' }, 404);
+      if (row.kind !== 'lai_hang_thang_custom_day') return json({ ok: false, reason: 'Chỉ mục "Gửi theo ngày cụ thể" mới sửa được ngày.' }, 400);
+      if (caller.role !== 'super' && row.created_by !== caller.id) {
+        return json({ ok: false, reason: 'Bạn không có quyền sửa lựa chọn của người khác.' }, 403);
+      }
+      const { error } = await admin.from('zalo_auto_send_list').update({ custom_day: customDay }).eq('id', id);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       return json({ ok: true });
     }

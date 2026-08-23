@@ -635,6 +635,15 @@ export async function removeZaloAutoSend(id) {
   state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.id !== id);
   notify();
 }
+/** Sửa ngày gửi (1-28) của 1 lựa chọn thuộc mục "Gửi theo ngày cụ thể" — chỉ chính người đã chọn (hoặc super) sửa được. */
+export async function updateZaloAutoSendDay(id, customDay) {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-zalo-auto-send-day', id, customDay });
+  if (!res.ok) throw new Error(res.reason || 'Không sửa được ngày gửi.');
+  const row = state.zaloAutoSendList.find((r) => r.id === id);
+  if (row) row.customDay = customDay;
+  notify();
+}
 /**
  * Gửi tay ngay 1 tin Zalo cho khách hàng của 1 hợp đồng — server TỰ CHỌN
  * mẫu theo tình huống (gần/đã đến hạn dùng mẫu Đến hạn, còn xa hạn dùng mẫu
