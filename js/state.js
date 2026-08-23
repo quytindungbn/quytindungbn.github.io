@@ -37,6 +37,22 @@ const LOCK_AFTER_FAILS = 5;
 const LOCK_MINUTES = 15;
 export const NEAR_DUE_DAYS = 15;
 
+// Thông tin nhận thanh toán (QR) — NHÚNG CỨNG trong code, KHÔNG đọc/ghi qua
+// Supabase (bảng orgs) nữa và KHÔNG sửa được qua "Cài đặt" nữa, kể cả quản
+// trị viên toàn quyền (xem js/views/admin/settings.js). Lý do: điện thoại
+// đăng nhập sẵn tài khoản toàn quyền mà bị mất/bị kẻ gian chiếm được thì
+// trước đây vẫn đổi được số tài khoản ngay trong app — đổi vào đây thì phải
+// sửa code + deploy lại (qua Claude Code), kẻ gian có điện thoại tuyệt đối
+// không tự đổi được nữa. Muốn đổi ngân hàng/số tài khoản thật thì báo lại để
+// sửa 4 dòng dưới đây rồi deploy lại (KHÔNG cần chạy SQL gì, xem docs mục
+// 10.18).
+export const BANK_INFO = Object.freeze({
+  bankName: 'Ngân hàng Hợp tác xã Việt Nam (Co-op Bank)',
+  bankBin: '970446',
+  bankAccountNo: '5200000000825012',
+  bankAccountName: 'QUY TIN DUNG NHAN DAN BINH NGUYEN',
+});
+
 let state = null;
 const listeners = new Set();
 function notify() { persist(); listeners.forEach((fn) => fn()); }
@@ -90,7 +106,9 @@ function mapOrgRow(row) {
   return {
     id: row.id, name: row.name, shortName: row.short_name, hotline: row.hotline, address: row.address,
     bannerEnabled: !!row.banner_enabled, bannerTitle: row.banner_title || '', bannerText: row.banner_text || '',
-    bankBin: row.bank_bin || '', bankName: row.bank_name || '', bankAccountNo: row.bank_account_no || '', bankAccountName: row.bank_account_name || '',
+    // 4 dòng ngân hàng KHÔNG còn lấy từ Supabase (row.bank_*) nữa — luôn dùng
+    // đúng hằng số BANK_INFO nhúng cứng trong code, xem giải thích ở đó.
+    ...BANK_INFO,
     // Mã mẫu tin Zalo OA (ZBS Template Message) dùng khi hợp đồng ĐẾN HẠN/QUÁ
     // HẠN — xem trang "Quản lý OA" (js/views/admin/zaloOA.js). Chỉ lưu
     // Template ID (không nhạy cảm) ở đây; App ID/Secret Key/Access Token thật
@@ -135,7 +153,13 @@ async function verifyCredential(plainPassword, salt, hash) {
 // Tổ chức (thông tin quỹ tín dụng, banner) — admin chỉnh trực tiếp trong app
 // ------------------------------------------------------------
 export function getOrg() { return state.org; }
-/** Sửa thông tin quỹ tín dụng (banner/ngân hàng...) — ĐÃ CHUYỂN SANG SUPABASE THẬT, ghi thẳng qua RLS (chỉ admin role='super' được phép, xem policy trong docs). */
+/**
+ * Sửa thông tin quỹ tín dụng (banner/mẫu Zalo...) — ĐÃ CHUYỂN SANG SUPABASE
+ * THẬT, ghi thẳng qua RLS (chỉ admin role='super' được phép, xem policy
+ * trong docs). CỐ Ý KHÔNG còn nhận patch 4 field ngân hàng (bankBin/
+ * bankName/bankAccountNo/bankAccountName) nữa — map bên dưới không có 4 tên
+ * này nên có patch cũng bị bỏ qua, im lặng không lỗi (xem BANK_INFO).
+ */
 export async function updateOrg(patch) {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
@@ -143,7 +167,6 @@ export async function updateOrg(patch) {
   const map = {
     name: 'name', shortName: 'short_name', hotline: 'hotline', address: 'address',
     bannerEnabled: 'banner_enabled', bannerTitle: 'banner_title', bannerText: 'banner_text',
-    bankBin: 'bank_bin', bankName: 'bank_name', bankAccountNo: 'bank_account_no', bankAccountName: 'bank_account_name',
     zaloTemplateDueId: 'zalo_template_due_id', zaloTemplateInterestId: 'zalo_template_interest_id',
   };
   for (const [k, col] of Object.entries(map)) if (patch[k] !== undefined) dbPatch[col] = patch[k];
@@ -1190,11 +1213,9 @@ async function seedDemoData() {
     bannerEnabled: true,
     bannerTitle: 'Ưu đãi lãi suất vay tiêu dùng',
     bannerText: 'Liên hệ quầy giao dịch hoặc gửi yêu cầu tư vấn ngay trên ứng dụng để được hỗ trợ.',
-    // Thông tin nhận thanh toán — HIỂN THỊ CHO KHÁCH HÀNG THẬT, cần admin xác minh lại tại Cài đặt.
-    bankBin: '970446', // Ngân hàng Hợp tác xã Việt Nam (Co-op Bank) — kiểm tra lại tại vietqr.io trước khi dùng thật
-    bankName: 'Ngân hàng Hợp tác xã Việt Nam (Co-op Bank)',
-    bankAccountNo: '5200000000825012',
-    bankAccountName: 'QUY TIN DUNG NHAN DAN BINH NGUYEN',
+    // Thông tin nhận thanh toán — dùng chung đúng hằng số BANK_INFO nhúng
+    // cứng ở đầu file (không còn là dữ liệu demo tách riêng nữa).
+    ...BANK_INFO,
   };
 
   const adminCred = await makeCredential('Admin@123');

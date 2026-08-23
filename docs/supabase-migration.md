@@ -1248,6 +1248,34 @@ alter table zalo_auto_send_list add constraint zalo_auto_send_list_interval_mont
 
 ---
 
+### 10.18. Nhúng cứng thông tin nhận thanh toán (ngân hàng/số TK) vào code (KHÔNG cần chạy SQL)
+
+**Lý do**: trước đây 4 thông tin ngân hàng (tên NH, mã BIN, số tài khoản, tên chủ TK — dùng tạo mã QR
+chuyển khoản cho khách) sửa được ngay trong "Cài đặt", chỉ cần đăng nhập tài khoản quản trị viên toàn
+quyền (`role='super'`). Rủi ro: điện thoại đã đăng nhập sẵn tài khoản này mà bị mất/bị kẻ gian chiếm
+được (không cần biết mật khẩu, chỉ cần điện thoại đang mở khóa + app còn đăng nhập, vì phiên đăng nhập
+không tự hết hạn) thì đổi được số tài khoản nhận tiền ngay lập tức, không có bước xác nhận nào thêm.
+
+Nhân viên thường (role='staff') thì KHÔNG có rủi ro này — RLS ở Supabase đã chặn cứng phía server (chỉ
+`role='super'` mới UPDATE được bảng `orgs`), không phải chỉ ẩn nút trên giao diện.
+
+**Đã sửa**: 4 giá trị này giờ NHÚNG CỨNG thành hằng số `BANK_INFO` trong `js/state.js` — ứng dụng
+KHÔNG còn đọc 4 cột `bank_bin/bank_name/bank_account_no/bank_account_name` từ bảng `orgs` nữa (luôn
+dùng đúng hằng số, bất kể trong bảng `orgs` đang có gì), và `updateOrg()` cũng bỏ hẳn 4 field này khỏi
+danh sách được phép sửa — có patch cũng bị bỏ qua, im lặng không lỗi. Màn "Cài đặt" đổi mục "Thông tin
+nhận thanh toán (QR)" thành CHỈ HIỂN THỊ (input `disabled`), không còn nút lưu. Muốn đổi ngân hàng/số
+tài khoản thật (hiếm khi xảy ra) thì phải sửa trực tiếp hằng số `BANK_INFO` trong code + deploy lại qua
+GitHub Pages (nhắn lại yêu cầu đổi, kèm 4 giá trị mới) — kẻ gian có điện thoại tuyệt đối không tự đổi
+được nữa, vì không có quyền truy cập repo GitHub.
+
+4 cột `bank_*` trong bảng `orgs` vẫn còn tồn tại (không xóa, tránh phải sửa schema) nhưng từ nay không
+còn được ứng dụng đọc/ghi tới nữa — coi như đã "nghỉ hưu".
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
+GitHub Pages tự deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
