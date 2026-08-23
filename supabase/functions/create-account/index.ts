@@ -309,13 +309,21 @@ async function getZaloAccessToken(): Promise<string | null> {
     return null;
   }
 }
-/** Gửi 1 tin mẫu Zalo qua SĐT, TỰ GHI LOG vào zalo_send_log (dùng cho cả gửi tay lẫn xem trong "Quản lý gửi tin"). */
+/**
+ * Gửi 1 tin mẫu Zalo qua SĐT, TỰ GHI LOG vào zalo_send_log (dùng cho cả gửi
+ * tay lẫn xem trong "Quản lý gửi tin"). status='success' nghĩa là ZALO ĐÃ
+ * NHẬN yêu cầu gửi — CHƯA chắc đã tới máy khách, trạng thái "đã đến khách
+ * hàng" cập nhật riêng/muộn hơn qua webhook (xem tracking_id + zalo-webhook/index.ts).
+ */
 async function sendZaloTemplateLogged(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string; triggeredBy: 'auto' | 'manual'; triggeredByAdminId?: string | null;
 }): Promise<{ ok: boolean; reason?: string }> {
   let status: 'success' | 'error' = 'error';
   let errorMessage = '';
+  // tracking_id do MÌNH tự sinh, Zalo đính kèm lại đúng giá trị này khi gọi
+  // webhook báo "đã đến máy khách" — dùng để dò đúng dòng log cần cập nhật.
+  const trackingId = `qtd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const res = await fetch('https://business.openapi.zalo.me/message/template', {
       method: 'POST',
@@ -324,7 +332,7 @@ async function sendZaloTemplateLogged(opts: {
         phone: normalizeZaloPhone(opts.phone),
         template_id: opts.templateId,
         template_data: opts.templateData,
-        tracking_id: `qtd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        tracking_id: trackingId,
       }),
     });
     const respJson = await res.json();
@@ -336,6 +344,7 @@ async function sendZaloTemplateLogged(opts: {
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null,
     triggered_by: opts.triggeredBy, triggered_by_admin_id: opts.triggeredByAdminId || null,
+    tracking_id: status === 'success' ? trackingId : null,
   });
   return status === 'success' ? { ok: true } : { ok: false, reason: errorMessage || 'Gửi thất bại.' };
 }

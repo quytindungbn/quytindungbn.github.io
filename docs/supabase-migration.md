@@ -1383,6 +1383,55 @@ GitHub Pages tự deploy khi push `main`.
 
 ---
 
+### 10.21. "Quản lý gửi tin": tách rõ "Đến khách hàng" vs "Đến trung tâm Zalo" (BẮT BUỘC chạy SQL + deploy 3 Edge Function, có bước cấu hình thêm trên Zalo)
+
+Trước đây "Thành công" chỉ có nghĩa là **Zalo đã NHẬN yêu cầu gửi** (API trả `error: 0` ngay lúc gọi) —
+KHÔNG chắc chắn tin đã thực sự TỚI ĐƯỢC máy khách hàng. Giờ tách rõ 2 trạng thái, dựa trên webhook Zalo
+gọi lại khi tin THỰC SỰ tới máy khách (sự kiện `user_received_message` — tài liệu công khai của Zalo):
+
+- **"Đến trung tâm Zalo"**: chỉ mới gửi thành công tới Zalo, CHƯA có xác nhận đã tới máy khách.
+- **"Đến khách hàng"**: Zalo đã xác nhận (qua webhook) tin thực sự hiện lên máy khách.
+- **"Lỗi"**: giữ nguyên như cũ.
+
+**Cơ chế**: mỗi lần gửi, hệ thống tự sinh 1 `tracking_id` ngẫu nhiên gửi kèm cho Zalo, lưu vào cột mới
+`tracking_id` của dòng `zalo_send_log`. Khi Zalo gọi webhook báo "đã tới máy khách", Zalo đính kèm lại
+đúng `tracking_id` đó — hệ thống dò đúng dòng log, ghi `delivered_at`. Trang "Quản lý gửi tin" hiện đúng
+1 trong 3 trạng thái dựa vào `status` + có/không `delivered_at`.
+
+```sql
+alter table zalo_send_log add column if not exists tracking_id text;
+alter table zalo_send_log add column if not exists delivered_at timestamptz;
+create index if not exists idx_zalo_send_log_tracking_id on zalo_send_log(tracking_id) where tracking_id is not null;
+```
+
+**⚠️ Lưu ý về độ chắc chắn**: cấu trúc payload webhook thật của Zalo (tên field/vị trí `tracking_id` nằm
+ở đâu trong JSON) được tra từ tài liệu công khai — môi trường code hiện tại KHÔNG gọi thẳng được Zalo để
+tự kiểm thử trước (giống tình huống VietQR ở các mục 10.19-10.20). Code đã viết PHÒNG HỜ — dò tìm
+`tracking_id` ở nhiều vị trí khả dĩ trong payload, và LUÔN ghi lại toàn bộ payload thô vào Log của Edge
+Function `zalo-webhook` — nếu sau khi làm đủ các bước dưới mà "Đến khách hàng" vẫn không tự lên, mở mục
+**Logs** của function `zalo-webhook` trên Supabase Dashboard, chụp lại đúng nội dung 1 dòng log gần nhất,
+gửi cho biết để chỉnh đúng cấu trúc.
+
+**Việc cần bạn làm**:
+1. Chạy SQL trên (SQL Editor).
+2. Deploy lại **`create-account`** và **`send-due-reminders`** (cả 2 đều đổi — thêm việc lưu `tracking_id`).
+3. Tạo Edge Function MỚI tên **`zalo-webhook`** trên Supabase Dashboard (Edge Functions → Create a new
+   function → đặt đúng tên `zalo-webhook`), dán nội dung file gửi kèm vào.
+4. **BẮT BUỘC**: lúc tạo/sửa function `zalo-webhook`, vào phần cấu hình function → **tắt "Verify JWT"**
+   (hoặc "Enforce JWT verification", tùy giao diện Dashboard đặt tên) — Zalo gọi tới KHÔNG kèm theo mã
+   xác thực nào của Supabase, để bật "Verify JWT" sẽ khiến Supabase tự chặn (401) trước khi code trong
+   function kịp chạy.
+5. Copy đúng URL của function `zalo-webhook` sau khi deploy (dạng
+   `https://amwiyxhawueqlmnzkdls.supabase.co/functions/v1/zalo-webhook`), vào trang quản lý Zalo OA
+   (Zalo Business Solutions / Zalo Official Account Manager) → mục cấu hình Webhook → dán URL này vào,
+   **bật sự kiện "Người dùng nhận thông báo"/"User received message"** (tên chính xác có thể khác chút
+   tùy giao diện Zalo hiện tại — tìm mục nào liên quan tới "đã nhận"/"delivered").
+6. Sau khi làm đủ 5 bước, gửi thử 1 tin Zalo thật (VD: bấm gửi tay 1 khách ở "Danh sách OA"), đợi vài
+   phút rồi vào "Quản lý gửi tin" xem tin đó đã tự chuyển từ "Đến Zalo" sang "Đến khách hàng" chưa. Nếu
+   chưa, làm theo hướng dẫn xem Logs ở trên rồi báo lại.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
