@@ -33,10 +33,11 @@
 //   - "Gửi theo ngày cụ thể": đúng 1 lần/tháng vào ngày admin tự chọn, CHỈ
 //     gửi nếu đã tính lãi > 20 ngày kể từ lần đóng gần nhất (mới đóng gần
 //     đây thì bỏ qua, dồn qua tháng sau).
-// Mẫu "Đến hạn/Quá hạn" KHÔNG còn tự động gửi ở đây nữa — CHỈ gửi được qua
-// nút gửi tay ở chi tiết hợp đồng (type 'send-zalo-manual' trong
-// create-account), giới hạn 5 ngày/lần, bắt buộc khách đã có sẵn trong
-// Tầng 1 "Danh sách OA" (bảng zalo_customers, thêm/bỏ ở chi tiết khách hàng).
+// CẢ 2 mục trên TỰ CHUYỂN sang mẫu "Đến hạn/Quá hạn" thay vì tiếp tục báo
+// lãi ngay khi hợp đồng đã GẦN/ĐÃ đến hạn (đúng NEAR_DUE_DAYS_ZALO ngày,
+// y hệt ngưỡng chuyển mẫu ở nút gửi tay) — không còn báo lãi suông lúc sắp
+// phải trả cả gốc lẫn lãi nữa. Riêng việc gửi tay VẪN không đổi: khách phải
+// có sẵn trong Tầng 1 "Danh sách OA", giới hạn 5 ngày/lần cho mỗi hợp đồng.
 //
 // KHÔNG dùng chung Edge Function với create-account (function đó phục vụ
 // request TRỰC TIẾP từ trình duyệt qua anon key; function này CHỈ được gọi
@@ -70,6 +71,10 @@ const ZALO_SECRET_KEY = Deno.env.get('ZALO_SECRET_KEY');
 const NEAR_DUE_START_DAYS = 10; // Bắt đầu nhắc "gần đến hạn/quá hạn" từ đúng X ngày trước hạn
 const NEAR_DUE_REPEAT_DAYS = 3; // ...rồi lặp lại mỗi X ngày, cả trước lẫn sau ngày đến hạn, tới khi tất toán
 const MONTHLY_REMINDER_OFFSETS = [0, 2]; // Lãi (nợ trong hạn): mỗi tháng nhắc đúng 2 LẦN — ngay ngày mốc (offset 0) và 2 ngày sau đó (offset 2), KHÔNG liên tục — nếu chưa đóng
+// Y HỆT NEAR_DUE_DAYS_ZALO trong create-account/index.ts — ngưỡng để 2 mục
+// Tầng 2 (báo lãi hàng tháng/theo ngày) tự CHUYỂN sang mẫu "Đến hạn/Quá
+// hạn" thay vì tiếp tục báo lãi, khi hợp đồng đã gần/tới/qua hạn.
+const NEAR_DUE_DAYS_ZALO = 15;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -320,6 +325,25 @@ function formatVNDZaloTemplate(n: number): string {
   return String(Math.round(n));
 }
 
+/** Y HỆT isNearOrPastDueZalo() trong create-account/index.ts — true khi hợp đồng đã gần/tới/qua hạn (<= NEAR_DUE_DAYS_ZALO ngày). */
+function isNearOrPastDueZalo(contract: any, asOf: Date): boolean {
+  const d = daysBetween(asOf, new Date(contract.due_date));
+  return d <= NEAR_DUE_DAYS_ZALO;
+}
+
+/**
+ * Chọn mẫu Zalo cho 1 lần gửi Tầng 2 (báo lãi hàng tháng/theo ngày) — GẦN/ĐÃ
+ * đến hạn thì tự CHUYỂN sang mẫu "Đến hạn/Quá hạn" thay vì tiếp tục báo lãi
+ * (y hệt cách gửi tay tự chọn mẫu). Trả về null nếu mẫu tương ứng chưa cấu
+ * hình Template ID — nơi gọi phải tự bỏ qua lần gửi đó, không báo lỗi.
+ */
+function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: string | null; zalo_template_interest_id?: string | null } | null): { templateId: string; dueTemplate: boolean } | null {
+  const dueTemplate = isNearOrPastDueZalo(ct, now);
+  const templateId = dueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id;
+  if (!templateId) return null;
+  return { templateId, dueTemplate };
+}
+
 /**
  * Dựng template_data dùng chung cho cả 2 mẫu Zalo — "Đến hạn" (dueTemplate
  * = true, có đủ Gốc lẫn Lãi) và "Báo lãi" (dueTemplate = false, Gốc = 0 vì
@@ -359,7 +383,7 @@ Deno.serve(async (req) => {
   // (không còn tiêu đề riêng theo từng loại như trước) — khớp với tiêu đề
   // mặc định ở popup admin tự gửi tay (xem buildContractNotificationPreset()
   // trong js/views/admin/customers.js).
-  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_interest_id').limit(1).maybeSingle();
+  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_interest_id, zalo_template_due_id').limit(1).maybeSingle();
   const NOTI_TITLE = `${orgRow?.short_name || 'Quỹ tín dụng'} thông báo:`;
 
   const { data: contracts, error: ctErr } = await admin.from('contracts').select('*');
@@ -372,11 +396,9 @@ Deno.serve(async (req) => {
   );
 
   // Chỉ tốn 1 lần làm mới token/lượt chạy (không phải mỗi hợp đồng 1 lần) —
-  // và CHỈ làm khi đã cấu hình mẫu "Báo lãi" (mục Quản lý OA > Cấu hình),
-  // tránh gọi API Zalo vô ích lúc chưa cấu hình gì. Mẫu "Đến hạn" KHÔNG còn
-  // dùng ở function này nữa (đã bỏ tự động gửi cho gần/đến hạn — mẫu đó giờ
-  // CHỈ gửi được qua nút gửi tay ở create-account).
-  const zaloAccessToken = orgRow?.zalo_template_interest_id ? await getZaloAccessToken() : null;
+  // và CHỈ làm khi đã cấu hình ÍT NHẤT 1 trong 2 mẫu (mục Quản lý OA > Cấu
+  // hình), tránh gọi API Zalo vô ích lúc chưa cấu hình gì.
+  const zaloAccessToken = (orgRow?.zalo_template_interest_id || orgRow?.zalo_template_due_id) ? await getZaloAccessToken() : null;
 
   // Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi (loại trừ nhau, 1 hợp
   // đồng chỉ ở 1 trong 2): 'lai_hang_thang_auto' theo đúng lịch nhắc lãi
@@ -420,18 +442,22 @@ Deno.serve(async (req) => {
     // GIỐNG HỆT thông báo đẩy trong hạn ở trên ("đúng ngày này tháng sau",
     // dùng chung interestAnchorDate) nhưng CHỈ gửi ĐÚNG 1 LẦN/tháng (không
     // lặp lại lần 2 như push) — xem isMonthlyReminderDayOnce(). CHỈ gửi cho
-    // hợp đồng admin đã tự chọn vào ĐÚNG mục này (autoSendMap).
+    // hợp đồng admin đã tự chọn vào ĐÚNG mục này (autoSendMap). Gần/đã đến
+    // hạn thì tự chuyển sang mẫu "Đến hạn/Quá hạn" (xem pickZaloTemplate).
     if (isMonthlyReminderDayOnce(interestAnchorDate(ct), now)) {
       const autoEntry = autoSendMap.get(ct.id);
-      if (autoEntry?.kind === 'lai_hang_thang_auto' && zaloAccessToken && orgRow?.zalo_template_interest_id) {
-        const customer = customerMap.get(ct.customer_id);
-        if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_hang_thang')) {
-          const zaloOk = await sendZaloTemplate({
-            accessToken: zaloAccessToken, phone: customer.phone, templateId: orgRow.zalo_template_interest_id,
-            templateData: buildZaloTemplateData(ct, customer, now, false),
-            contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_auto',
-          });
-          if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_lai_hang_thang'); result.zaloBaoLai++; }
+      if (autoEntry?.kind === 'lai_hang_thang_auto' && zaloAccessToken) {
+        const picked = pickZaloTemplate(ct, now, orgRow);
+        if (picked) {
+          const customer = customerMap.get(ct.customer_id);
+          if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_hang_thang')) {
+            const zaloOk = await sendZaloTemplate({
+              accessToken: zaloAccessToken, phone: customer.phone, templateId: picked.templateId,
+              templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
+              contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_auto',
+            });
+            if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_lai_hang_thang'); result.zaloBaoLai++; }
+          }
         }
       }
     }
@@ -441,20 +467,23 @@ Deno.serve(async (req) => {
     // hàng tháng thông thường ở trên. CHỈ gửi nếu số ngày đã tính lãi (kể từ
     // lần đóng lãi gần nhất) đã QUÁ 20 ngày — mới đóng lãi gần đây (<=20
     // ngày) thì bỏ qua đợt này, để dồn qua đúng ngày này tháng sau (không có
-    // gì phải nhắc ngay lúc khách vừa đóng).
+    // gì phải nhắc ngay lúc khách vừa đóng). Gần/đã đến hạn thì tự chuyển
+    // sang mẫu "Đến hạn/Quá hạn" (xem pickZaloTemplate).
     {
       const autoEntry = autoSendMap.get(ct.id);
       if (autoEntry?.kind === 'lai_hang_thang_custom_day' && autoEntry.customDay && now.getDate() === autoEntry.customDay
-        && interestDaysAccrued(ct, now) > 20
-        && zaloAccessToken && orgRow?.zalo_template_interest_id) {
-        const customer = customerMap.get(ct.customer_id);
-        if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_ngay_cu_the')) {
-          const zaloOk = await sendZaloTemplate({
-            accessToken: zaloAccessToken, phone: customer.phone, templateId: orgRow.zalo_template_interest_id,
-            templateData: buildZaloTemplateData(ct, customer, now, false),
-            contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_custom_day',
-          });
-          if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_lai_ngay_cu_the'); result.zaloBaoLai++; }
+        && interestDaysAccrued(ct, now) > 20 && zaloAccessToken) {
+        const picked = pickZaloTemplate(ct, now, orgRow);
+        if (picked) {
+          const customer = customerMap.get(ct.customer_id);
+          if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_ngay_cu_the')) {
+            const zaloOk = await sendZaloTemplate({
+              accessToken: zaloAccessToken, phone: customer.phone, templateId: picked.templateId,
+              templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
+              contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_custom_day',
+            });
+            if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_lai_ngay_cu_the'); result.zaloBaoLai++; }
+          }
         }
       }
     }

@@ -1158,6 +1158,19 @@ giờ nhanh hơn hẳn.
 **Việc cần bạn làm**: chạy SQL trên (SQL Editor) — **không cần deploy Edge Function nào** (chỉ đổi
 policy đọc dữ liệu + sửa file .js tĩnh, GitHub Pages tự deploy khi push `main`).
 
+### 10.14. Báo lãi tự động (hàng tháng/theo ngày) tự chuyển sang mẫu "Đến hạn/Quá hạn" khi gần đến hạn (KHÔNG cần chạy SQL)
+
+Trước đây 2 mục Tầng 2 ("Báo lãi tự động hàng tháng"/"Gửi theo ngày cụ thể") LUÔN dùng mẫu "Báo lãi" bất
+kể hợp đồng còn xa hạn hay đã sắp/tới hạn — dẫn tới tình huống báo lãi suông ngay lúc khách sắp phải trả
+cả gốc lẫn lãi. Giờ CẢ 2 mục tự kiểm tra độ gần hạn mỗi lần tới lượt gửi (đúng ngưỡng 15 ngày, y hệt lúc
+gửi tay tự chọn mẫu): còn xa hạn (> 15 ngày) → vẫn dùng mẫu "Báo lãi" như cũ; gần/tới/qua hạn (≤ 15
+ngày) → tự đổi sang mẫu "Đến hạn/Quá hạn" (đủ cả Gốc lẫn Lãi). Lịch gửi (đúng ngày này tháng sau/ngày
+tự chọn, điều kiện >20 ngày đã tính lãi...) không đổi gì — chỉ đổi ĐÚNG việc chọn mẫu nào để gửi.
+
+**Việc cần bạn làm**: deploy lại **`send-due-reminders`** (file duy nhất có sửa lần này — `create-account`
+không đổi, không cần deploy lại) — Supabase Dashboard → Edge Functions → chọn `send-due-reminders` →
+dán đè toàn bộ → Deploy. Không có SQL nào cần chạy thêm.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
