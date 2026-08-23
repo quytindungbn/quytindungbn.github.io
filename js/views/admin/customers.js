@@ -567,7 +567,6 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const canPay = S.effectiveContractStatus(contract) !== 'da_tat_toan';
   const session = S.getSession();
   const canManageZalo = S.canManageZaloOA(session.id);
-  const zaloAutoEntry = S.findZaloAutoSend(contract.id, 'den_han');
 
   // Mã QR VietQR cho quản trị viên/nhân viên — 2 ô Gốc/Lãi riêng, cộng lại ra
   // số tiền trên QR. Mặc định chỉ có sẵn Lãi (= "Lãi đến nay", giống nội dung
@@ -611,11 +610,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       ` : ''}
       ${customer && customer.phone && canPay && canManageZalo ? `
       <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
-        <button type="button" class="btn btn-outline btn-sm btn-block" id="btn-zalo-manual-ct">${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay (mẫu Đến hạn)</button>
-        <label class="flex items-center gap-8 mt-8" style="cursor:pointer;font-size:13px">
-          <input type="checkbox" id="zalo-auto-cb-ct" ${zaloAutoEntry ? 'checked' : ''}/>
-          Thêm vào danh sách gửi Zalo tự động (mẫu "Đến hạn")
-        </label>
+        <button type="button" class="btn btn-outline btn-sm btn-block" id="btn-zalo-manual-ct">${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
+        <div class="field-hint">Tự chọn mẫu theo tình huống: gần/đã đến hạn dùng mẫu "Đến hạn", còn xa hạn dùng mẫu "Báo lãi". Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>
       </div>
       ` : ''}
       ${canPay ? `
@@ -706,32 +702,12 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       });
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       if (zaloManualBtn) zaloManualBtn.addEventListener('click', async () => {
-        const templateId = S.getOrg().zaloTemplateDueId;
-        if (!templateId) { toast('Chưa cấu hình Template ID — vào mục "Quản lý OA" > "Cấu hình" để cấu hình trước.', 'error'); return; }
         zaloManualBtn.disabled = true;
         try {
-          const res = await S.sendZaloManual(contract.id, templateId);
+          const res = await S.sendZaloManual(contract.id);
           toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error');
         } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
         zaloManualBtn.disabled = false;
-      });
-      const zaloAutoCb = sheet.querySelector('#zalo-auto-cb-ct');
-      if (zaloAutoCb) zaloAutoCb.addEventListener('change', async () => {
-        zaloAutoCb.disabled = true;
-        try {
-          if (zaloAutoCb.checked) {
-            await S.addZaloAutoSend(contract.id, 'den_han');
-            toast('Đã thêm vào danh sách gửi Zalo tự động', 'success');
-          } else {
-            const entry = S.findZaloAutoSend(contract.id, 'den_han');
-            if (entry) await S.removeZaloAutoSend(entry.id);
-            toast('Đã bỏ khỏi danh sách gửi Zalo tự động', 'success');
-          }
-        } catch (err) {
-          toast(err.message || 'Có lỗi xảy ra', 'error');
-          zaloAutoCb.checked = !zaloAutoCb.checked; // hoàn tác nếu lưu lỗi, tránh sai lệch giữa checkbox và dữ liệu thật
-        }
-        zaloAutoCb.disabled = false;
       });
       const delBtn = sheet.querySelector('#del-contract');
       if (delBtn) delBtn.addEventListener('click', () => {

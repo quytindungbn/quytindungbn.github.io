@@ -98,6 +98,9 @@ function mapOrgRow(row) {
     // nhập — xem docs/supabase-migration.md mục 10), mà đặt riêng ở Supabase
     // Secrets + bảng zalo_oa_tokens (chỉ Edge Function đọc được).
     zaloTemplateDueId: row.zalo_template_due_id || '',
+    // Mã mẫu tin "Báo lãi" — dùng khi hợp đồng CHƯA đến hạn (gửi tay/tự
+    // động 2 mục "Báo lãi tự động hàng tháng"/"Gửi theo ngày cụ thể").
+    zaloTemplateInterestId: row.zalo_template_interest_id || '',
   };
 }
 
@@ -141,7 +144,7 @@ export async function updateOrg(patch) {
     name: 'name', shortName: 'short_name', hotline: 'hotline', address: 'address',
     bannerEnabled: 'banner_enabled', bannerTitle: 'banner_title', bannerText: 'banner_text',
     bankBin: 'bank_bin', bankName: 'bank_name', bankAccountNo: 'bank_account_no', bankAccountName: 'bank_account_name',
-    zaloTemplateDueId: 'zalo_template_due_id',
+    zaloTemplateDueId: 'zalo_template_due_id', zaloTemplateInterestId: 'zalo_template_interest_id',
   };
   for (const [k, col] of Object.entries(map)) if (patch[k] !== undefined) dbPatch[col] = patch[k];
   const { error } = await sb.from('orgs').update(dbPatch).eq('id', state.org.id);
@@ -591,11 +594,12 @@ export function isZaloCustomer(customerId) {
   return (state.zaloCustomers || []).some((r) => r.customerId === customerId);
 }
 export function listZaloCustomers() { return state.zaloCustomers || []; }
-/** Hợp đồng này đã có trong danh sách gửi tự động CỦA CHÍNH MÌNH (theo "kind") chưa — trả về dòng nếu có, null nếu chưa. */
-export function findZaloAutoSend(contractId, kind = 'den_han') {
-  return (state.zaloAutoSendList || []).find((r) => r.contractId === contractId && r.kind === kind) || null;
+/** Hợp đồng này đã có trong danh sách gửi tự động CỦA CHÍNH MÌNH chưa (1 hợp đồng chỉ ở được 1 trong 2 mục) — trả về dòng nếu có, null nếu chưa. */
+export function findZaloAutoSend(contractId) {
+  return (state.zaloAutoSendList || []).find((r) => r.contractId === contractId) || null;
 }
 export function listZaloAutoSend() { return state.zaloAutoSendList || []; }
+export function listZaloAutoSendByKind(kind) { return (state.zaloAutoSendList || []).filter((r) => r.kind === kind); }
 export function listZaloSendLog() { return state.zaloSendLog || []; }
 
 export async function addZaloCustomer(customerId) {
@@ -610,8 +614,13 @@ export async function removeZaloCustomer(customerId) {
   if (!res.ok) throw new Error(res.reason || 'Không xóa được khỏi danh sách OA.');
   await refreshSessionData();
 }
-/** Thêm 1 hợp đồng vào Tầng 2 (gửi tự động) — tự đảm bảo khách đã ở Tầng 1, không cần thêm tay riêng trước. */
-export async function addZaloAutoSend(contractId, kind = 'den_han', customDay = null) {
+/**
+ * Thêm 1 hợp đồng vào Tầng 2 (gửi tự động) — tự đảm bảo khách đã ở Tầng 1,
+ * không cần thêm tay riêng trước. "kind": 'lai_hang_thang_auto' (mặc định)
+ * hoặc 'lai_hang_thang_custom_day' (cần kèm customDay, 1-28) — KHÔNG còn
+ * 'den_han' nữa (đến hạn giờ tự động theo Tầng 1, xem docs mục 10.6).
+ */
+export async function addZaloAutoSend(contractId, kind = 'lai_hang_thang_auto', customDay = null) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'add-zalo-auto-send', contractId, kind, customDay });
   if (!res.ok) throw new Error(res.reason || 'Không thêm được vào danh sách gửi tự động.');
@@ -626,10 +635,14 @@ export async function removeZaloAutoSend(id) {
   state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.id !== id);
   notify();
 }
-/** Gửi tay ngay 1 tin Zalo cho khách hàng của 1 hợp đồng, theo 1 mẫu cụ thể — trả về { ok, reason }. */
-export async function sendZaloManual(contractId, templateId) {
+/**
+ * Gửi tay ngay 1 tin Zalo cho khách hàng của 1 hợp đồng — server TỰ CHỌN
+ * mẫu theo tình huống (gần/đã đến hạn dùng mẫu Đến hạn, còn xa hạn dùng mẫu
+ * Báo lãi), không cần tự chọn mẫu ở đây nữa. Trả về { ok, reason }.
+ */
+export async function sendZaloManual(contractId) {
   const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'send-zalo-manual', contractId, templateId });
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'send-zalo-manual', contractId });
   // Gửi tay có ghi log ở server (zalo_send_log) + có thể tự thêm Tầng 1 —
   // tải lại session data để hiện ngay, không cần đợi refreshSessionData() định kỳ.
   await refreshSessionData();

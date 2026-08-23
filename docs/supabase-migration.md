@@ -935,6 +935,38 @@ create policy "admin sees own zalo auto send selections" on zalo_auto_send_list
 **Việc cần bạn làm**: chạy SQL trên (SQL Editor), rồi deploy lại `create-account` (có sửa thêm) —
 `send-due-reminders` KHÔNG đổi ở bước này, không cần deploy lại.
 
+### 10.6. "Đến hạn" tự động cho cả Danh sách OA + thêm mẫu "Báo lãi" (BẮT BUỘC nếu project đã tạo trước đoạn này)
+
+Đổi thêm theo đúng yêu cầu:
+- **"Đến hạn/Quá hạn" không cần chọn riêng từng hợp đồng nữa** — tự động áp dụng cho **MỌI hợp đồng**
+  của khách đã có trong "Danh sách OA" (Tầng 1) — bỏ hẳn khỏi Tầng 2 "Gửi tin tự động".
+- **Tầng 2 giờ chỉ còn đúng 2 mục** (loại trừ nhau — 1 hợp đồng chỉ ở 1 trong 2): **"Báo lãi tự động
+  hàng tháng"** và **"Gửi theo ngày cụ thể"**.
+- Thêm **Template ID thứ 2** (`zalo_template_interest_id`) cho mẫu **"Báo lãi"** (dùng chung cho cả 2
+  mục Tầng 2 + cho gửi tay khi hợp đồng CHƯA đến hạn).
+- Gửi tay ở chi tiết hợp đồng giờ **tự chọn mẫu**: chưa đến hạn → mẫu Báo lãi; gần đến hạn/quá hạn →
+  mẫu Đến hạn — không cần tự chọn mẫu tay nữa.
+
+```sql
+alter table orgs add column if not exists zalo_template_interest_id text;
+
+-- "Đến hạn" không còn cần chọn riêng từng hợp đồng — dọn các dòng kind
+-- 'den_han' cũ (nếu có) khỏi Tầng 2, giờ vô nghĩa.
+delete from zalo_auto_send_list where kind = 'den_han';
+
+-- 1 hợp đồng chỉ được ở ĐÚNG 1 trong 2 mục còn lại — đổi ràng buộc duy nhất
+-- từ (contract_id, kind) sang chỉ (contract_id) — PostgreSQL tự đặt tên
+-- constraint dạng zalo_auto_send_list_contract_id_kind_key, dùng "if
+-- exists" để an toàn dù tên có khác đôi chút.
+alter table zalo_auto_send_list drop constraint if exists zalo_auto_send_list_contract_id_kind_key;
+alter table zalo_auto_send_list add constraint zalo_auto_send_list_contract_id_key unique (contract_id);
+```
+
+**Việc cần bạn làm**: chạy SQL trên, deploy lại **CẢ 2** Edge Function (`create-account` và
+`send-due-reminders` — cả 2 đều có sửa lần này), rồi vào **Quản lý OA → Cấu hình** điền thêm Template
+ID cho "Mẫu Báo lãi" khi bạn tạo xong mẫu đó bên Zalo (để trống trước cũng được, không lỗi gì — chỉ là
+lúc đó hợp đồng chưa đến hạn sẽ không gửi được Zalo cho tới khi điền).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

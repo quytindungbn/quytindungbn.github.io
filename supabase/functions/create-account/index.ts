@@ -29,13 +29,18 @@
 //   { type: 'add-zalo-customer', customerId } / { type: 'remove-zalo-customer',
 //     customerId } -> Tầng 1 "Danh sách đã thêm vào OA" — DANH SÁCH CHUNG,
 //     ai có canManageZaloOA/super cũng thêm/bỏ được (trong đúng Thôn/Xóm).
-//   { type: 'add-zalo-auto-send', contractId, kind?, customDay? } / { type:
-//     'remove-zalo-auto-send', id } / { type: 'send-zalo-manual', contractId,
-//     templateId } -> Tầng 2 "Danh sách gửi tự động" — RIÊNG TƯ theo từng
-//     người chọn (chỉ người tự thêm mới xóa được lựa chọn của mình; add tự
-//     đảm bảo khách đã ở Tầng 1, trùng (hợp đồng, tình huống) với người khác
-//     thì bị chặn kèm tên người đã chọn) + gửi tay ngay 1 khách. Cần cờ RIÊNG
-//     canManageZaloOA (không dùng chung canManageUsers) HOẶC role='super'.
+//   { type: 'add-zalo-auto-send', contractId, kind? ('lai_hang_thang_auto'
+//     mặc định | 'lai_hang_thang_custom_day'), customDay? } / { type:
+//     'remove-zalo-auto-send', id } -> Tầng 2 "Gửi tin tự động" — CHỈ còn 2
+//     mục báo lãi (KHÔNG còn 'đến hạn' — đến hạn giờ tự động theo Tầng 1,
+//     xem send-due-reminders/index.ts), loại trừ nhau (1 hợp đồng chỉ ở 1
+//     trong 2 mục). RIÊNG TƯ theo từng người chọn (chỉ người tự thêm mới xóa
+//     được lựa chọn của mình; add tự đảm bảo khách đã ở Tầng 1, trùng hợp
+//     đồng với người khác thì bị chặn kèm tên người đã chọn + mục họ chọn).
+//   { type: 'send-zalo-manual', contractId } -> gửi tay ngay 1 khách, TỰ
+//     CHỌN MẪU theo tình huống hợp đồng (gần/đã đến hạn dùng mẫu Đến hạn,
+//     còn xa hạn dùng mẫu Báo lãi) — không cần tự chọn templateId nữa. Cần
+//     cờ RIÊNG canManageZaloOA (không dùng chung canManageUsers) HOẶC role='super'.
 //     Nhân viên staff chỉ thao tác được hợp đồng/khách trong đúng phạm vi
 //     Thôn/Xóm được gán — xem docs/supabase-migration.md mục 10.
 //   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
@@ -220,6 +225,14 @@ function effectiveStatusZalo(contract: any, asOf: Date): 'da_tat_toan' | 'qua_ha
   if ((contract.balance || 0) <= 0) return 'da_tat_toan';
   if (daysBetweenZalo(new Date(contract.due_date), asOf) > 0) return 'qua_han';
   return 'dang_vay';
+}
+// Y HỆT NEAR_DUE_DAYS trong js/state.js — dùng để quyết định gửi tay (mục
+// 'send-zalo-manual') nên dùng mẫu "Đến hạn" hay mẫu "Báo lãi": còn xa hạn
+// (> 15 ngày) thì dùng mẫu Báo lãi, gần/đã đến hạn thì dùng mẫu Đến hạn.
+const NEAR_DUE_DAYS_ZALO = 15;
+function isNearOrPastDueZalo(contract: any, asOf: Date): boolean {
+  const d = daysBetweenZalo(asOf, new Date(contract.due_date));
+  return d <= NEAR_DUE_DAYS_ZALO; // <=0 nghĩa là đã đến/quá hạn, 1..15 là gần đến hạn
 }
 function interestDaysAccruedZalo(contract: any, asOf: Date): number {
   const paidUntil = contract.interest_paid_until || contract.disbursed_date;
@@ -634,7 +647,10 @@ Deno.serve(async (req) => {
 
     if (body.type === 'add-zalo-auto-send') {
       const contractId = String(body.contractId || '').trim();
-      const kind = String(body.kind || 'den_han').trim();
+      // "đến hạn" không còn là lựa chọn ở Tầng 2 nữa (tự động theo Tầng 1,
+      // xem type 'send-due-reminders' phía server) — Tầng 2 giờ chỉ còn 2
+      // mục báo lãi, loại trừ nhau (1 hợp đồng chỉ ở 1 trong 2, xem mục 10.6).
+      const kind = body.kind === 'lai_hang_thang_custom_day' ? 'lai_hang_thang_custom_day' : 'lai_hang_thang_auto';
       const customDay = kind === 'lai_hang_thang_custom_day' ? Number(body.customDay) || null : null;
       if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
       const scope = await checkContractInScope(contractId);
@@ -647,13 +663,14 @@ Deno.serve(async (req) => {
       });
       if (error) {
         if (String(error.message || '').toLowerCase().includes('duplicate')) {
-          // Tra xem AI đã chọn trước (không lộ gì nhạy cảm, chỉ tên) để báo đúng như yêu cầu.
-          const { data: existingRow } = await admin.from('zalo_auto_send_list').select('created_by').eq('contract_id', contractId).eq('kind', kind).maybeSingle();
+          // Tra xem AI đã chọn trước + chọn mục nào (không lộ gì nhạy cảm, chỉ tên) để báo đúng như yêu cầu.
+          const { data: existingRow } = await admin.from('zalo_auto_send_list').select('created_by, kind').eq('contract_id', contractId).maybeSingle();
           const { data: existingAdmin } = existingRow?.created_by
             ? await admin.from('admins').select('name').eq('id', existingRow.created_by).maybeSingle()
             : { data: null };
           const who = existingAdmin?.name ? `nhân viên "${existingAdmin.name}"` : 'người khác';
-          return json({ ok: false, reason: `Hợp đồng này đã được ${who} chọn gửi tự động (tình huống này) rồi.` });
+          const kindLabel = existingRow?.kind === 'lai_hang_thang_custom_day' ? 'Gửi theo ngày cụ thể' : 'Báo lãi tự động hàng tháng';
+          return json({ ok: false, reason: `Hợp đồng này đã được ${who} thêm vào mục "${kindLabel}" rồi (1 hợp đồng chỉ ở được 1 trong 2 mục).` });
         }
         return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       }
@@ -678,34 +695,45 @@ Deno.serve(async (req) => {
 
     if (body.type === 'send-zalo-manual') {
       const contractId = String(body.contractId || '').trim();
-      const templateId = String(body.templateId || '').trim();
-      if (!contractId || !templateId) return json({ ok: false, reason: 'Thiếu thông tin.' }, 400);
+      if (!contractId) return json({ ok: false, reason: 'Thiếu thông tin.' }, 400);
       const scope = await checkContractInScope(contractId);
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       const { customer, contract } = scope;
       if (!customer.phone) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
+
+      // Tự chọn mẫu theo tình huống hợp đồng — KHÔNG cần người gọi tự chọn
+      // nữa: gần/đã đến hạn (<=15 ngày) dùng mẫu "Đến hạn", còn xa hạn dùng
+      // mẫu "Báo lãi" (chỉ báo lãi, gốc chưa thật sự phải trả).
+      const now = new Date();
+      const usesDueTemplate = isNearOrPastDueZalo(contract, now);
+      const { data: orgRow } = await admin.from('orgs').select('zalo_template_due_id, zalo_template_interest_id').limit(1).maybeSingle();
+      const templateId = usesDueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id;
+      const kind = usesDueTemplate ? 'den_han' : 'lai_hang_thang';
+      if (!templateId) {
+        return json({ ok: false, reason: `Chưa cấu hình Template ID cho mẫu "${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}" — vào Quản lý OA > Cấu hình để điền trước.` }, 500);
+      }
       const accessToken = await getZaloAccessToken();
       if (!accessToken) return json({ ok: false, reason: 'Chưa cấu hình kết nối Zalo OA trên server (thiếu Secret/Refresh Token) — liên hệ để cấu hình trước.' }, 500);
       await ensureZaloCustomer(customer.id); // gửi tay cũng tính là "đã đưa vào OA" luôn, đỡ phải thêm tay riêng
 
-      const now = new Date();
       const interest = accruedInterestZalo(contract, now);
-      const total = Number(contract.balance) + interest;
+      const goc = usesDueTemplate ? Number(contract.balance) : 0; // chưa đến hạn thì gốc chưa thật sự phải trả, chỉ báo lãi
+      const total = goc + interest;
       const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
       const templateData = {
         TEN_KHACH_HANG: customer.name || '',
         SO_HDTD: contract.code,
         SO_KHE_UOC: contract.code,
         SO_DU: String(Math.round(contract.balance)),
-        GOC_PHAI_TRA: String(Math.round(contract.balance)),
+        GOC_PHAI_TRA: String(Math.round(goc)),
         LAI_PHAI_TRA: String(Math.round(interest)),
         SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)),
-        NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN HDTD ${contract.code} ${nameNoDiacritics}`),
+        NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${usesDueTemplate ? '' : 'LAI '}HDTD ${contract.code} ${nameNoDiacritics}`),
         NGAY_DAO_HAN: formatDateVNZalo(contract.due_date),
       };
       const result = await sendZaloTemplateLogged({
         accessToken, phone: customer.phone, templateId, templateData,
-        contractId, customerId: customer.id, kind: 'den_han', triggeredBy: 'manual', triggeredByAdminId: caller.id,
+        contractId, customerId: customer.id, kind, triggeredBy: 'manual', triggeredByAdminId: caller.id,
       });
       return json(result.ok ? { ok: true } : { ok: false, reason: result.reason });
     }

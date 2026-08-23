@@ -24,11 +24,15 @@
 // từng hợp đồng + loại nhắc).
 //
 // Riêng Zalo OA (ZBS Template Message, xem phần dưới): KHÔNG gửi tràn lan
-// như thông báo đẩy — CHỈ gửi cho hợp đồng đã được admin CHỦ ĐỘNG thêm vào
-// bảng zalo_auto_send_list (trang "Quản lý OA" trong app, hoặc tick trong
-// chi tiết hợp đồng) — vì Zalo tốn phí thật + không có cách xác minh trước
-// SĐT có đúng chủ hay không, nên để admin tự xác minh rồi mới thêm vào danh
-// sách, thay vì tự động gửi cho mọi hợp đồng đến/quá hạn.
+// như thông báo đẩy — vì Zalo tốn phí thật + không có cách xác minh trước
+// SĐT có đúng chủ hay không, chỉ gửi khi admin đã tự xác minh + đưa vào 1
+// trong 2 "tầng" sau (trang "Quản lý OA" trong app):
+//   - "Đến hạn/Quá hạn": tự động cho MỌI hợp đồng của khách đã có trong
+//     Tầng 1 "Danh sách OA" (bảng zalo_customers) — không cần chọn riêng
+//     từng hợp đồng.
+//   - "Báo lãi tự động hàng tháng" / "Gửi theo ngày cụ thể": phải CHỌN
+//     RIÊNG từng hợp đồng vào Tầng 2 (bảng zalo_auto_send_list, loại trừ
+//     nhau — 1 hợp đồng chỉ ở 1 trong 2 mục này).
 //
 // KHÔNG dùng chung Edge Function với create-account (function đó phục vụ
 // request TRỰC TIẾP từ trình duyệt qua anon key; function này CHỈ được gọi
@@ -288,6 +292,29 @@ async function sendZaloTemplate(opts: {
   return status === 'success';
 }
 
+/**
+ * Dựng template_data dùng chung cho cả 2 mẫu Zalo — "Đến hạn" (dueTemplate
+ * = true, có đủ Gốc lẫn Lãi) và "Báo lãi" (dueTemplate = false, Gốc = 0 vì
+ * chưa thật sự phải trả). Tên tham số y hệt mẫu 519351 (xem docs mục 10).
+ */
+function buildZaloTemplateData(ct: any, customer: { name: string; phone: string }, now: Date, dueTemplate: boolean): Record<string, string> {
+  const interest = accruedInterest(ct, now);
+  const goc = dueTemplate ? Number(ct.balance) : 0;
+  const total = goc + interest;
+  const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
+  return {
+    TEN_KHACH_HANG: customer.name || '',
+    SO_HDTD: ct.code,
+    SO_KHE_UOC: ct.code,
+    SO_DU: String(Math.round(ct.balance)),
+    GOC_PHAI_TRA: String(Math.round(goc)),
+    LAI_PHAI_TRA: String(Math.round(interest)),
+    SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)),
+    NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${dueTemplate ? '' : 'LAI '}HDTD ${ct.code} ${nameNoDiacritics}`),
+    NGAY_DAO_HAN: formatDateVN(ct.due_date),
+  };
+}
+
 Deno.serve(async (req) => {
   if (CRON_SECRET) {
     const provided = req.headers.get('x-cron-secret') || '';
@@ -295,13 +322,13 @@ Deno.serve(async (req) => {
   }
 
   const now = new Date();
-  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloDenHan: 0 };
+  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloDenHan: 0, zaloBaoLai: 0 };
 
   // Tiêu đề thông báo LUÔN đồng nhất "<tên quỹ> thông báo:" cho mọi loại nhắc
   // (không còn tiêu đề riêng theo từng loại như trước) — khớp với tiêu đề
   // mặc định ở popup admin tự gửi tay (xem buildContractNotificationPreset()
   // trong js/views/admin/customers.js).
-  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_due_id').limit(1).maybeSingle();
+  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_due_id, zalo_template_interest_id').limit(1).maybeSingle();
   const NOTI_TITLE = `${orgRow?.short_name || 'Quỹ tín dụng'} thông báo:`;
 
   const { data: contracts, error: ctErr } = await admin.from('contracts').select('*');
@@ -314,17 +341,25 @@ Deno.serve(async (req) => {
   );
 
   // Chỉ tốn 1 lần làm mới token/lượt chạy (không phải mỗi hợp đồng 1 lần) —
-  // và CHỈ làm khi đã cấu hình sẵn mẫu tin "đến hạn" (mục Quản lý OA), tránh
-  // gọi API Zalo vô ích lúc chưa cấu hình gì.
-  const zaloAccessToken = orgRow?.zalo_template_due_id ? await getZaloAccessToken() : null;
+  // và CHỈ làm khi đã cấu hình ít nhất 1 trong 2 mẫu tin (mục Quản lý OA >
+  // Cấu hình), tránh gọi API Zalo vô ích lúc chưa cấu hình gì.
+  const zaloAccessToken = (orgRow?.zalo_template_due_id || orgRow?.zalo_template_interest_id) ? await getZaloAccessToken() : null;
 
-  // Danh sách hợp đồng ĐÃ ĐƯỢC ADMIN THÊM VÀO danh sách gửi Zalo tự động
-  // (trang "Quản lý OA" > "Gửi tin tự động", hoặc bấm tick trong chi tiết
-  // hợp đồng) — KHÔNG còn gửi tràn lan mọi hợp đồng đến/quá hạn có SĐT như
-  // trước nữa, chỉ gửi đúng những hợp đồng nằm trong danh sách này (admin đã
-  // tự xác minh đúng chủ số điện thoại trước khi thêm vào).
-  const { data: autoSendRows } = await admin.from('zalo_auto_send_list').select('contract_id, kind').eq('kind', 'den_han');
-  const autoSendContractIds = new Set((autoSendRows || []).map((r: any) => r.contract_id));
+  // Tầng 1 "Danh sách OA" — "Đến hạn/Quá hạn" giờ TỰ ĐỘNG áp dụng cho MỌI
+  // hợp đồng của khách hàng có trong danh sách này (không cần chọn riêng
+  // từng hợp đồng nữa) — admin đã tự xác minh đúng chủ số điện thoại trước
+  // khi thêm khách vào danh sách OA.
+  const { data: zaloCustRows } = await admin.from('zalo_customers').select('customer_id');
+  const zaloCustomerIds = new Set((zaloCustRows || []).map((r: any) => r.customer_id));
+
+  // Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi (loại trừ nhau, 1 hợp
+  // đồng chỉ ở 1 trong 2): 'lai_hang_thang_auto' theo đúng lịch nhắc lãi
+  // hàng tháng sẵn có (isMonthlyReminderDay), 'lai_hang_thang_custom_day'
+  // gửi đúng 1 lần/tháng vào ngày admin tự chọn (custom_day).
+  const { data: autoSendRows } = await admin.from('zalo_auto_send_list').select('contract_id, kind, custom_day');
+  const autoSendMap = new Map<string, { kind: string; customDay: number | null }>(
+    (autoSendRows || []).map((r: any) => [r.contract_id, { kind: r.kind, customDay: r.custom_day }])
+  );
 
   /** Có nên gửi thông báo "kind" cho 1 hợp đồng cụ thể hôm nay không — chặn gửi lại trong cùng 1 ngày. */
   async function shouldSend(contractId: string, kind: string): Promise<boolean> {
@@ -353,6 +388,41 @@ Deno.serve(async (req) => {
         );
         if (ok) { await logSent(ct.customer_id, ct.id, 'lai_hang_thang'); result.laiHangThang++; }
       }
+
+      // Zalo OA — mục "Báo lãi tự động hàng tháng" (Tầng 2), CHỈ gửi cho hợp
+      // đồng admin đã tự chọn vào ĐÚNG mục này (autoSendMap), theo ĐÚNG lịch
+      // nhắc lãi hàng tháng sẵn có ở trên (isMonthlyReminderDay).
+      const autoEntry = autoSendMap.get(ct.id);
+      if (autoEntry?.kind === 'lai_hang_thang_auto' && zaloAccessToken && orgRow?.zalo_template_interest_id) {
+        const customer = customerMap.get(ct.customer_id);
+        if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_hang_thang')) {
+          const zaloOk = await sendZaloTemplate({
+            accessToken: zaloAccessToken, phone: customer.phone, templateId: orgRow.zalo_template_interest_id,
+            templateData: buildZaloTemplateData(ct, customer, now, false),
+            contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_auto',
+          });
+          if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_lai_hang_thang'); result.zaloBaoLai++; }
+        }
+      }
+    }
+
+    // Zalo OA — mục "Gửi theo ngày cụ thể" (Tầng 2): gửi ĐÚNG 1 lần/tháng
+    // vào ngày admin tự chọn (custom_day), không phụ thuộc lịch nhắc lãi
+    // hàng tháng thông thường ở trên.
+    {
+      const autoEntry = autoSendMap.get(ct.id);
+      if (autoEntry?.kind === 'lai_hang_thang_custom_day' && autoEntry.customDay && now.getDate() === autoEntry.customDay
+        && zaloAccessToken && orgRow?.zalo_template_interest_id) {
+        const customer = customerMap.get(ct.customer_id);
+        if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_ngay_cu_the')) {
+          const zaloOk = await sendZaloTemplate({
+            accessToken: zaloAccessToken, phone: customer.phone, templateId: orgRow.zalo_template_interest_id,
+            templateData: buildZaloTemplateData(ct, customer, now, false),
+            contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_custom_day',
+          });
+          if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_lai_ngay_cu_the'); result.zaloBaoLai++; }
+        }
+      }
     }
 
     // 2) Gần đến hạn/quá hạn — mỗi 3 ngày kể từ 10 ngày trước hạn, liên tục
@@ -372,27 +442,15 @@ Deno.serve(async (req) => {
 
         // Zalo OA — CHỈ gửi khi (a) đã ĐẾN/QUÁ HẠN thật (daysToDue <= 0, mẫu
         // tin có đủ Gốc lẫn Lãi hợp với lúc này hơn là lúc còn "gần đến hạn")
-        // VÀ (b) hợp đồng này đã được admin CHỦ ĐỘNG thêm vào danh sách gửi
-        // tự động (autoSendContractIds) — xem ghi chú ở khai báo biến đó.
-        if (daysToDue <= 0 && zaloAccessToken && orgRow?.zalo_template_due_id && autoSendContractIds.has(ct.id)) {
+        // VÀ (b) KHÁCH HÀNG của hợp đồng này có trong "Danh sách OA" (Tầng
+        // 1) — tự động cho MỌI hợp đồng của khách đó, không cần chọn riêng
+        // từng hợp đồng nữa (xem ghi chú ở khai báo zaloCustomerIds).
+        if (daysToDue <= 0 && zaloAccessToken && orgRow?.zalo_template_due_id && zaloCustomerIds.has(ct.customer_id)) {
           const customer = customerMap.get(ct.customer_id);
           if (customer?.phone && await shouldSend(ct.id, 'zalo_den_han')) {
-            const interest = accruedInterest(ct, now);
-            const total = Number(ct.balance) + interest;
-            const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
-            const templateData = {
-              TEN_KHACH_HANG: customer.name || '',
-              SO_HDTD: ct.code,
-              SO_KHE_UOC: ct.code,
-              SO_DU: String(Math.round(ct.balance)),
-              GOC_PHAI_TRA: String(Math.round(ct.balance)),
-              LAI_PHAI_TRA: String(Math.round(interest)),
-              SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)),
-              NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN HDTD ${ct.code} ${nameNoDiacritics}`),
-              NGAY_DAO_HAN: formatDateVN(ct.due_date),
-            };
             const zaloOk = await sendZaloTemplate({
-              accessToken: zaloAccessToken, phone: customer.phone, templateId: orgRow.zalo_template_due_id, templateData,
+              accessToken: zaloAccessToken, phone: customer.phone, templateId: orgRow.zalo_template_due_id,
+              templateData: buildZaloTemplateData(ct, customer, now, true),
               contractId: ct.id, customerId: ct.customer_id, kind: 'den_han',
             });
             if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_den_han'); result.zaloDenHan++; }

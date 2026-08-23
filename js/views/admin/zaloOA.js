@@ -1,32 +1,29 @@
 // Trang "Quản lý OA" — quản lý gửi tin Zalo OA (ZBS Template Message), 2 tầng:
-//   Tầng 1 "Danh sách OA": khách hàng nào được xem là "đủ điều kiện gửi
-//     Zalo" — theo KHÁCH HÀNG (không theo hợp đồng), CHUNG cho mọi người có
-//     quyền (không riêng ai), giống "Use" không tự xóa khi hết hợp đồng/dư
-//     nợ. Thêm ở đây hoặc ở chi tiết khách hàng (customers.js).
-//   Tầng 2 "Gửi tin tự động": chọn CỤ THỂ hợp đồng + tình huống nào thật sự
-//     được gửi tự động — RÚT RA từ Tầng 1 — RIÊNG TƯ theo từng người tự chọn
-//     (chỉ người đó thấy/xóa được lựa chọn của mình), nhưng 1 (hợp đồng,
-//     tình huống) chỉ 1 người chọn được — người khác cố chọn trùng bị chặn,
-//     báo rõ tên người đã chọn.
+//   Tầng 1 "Danh sách OA": khách hàng nào "có Zalo, đủ điều kiện gửi" — theo
+//     KHÁCH HÀNG (không hiện thông tin hợp đồng ở đây), CHUNG cho mọi người
+//     có quyền (không riêng ai), giống "Use" không tự xóa khi hết hợp
+//     đồng/dư nợ. "Đến hạn/Quá hạn" tự động áp dụng cho MỌI hợp đồng của
+//     khách trong danh sách này, không cần chọn riêng.
+//   Tầng 2 "Gửi tin tự động": CHỈ còn 2 mục báo lãi (Báo lãi tự động hàng
+//     tháng / Gửi theo ngày cụ thể), RÚT RA từ khách đã ở Tầng 1 — RIÊNG TƯ
+//     theo từng người tự chọn, 1 hợp đồng chỉ ở được 1 trong 2 mục (loại
+//     trừ nhau) và chỉ 1 người chọn được — người khác cố chọn trùng bị
+//     chặn, báo rõ tên người đã chọn + mục họ chọn.
 //   "Quản lý gửi tin": log mọi lần gửi (tự động lẫn gửi tay) — thành công/lỗi.
-//   "Cấu hình" (CHỈ quản trị viên toàn quyền): chọn Template ID theo tình huống.
+//   "Cấu hình" (CHỈ quản trị viên toàn quyền): nhập Template ID cho 2 mẫu
+//     ("Đến hạn" và "Báo lãi").
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, openPicker, pillSelectHtml } from '../../components/ui.js';
+import { emptyState, openPicker, pillSelectHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatDateTime, colorFor, initials } from '../../utils.js';
+import { formatDateTime, formatVND, colorFor, initials, maskCccd } from '../../utils.js';
+import { openCustomerDetail } from './customers.js';
 
-const KIND_LABEL = {
-  den_han: 'Đến hạn/Quá hạn',
-  lai_hang_thang_auto: 'Báo lãi tự động hàng tháng',
-  lai_hang_thang_custom_day: 'Gửi theo ngày cụ thể hàng tháng',
-};
-const KIND_OPTIONS = [
-  { value: 'den_han', label: 'Đến hạn/Quá hạn — hoạt động' },
-  { value: 'lai_hang_thang_auto', label: 'Báo lãi tự động hàng tháng — chờ có mẫu tin' },
-  { value: 'lai_hang_thang_custom_day', label: 'Gửi theo ngày cụ thể hàng tháng — chờ có mẫu tin' },
+const AUTO_SEND_SECTIONS = [
+  { kind: 'lai_hang_thang_auto', title: 'Báo lãi tự động hàng tháng', addLabel: '+ Thêm hợp đồng' },
+  { kind: 'lai_hang_thang_custom_day', title: 'Gửi theo ngày cụ thể', addLabel: '+ Thêm hợp đồng' },
 ];
 
 let activeTab = 'oa';
@@ -104,18 +101,19 @@ function multiPillLabel(label, arr) {
 }
 
 // ------------------------------------------------------------
-// Tab "Danh sách OA" (Tầng 1) — CHUNG cho mọi người có quyền.
+// Tab "Danh sách OA" (Tầng 1) — CHUNG cho mọi người có quyền. KHÔNG hiện
+// thông tin hợp đồng ở đây (chỉ khi thêm vào Tầng 2 mới cần chọn hợp đồng).
 // ------------------------------------------------------------
 function drawOATab(slot, admin) {
   const isStaff = admin.role === 'staff';
   const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
 
   slot.innerHTML = `
-    <div class="flex gap-8 mb-8" style="flex-wrap:wrap">
-      <div class="filter-row" id="oa-filter-pills" style="flex:1"></div>
-    </div>
+    <button class="btn btn-primary btn-sm mb-8" id="btn-add-oa">${icon('plus', 'icon-sm')} Thêm khách hàng vào OA</button>
+    <div class="filter-row mb-8" id="oa-filter-pills"></div>
     <div id="oa-list"></div>
   `;
+  slot.querySelector('#btn-add-oa').addEventListener('click', () => openAddCustomerToOAModal(drawList));
   renderPills();
   drawList();
 
@@ -134,138 +132,100 @@ function drawOATab(slot, admin) {
     listEl.innerHTML = `
       <div class="text-sm text-muted mb-8">${rows.length} khách hàng trong danh sách OA</div>
       ${rows.length ? rows.map(({ r, customer }) => `
-        <div class="list-row" style="padding:12px 4px">
+        <div class="list-row" data-open="${customer.id}" style="cursor:pointer;padding:12px 4px">
           <div class="row-thumb" style="background:${colorFor(customer.id)}">${initials(customer.name)}</div>
           <div class="row-main">
             <div class="row-title">${customer.name}</div>
             <div class="row-sub">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
           </div>
-          <div class="flex gap-6">
-            <button class="icon-btn" data-quick-select="${customer.id}" title="Chọn gửi tự động">${icon('plus', 'icon-sm')}</button>
-            <button class="icon-btn" data-remove-oa="${customer.id}" title="Bỏ khỏi danh sách OA">${icon('trash', 'icon-sm')}</button>
-          </div>
+          ${customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" class="icon-btn" data-stop-row title="Gọi/tìm Zalo nhanh" style="color:var(--color-primary)">${icon('phone', 'icon-sm')}</a>` : ''}
         </div>
-      `).join('') : emptyState({ iconName: 'message', title: 'Chưa có khách hàng nào', message: 'Thêm khách hàng vào danh sách OA ở đây hoặc trong chi tiết khách hàng (mục Khách hàng & Hợp đồng).' })}
+      `).join('') : emptyState({ iconName: 'message', title: 'Chưa có khách hàng nào', message: 'Bấm "Thêm khách hàng vào OA" ở trên, hoặc thêm ở chi tiết khách hàng (mục Khách hàng & Hợp đồng).' })}
     `;
-    listEl.querySelectorAll('[data-quick-select]').forEach((btn) => {
-      btn.addEventListener('click', () => openAutoSendKindPicker(btn.dataset.quickSelect, drawList));
+    listEl.querySelectorAll('[data-open]').forEach((row) => {
+      row.addEventListener('click', () => openCustomerDetail(row.dataset.open, { readOnly: false, context: 'customer' }));
     });
-    listEl.querySelectorAll('[data-remove-oa]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        confirmDialog({
-          title: 'Bỏ khỏi danh sách OA?',
-          message: 'Mọi lựa chọn gửi Zalo tự động (của mọi nhân viên) cho khách này sẽ bị bỏ theo luôn.',
-          danger: true, confirmLabel: 'Bỏ khỏi OA',
-          onConfirm: async () => {
-            try { await S.removeZaloCustomer(btn.dataset.removeOa); toast('Đã bỏ khỏi danh sách OA', 'success'); drawList(); }
-            catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-          },
-        });
-      });
-    });
+    // Nút gọi điện nằm TRONG dòng bấm-để-xem — chặn nổi bọt để bấm gọi không mở luôn chi tiết khách hàng.
+    listEl.querySelectorAll('[data-stop-row]').forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
   }
 }
 
-/** Popup chọn tình huống (+ hợp đồng nếu cần, + ngày nếu chọn "gửi theo ngày") để thêm vào Tầng 2. */
-function openAutoSendKindPicker(customerId, onDone) {
-  const customer = S.getCustomer(customerId);
-  const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
+/** Popup tìm + thêm khách hàng vào Tầng 1 "Danh sách OA". */
+function openAddCustomerToOAModal(onDone) {
+  const zaloIds = new Set(S.listZaloCustomers().map((r) => r.customerId));
+  let query = '';
   const close = openModal({
-    title: `Chọn gửi tự động — ${customer ? customer.name : ''}`,
+    title: 'Thêm khách hàng vào OA',
     bodyHtml: `
-      <div class="field">
-        <label>Tình huống</label>
-        <select id="kind-select">
-          ${KIND_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}
-        </select>
-      </div>
-      ${contracts.length > 1 ? `
-      <div class="field">
-        <label>Hợp đồng</label>
-        <select id="contract-select">
-          ${contracts.map((ct) => `<option value="${ct.id}">${ct.code}</option>`).join('')}
-        </select>
-      </div>` : ''}
-      <div class="field" id="day-field" style="display:none">
-        <label>Ngày trong tháng (1-28)</label>
-        <input type="number" id="day-input" min="1" max="28" value="1"/>
-      </div>
-      ${!contracts.length ? `<p class="field-hint" style="color:var(--danger)">Khách này chưa có hợp đồng nào còn hoạt động — chỉ tình huống "Đến hạn/Quá hạn" cần hợp đồng, 2 tình huống báo lãi hàng tháng vẫn chọn được (áp dụng khi khách có hợp đồng trở lại).</p>` : ''}
+      ${searchBoxHtml('add-oa-search', 'Tìm theo tên, số CCCD, SĐT...', '')}
+      <div id="add-oa-list" class="mt-8"></div>
     `,
-    footHtml: `<button class="btn btn-primary btn-block" id="btn-confirm-kind">Xác nhận</button>`,
-    onMount(sheet, closeFn) {
-      const kindSelect = sheet.querySelector('#kind-select');
-      const dayField = sheet.querySelector('#day-field');
-      kindSelect.addEventListener('change', () => {
-        dayField.style.display = kindSelect.value === 'lai_hang_thang_custom_day' ? '' : 'none';
-      });
-      sheet.querySelector('#btn-confirm-kind').addEventListener('click', async () => {
-        const kind = kindSelect.value;
-        if (kind === 'den_han' && !contracts.length) { toast('Cần có hợp đồng còn hoạt động để chọn tình huống này.', 'error'); return; }
-        const contractSelect = sheet.querySelector('#contract-select');
-        const contractId = contracts.length === 1 ? contracts[0].id : contractSelect ? contractSelect.value : null;
-        if (kind === 'den_han' && !contractId) { toast('Chưa chọn hợp đồng.', 'error'); return; }
-        const customDay = kind === 'lai_hang_thang_custom_day' ? Number(sheet.querySelector('#day-input').value) || null : null;
-        // 2 tình huống báo lãi hàng tháng chưa có mẫu tin (chờ bổ sung) —
-        // vẫn cho chọn trước (dormant), gắn tạm vào hợp đồng đầu tiên nếu có,
-        // để không chặn thao tác của người dùng.
-        const finalContractId = contractId || (contracts[0] && contracts[0].id) || null;
-        if (!finalContractId) { toast('Khách này chưa có hợp đồng nào để gắn lựa chọn vào.', 'error'); return; }
-        try {
-          await S.addZaloAutoSend(finalContractId, kind, customDay);
-          toast('Đã thêm vào danh sách gửi tự động', 'success');
-          closeFn();
-          if (onDone) onDone();
-        } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-      });
+    onMount(sheet) {
+      function draw() {
+        let list = S.listCustomers().filter((c) => !zaloIds.has(c.id));
+        if (query) {
+          const q = query.toLowerCase();
+          list = list.filter((c) => c.name.toLowerCase().includes(q) || (c.cccd || '').includes(query) || (c.phone || '').includes(query));
+        }
+        list = list.slice(0, 50);
+        sheet.querySelector('#add-oa-list').innerHTML = list.length ? list.map((c) => `
+          <div class="list-row" data-add="${c.id}" style="cursor:pointer;padding:8px 4px">
+            <div class="row-thumb" style="background:${colorFor(c.id)}">${initials(c.name)}</div>
+            <div class="row-main"><div class="row-title" style="font-size:13.5px">${c.name}</div><div class="row-sub">${maskCccd(c.cccd)}</div></div>
+          </div>
+        `).join('') : `<p class="text-sm text-muted">Không có khách hàng phù hợp (đã lọc bớt khách đã có sẵn trong danh sách OA).</p>`;
+        sheet.querySelectorAll('[data-add]').forEach((row) => {
+          row.addEventListener('click', async () => {
+            try {
+              await S.addZaloCustomer(row.dataset.add);
+              toast('Đã thêm vào danh sách OA', 'success');
+              if (onDone) onDone();
+              draw(); // vẽ lại danh sách trong popup luôn (bớt đi 1 người vừa thêm), cho thêm tiếp được liền tay
+            } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+          });
+        });
+      }
+      bindSearchBox(sheet, 'add-oa-search', (v) => { query = v; draw(); });
+      draw();
     },
   });
   return close;
 }
 
 // ------------------------------------------------------------
-// Tab "Gửi tin tự động" (Tầng 2) — CHỈ hiện lựa chọn của CHÍNH người đang xem
-// (server/RLS đã tự lọc, xem loadAdminSessionData() trong state.js).
+// Tab "Gửi tin tự động" (Tầng 2) — CHỈ hiện lựa chọn của CHÍNH người đang
+// xem (server/RLS đã tự lọc). 2 mục quản lý riêng, loại trừ nhau.
 // ------------------------------------------------------------
-function drawAutoTab(slot, admin) {
-  const isStaff = admin.role === 'staff';
-  const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
-
+function drawAutoTab(slot) {
   slot.innerHTML = `
-    <p class="text-sm text-muted mb-8">Danh sách này chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại.</p>
-    <div class="filter-row mb-8" id="auto-filter-pills"></div>
-    <div id="auto-list"></div>
+    <p class="text-sm text-muted mb-8">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại. 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
+    ${AUTO_SEND_SECTIONS.map((s) => `
+      <div class="card card-pad mb-16">
+        <div class="section-head"><h2 style="font-size:14px">${s.title}</h2></div>
+        <div id="auto-list-${s.kind}"></div>
+        <button class="btn btn-outline btn-sm btn-block mt-8" data-add-kind="${s.kind}">${s.addLabel}</button>
+      </div>
+    `).join('')}
   `;
-  renderPills();
-  drawList();
+  AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind));
+  slot.querySelectorAll('[data-add-kind]').forEach((btn) => {
+    btn.addEventListener('click', () => openAddAutoSendModal(btn.dataset.addKind, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind))));
+  });
 
-  function renderPills() {
-    const wrap = slot.querySelector('#auto-filter-pills');
-    wrap.innerHTML = thonXomFilterPillsHtml('auto-pill');
-    bindThonXomFilterPills(wrap, 'auto-pill', allowedThon, () => { renderPills(); drawList(); });
-  }
-
-  function drawList() {
-    const listEl = slot.querySelector('#auto-list');
-    let rows = S.listZaloAutoSend()
+  function drawSection(kind) {
+    const listEl = slot.querySelector(`#auto-list-${kind}`);
+    const rows = S.listZaloAutoSendByKind(kind)
       .map((r) => ({ r, customer: S.getCustomer(r.customerId), contract: S.getContract(r.contractId) }))
       .filter((x) => x.customer && x.contract);
-    if (filterThon.length) rows = rows.filter((x) => filterThon.includes(x.customer.thon));
-    if (filterXom.length) rows = rows.filter((x) => filterXom.includes(`${x.customer.thon}||${x.customer.xom}`));
-
-    listEl.innerHTML = `
-      <div class="text-sm text-muted mb-8">${rows.length} hợp đồng bạn đang chọn gửi tự động</div>
-      ${rows.length ? rows.map(({ r, customer, contract }) => `
-        <div class="list-row" style="padding:12px 4px">
-          <div class="row-thumb" style="background:${colorFor(customer.id)}">${initials(customer.name)}</div>
-          <div class="row-main">
-            <div class="row-title">${customer.name} · ${contract.code}</div>
-            <div class="row-sub">${KIND_LABEL[r.kind] || r.kind}${r.customDay ? ` (ngày ${r.customDay})` : ''} · ${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
-          </div>
-          <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách">${icon('trash', 'icon-sm')}</button>
+    listEl.innerHTML = rows.length ? rows.map(({ r, customer, contract }) => `
+      <div class="list-row" style="padding:8px 4px">
+        <div class="row-main">
+          <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}</div>
+          <div class="row-sub">${formatVND(contract.balance)}${r.customDay ? ` · Ngày ${r.customDay} hàng tháng` : ''}</div>
         </div>
-      `).join('') : emptyState({ iconName: 'message', title: 'Bạn chưa chọn hợp đồng nào', message: 'Sang tab "Danh sách OA", bấm nút + cạnh khách hàng để chọn gửi tự động.' })}
-    `;
+        <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách">${icon('trash', 'icon-sm')}</button>
+      </div>
+    `).join('') : `<p class="text-sm text-muted">Chưa có hợp đồng nào.</p>`;
     listEl.querySelectorAll('[data-remove]').forEach((btn) => {
       btn.addEventListener('click', () => {
         confirmDialog({
@@ -273,13 +233,72 @@ function drawAutoTab(slot, admin) {
           message: 'Hợp đồng này sẽ không còn được tự động gửi tin Zalo nữa (vẫn gửi tay được bình thường).',
           danger: true, confirmLabel: 'Bỏ khỏi danh sách',
           onConfirm: async () => {
-            try { await S.removeZaloAutoSend(btn.dataset.remove); toast('Đã bỏ khỏi danh sách', 'success'); drawList(); }
+            try { await S.removeZaloAutoSend(btn.dataset.remove); toast('Đã bỏ khỏi danh sách', 'success'); drawSection(kind); }
             catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
           },
         });
       });
     });
   }
+}
+
+/** Popup tìm + thêm 1 hợp đồng vào 1 trong 2 mục Tầng 2 — chỉ liệt kê hợp đồng của khách ĐÃ ở Tầng 1 và CHƯA ở mục nào (loại trừ nhau). */
+function openAddAutoSendModal(kind, onDone) {
+  const zaloCustomerIds = [...new Set(S.listZaloCustomers().map((r) => r.customerId))];
+  const usedContractIds = new Set(S.listZaloAutoSend().map((r) => r.contractId));
+  let query = '';
+  const isCustomDay = kind === 'lai_hang_thang_custom_day';
+
+  const close = openModal({
+    title: isCustomDay ? 'Thêm vào "Gửi theo ngày cụ thể"' : 'Thêm vào "Báo lãi tự động hàng tháng"',
+    bodyHtml: `
+      ${isCustomDay ? `<div class="field"><label>Ngày trong tháng (1-28) — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label><input type="number" id="day-input" min="1" max="28" value="1"/></div>` : ''}
+      ${searchBoxHtml('add-auto-search', 'Tìm theo tên khách hoặc mã hợp đồng...', '')}
+      <div id="add-auto-list" class="mt-8"></div>
+    `,
+    onMount(sheet) {
+      function getRows() {
+        let rows = [];
+        for (const custId of zaloCustomerIds) {
+          const customer = S.getCustomer(custId);
+          if (!customer) continue;
+          const contracts = S.listContractsByCustomer(custId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan' && !usedContractIds.has(ct.id));
+          for (const contract of contracts) rows.push({ customer, contract });
+        }
+        if (query) {
+          const q = query.toLowerCase();
+          rows = rows.filter(({ customer, contract }) => customer.name.toLowerCase().includes(q) || contract.code.toLowerCase().includes(q));
+        }
+        return rows;
+      }
+      function draw() {
+        const rows = getRows();
+        sheet.querySelector('#add-auto-list').innerHTML = rows.length ? rows.map(({ customer, contract }) => `
+          <div class="list-row" data-add="${contract.id}" style="cursor:pointer;padding:8px 4px">
+            <div class="row-main">
+              <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}</div>
+              <div class="row-sub">${formatVND(contract.balance)}</div>
+            </div>
+          </div>
+        `).join('') : `<p class="text-sm text-muted">Không có hợp đồng nào để thêm — khách phải có trong Danh sách OA, có hợp đồng còn hoạt động, và chưa ở mục nào khác.</p>`;
+        sheet.querySelectorAll('[data-add]').forEach((row) => {
+          row.addEventListener('click', async () => {
+            const customDay = isCustomDay ? (Number(sheet.querySelector('#day-input').value) || 1) : null;
+            try {
+              await S.addZaloAutoSend(row.dataset.add, kind, customDay);
+              toast('Đã thêm vào danh sách gửi tự động', 'success');
+              if (onDone) onDone();
+              usedContractIds.add(row.dataset.add);
+              draw(); // cho thêm tiếp hợp đồng khác liền tay, không cần mở lại popup
+            } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+          });
+        });
+      }
+      bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; draw(); });
+      draw();
+    },
+  });
+  return close;
 }
 
 // ------------------------------------------------------------
@@ -307,18 +326,16 @@ function drawLogTab(slot) {
 }
 
 // ------------------------------------------------------------
-// Tab "Cấu hình" (chỉ super — giữ nguyên nội dung cũ của trang này)
+// Tab "Cấu hình" (chỉ super) — 2 mẫu: Đến hạn + Báo lãi.
 // ------------------------------------------------------------
 function drawConfigTab(slot) {
   const org = S.getOrg();
-  const configured = !!org.zaloTemplateDueId;
   slot.innerHTML = `
     <div class="card card-pad mb-16">
       <div class="section-head"><h2>Trạng thái</h2></div>
       <p class="text-sm text-muted">
-        ${configured
-          ? `Đã cấu hình mẫu tin cho tình huống <b>"Đến hạn/Quá hạn"</b> — hệ thống sẽ tự động gửi tin Zalo cho khách hàng có trong danh sách "Gửi tin tự động" (của từng người) mỗi khi hợp đồng đến/quá hạn (song song với thông báo đẩy).`
-          : `Chưa cấu hình mẫu tin nào — hệ thống hiện CHƯA tự gửi tin Zalo cho khách hàng. Điền Template ID bên dưới để bật.`}
+        ${org.zaloTemplateDueId ? `Mẫu "Đến hạn/Quá hạn" đã cấu hình — tự động gửi cho MỌI hợp đồng của khách trong "Danh sách OA" khi đến/quá hạn.` : `Chưa cấu hình mẫu "Đến hạn/Quá hạn".`}
+        ${org.zaloTemplateInterestId ? ` Mẫu "Báo lãi" đã cấu hình — dùng cho 2 mục ở "Gửi tin tự động" và gửi tay khi hợp đồng chưa đến hạn.` : ` Chưa cấu hình mẫu "Báo lãi".`}
       </p>
     </div>
 
@@ -330,13 +347,13 @@ function drawConfigTab(slot) {
       </p>
       <form id="zalo-form">
         <div class="field">
-          <label>Mẫu tin khi ĐẾN HẠN/QUÁ HẠN (Template ID)</label>
+          <label>Mẫu "Đến hạn/Quá hạn" (Template ID)</label>
           <input name="zaloTemplateDueId" value="${esc(org.zaloTemplateDueId)}" placeholder="VD: 519351"/>
         </div>
-        <p class="text-sm text-muted mb-8">
-          Mẫu cho "Báo lãi tự động hàng tháng" và "Gửi theo ngày cụ thể" sẽ thêm vào sau khi bạn tạo
-          xong mẫu đó bên Zalo — báo lại để bổ sung thêm ô nhập cho 2 tình huống này.
-        </p>
+        <div class="field">
+          <label>Mẫu "Báo lãi" (Template ID)</label>
+          <input name="zaloTemplateInterestId" value="${esc(org.zaloTemplateInterestId)}" placeholder="Dán Template ID khi đã tạo xong mẫu này bên Zalo"/>
+        </div>
         <button class="btn btn-primary btn-block" type="submit">Lưu cấu hình</button>
       </form>
     </div>
@@ -356,7 +373,7 @@ function drawConfigTab(slot) {
     e.preventDefault();
     const fd = new FormData(e.target);
     try {
-      await S.updateOrg({ zaloTemplateDueId: fd.get('zaloTemplateDueId').trim() });
+      await S.updateOrg({ zaloTemplateDueId: fd.get('zaloTemplateDueId').trim(), zaloTemplateInterestId: fd.get('zaloTemplateInterestId').trim() });
       toast('Đã lưu cấu hình Zalo OA', 'success');
       drawConfigTab(slot);
     } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
