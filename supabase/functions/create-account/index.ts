@@ -261,6 +261,10 @@ function formatDateVNZalo(iso: string): string {
 function formatVNDZaloTemplate(n: number): string {
   return Math.round(n).toLocaleString('vi-VN') + ' đ';
 }
+/** SO_TIEN_CHUYEN_KHOAN gắn với nút chuyển khoản có sẵn của Zalo — CHỈ nhận số thuần (có thể có dấu chấm ngăn hàng nghìn), có chữ "đ" phía sau là Zalo báo lỗi định dạng ngay — KHÔNG dùng formatVNDZaloTemplate() ở trên cho riêng trường này. */
+function formatVNDTransferAmount(n: number): string {
+  return Math.round(n).toLocaleString('vi-VN');
+}
 /** Y HỆT stripDiacritics() trong js/utils.js — bỏ dấu tiếng Việt, in hoa, bỏ ký tự lạ, dùng cho nội dung chuyển khoản. */
 function stripDiacriticsUpper(str: string): string {
   return str
@@ -780,7 +784,7 @@ Deno.serve(async (req) => {
         SO_DU: formatVNDZaloTemplate(contract.balance),
         GOC_PHAI_TRA: formatVNDZaloTemplate(goc),
         LAI_PHAI_TRA: formatVNDZaloTemplate(interest),
-        SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
+        SO_TIEN_CHUYEN_KHOAN: formatVNDTransferAmount(total),
         NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${usesDueTemplate ? '' : 'LAI '}HDTD ${contract.code} ${nameNoDiacritics}`),
         NGAY_DAO_HAN: formatDateVNZalo(contract.due_date),
         // Ngày gửi tin (hôm nay) — KHÁC với NGAY_DAO_HAN (ngày đến hạn thật của hợp đồng).

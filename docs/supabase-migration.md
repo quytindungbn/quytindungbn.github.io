@@ -1033,6 +1033,26 @@ create policy "admin sees zalo send log" on zalo_send_log
 **Việc cần bạn làm**: chạy SQL trên trong SQL Editor — **không cần deploy Edge Function nào** (chỉ đổi
 policy đọc dữ liệu + sửa file .js tĩnh, GitHub Pages tự deploy khi push `main`).
 
+### 10.10. Sửa lỗi tự nhảy về trang chủ sau khi lưu form + sửa lỗi định dạng chuyển khoản trong mẫu OA (KHÔNG cần chạy SQL)
+
+- **Sửa lỗi tự nhảy về trang chủ**: các thao tác kiểu "đóng modal này, mở ngay modal khác" (VD: xem chi
+  tiết khách hàng → Sửa → Lưu) trước đây có thể làm lệch con trỏ lịch sử trình duyệt (do
+  `history.back()` của modal cũ chạy BẤT ĐỒNG BỘ trong khi `history.pushState()` của modal mới chạy
+  NGAY — 2 việc đua nhau) — dồn qua vài lượt trong 1 phiên có thể lùi quá xa tới 1 trang CŨ khác (VD:
+  Tổng quan lúc mới đăng nhập), trông y hệt "tự nhảy về trang chủ" dù chỉ vừa lưu xong 1 form. Sửa tận
+  gốc trong `js/components/modal.js` (hoãn `history.back()` sang tick sau, hủy đi + tái dùng đúng mục
+  lịch sử nếu có modal khác mở ra ngay sau đó) — áp dụng cho MỌI modal trong app, không riêng gì sửa
+  khách hàng.
+- **Sửa lỗi định dạng chuyển khoản trong mẫu OA**: tham số `SO_TIEN_CHUYEN_KHOAN` gắn với nút chuyển
+  khoản có sẵn của Zalo — CHỈ nhận số thuần (có dấu chấm ngăn hàng nghìn được, VD: `80.000.000`), thêm
+  chữ "đ" phía sau (như mục 10.9 lỡ thêm) làm Zalo báo lỗi định dạng ngay. Đã bỏ "đ" khỏi riêng trường
+  này, giữ nguyên "đ" ở 3 trường còn lại (`SO_DU`, `GOC_PHAI_TRA`, `LAI_PHAI_TRA` — chỉ hiển thị trong
+  nội dung tin, không gắn nút chuyển khoản nên không bị giới hạn định dạng).
+
+**Việc cần bạn làm**: deploy lại **CẢ 2** Edge Function (`create-account` và `send-due-reminders`) cho
+phần sửa định dạng chuyển khoản — phần sửa lỗi tự nhảy về trang chủ tự lên khi GitHub Pages deploy lại,
+không cần làm gì thêm trên Supabase.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

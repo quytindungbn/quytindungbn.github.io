@@ -313,6 +313,10 @@ async function sendZaloTemplate(opts: {
 function formatVNDZaloTemplate(n: number): string {
   return Math.round(n).toLocaleString('vi-VN') + ' đ';
 }
+/** SO_TIEN_CHUYEN_KHOAN gắn với nút chuyển khoản có sẵn của Zalo — CHỈ nhận số thuần (có thể có dấu chấm ngăn hàng nghìn), có chữ "đ" phía sau là Zalo báo lỗi định dạng ngay — KHÔNG dùng formatVNDZaloTemplate() ở trên cho riêng trường này. */
+function formatVNDTransferAmount(n: number): string {
+  return Math.round(n).toLocaleString('vi-VN');
+}
 
 /**
  * Dựng template_data dùng chung cho cả 2 mẫu Zalo — "Đến hạn" (dueTemplate
@@ -333,7 +337,7 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
     SO_DU: formatVNDZaloTemplate(ct.balance),
     GOC_PHAI_TRA: formatVNDZaloTemplate(goc),
     LAI_PHAI_TRA: formatVNDZaloTemplate(interest),
-    SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
+    SO_TIEN_CHUYEN_KHOAN: formatVNDTransferAmount(total),
     NGAY_KE_HOACH: formatDateVN(now.toISOString()),
     NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${dueTemplate ? '' : 'LAI '}HDTD ${ct.code} ${nameNoDiacritics}`),
     NGAY_DAO_HAN: formatDateVN(ct.due_date),
