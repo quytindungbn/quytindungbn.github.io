@@ -1207,6 +1207,21 @@ sẽ sai/thiếu — chạy CẢ 2 đoạn SQL (10.13 và đoạn trên) thì c�
 
 **Việc cần bạn làm**: chạy SQL trên (SQL Editor) — **không cần deploy Edge Function nào**.
 
+### 10.16. Tự chuyển "Gửi tin tự động" sang hợp đồng mới khi khách còn vay (KHÔNG cần chạy SQL)
+
+Trước đây, nhập file Excel kiểu "đồng bộ đầy đủ" (fullSync): hợp đồng nào không còn trong file bị XÓA
+hẳn — nếu hợp đồng đó đang ở trong "Gửi tin tự động" (Tầng 2) thì lựa chọn đó cũng mất theo (khóa ngoại
+tự xóa cascade), dù khách hàng thực ra CHỈ đổi số hợp đồng (tất toán hợp đồng cũ, mở hợp đồng mới) chứ
+chưa hề trả hết nợ — phải vào thêm lại tay. Giờ trước khi xóa, hệ thống tự kiểm tra: nếu khách đó CHỈ
+CÒN ĐÚNG 1 hợp đồng khác (còn dư nợ, chưa có sẵn trong Tầng 2) sau lượt đồng bộ này, thì tự CHUYỂN lựa
+chọn "Gửi tin tự động" sang hợp đồng đó luôn — không cần thêm lại tay. Nếu khách hàng tất toán thật
+(không còn hợp đồng nào khác) hoặc có NHIỀU hơn 1 khả năng cùng lúc (mơ hồ, không chắc hợp đồng nào mới
+là hợp đồng tiếp diễn) thì vẫn xóa như cũ, không đoán mò. Kết quả nhập file sẽ hiện thêm dòng "Đã tự
+chuyển N lựa chọn..." nếu có chuyển.
+
+**Việc cần bạn làm**: deploy lại **`create-account`** (file duy nhất có sửa lần này) — `send-due-reminders`
+không đổi, không cần deploy lại. Không có SQL nào cần chạy thêm.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

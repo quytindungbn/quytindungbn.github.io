@@ -1010,7 +1010,7 @@ Deno.serve(async (req) => {
     const fullSync = !!body.fullSync;
     const result = {
       newProfiles: 0, existingCustomers: 0, contracts: 0,
-      deletedContracts: 0, deletedCustomers: 0, skipped: 0,
+      deletedContracts: 0, deletedCustomers: 0, skipped: 0, zaloAutoSendMigrated: 0,
       newAccounts: [] as { name: string; cccd: string; tempPassword: string }[],
       errors: [] as string[],
     };
@@ -1144,6 +1144,41 @@ Deno.serve(async (req) => {
     if (fullSync) {
       const toDeleteIds = (allContracts || []).filter((c: any) => !touchedContractIds.has(c.id)).map((c: any) => c.id);
       if (toDeleteIds.length) {
+        // Trước khi xóa hợp đồng không còn trong file, tự CHUYỂN lựa chọn
+        // Tầng 2 "Gửi tin tự động" (nếu có) đang gắn với hợp đồng đó sang
+        // hợp đồng CÒN LẠI của CÙNG khách hàng, khi khách vẫn còn vay (VD:
+        // tất toán hợp đồng cũ, mở hợp đồng mới khác số — vẫn là 1 khoản
+        // vay đang tiếp diễn, không nên tự mất lựa chọn gửi tự động chỉ vì
+        // đổi số hợp đồng). CHỈ chuyển khi RÕ RÀNG không mơ hồ: đúng 1 hợp
+        // đồng cũ có Tầng 2 sắp bị xóa khớp với ĐÚNG 1 hợp đồng còn lại của
+        // khách đó (còn dư nợ, chưa có sẵn trong Tầng 2). Nếu khách hàng có
+        // nhiều khả năng cùng lúc, hoặc không còn hợp đồng nào khác (tất
+        // toán thật) thì để hành vi cũ (xóa theo cascade FK, không đoán mò).
+        const { data: orphanEntries } = await admin.from('zalo_auto_send_list')
+          .select('id, contract_id, customer_id').in('contract_id', toDeleteIds);
+        if (orphanEntries && orphanEntries.length) {
+          const { data: existingAutoRows } = await admin.from('zalo_auto_send_list').select('contract_id');
+          const alreadyInAuto = new Set((existingAutoRows || []).map((r: any) => r.contract_id));
+          // Trạng thái CUỐI CÙNG của mọi hợp đồng sau lượt sync này —
+          // contractUpsertsDeduped gồm cả hợp đồng cũ được cập nhật lẫn hợp
+          // đồng mới tạo trong đúng lượt import này.
+          const remainingByCustomer = new Map<string, string[]>();
+          for (const cr of contractUpsertsDeduped) {
+            const cid = (cr as any).id as string;
+            if (alreadyInAuto.has(cid)) continue; // đã có Tầng 2 riêng, không ghi đè lên
+            if ((Number((cr as any).balance) || 0) <= 0) continue; // còn lại nhưng đã tất toán -> không phải nơi để chuyển vào
+            const custId = (cr as any).customer_id as string;
+            const arr = remainingByCustomer.get(custId) || [];
+            arr.push(cid);
+            remainingByCustomer.set(custId, arr);
+          }
+          for (const entry of orphanEntries) {
+            const candidates = (remainingByCustomer.get((entry as any).customer_id) || []).filter((cid) => !alreadyInAuto.has(cid));
+            if (candidates.length !== 1) continue; // mơ hồ hoặc hết hợp đồng khác -> bỏ qua, xóa theo cascade như cũ
+            const { error: migErr } = await admin.from('zalo_auto_send_list').update({ contract_id: candidates[0] }).eq('id', (entry as any).id);
+            if (!migErr) { alreadyInAuto.add(candidates[0]); result.zaloAutoSendMigrated++; }
+          }
+        }
         const { error } = await admin.from('contracts').delete().in('id', toDeleteIds);
         if (!error) result.deletedContracts = toDeleteIds.length;
       }

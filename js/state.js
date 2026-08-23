@@ -832,6 +832,7 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
   return {
     newProfiles: res.newProfiles || 0, existingCustomers: res.existingCustomers || 0, contracts: res.contracts || 0,
     deletedContracts: res.deletedContracts || 0, deletedCustomers: res.deletedCustomers || 0,
+    zaloAutoSendMigrated: res.zaloAutoSendMigrated || 0,
     skipped: skipped + (res.skipped || 0), errors: [...parseErrors, ...(res.errors || [])],
     newAccounts: res.newAccounts || [],
   };
