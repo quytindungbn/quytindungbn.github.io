@@ -342,19 +342,29 @@ function drawAutoTab(slot, admin) {
   }
 }
 
-/** Ô chọn định kỳ báo (1-4 tháng) — hiện NGAY sau số hợp đồng trong danh sách 2 mục Tầng 2, tự đổi ngay khi chọn (xem bindAutoRowHandlers). */
+/**
+ * Ô chọn định kỳ báo (1-4 tháng) — hiện NGAY sau số hợp đồng trong danh sách 2
+ * mục Tầng 2, tự đổi ngay khi chọn (xem bindAutoRowHandlers). flex-shrink:0 để
+ * KHÔNG BAO GIỜ bị bóp/cắt chữ dù dòng chật (tên/mã HĐ dài) — trước đây ô này
+ * cùng nằm chung 1 khối text bị .row-title "..." nuốt mất khi hết chỗ, chữ
+ * "1 tháng" hiện thiếu dù phần margin bên phải nhìn còn rộng (rộng đó là của
+ * hàng DƯỚI, không phải hàng này) và bấm cũng không trúng được đúng lựa chọn.
+ * Nay ô này đứng RIÊNG 1 khối flex-shrink:0 (xem autoSendRowHtml) nên luôn
+ * hiện đủ chữ + bấm chọn được, phần tên/mã HĐ dài quá thì tự "..." bớt lại.
+ */
 function intervalSelectHtml(rowId, intervalMonths) {
-  return `<select data-interval="${rowId}" style="font-size:11.5px;padding:1px 3px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:inherit;cursor:pointer;vertical-align:middle" title="Định kỳ báo — mặc định mỗi tháng, chọn 2/3/4 để báo thưa hơn">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${(intervalMonths || 1) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`;
+  return `<select data-interval="${rowId}" style="flex-shrink:0;font-size:11.5px;padding:1px 3px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:inherit;cursor:pointer;vertical-align:middle" title="Định kỳ báo — mặc định mỗi tháng, chọn 2/3/4 để báo thưa hơn">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${(intervalMonths || 1) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`;
 }
 
 /**
  * Dòng hiển thị 1 hợp đồng trong 1 trong 2 mục Tầng 2 — dùng chung cho preview
- * lẫn popup "Xem chi tiết". Hàng trên: tên khách + mã hợp đồng, với mục "Gửi
- * theo ngày cụ thể" có thêm "· Ngày X" (chữ nhỏ, không đậm — phân biệt với
- * tên/mã hợp đồng), rồi đến ô chọn định kỳ báo (1-4 tháng) — luôn đứng SAU
- * CÙNG trên hàng này. Hàng dưới: địa chỉ bên trái, số tiền + nút xóa đứng
- * chung 1 nhóm cố định bên phải (không co lại) — nút xóa không còn bị tên
- * khách dài che mất nữa. GIỐNG NHAU cho cả 2 mục.
+ * lẫn popup "Xem chi tiết". Hàng trên là 1 khối flex: bên trái tên khách + mã
+ * hợp đồng (+ "· Ngày X" với mục "Gửi theo ngày cụ thể", chữ nhỏ không đậm) —
+ * PHẦN NÀY tự "..." khi hết chỗ; bên phải ô chọn định kỳ báo (1-4 tháng) —
+ * flex-shrink:0, LUÔN hiện đủ chữ + bấm chọn được, không bao giờ bị phần tên
+ * dài che/cắt mất nữa (xem intervalSelectHtml). Hàng dưới: địa chỉ bên trái,
+ * số tiền + nút xóa đứng chung 1 nhóm cố định bên phải (không co lại) — GIỐNG
+ * NHAU cho cả 2 mục.
  */
 function autoSendRowHtml(kind, r, customer, contract) {
   const addr = [customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn';
@@ -362,7 +372,10 @@ function autoSendRowHtml(kind, r, customer, contract) {
   return `
     <div class="list-row" data-row="${r.id}" data-contract="${contract.id}" data-customer="${customer.id}" style="cursor:pointer;padding:8px 4px">
       <div class="row-main">
-        <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}${dayLabel} ${intervalSelectHtml(r.id, r.intervalMonths)}</div>
+        <div class="row-title" style="display:flex;align-items:center;gap:6px;white-space:normal;overflow:visible;text-overflow:clip">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px">${customer.name} · ${contract.code}${dayLabel}</span>
+          ${intervalSelectHtml(r.id, r.intervalMonths)}
+        </div>
         <div class="row-sub" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${addr}</span>
           <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
