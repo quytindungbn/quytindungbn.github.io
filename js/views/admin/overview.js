@@ -5,6 +5,11 @@ import { emptyState, statusBadge } from '../../components/ui.js';
 import { formatVND, formatNumber, formatDateTime, daysUntil, initials, colorFor } from '../../utils.js';
 import { openContractView } from './customers.js';
 
+// Popup "Gần đến hạn" liệt kê xa hơn cả ngưỡng cảnh báo (NEAR_DUE_DAYS) để
+// xem trước lịch sắp tới, nhưng chỉ tới đúng số ngày này — xa hơn nữa chưa
+// cần xem trước, tránh danh sách dài vô ích.
+const UPCOMING_LIST_CAP_DAYS = 45;
+
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Tổng quan quản trị' });
 }
@@ -37,9 +42,11 @@ export function render(contentEl) {
   // hợp đồng còn xa hơn nữa (16, 17, 18 ngày...), sắp xếp gần nhất trước, để
   // xem trước được lịch sắp tới — chỉ hợp đồng trong đúng NEAR_DUE_DAYS ngày
   // mới tô khung vàng cảnh báo như cũ (xem highlightWithinDays ở
-  // openContractListModal), phần còn lại hiện chữ nhỏ bình thường.
+  // openContractListModal), phần còn lại hiện chữ nhỏ bình thường. Giới hạn
+  // tối đa UPCOMING_LIST_CAP_DAYS ngày — xa hơn nữa chưa cần xem trước, tránh
+  // danh sách dài vô ích.
   const upcoming = contracts
-    .filter((c) => S.effectiveContractStatus(c) === 'dang_vay')
+    .filter((c) => S.effectiveContractStatus(c) === 'dang_vay' && daysUntil(c.dueDate) <= UPCOMING_LIST_CAP_DAYS)
     .sort((a, b) => daysUntil(a.dueDate) - daysUntil(b.dueDate));
 
   contentEl.innerHTML = `
