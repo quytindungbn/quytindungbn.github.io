@@ -426,6 +426,13 @@ function openSendNotificationModal(customer, preset = {}) {
  * tài khoản đăng nhập, KHÔNG đụng đến hồ sơ/hợp đồng vì 2 thứ này độc lập
  * với nhau (hợp đồng vẫn còn nguyên trong Khách hàng & Hợp đồng sau khi xóa).
  */
+/** Nút thêm/bỏ OA đúng theo trạng thái hiện tại — tách riêng để cập nhật TẠI CHỖ sau khi thêm/bỏ (xem updateZaloUi trong openCustomerDetail), khỏi phải đóng/mở lại cả modal (trước đây làm vậy gây "chớp khung như tải lại"). */
+function zaloActionButtonHtml(inZaloList) {
+  return inZaloList
+    ? `<button class="btn btn-outline btn-sm" id="btn-remove-zalo-cust">${icon('message', 'icon-sm')} Bỏ khỏi OA</button>`
+    : `<button class="btn btn-outline btn-sm" id="btn-add-zalo-cust">${icon('message', 'icon-sm')} Thêm vào OA</button>`;
+}
+
 export function openCustomerDetail(customerId, { readOnly = false, context = 'customer' } = {}) {
   const c = S.getCustomer(customerId);
   // Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào danh sách hiển thị nữa.
@@ -439,7 +446,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       <div class="oc-line"><span>CCCD</span><b>${c.cccd}</b></div>
       <div class="oc-line"><span>SĐT</span><b>${c.phone ? `<a href="tel:${c.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${c.phone}</a>` : '—'}</b></div>
       <div class="oc-line" style="align-items:flex-start"><span>Địa chỉ</span><b style="text-align:right;max-width:65%">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || '—'}</b></div>
-      ${canManageZalo ? `<div class="oc-line"><span>Danh sách OA</span><b style="color:${inZaloList ? 'var(--success)' : 'var(--text-muted)'}">${inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}</b></div>` : ''}
+      ${canManageZalo ? `<div class="oc-line" id="oa-status-line"><span>Danh sách OA</span><b style="color:${inZaloList ? 'var(--success)' : 'var(--text-muted)'}">${inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}</b></div>` : ''}
       ${c.mustChangePassword && c.tempPassword ? `
       <div class="oc-line"><span>Mật khẩu hiện tại</span><b style="color:var(--color-primary)">${c.tempPassword}</b></div>
       <div class="field-hint">Khách chưa đăng nhập lần nào (hoặc đã đăng nhập nhưng chưa đổi mật khẩu) nên vẫn xem được mật khẩu này để đưa cho khách.</div>
@@ -449,8 +456,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>` : ''}
         ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>` : ''}
         ${!readOnly && context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
-        ${canManageZalo && !inZaloList ? `<button class="btn btn-outline btn-sm" id="btn-add-zalo-cust">${icon('message', 'icon-sm')} Thêm vào OA</button>` : ''}
-        ${canManageZalo && inZaloList ? `<button class="btn btn-outline btn-sm" id="btn-remove-zalo-cust">${icon('message', 'icon-sm')} Bỏ khỏi OA</button>` : ''}
+        ${canManageZalo ? `<span id="oa-action-btn-wrap" style="display:contents">${zaloActionButtonHtml(inZaloList)}</span>` : ''}
         ${!readOnly && context === 'use' ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} Xóa Use</button>` : ''}
       </div>` : '<div class="mt-16"></div>'}
       <div class="section-head"><h2 style="font-size:14px">Hợp đồng (${contracts.length})</h2></div>
@@ -468,24 +474,41 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       // khai báo canManageZalo/inZaloList ở đầu hàm), dù không sửa được các
       // thứ khác của khách hàng. Các nút còn lại (đổi mật khẩu/thông báo/
       // sửa/xóa Use) vẫn giữ nguyên chặn readOnly như cũ.
-      const addZaloBtn = sheet.querySelector('#btn-add-zalo-cust');
-      if (addZaloBtn) addZaloBtn.addEventListener('click', async () => {
-        addZaloBtn.disabled = true;
-        try { await S.addZaloCustomer(customerId); toast('Đã thêm vào danh sách OA', 'success'); closeFn(); openCustomerDetail(customerId, { readOnly, context }); }
-        catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); addZaloBtn.disabled = false; }
-      });
-      const removeZaloBtn = sheet.querySelector('#btn-remove-zalo-cust');
-      if (removeZaloBtn) removeZaloBtn.addEventListener('click', () => {
-        confirmDialog({
-          title: 'Bỏ khỏi danh sách OA?',
-          message: 'Mọi lựa chọn gửi Zalo tự động (của mọi nhân viên) cho khách này sẽ bị bỏ theo luôn.',
-          danger: true, confirmLabel: 'Bỏ khỏi OA',
-          onConfirm: async () => {
-            try { await S.removeZaloCustomer(customerId); toast('Đã bỏ khỏi danh sách OA', 'success'); closeFn(); openCustomerDetail(customerId, { readOnly, context }); }
-            catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-          },
+      //
+      // Cập nhật TẠI CHỖ (chỉ 2 mẩu DOM nhỏ: dòng trạng thái + nút) sau khi
+      // thêm/bỏ OA thành công — KHÔNG đóng rồi mở lại cả modal như trước
+      // (closeFn(); openCustomerDetail(...)) vì cách đó tạo cảm giác "chớp
+      // khung như tải lại" và chậm hơn hẳn (dựng lại toàn bộ modal + toàn bộ
+      // danh sách hợp đồng bên dưới trong khi chẳng có gì trong đó đổi cả).
+      function updateZaloUi(newInZaloList) {
+        const statusLine = sheet.querySelector('#oa-status-line');
+        if (statusLine) {
+          statusLine.innerHTML = `<span>Danh sách OA</span><b style="color:${newInZaloList ? 'var(--success)' : 'var(--text-muted)'}">${newInZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}</b>`;
+        }
+        const btnWrap = sheet.querySelector('#oa-action-btn-wrap');
+        if (btnWrap) { btnWrap.innerHTML = zaloActionButtonHtml(newInZaloList); bindZaloButtons(); }
+      }
+      function bindZaloButtons() {
+        const addZaloBtn = sheet.querySelector('#btn-add-zalo-cust');
+        if (addZaloBtn) addZaloBtn.addEventListener('click', async () => {
+          addZaloBtn.disabled = true;
+          try { await S.addZaloCustomer(customerId); toast('Đã thêm vào danh sách OA', 'success'); updateZaloUi(true); }
+          catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); addZaloBtn.disabled = false; }
         });
-      });
+        const removeZaloBtn = sheet.querySelector('#btn-remove-zalo-cust');
+        if (removeZaloBtn) removeZaloBtn.addEventListener('click', () => {
+          confirmDialog({
+            title: 'Bỏ khỏi danh sách OA?',
+            message: 'Mọi lựa chọn gửi Zalo tự động (của mọi nhân viên) cho khách này sẽ bị bỏ theo luôn.',
+            danger: true, confirmLabel: 'Bỏ khỏi OA',
+            onConfirm: async () => {
+              try { await S.removeZaloCustomer(customerId); toast('Đã bỏ khỏi danh sách OA', 'success'); updateZaloUi(false); }
+              catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+            },
+          });
+        });
+      }
+      bindZaloButtons();
       if (readOnly) return;
       sheet.querySelector('#btn-reset-pw').addEventListener('click', () => {
         openResetPasswordModal({
