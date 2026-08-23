@@ -23,22 +23,6 @@ export function render(contentEl) {
     </div>
 
     <div class="card card-pad mb-16">
-      <div class="section-head"><h2>Thông tin nhận thanh toán (QR)</h2></div>
-      <p class="text-sm text-muted mb-8">
-        Dùng để tạo mã QR chuyển khoản cho khách hàng ở trang hợp đồng. Để an toàn — tránh trường hợp
-        điện thoại đăng nhập sẵn tài khoản toàn quyền bị mất/bị chiếm rồi bị đổi sang số tài khoản khác —
-        4 thông tin này được <b>nhúng cứng trong code</b>, KHÔNG sửa được qua màn hình này nữa, kể cả
-        quản trị viên toàn quyền. Muốn đổi ngân hàng/số tài khoản thật thì báo lại để sửa code + deploy lại.
-      </p>
-      <div class="field"><label>Tên ngân hàng</label><input value="${esc(org.bankName)}" disabled/></div>
-      <div class="field"><label>Mã ngân hàng VietQR (BIN)</label><input value="${esc(org.bankBin)}" disabled/></div>
-      <div class="field-row">
-        <div class="field"><label>Số tài khoản</label><input value="${esc(org.bankAccountNo)}" disabled/></div>
-        <div class="field"><label>Tên chủ tài khoản</label><input value="${esc(org.bankAccountName)}" disabled/></div>
-      </div>
-    </div>
-
-    <div class="card card-pad mb-16">
       <div class="section-head"><h2>Banner trang chủ khách hàng</h2></div>
       <form id="banner-form">
         <div class="field">

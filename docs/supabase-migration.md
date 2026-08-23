@@ -1262,8 +1262,9 @@ Nhân viên thường (role='staff') thì KHÔNG có rủi ro này — RLS ở S
 **Đã sửa**: 4 giá trị này giờ NHÚNG CỨNG thành hằng số `BANK_INFO` trong `js/state.js` — ứng dụng
 KHÔNG còn đọc 4 cột `bank_bin/bank_name/bank_account_no/bank_account_name` từ bảng `orgs` nữa (luôn
 dùng đúng hằng số, bất kể trong bảng `orgs` đang có gì), và `updateOrg()` cũng bỏ hẳn 4 field này khỏi
-danh sách được phép sửa — có patch cũng bị bỏ qua, im lặng không lỗi. Màn "Cài đặt" đổi mục "Thông tin
-nhận thanh toán (QR)" thành CHỈ HIỂN THỊ (input `disabled`), không còn nút lưu. Muốn đổi ngân hàng/số
+danh sách được phép sửa — có patch cũng bị bỏ qua, im lặng không lỗi. Mục "Thông tin nhận thanh toán
+(QR)" bỏ HẲN khỏi màn "Cài đặt" (không hiển thị nữa, kể cả dạng chỉ xem) — 4 giá trị này giờ chỉ còn
+hiện ra đúng chỗ khách hàng cần thấy để chuyển khoản (mã QR ở trang hợp đồng). Muốn đổi ngân hàng/số
 tài khoản thật (hiếm khi xảy ra) thì phải sửa trực tiếp hằng số `BANK_INFO` trong code + deploy lại qua
 GitHub Pages (nhắn lại yêu cầu đổi, kèm 4 giá trị mới) — kẻ gian có điện thoại tuyệt đối không tự đổi
 được nữa, vì không có quyền truy cập repo GitHub.
