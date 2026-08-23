@@ -642,10 +642,12 @@ export async function removeZaloCustomer(customerId) {
  * không cần thêm tay riêng trước. "kind": 'lai_hang_thang_auto' (mặc định)
  * hoặc 'lai_hang_thang_custom_day' (cần kèm customDay, 1-30) — KHÔNG còn
  * 'den_han' nữa (đến hạn giờ CHỈ gửi tay, xem sendZaloManual()).
+ * "intervalMonths" (1-4, mặc định 1) = định kỳ báo — 1 là hàng tháng như
+ * cũ, 2/3/4 là báo mỗi 2/3/4 tháng 1 lần thay vì tháng nào cũng báo.
  */
-export async function addZaloAutoSend(contractId, kind = 'lai_hang_thang_auto', customDay = null) {
+export async function addZaloAutoSend(contractId, kind = 'lai_hang_thang_auto', customDay = null, intervalMonths = 1) {
   const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'add-zalo-auto-send', contractId, kind, customDay });
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'add-zalo-auto-send', contractId, kind, customDay, intervalMonths });
   if (!res.ok) throw new Error(res.reason || 'Không thêm được vào danh sách gửi tự động.');
   // Server có thể tự tạo thêm dòng Tầng 1 (nếu khách chưa có) — tải lại
   // session data thay vì tự vá cache cục bộ, tránh lệch dữ liệu.
@@ -658,13 +660,21 @@ export async function removeZaloAutoSend(id) {
   state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.id !== id);
   notify();
 }
-/** Sửa ngày gửi (1-28) của 1 lựa chọn thuộc mục "Gửi theo ngày cụ thể" — chỉ chính người đã chọn (hoặc super) sửa được. */
-export async function updateZaloAutoSendDay(id, customDay) {
+/**
+ * Sửa ngày gửi (1-30, chỉ mục "Gửi theo ngày cụ thể") và/hoặc định kỳ báo
+ * (1-4 tháng, cả 2 mục) của 1 lựa chọn Tầng 2 đã có sẵn — chỉ chính người
+ * đã chọn (hoặc super) sửa được. `patch`: { customDay?, intervalMonths? } —
+ * chỉ gửi field nào thật sự muốn đổi.
+ */
+export async function updateZaloAutoSendSettings(id, patch) {
   const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-zalo-auto-send-day', id, customDay });
-  if (!res.ok) throw new Error(res.reason || 'Không sửa được ngày gửi.');
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-zalo-auto-send-settings', id, ...patch });
+  if (!res.ok) throw new Error(res.reason || 'Không sửa được lựa chọn này.');
   const row = state.zaloAutoSendList.find((r) => r.id === id);
-  if (row) row.customDay = customDay;
+  if (row) {
+    if (patch.customDay !== undefined) row.customDay = patch.customDay;
+    if (patch.intervalMonths !== undefined) row.intervalMonths = patch.intervalMonths;
+  }
   notify();
 }
 /**
@@ -922,7 +932,7 @@ function mapZaloCustomerRow(row) {
   return { customerId: row.customer_id, addedBy: row.added_by, addedAt: row.added_at };
 }
 function mapZaloAutoSendRow(row) {
-  return { id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, customDay: row.custom_day, createdBy: row.created_by, createdAt: row.created_at };
+  return { id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, customDay: row.custom_day, intervalMonths: row.interval_months || 1, createdBy: row.created_by, createdAt: row.created_at };
 }
 function mapZaloSendLogRow(row) {
   return {

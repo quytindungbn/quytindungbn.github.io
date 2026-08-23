@@ -342,12 +342,17 @@ function drawAutoTab(slot, admin) {
   }
 }
 
+/** Ô chọn định kỳ báo (1-4 tháng) — hiện NGAY sau số hợp đồng trong danh sách 2 mục Tầng 2, tự đổi ngay khi chọn (xem bindAutoRowHandlers). */
+function intervalSelectHtml(rowId, intervalMonths) {
+  return `<select data-interval="${rowId}" style="font-size:11.5px;padding:1px 3px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:inherit;cursor:pointer;vertical-align:middle" title="Định kỳ báo — mặc định mỗi tháng, chọn 2/3/4 để báo thưa hơn">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${(intervalMonths || 1) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`;
+}
+
 /**
  * Dòng hiển thị 1 hợp đồng trong 1 trong 2 mục Tầng 2 — dùng chung cho preview
- * lẫn popup "Xem chi tiết". Hàng trên hiện ĐỦ tên khách + mã hợp đồng (+ ngày
- * gửi đã chọn với mục "Gửi theo ngày cụ thể") — không còn bị số tiền chen vào
- * cùng hàng gây che khuất. Hàng dưới: địa chỉ bên trái, số tiền in đậm màu
- * xanh (color-primary) bên phải — GIỐNG NHAU cho cả 2 mục.
+ * lẫn popup "Xem chi tiết". Hàng trên hiện ĐỦ tên khách + mã hợp đồng + ô chọn
+ * định kỳ báo (+ ngày gửi đã chọn với mục "Gửi theo ngày cụ thể") — không còn
+ * bị số tiền chen vào cùng hàng gây che khuất. Hàng dưới: địa chỉ bên trái, số
+ * tiền in đậm màu xanh (color-primary) bên phải — GIỐNG NHAU cho cả 2 mục.
  */
 function autoSendRowHtml(kind, r, customer, contract) {
   const addr = [customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn';
@@ -355,7 +360,7 @@ function autoSendRowHtml(kind, r, customer, contract) {
   return `
     <div class="list-row" data-row="${r.id}" data-contract="${contract.id}" data-customer="${customer.id}" style="cursor:pointer;padding:8px 4px">
       <div class="row-main">
-        <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}${dayLabel}</div>
+        <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code} ${intervalSelectHtml(r.id, r.intervalMonths)}${dayLabel}</div>
         <div class="row-sub" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
           <span>${addr}</span>
           <b style="color:var(--color-primary);font-size:13px;white-space:nowrap;flex-shrink:0">${formatVND(contract.balance)}</b>
@@ -370,7 +375,7 @@ function autoSendRowHtml(kind, r, customer, contract) {
 function bindAutoRowHandlers(listEl, kind, refresh) {
   listEl.querySelectorAll('[data-row]').forEach((row) => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('[data-remove]')) return;
+      if (e.target.closest('[data-remove]') || e.target.closest('[data-interval]')) return;
       if (kind === 'lai_hang_thang_custom_day') {
         openEditCustomDayModal(row.dataset.row, refresh);
       } else {
@@ -389,6 +394,17 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
       btn.disabled = true;
       try { await S.removeZaloAutoSend(btn.dataset.remove); toast('Đã bỏ khỏi danh sách', 'success'); refresh(); }
       catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); btn.disabled = false; }
+    });
+  });
+  // Đổi định kỳ báo — chặn nổi bọt để không mở nhầm chi tiết hợp đồng/sửa
+  // ngày (row phía dưới), đổi xong áp dụng ngay, không cần bấm lưu riêng.
+  listEl.querySelectorAll('[data-interval]').forEach((sel) => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', async () => {
+      const intervalMonths = Number(sel.value) || 1;
+      sel.disabled = true;
+      try { await S.updateZaloAutoSendSettings(sel.dataset.interval, { intervalMonths }); toast('Đã đổi định kỳ báo', 'success'); refresh(); }
+      catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); sel.disabled = false; }
     });
   });
 }
@@ -458,7 +474,7 @@ function openEditCustomDayModal(id, onDone) {
       sheet.querySelector('#edit-day-confirm').addEventListener('click', async () => {
         const day = clampDay(sheet.querySelector('#edit-day-input').value);
         try {
-          await S.updateZaloAutoSendDay(id, day);
+          await S.updateZaloAutoSendSettings(id, { customDay: day });
           toast('Đã sửa ngày gửi', 'success');
           closeFn();
           if (onDone) onDone();
@@ -485,6 +501,10 @@ function openAddAutoSendModal(kind, admin, onDone) {
     title: isCustomDay ? 'Thêm vào "Gửi theo ngày cụ thể"' : 'Thêm vào "Báo lãi tự động hàng tháng"',
     bodyHtml: `
       ${isCustomDay ? `<div class="field"><label>Ngày trong tháng (1-30) — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label><input type="number" id="day-input" min="1" max="30" value="1"/></div>` : ''}
+      <div class="field">
+        <label>Định kỳ báo — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label>
+        <select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? 'Mỗi tháng' : `${n} tháng/lần`}</option>`).join('')}</select>
+      </div>
       ${searchBoxHtml('add-auto-search', 'Tìm theo tên khách hoặc mã hợp đồng...', '')}
       <div class="filter-row mb-8" id="add-auto-pills"></div>
       <div id="add-auto-list" class="mt-8"></div>
@@ -531,8 +551,9 @@ function openAddAutoSendModal(kind, admin, onDone) {
         sheet.querySelectorAll('[data-add]').forEach((row) => {
           row.addEventListener('click', async () => {
             const customDay = isCustomDay ? clampDay(sheet.querySelector('#day-input').value) : null;
+            const intervalMonths = Number(sheet.querySelector('#interval-input').value) || 1;
             try {
-              await S.addZaloAutoSend(row.dataset.add, kind, customDay);
+              await S.addZaloAutoSend(row.dataset.add, kind, customDay, intervalMonths);
               toast('Đã thêm vào danh sách gửi tự động', 'success');
               if (onDone) onDone();
               usedContractIds.add(row.dataset.add);

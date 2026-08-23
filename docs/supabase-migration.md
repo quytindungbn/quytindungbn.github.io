@@ -1224,6 +1224,30 @@ không đổi, không cần deploy lại. Không có SQL nào cần chạy thêm
 
 ---
 
+### 10.17. Định kỳ báo 1/2/3/4 tháng cho cả 2 mục "Gửi tin tự động" (BẮT BUỘC chạy SQL)
+
+Trước đây "Báo lãi tự động hàng tháng" và "Gửi theo ngày cụ thể" LUÔN báo hàng tháng (mỗi tháng 1 lần).
+Giờ thêm cột `interval_months` (1-4, mặc định 1) cho mỗi lựa chọn ở Tầng 2 — chọn 2/3/4 thì báo thưa
+hơn (2/3/4 tháng mới báo 1 lần), lặp lại đều đặn theo đúng NGÀY đã neo (đúng ngày này N tháng sau, tính
+từ ngày lãi đã trả đến/ngày tạo lựa chọn tùy mục). Ô chọn "1/2/3/4 tháng" hiện ngay sau mã hợp đồng
+trong từng dòng ở cả 2 mục — đổi là áp dụng luôn, không cần lưu riêng; lúc thêm mới hợp đồng vào 1 trong
+2 mục cũng chọn được định kỳ ngay từ đầu (mặc định "Mỗi tháng" nếu không đổi).
+
+```sql
+alter table zalo_auto_send_list add column if not exists interval_months integer not null default 1;
+
+alter table zalo_auto_send_list drop constraint if exists zalo_auto_send_list_interval_months_check;
+alter table zalo_auto_send_list add constraint zalo_auto_send_list_interval_months_check
+  check (interval_months in (1, 2, 3, 4));
+```
+
+**Việc cần bạn làm**:
+1. Chạy SQL trên (SQL Editor).
+2. Deploy lại CẢ 2 Edge Function: **`create-account`** (thêm/sửa định kỳ) và **`send-due-reminders`**
+   (áp dụng định kỳ khi tính ngày báo hàng ngày lúc 8h sáng).
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

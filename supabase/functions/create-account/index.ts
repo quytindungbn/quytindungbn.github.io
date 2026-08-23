@@ -30,14 +30,17 @@
 //     customerId } -> Tầng 1 "Danh sách đã thêm vào OA" — DANH SÁCH CHUNG,
 //     ai có canManageZaloOA/super cũng thêm/bỏ được (trong đúng Thôn/Xóm).
 //   { type: 'add-zalo-auto-send', contractId, kind? ('lai_hang_thang_auto'
-//     mặc định | 'lai_hang_thang_custom_day'), customDay? } / { type:
-//     'remove-zalo-auto-send', id } / { type: 'update-zalo-auto-send-day', id,
-//     customDay } -> Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi (KHÔNG
-//     còn 'đến hạn' — đến hạn giờ tự động theo Tầng 1, xem
+//     mặc định | 'lai_hang_thang_custom_day'), customDay?, intervalMonths?
+//     (1-4, mặc định 1 = hàng tháng) } / { type: 'remove-zalo-auto-send', id }
+//     / { type: 'update-zalo-auto-send-settings', id, customDay?,
+//     intervalMonths? } -> Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi
+//     (KHÔNG còn 'đến hạn' — đến hạn giờ tự động theo Tầng 1, xem
 //     send-due-reminders/index.ts), loại trừ nhau (1 hợp đồng chỉ ở 1 trong
-//     2 mục). RIÊNG TƯ theo từng người chọn (chỉ người tự thêm mới xóa/sửa
-//     được lựa chọn của mình; add tự đảm bảo khách đã ở Tầng 1, trùng hợp
-//     đồng với người khác thì bị chặn kèm tên người đã chọn + mục họ chọn).
+//     2 mục). intervalMonths cho phép báo mỗi 2/3/4 tháng thay vì tháng nào
+//     cũng báo — áp dụng cho CẢ 2 mục. RIÊNG TƯ theo từng người chọn (chỉ
+//     người tự thêm mới xóa/sửa được lựa chọn của mình; add tự đảm bảo
+//     khách đã ở Tầng 1, trùng hợp đồng với người khác thì bị chặn kèm tên
+//     người đã chọn + mục họ chọn).
 //   { type: 'send-zalo-manual', contractId } -> gửi tay ngay 1 khách, TỰ
 //     CHỌN MẪU theo tình huống hợp đồng (gần/đã đến hạn dùng mẫu Đến hạn,
 //     còn xa hạn dùng mẫu Báo lãi) — không cần tự chọn templateId nữa. BẮT
@@ -590,7 +593,7 @@ Deno.serve(async (req) => {
   // trong đúng phạm vi Thôn/Xóm được gán — y hệt kiểu kiểm tra ở
   // 'send-manual-notification' phía trên. =====
   if (body.type === 'add-zalo-auto-send' || body.type === 'remove-zalo-auto-send' || body.type === 'send-zalo-manual'
-    || body.type === 'add-zalo-customer' || body.type === 'remove-zalo-customer' || body.type === 'update-zalo-auto-send-day') {
+    || body.type === 'add-zalo-customer' || body.type === 'remove-zalo-customer' || body.type === 'update-zalo-auto-send-settings') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
     const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
@@ -667,6 +670,9 @@ Deno.serve(async (req) => {
       // mục báo lãi, loại trừ nhau (1 hợp đồng chỉ ở 1 trong 2, xem mục 10.6).
       const kind = body.kind === 'lai_hang_thang_custom_day' ? 'lai_hang_thang_custom_day' : 'lai_hang_thang_auto';
       const customDay = kind === 'lai_hang_thang_custom_day' ? Number(body.customDay) || null : null;
+      // Định kỳ báo — mặc định 1 (hàng tháng, hành vi cũ), cho chọn 2/3/4
+      // tháng báo 1 lần thay vì tháng nào cũng báo. Áp dụng cho CẢ 2 mục.
+      const intervalMonths = [1, 2, 3, 4].includes(Number(body.intervalMonths)) ? Number(body.intervalMonths) : 1;
       if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
       // Ngày gửi phải 1-30 (không có tháng nào ít hơn) — thiếu chặn này thì
       // ngày nhập lố (VD 31-35) sẽ KHÔNG BAO GIỜ khớp Date().getDate() nên
@@ -680,7 +686,8 @@ Deno.serve(async (req) => {
       // tự động) LUÔN đi kèm Tầng 1, đỡ bắt người dùng làm 2 bước riêng.
       await ensureZaloCustomer(scope.contract.customer_id);
       const { error } = await admin.from('zalo_auto_send_list').insert({
-        id: genId('zas'), contract_id: contractId, customer_id: scope.contract.customer_id, kind, custom_day: customDay, created_by: caller.id,
+        id: genId('zas'), contract_id: contractId, customer_id: scope.contract.customer_id, kind, custom_day: customDay,
+        interval_months: intervalMonths, created_by: caller.id,
       });
       if (error) {
         if (String(error.message || '').toLowerCase().includes('duplicate')) {
@@ -714,17 +721,30 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    if (body.type === 'update-zalo-auto-send-day') {
+    // Sửa ngày gửi (chỉ mục "Gửi theo ngày cụ thể") và/hoặc định kỳ báo (1-4
+    // tháng, cả 2 mục) của 1 lựa chọn Tầng 2 đã có sẵn.
+    if (body.type === 'update-zalo-auto-send-settings') {
       const id = String(body.id || '').trim();
-      const customDay = Number(body.customDay) || null;
-      if (!id || !customDay || customDay < 1 || customDay > 30) return json({ ok: false, reason: 'Ngày không hợp lệ (1-30).' }, 400);
+      if (!id) return json({ ok: false, reason: 'Thiếu mã.' }, 400);
       const { data: row } = await admin.from('zalo_auto_send_list').select('*').eq('id', id).maybeSingle();
       if (!row) return json({ ok: false, reason: 'Không tìm thấy lựa chọn này (có thể đã bị xóa).' }, 404);
-      if (row.kind !== 'lai_hang_thang_custom_day') return json({ ok: false, reason: 'Chỉ mục "Gửi theo ngày cụ thể" mới sửa được ngày.' }, 400);
       if (caller.role !== 'super' && row.created_by !== caller.id) {
         return json({ ok: false, reason: 'Bạn không có quyền sửa lựa chọn của người khác.' }, 403);
       }
-      const { error } = await admin.from('zalo_auto_send_list').update({ custom_day: customDay }).eq('id', id);
+      const patch: Record<string, unknown> = {};
+      if (body.intervalMonths !== undefined) {
+        const intervalMonths = Number(body.intervalMonths);
+        if (![1, 2, 3, 4].includes(intervalMonths)) return json({ ok: false, reason: 'Định kỳ không hợp lệ (chỉ 1-4 tháng).' }, 400);
+        patch.interval_months = intervalMonths;
+      }
+      if (body.customDay !== undefined) {
+        if (row.kind !== 'lai_hang_thang_custom_day') return json({ ok: false, reason: 'Chỉ mục "Gửi theo ngày cụ thể" mới sửa được ngày.' }, 400);
+        const customDay = Number(body.customDay) || null;
+        if (!customDay || customDay < 1 || customDay > 30) return json({ ok: false, reason: 'Ngày không hợp lệ (1-30).' }, 400);
+        patch.custom_day = customDay;
+      }
+      if (!Object.keys(patch).length) return json({ ok: false, reason: 'Không có gì để sửa.' }, 400);
+      const { error } = await admin.from('zalo_auto_send_list').update(patch).eq('id', id);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       return json({ ok: true });
     }

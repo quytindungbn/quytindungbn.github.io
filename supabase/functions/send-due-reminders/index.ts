@@ -187,12 +187,30 @@ function isMonthlyReminderDay(anchorDate: Date, today: Date): boolean {
  * (offset 0), KHÔNG lặp lại 2 ngày sau như thông báo đẩy — dùng riêng cho
  * Zalo OA mục "Báo lãi tự động hàng tháng" (điều kiện gửi giống hệt thông
  * báo đẩy trong hạn — "đúng ngày này tháng sau" — chỉ khác đúng ở việc
- * không nhắc lặp lại lần 2).
+ * không nhắc lặp lại lần 2). intervalMonths (mặc định 1) cho phép báo mỗi
+ * N tháng thay vì tháng nào cũng báo — VD 2 = "đúng ngày này 2 tháng sau",
+ * đếm số tháng lệch so với đợt neo (anchorDate) rồi chỉ báo khi chia hết
+ * cho N, KHÔNG cần lưu thêm mốc riêng nào khác.
  */
-function isMonthlyReminderDayOnce(anchorDate: Date, today: Date): boolean {
+function isMonthlyReminderDayOnce(anchorDate: Date, today: Date, intervalMonths = 1): boolean {
   const occ = latestMonthlyOccurrence(anchorDate, today);
   if (!occ) return false;
-  return daysBetween(occ, today) === 0;
+  if (daysBetween(occ, today) !== 0) return false;
+  const monthDiff = (occ.getFullYear() - anchorDate.getFullYear()) * 12 + (occ.getMonth() - anchorDate.getMonth());
+  return monthDiff % intervalMonths === 0;
+}
+
+/**
+ * Dùng cho Zalo OA mục "Gửi theo ngày cụ thể" — đúng ngày admin tự chọn
+ * (customDay) trong tháng, VÀ đã đủ intervalMonths tháng kể từ THÁNG lựa
+ * chọn này được tạo (createdAt) — cho phép báo mỗi N tháng thay vì tháng
+ * nào cũng báo. VD: tạo lựa chọn vào tháng 3, ngày 15, interval=2 -> báo
+ * đúng 15/3, 15/5, 15/7... (không báo 15/4, 15/6).
+ */
+function isCustomDayDue(customDay: number, createdAt: Date, today: Date, intervalMonths = 1): boolean {
+  if (today.getDate() !== customDay) return false;
+  const monthDiff = (today.getFullYear() - createdAt.getFullYear()) * 12 + (today.getMonth() - createdAt.getMonth());
+  return monthDiff >= 0 && monthDiff % intervalMonths === 0;
 }
 
 async function sendPush(sub: { endpoint: string; p256dh: string; auth: string }, payload: Record<string, unknown>): Promise<boolean> {
@@ -407,10 +425,12 @@ Deno.serve(async (req) => {
   // Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi (loại trừ nhau, 1 hợp
   // đồng chỉ ở 1 trong 2): 'lai_hang_thang_auto' theo đúng lịch nhắc lãi
   // hàng tháng sẵn có (isMonthlyReminderDay), 'lai_hang_thang_custom_day'
-  // gửi đúng 1 lần/tháng vào ngày admin tự chọn (custom_day).
-  const { data: autoSendRows } = await admin.from('zalo_auto_send_list').select('contract_id, kind, custom_day');
-  const autoSendMap = new Map<string, { kind: string; customDay: number | null }>(
-    (autoSendRows || []).map((r: any) => [r.contract_id, { kind: r.kind, customDay: r.custom_day }])
+  // gửi vào ngày admin tự chọn (custom_day). intervalMonths (1-4, mặc định
+  // 1) cho phép báo mỗi N tháng thay vì tháng nào cũng báo — áp dụng cho
+  // cả 2 mục, xem isMonthlyReminderDayOnce()/isCustomDayDue().
+  const { data: autoSendRows } = await admin.from('zalo_auto_send_list').select('contract_id, kind, custom_day, interval_months, created_at');
+  const autoSendMap = new Map<string, { kind: string; customDay: number | null; intervalMonths: number; createdAt: string }>(
+    (autoSendRows || []).map((r: any) => [r.contract_id, { kind: r.kind, customDay: r.custom_day, intervalMonths: r.interval_months || 1, createdAt: r.created_at }])
   );
 
   /** Có nên gửi thông báo "kind" cho 1 hợp đồng cụ thể hôm nay không — chặn gửi lại trong cùng 1 ngày. */
@@ -444,13 +464,16 @@ Deno.serve(async (req) => {
 
     // Zalo OA — mục "Báo lãi tự động hàng tháng" (Tầng 2): điều kiện gửi
     // GIỐNG HỆT thông báo đẩy trong hạn ở trên ("đúng ngày này tháng sau",
-    // dùng chung interestAnchorDate) nhưng CHỈ gửi ĐÚNG 1 LẦN/tháng (không
-    // lặp lại lần 2 như push) — xem isMonthlyReminderDayOnce(). CHỈ gửi cho
-    // hợp đồng admin đã tự chọn vào ĐÚNG mục này (autoSendMap). Gần/đã đến
-    // hạn thì tự chuyển sang mẫu "Đến hạn/Quá hạn" (xem pickZaloTemplate).
-    if (isMonthlyReminderDayOnce(interestAnchorDate(ct), now)) {
+    // dùng chung interestAnchorDate) nhưng CHỈ gửi ĐÚNG 1 LẦN/đợt (không lặp
+    // lại lần 2 như push) — xem isMonthlyReminderDayOnce(). Mặc định mỗi
+    // tháng 1 lần, admin chọn định kỳ 2/3/4 tháng thì báo thưa hơn (autoEntry.
+    // intervalMonths). CHỈ gửi cho hợp đồng admin đã tự chọn vào ĐÚNG mục
+    // này (autoSendMap). Gần/đã đến hạn thì tự chuyển sang mẫu "Đến hạn/Quá
+    // hạn" (xem pickZaloTemplate).
+    {
       const autoEntry = autoSendMap.get(ct.id);
-      if (autoEntry?.kind === 'lai_hang_thang_auto' && zaloAccessToken) {
+      if (autoEntry?.kind === 'lai_hang_thang_auto' && zaloAccessToken
+        && isMonthlyReminderDayOnce(interestAnchorDate(ct), now, autoEntry.intervalMonths)) {
         const picked = pickZaloTemplate(ct, now, orgRow);
         if (picked) {
           const customer = customerMap.get(ct.customer_id);
@@ -466,16 +489,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Zalo OA — mục "Gửi theo ngày cụ thể" (Tầng 2): gửi ĐÚNG 1 lần/tháng
-    // vào ngày admin tự chọn (custom_day), không phụ thuộc lịch nhắc lãi
-    // hàng tháng thông thường ở trên. CHỈ gửi nếu số ngày đã tính lãi (kể từ
-    // lần đóng lãi gần nhất) đã QUÁ 20 ngày — mới đóng lãi gần đây (<=20
-    // ngày) thì bỏ qua đợt này, để dồn qua đúng ngày này tháng sau (không có
-    // gì phải nhắc ngay lúc khách vừa đóng). Gần/đã đến hạn thì tự chuyển
-    // sang mẫu "Đến hạn/Quá hạn" (xem pickZaloTemplate).
+    // Zalo OA — mục "Gửi theo ngày cụ thể" (Tầng 2): gửi vào ngày admin tự
+    // chọn (custom_day), không phụ thuộc lịch nhắc lãi hàng tháng thông
+    // thường ở trên — mặc định mỗi tháng 1 lần, chọn định kỳ 2/3/4 tháng thì
+    // báo thưa hơn kể từ THÁNG tạo lựa chọn (xem isCustomDayDue()). CHỈ gửi
+    // nếu số ngày đã tính lãi (kể từ lần đóng lãi gần nhất) đã QUÁ 20 ngày —
+    // mới đóng lãi gần đây (<=20 ngày) thì bỏ qua đợt này, để dồn qua đợt kế
+    // tiếp (không có gì phải nhắc ngay lúc khách vừa đóng). Gần/đã đến hạn
+    // thì tự chuyển sang mẫu "Đến hạn/Quá hạn" (xem pickZaloTemplate).
     {
       const autoEntry = autoSendMap.get(ct.id);
-      if (autoEntry?.kind === 'lai_hang_thang_custom_day' && autoEntry.customDay && now.getDate() === autoEntry.customDay
+      if (autoEntry?.kind === 'lai_hang_thang_custom_day' && autoEntry.customDay
+        && isCustomDayDue(autoEntry.customDay, new Date(autoEntry.createdAt), now, autoEntry.intervalMonths)
         && interestDaysAccrued(ct, now) > 20 && zaloAccessToken) {
         const picked = pickZaloTemplate(ct, now, orgRow);
         if (picked) {
