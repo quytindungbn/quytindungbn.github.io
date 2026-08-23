@@ -309,6 +309,11 @@ async function sendZaloTemplate(opts: {
   return status === 'success';
 }
 
+/** Định dạng số tiền cho mẫu Zalo OA — có dấu chấm ngăn cách hàng nghìn + " đ" cách 1 khoảng trắng (VD: "500.000 đ"), KHÁC với formatVND() ở trên (dùng cho thông báo đẩy, không có khoảng trắng). */
+function formatVNDZaloTemplate(n: number): string {
+  return Math.round(n).toLocaleString('vi-VN') + ' đ';
+}
+
 /**
  * Dựng template_data dùng chung cho cả 2 mẫu Zalo — "Đến hạn" (dueTemplate
  * = true, có đủ Gốc lẫn Lãi) và "Báo lãi" (dueTemplate = false, Gốc = 0 vì
@@ -325,10 +330,10 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
     TEN_KHACH_HANG: customer.name || '',
     SO_HDTD: ct.code,
     SO_KHE_UOC: ct.code,
-    SO_DU: String(Math.round(ct.balance)) + 'đ',
-    GOC_PHAI_TRA: String(Math.round(goc)) + 'đ',
-    LAI_PHAI_TRA: String(Math.round(interest)) + 'đ',
-    SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)) + 'đ',
+    SO_DU: formatVNDZaloTemplate(ct.balance),
+    GOC_PHAI_TRA: formatVNDZaloTemplate(goc),
+    LAI_PHAI_TRA: formatVNDZaloTemplate(interest),
+    SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
     NGAY_KE_HOACH: formatDateVN(now.toISOString()),
     NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${dueTemplate ? '' : 'LAI '}HDTD ${ct.code} ${nameNoDiacritics}`),
     NGAY_DAO_HAN: formatDateVN(ct.due_date),
