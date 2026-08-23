@@ -1103,6 +1103,61 @@ kiếm tự lên khi GitHub Pages deploy lại, không cần làm gì thêm.
 phần định dạng tiền — phần tốc độ tự lên khi GitHub Pages deploy lại, không cần làm gì thêm trên
 Supabase.
 
+### 10.13. Nhân viên có can_manage_users/can_manage_zalo_oa xem TOÀN BỘ khách hàng+hợp đồng (không riêng gì zalo_customers/zalo_send_log) + bỏ hỏi lại khi xóa khỏi "Gửi tin tự động" (BẮT BUỘC chạy SQL)
+
+Mục 10.9/10.11 mới chỉ nới lỏng đúng 2 bảng `zalo_send_log`/`zalo_customers` — nhưng bảng gốc
+`customers`/`contracts` VẪN giới hạn theo Thôn/Xóm cho staff (kể cả có `can_manage_users`/
+`can_manage_zalo_oa`), nên khi trang "Quản lý OA"/"Quản lý User" join sang lấy tên/SĐT/hợp đồng của
+khách NGOÀI Thôn/Xóm được gán thì dữ liệu vẫn rỗng — kết quả nhìn như vẫn còn bị giới hạn. Sửa tận gốc:
+nới lỏng luôn 2 bảng `customers`/`contracts` — staff có `can_manage_users` HOẶC `can_manage_zalo_oa`
+xem được TOÀN BỘ khách hàng + hợp đồng (không riêng theo Thôn/Xóm nữa). Trang "Khách hàng & Hợp đồng"/
+"Tổng quan"/"Yêu cầu tư vấn" đều tự lọc lại theo đúng Thôn/Xóm ở phía code (dùng `listCustomers({adminId})`)
+nên KHÔNG bị ảnh hưởng — chỉ có "Quản lý User" và "Quản lý OA" (đọc thẳng dữ liệu gốc, không tự lọc lại)
+là thấy được toàn bộ, đúng ý muốn.
+
+```sql
+drop policy if exists "staff sees scoped customers" on customers;
+create policy "staff sees scoped customers" on customers
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id') and a.role = 'staff'
+        and (
+          a.can_manage_users = true or a.can_manage_zalo_oa = true
+          or thon = any(a.allowed_thon) or (thon || '||' || xom) = any(a.allowed_xom)
+        )
+    )
+  );
+
+drop policy if exists "admin sees contracts in scope" on contracts;
+create policy "admin sees contracts in scope" on contracts
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from customers c
+      join admins a on a.id = (auth.jwt() ->> 'row_id')
+      where c.id = contracts.customer_id
+        and (
+          a.role = 'super' or a.can_manage_users = true or a.can_manage_zalo_oa = true
+          or c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom)
+        )
+    )
+  );
+```
+
+Lưu ý: chỉ đổi quyền XEM. Việc THÊM/BỎ khách vào Danh sách OA hay tạo Use vẫn giữ nguyên giới hạn đúng
+Thôn/Xóm được gán như cũ (không đổi) — nới lỏng RLS trên KHÔNG cho phép staff ghi/sửa dữ liệu ngoài
+phạm vi, chỉ cho XEM.
+
+Đồng thời (không cần SQL, chỉ sửa code JS): bỏ hộp thoại hỏi lại khi bấm "Bỏ khỏi danh sách" ở mục "Gửi
+tin tự động" — bấm là xóa luôn, không cần xác nhận thêm bước nữa (chỉ là gỡ khỏi danh sách gửi tự động,
+không xóa dữ liệu hợp đồng/khách hàng, thêm lại được ngay bất cứ lúc nào) — bỏ nhiều hợp đồng liên tiếp
+giờ nhanh hơn hẳn.
+
+**Việc cần bạn làm**: chạy SQL trên (SQL Editor) — **không cần deploy Edge Function nào** (chỉ đổi
+policy đọc dữ liệu + sửa file .js tĩnh, GitHub Pages tự deploy khi push `main`).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

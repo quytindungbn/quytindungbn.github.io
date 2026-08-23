@@ -18,7 +18,7 @@ import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
 import { emptyState, openPicker, pillSelectHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
-import { openModal, confirmDialog } from '../../components/modal.js';
+import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatDateTime, formatVND, colorFor, initials } from '../../utils.js';
 import { openCustomerDetail, openContractView } from './customers.js';
@@ -138,8 +138,11 @@ function multiPillLabel(label, arr) {
 // thông tin hợp đồng ở đây (chỉ khi thêm vào Tầng 2 mới cần chọn hợp đồng).
 // ------------------------------------------------------------
 function drawOATab(slot, admin) {
-  const isStaff = admin.role === 'staff';
-  const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
+  // "Danh sách OA" giờ hiện TOÀN BỘ cho bất kỳ ai có quyền canManageZaloOA
+  // (không giới hạn theo Thôn/Xóm nữa, xem docs mục 10.11) — bộ lọc Thôn ở
+  // đây vì vậy cũng cho chọn TOÀN BỘ Thôn (không chỉ đúng địa bàn của
+  // staff), khớp với dữ liệu thật sự đang hiển thị.
+  const allowedThon = S.distinctThon();
 
   slot.innerHTML = `
     <button class="btn btn-primary btn-sm mb-8" id="btn-add-oa">${icon('plus', 'icon-sm')} Thêm khách hàng vào OA</button>
@@ -375,18 +378,17 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
       }
     });
   });
+  // Bấm là XÓA LUÔN, KHÔNG hỏi lại — trước có confirmDialog nhưng bỏ nhiều
+  // hợp đồng liên tiếp phải bấm 2 lần/hợp đồng (xóa + xác nhận) rất chậm.
+  // Đây chỉ là bỏ khỏi DANH SÁCH GỬI TỰ ĐỘNG (không xóa hợp đồng/khách hàng
+  // gì cả, thêm lại được ngay bất cứ lúc nào), không phải hành động phá hủy
+  // dữ liệu nên bỏ bước hỏi lại cho nhanh.
   listEl.querySelectorAll('[data-remove]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      confirmDialog({
-        title: 'Bỏ khỏi danh sách gửi tự động?',
-        message: 'Hợp đồng này sẽ không còn được tự động gửi tin Zalo nữa (vẫn gửi tay được bình thường).',
-        danger: true, confirmLabel: 'Bỏ khỏi danh sách',
-        onConfirm: async () => {
-          try { await S.removeZaloAutoSend(btn.dataset.remove); toast('Đã bỏ khỏi danh sách', 'success'); refresh(); }
-          catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-        },
-      });
+      btn.disabled = true;
+      try { await S.removeZaloAutoSend(btn.dataset.remove); toast('Đã bỏ khỏi danh sách', 'success'); refresh(); }
+      catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); btn.disabled = false; }
     });
   });
 }
