@@ -49,12 +49,6 @@ export const NEAR_DUE_DAYS = 15;
 export const BANK_INFO = Object.freeze({
   bankName: 'Ngân hàng Hợp tác xã Việt Nam (Co-op Bank)',
   bankBin: '970446',
-  // Mã viết tắt VietQR (KHÁC mã số/BIN ở trên) — dùng riêng cho link "Mở app
-  // ngân hàng" (xem contractDetail.js): dịch vụ deep link đòi hỏi mã viết
-  // tắt ở phần "ba=<số_TK>@<mã>", dùng nhầm mã số (BIN) khiến app mở lên
-  // nhưng không nhận diện được ngân hàng nhận tiền nên không tự điền được
-  // thông tin (đã gặp thật, xem docs mục 10.20c).
-  bankShortCode: 'coopbank',
   bankAccountNo: '5200000000825012',
   bankAccountName: 'QUY TIN DUNG NHAN DAN BINH NGUYEN',
 });

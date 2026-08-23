@@ -1358,6 +1358,31 @@ merchant với VietQR (không mở công khai), cần cân nhắc hướng đăn
 
 ---
 
+### 10.20d. KẾT LUẬN: gỡ hẳn nút "Mở app ngân hàng" — VietQR public deep link chưa hỗ trợ tự điền
+
+Sau khi sửa lại lần nữa (10.20c) vẫn không tự điền được — tra thêm tài liệu công khai từ VietQR/payOS/
+SePay thì xác nhận chắc chắn: đây là **giới hạn hiện tại của chính dịch vụ `dl.vietqr.io/pay` (bản công
+khai, miễn phí)** — dịch vụ này hiện CHỈ mở được đúng app, CHƯA hỗ trợ chuyển tiếp số tiền/nội dung cho
+app ngân hàng đọc (VietQR ghi rõ đây là tính năng dành cho tương lai). Không phải lỗi code, không có
+cách nào sửa được từ phía Quỹ với dịch vụ miễn phí công khai này.
+
+**Cách THẬT SỰ tự điền được** (khách đã tự tay xác nhận thành công, KHÔNG tốn phí gì): dùng chính app
+Zalo — bấm "Chia sẻ ảnh QR" → chọn Zalo → gửi cho chính mình → bấm vào ảnh QR trong Zalo → Zalo tự nhận
+diện, hiện màn xác nhận Ngân hàng/Số tiền/Nội dung + chọn app ngân hàng → bấm "Chuyển khoản" → app ngân
+hàng tự điền đầy đủ. Đây là khả năng có sẵn TRONG APP ZALO của khách (nhận diện bất kỳ mã QR VietQR hợp
+lệ nào), không liên quan gì đến SePay/payOS hay bất kỳ đăng ký merchant nào — hoàn toàn miễn phí.
+
+**Đã gỡ**: nút "Mở app ngân hàng để thanh toán" + popup "Chọn ngân hàng của bạn" (gây hiểu lầm vì không
+tự điền được như hứa). Thay bằng dòng chữ **in đậm màu xanh** phía trên nút "Tải ảnh mã QR": *"Tải mã QR
+này để thực hiện thanh toán"* — bỏ luôn dòng chữ "Quét mã QR này để thanh toán" cũ ở dưới ảnh QR (không
+cần thiết nữa, dòng mới ở trên đã đủ rõ). Xóa `bankShortCode`/`openBankChooserModal`/`fetchBankApps` khỏi
+code (không còn dùng).
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
+GitHub Pages tự deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

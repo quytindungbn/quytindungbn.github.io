@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { pageHeader, bindHeaderActions } from '../components/shell.js';
 import { statusBadge } from '../components/ui.js';
 import { openModal } from '../components/modal.js';
-import { formatVND, formatDate, formatNumber, daysUntil, stripDiacritics, debounce, escapeHtml } from '../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, stripDiacritics, debounce } from '../utils.js';
 import { toast } from '../components/toast.js';
 
 export function renderHeader(headerEl) {
@@ -67,75 +67,6 @@ export function buildVietQrUrl({ bin, accountNo, amount, content, accountName })
   const info = encodeURIComponent(content);
   const name = encodeURIComponent(accountName);
   return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?amount=${Math.round(amount)}&addInfo=${info}&accountName=${name}`;
-}
-
-/**
- * Danh sách app ngân hàng (tên/logo/link mở app) — LẤY TRỰC TIẾP TỪ VIETQR
- * lúc hiển thị (KHÔNG tự đoán/gõ tay danh sách mã ngân hàng — mỗi ngân hàng
- * có 1 mã app riêng để mở đúng app, gõ tay rất dễ sai/lỗi thời). API công
- * khai, không cần key — cùng hệ thống Zalo dùng khi thanh toán VietQR. Tự
- * chọn đúng danh sách theo hệ điều hành (iOS/Android) vì link mở app có thể
- * khác nhau giữa 2 nền tảng.
- */
-async function fetchBankApps() {
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  const url = isIOS ? 'https://api.vietqr.io/v2/ios-app-deeplinks' : 'https://api.vietqr.io/v2/android-app-deeplinks';
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('fetch failed');
-  const data = await res.json();
-  return Array.isArray(data?.apps) ? data.apps : [];
-}
-
-/**
- * Popup "Chọn ngân hàng của bạn" — khách chọn đúng app mình đang dùng, mở
- * app đó kèm sẵn số tài khoản Quỹ/số tiền/nội dung (khách chỉ cần xác nhận
- * chuyển) — giống trải nghiệm thanh toán VietQR trong Zalo.
- *
- * QUAN TRỌNG: mỗi dòng ngân hàng phải là 1 thẻ <a href="..."> THẬT (không
- * phải <button> + window.open() bằng JS) — điện thoại (đặc biệt iPhone/
- * Safari) chỉ nhận diện link để CHUYỂN HẲN THÔNG TIN (số tiền/nội dung) qua
- * cho app khi đó là 1 cú bấm vào link thật; window.open() gọi bằng JS tuy
- * vẫn MỞ ĐƯỢC app nhưng nhiều máy không truyền được dữ liệu kèm theo, app mở
- * lên trống trơn — đúng lỗi thực tế đã gặp. `getPayInfo()` gọi NGAY LÚC MỞ
- * popup này (không phải lúc bấm chọn ngân hàng) để build sẵn href cho từng
- * <a> — cần lấy đúng số tiền/nội dung MỚI NHẤT tại thời điểm khách bấm nút
- * "Mở app ngân hàng" (chỗ gọi hàm này), không đổi lại sau đó nữa vì bấm nút
- * mở popup này rồi thì khách không còn sửa được số tiền ở popup dưới nữa.
- */
-function openBankChooserModal({ bankShortCode, accountNo, accountName, getPayInfo }) {
-  const { total, text } = getPayInfo();
-  const close = openModal({
-    title: 'Chọn ngân hàng của bạn',
-    bodyHtml: `<div id="bank-app-list" class="mt-8"><p class="text-sm text-muted">Đang tải danh sách ngân hàng...</p></div>`,
-    onMount(sheet, closeFn) {
-      const listEl = sheet.querySelector('#bank-app-list');
-      fetchBankApps().then((apps) => {
-        if (!apps.length) throw new Error('empty');
-        listEl.innerHTML = `<ul class="flex-col gap-6">${apps.filter((app) => app.deeplink).map((app) => {
-          const url = new URL(app.deeplink);
-          // "ba" đòi hỏi MÃ VIẾT TẮT VietQR của ngân hàng nhận tiền (VD:
-          // coopbank), KHÔNG dùng được mã số/BIN (970446) — dùng nhầm mã số
-          // khiến app mở lên nhưng không tự điền được thông tin (xem
-          // docs/supabase-migration.md mục 10.20c).
-          url.searchParams.set('ba', `${accountNo}@${bankShortCode}`);
-          url.searchParams.set('am', String(Math.round(total)));
-          url.searchParams.set('tn', text);
-          url.searchParams.set('bn', accountName);
-          return `
-          <li>
-            <a href="${escapeHtml(url.toString())}" target="_blank" rel="noopener" class="list-row w-full" style="text-decoration:none;color:inherit;padding:9px 4px">
-              ${app.appLogo ? `<img src="${escapeHtml(app.appLogo)}" alt="" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0"/>` : ''}
-              <div class="row-main"><div class="row-title" style="font-size:14px">${escapeHtml(app.appName || app.bankName)}</div></div>
-            </a>
-          </li>`;
-        }).join('')}</ul>`;
-        listEl.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => closeFn()));
-      }).catch(() => {
-        listEl.innerHTML = `<p class="text-sm text-danger">Không tải được danh sách ngân hàng (lỗi mạng) — vui lòng dùng mã QR bên dưới để thanh toán.</p>`;
-      });
-    },
-  });
-  return close;
 }
 
 /**
@@ -287,13 +218,11 @@ function openPaymentModal(contract, customer, accrued) {
             <div class="oc-line" style="align-items:flex-start"><span>Nội dung</span><b id="sum-content" style="text-align:right;max-width:65%"></b></div>
           </div>
           ${hasBank ? `
-            <button type="button" class="btn btn-primary btn-block mb-8" id="btn-open-bank-app">${icon('wallet', 'icon-sm')} Mở app ngân hàng để thanh toán</button>
-            <div class="field-hint mb-16" style="text-align:center">Chọn đúng ngân hàng bạn đang dùng, app sẽ tự điền sẵn số tiền/nội dung — không mở được thì quét mã QR bên dưới.</div>
             <div style="text-align:center">
+              <div class="fw-700 mb-8" style="font-size:15px;color:var(--color-primary)">Tải mã QR này để thực hiện thanh toán</div>
               <button type="button" class="btn btn-outline btn-block mb-8" id="btn-download-qr">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
               <img id="qr-img" alt="Mã QR chuyển khoản" style="max-width:220px;width:100%;border:1px solid var(--border);border-radius:12px"/>
-              <div class="fw-700 mt-8 mb-12" style="font-size:15px">Quét mã QR này để thanh toán</div>
-              <button type="button" class="btn btn-outline btn-block" id="btn-share-qr">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
+              <button type="button" class="btn btn-outline btn-block mt-8" id="btn-share-qr">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
             </div>
           ` : `
             <div class="field-hint text-danger">Quỹ chưa cấu hình mã QR (mã ngân hàng). Vui lòng chuyển khoản thủ công theo thông tin ở trên, hoặc liên hệ quầy giao dịch.</div>
@@ -306,10 +235,6 @@ function openPaymentModal(contract, customer, accrued) {
         if (pInput) bindMoneyInput(pInput, principalAmount, (v) => { principalAmount = v; updateSummaryTyping(); }, contract.balance);
         const iInput = body.querySelector('#interest-input');
         if (iInput) bindMoneyInput(iInput, interestAmount, (v) => { interestAmount = v; updateSummaryTyping(); });
-        const openBankAppBtn = body.querySelector('#btn-open-bank-app');
-        if (openBankAppBtn) openBankAppBtn.addEventListener('click', () => {
-          openBankChooserModal({ bankShortCode: org.bankShortCode, accountNo: org.bankAccountNo, accountName: org.bankAccountName, getPayInfo: content });
-        });
         const shareBtn = body.querySelector('#btn-share-qr');
         if (shareBtn) shareBtn.addEventListener('click', () => {
           const { text } = content();
