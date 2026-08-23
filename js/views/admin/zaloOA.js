@@ -364,7 +364,9 @@ function intervalSelectHtml(rowId, intervalMonths) {
  * flex-shrink:0, LUÔN hiện đủ chữ + bấm chọn được, không bao giờ bị phần tên
  * dài che/cắt mất nữa (xem intervalSelectHtml). Hàng dưới: địa chỉ bên trái,
  * số tiền + nút xóa đứng chung 1 nhóm cố định bên phải (không co lại) — GIỐNG
- * NHAU cho cả 2 mục.
+ * NHAU cho cả 2 mục. Bấm SỐ TIỀN luôn mở xem chi tiết hợp đồng (kể cả mục
+ * "Gửi theo ngày cụ thể", nơi bấm chỗ khác trong dòng mở SỬA NGÀY thay vì xem
+ * chi tiết — xem bindAutoRowHandlers).
  */
 function autoSendRowHtml(kind, r, customer, contract) {
   const addr = [customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn';
@@ -379,7 +381,7 @@ function autoSendRowHtml(kind, r, customer, contract) {
         <div class="row-sub" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${addr}</span>
           <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            <b style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>
+            <b data-view-contract title="Xem chi tiết hợp đồng" style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>
             <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách" style="width:26px;height:26px;flex-shrink:0">${icon('trash', 'icon-sm')}</button>
           </span>
         </div>
@@ -392,12 +394,22 @@ function autoSendRowHtml(kind, r, customer, contract) {
 function bindAutoRowHandlers(listEl, kind, refresh) {
   listEl.querySelectorAll('[data-row]').forEach((row) => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('[data-remove]') || e.target.closest('[data-interval]')) return;
+      if (e.target.closest('[data-remove]') || e.target.closest('[data-interval]') || e.target.closest('[data-view-contract]')) return;
       if (kind === 'lai_hang_thang_custom_day') {
         openEditCustomDayModal(row.dataset.row, refresh);
       } else {
         openContractView(row.dataset.customer, S.getContract(row.dataset.contract), { readOnly: true });
       }
+    });
+  });
+  // Bấm riêng vào SỐ TIỀN luôn mở xem chi tiết hợp đồng, kể cả ở mục "Gửi
+  // theo ngày cụ thể" (bấm chỗ khác trong dòng mở SỬA NGÀY thay vì xem chi
+  // tiết ở mục này — cần 1 chỗ bấm riêng để vẫn xem được chi tiết hợp đồng).
+  listEl.querySelectorAll('[data-view-contract]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = el.closest('[data-row]');
+      openContractView(row.dataset.customer, S.getContract(row.dataset.contract), { readOnly: true });
     });
   });
   // Bấm là XÓA LUÔN, KHÔNG hỏi lại — trước có confirmDialog nhưng bỏ nhiều
