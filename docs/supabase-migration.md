@@ -868,6 +868,73 @@ create policy "admin sees zalo send log in scope" on zalo_send_log
    sách gửi Zalo tự động" — hợp đồng nào KHÔNG tích thì cron sẽ KHÔNG gửi Zalo cho hợp đồng đó nữa (kể
    cả đã đến/quá hạn), chỉ còn thông báo đẩy như cũ.
 
+### 10.5. 2 tầng danh sách OA (BẮT BUỘC chạy nếu project đã tạo trước đoạn này)
+
+Đổi thêm so với 10.4, theo đúng yêu cầu:
+- **Tầng 1 — "Danh sách đã thêm vào OA"** (bảng `zalo_customers`): theo KHÁCH HÀNG (không theo hợp
+  đồng) — giống Use, KHÔNG tự xóa khi khách hết hợp đồng/dư nợ. Danh sách CHUNG — ai có quyền
+  `canManageZaloOA` cũng xem/thêm được (trong đúng phạm vi Thôn/Xóm).
+- **Tầng 2 — "Danh sách gửi tự động"** (bảng `zalo_auto_send_list` cũ): giờ RIÊNG TƯ theo từng nhân
+  viên (chỉ người tự thêm mới thấy/xóa được lựa chọn của mình) — nhưng có ràng buộc DUY NHẤT 1 người
+  được chọn 1 (hợp đồng, tình huống) tại 1 thời điểm; người khác cố chọn trùng bị chặn, báo rõ ai đã
+  chọn. Bắt buộc khách phải có trong Tầng 1 trước mới thêm được vào Tầng 2 (ép bằng khóa ngoại).
+
+```sql
+create table if not exists zalo_customers (
+  customer_id text primary key references customers(id) on delete cascade,
+  added_by text,
+  added_at timestamptz default now()
+);
+alter table zalo_customers enable row level security;
+grant usage on schema public to anon, authenticated, service_role;
+grant select on zalo_customers to anon, authenticated, service_role;
+grant insert, update, delete on zalo_customers to service_role;
+create policy "admin sees zalo customers in scope" on zalo_customers
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (a.role = 'super' or a.can_manage_zalo_oa = true)
+        and (
+          a.role = 'super'
+          or exists (
+            select 1 from customers c
+            where c.id = zalo_customers.customer_id
+              and (c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
+          )
+        )
+    )
+  );
+
+-- Nạp sẵn vào Tầng 1 những khách đã có trong Tầng 2 từ trước (mục 10.4) —
+-- BẮT BUỘC chạy trước bước thêm khóa ngoại bên dưới, không thì bước đó lỗi
+-- vì có dòng "treo" (customer_id chưa có trong zalo_customers).
+insert into zalo_customers (customer_id, added_by, added_at)
+select distinct customer_id, created_by, now() from zalo_auto_send_list
+on conflict (customer_id) do nothing;
+
+alter table zalo_auto_send_list add column if not exists custom_day int;
+alter table zalo_auto_send_list drop constraint if exists zalo_auto_send_list_customer_id_fkey;
+alter table zalo_auto_send_list add constraint zalo_auto_send_list_customer_id_fkey
+  foreign key (customer_id) references zalo_customers(customer_id) on delete cascade;
+
+-- Đổi policy xem Tầng 2: TỪ "cả nhóm cùng Thôn/Xóm đều thấy" SANG "chỉ
+-- người tự chọn mới thấy" (super vẫn thấy hết).
+drop policy if exists "admin sees zalo auto send list in scope" on zalo_auto_send_list;
+create policy "admin sees own zalo auto send selections" on zalo_auto_send_list
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and (
+      (auth.jwt() ->> 'row_id') = zalo_auto_send_list.created_by
+      or exists (select 1 from admins a where a.id = (auth.jwt() ->> 'row_id') and a.role = 'super')
+    )
+  );
+```
+
+**Việc cần bạn làm**: chạy SQL trên (SQL Editor), rồi deploy lại `create-account` (có sửa thêm) —
+`send-due-reminders` KHÔNG đổi ở bước này, không cần deploy lại.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

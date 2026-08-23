@@ -417,12 +417,16 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const c = S.getCustomer(customerId);
   // Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào danh sách hiển thị nữa.
   const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
+  const session = S.getSession();
+  const canManageZalo = S.canManageZaloOA(session.id);
+  const inZaloList = S.isZaloCustomer(customerId);
   const close = openModal({
     title: c.name,
     bodyHtml: `
       <div class="oc-line"><span>CCCD</span><b>${c.cccd}</b></div>
       <div class="oc-line"><span>SĐT</span><b>${c.phone ? `<a href="tel:${c.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${c.phone}</a>` : '—'}</b></div>
       <div class="oc-line" style="align-items:flex-start"><span>Địa chỉ</span><b style="text-align:right;max-width:65%">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || '—'}</b></div>
+      ${canManageZalo ? `<div class="oc-line"><span>Danh sách OA</span><b style="color:${inZaloList ? 'var(--success)' : 'var(--text-muted)'}">${inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}</b></div>` : ''}
       ${c.mustChangePassword && c.tempPassword ? `
       <div class="oc-line"><span>Mật khẩu hiện tại</span><b style="color:var(--color-primary)">${c.tempPassword}</b></div>
       <div class="field-hint">Khách chưa đăng nhập lần nào (hoặc đã đăng nhập nhưng chưa đổi mật khẩu) nên vẫn xem được mật khẩu này để đưa cho khách.</div>
@@ -432,6 +436,8 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         <button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>
         <button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>
         ${context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
+        ${canManageZalo && !inZaloList ? `<button class="btn btn-outline btn-sm" id="btn-add-zalo-cust">${icon('message', 'icon-sm')} Thêm vào OA</button>` : ''}
+        ${canManageZalo && inZaloList ? `<button class="btn btn-outline btn-sm" id="btn-remove-zalo-cust">${icon('message', 'icon-sm')} Bỏ khỏi OA</button>` : ''}
         <button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} ${context === 'use' ? 'Xóa Use' : ''}</button>
       </div>` : '<div class="mt-16"></div>'}
       <div class="section-head"><h2 style="font-size:14px">Hợp đồng (${contracts.length})</h2></div>
@@ -445,6 +451,24 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         btn.addEventListener('click', () => { openContractView(customerId, S.getContract(btn.dataset.viewContract), { readOnly }); });
       });
       if (readOnly) return;
+      const addZaloBtn = sheet.querySelector('#btn-add-zalo-cust');
+      if (addZaloBtn) addZaloBtn.addEventListener('click', async () => {
+        addZaloBtn.disabled = true;
+        try { await S.addZaloCustomer(customerId); toast('Đã thêm vào danh sách OA', 'success'); closeFn(); openCustomerDetail(customerId, { readOnly, context }); }
+        catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); addZaloBtn.disabled = false; }
+      });
+      const removeZaloBtn = sheet.querySelector('#btn-remove-zalo-cust');
+      if (removeZaloBtn) removeZaloBtn.addEventListener('click', () => {
+        confirmDialog({
+          title: 'Bỏ khỏi danh sách OA?',
+          message: 'Mọi lựa chọn gửi Zalo tự động (của mọi nhân viên) cho khách này sẽ bị bỏ theo luôn.',
+          danger: true, confirmLabel: 'Bỏ khỏi OA',
+          onConfirm: async () => {
+            try { await S.removeZaloCustomer(customerId); toast('Đã bỏ khỏi danh sách OA', 'success'); closeFn(); openCustomerDetail(customerId, { readOnly, context }); }
+            catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+          },
+        });
+      });
       sheet.querySelector('#btn-reset-pw').addEventListener('click', () => {
         openResetPasswordModal({
           title: 'Cấp lại mật khẩu cho khách',

@@ -26,12 +26,18 @@
 //     nhất 1 thiết bị). Nhân viên (role='staff') CHỈ gửi được cho khách
 //     trong đúng phạm vi Thôn/Xóm được gán — y hệt điều kiện RLS bảng
 //     customers, xem docs/supabase-migration.md mục 5b.
-//   { type: 'add-zalo-auto-send', contractId, kind? } / { type:
+//   { type: 'add-zalo-customer', customerId } / { type: 'remove-zalo-customer',
+//     customerId } -> Tầng 1 "Danh sách đã thêm vào OA" — DANH SÁCH CHUNG,
+//     ai có canManageZaloOA/super cũng thêm/bỏ được (trong đúng Thôn/Xóm).
+//   { type: 'add-zalo-auto-send', contractId, kind?, customDay? } / { type:
 //     'remove-zalo-auto-send', id } / { type: 'send-zalo-manual', contractId,
-//     templateId } -> quản lý danh sách gửi Zalo OA tự động + gửi tay ngay 1
-//     khách. Cần cờ RIÊNG canManageZaloOA (không dùng chung canManageUsers)
-//     HOẶC role='super'. Nhân viên staff chỉ thao tác được hợp đồng trong
-//     đúng phạm vi Thôn/Xóm được gán — xem docs/supabase-migration.md mục 10.
+//     templateId } -> Tầng 2 "Danh sách gửi tự động" — RIÊNG TƯ theo từng
+//     người chọn (chỉ người tự thêm mới xóa được lựa chọn của mình; add tự
+//     đảm bảo khách đã ở Tầng 1, trùng (hợp đồng, tình huống) với người khác
+//     thì bị chặn kèm tên người đã chọn) + gửi tay ngay 1 khách. Cần cờ RIÊNG
+//     canManageZaloOA (không dùng chung canManageUsers) HOẶC role='super'.
+//     Nhân viên staff chỉ thao tác được hợp đồng/khách trong đúng phạm vi
+//     Thôn/Xóm được gán — xem docs/supabase-migration.md mục 10.
 //   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
 //   của 1 admin đã đăng nhập (xác minh lại tại server, không tin JWT mù) —
 //   2 nhóm quyền khác nhau:
@@ -555,7 +561,8 @@ Deno.serve(async (req) => {
   // role='super'. Nhân viên staff chỉ thao tác được với hợp đồng của khách
   // trong đúng phạm vi Thôn/Xóm được gán — y hệt kiểu kiểm tra ở
   // 'send-manual-notification' phía trên. =====
-  if (body.type === 'add-zalo-auto-send' || body.type === 'remove-zalo-auto-send' || body.type === 'send-zalo-manual') {
+  if (body.type === 'add-zalo-auto-send' || body.type === 'remove-zalo-auto-send' || body.type === 'send-zalo-manual'
+    || body.type === 'add-zalo-customer' || body.type === 'remove-zalo-customer') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
     const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
@@ -582,19 +589,71 @@ Deno.serve(async (req) => {
       }
       return { ok: true, contract, customer };
     }
+    /** Y HỆT checkContractInScope() nhưng đi thẳng từ customerId (dùng cho add-zalo-customer, không cần qua hợp đồng cụ thể). */
+    async function checkCustomerInScope(customerId: string): Promise<{ ok: boolean; customer?: any }> {
+      const { data: customer } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
+      if (!customer) return { ok: false };
+      if (caller.role !== 'super') {
+        const allowedThon: string[] = caller.allowed_thon || [];
+        const allowedXom: string[] = caller.allowed_xom || [];
+        const inScope = allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`);
+        if (!inScope) return { ok: false };
+      }
+      return { ok: true, customer };
+    }
+    /** Đảm bảo khách đã có trong Tầng 1 (zalo_customers) — tự thêm nếu chưa có, không báo lỗi nếu đã có sẵn. */
+    async function ensureZaloCustomer(customerId: string) {
+      await admin.from('zalo_customers').insert({ customer_id: customerId, added_by: caller.id }).select().maybeSingle();
+      // Bỏ qua lỗi trùng (đã có sẵn) — chỉ cần đảm bảo tồn tại, không cần biết vừa tạo mới hay đã có.
+    }
+
+    if (body.type === 'add-zalo-customer') {
+      const customerId = String(body.customerId || '').trim();
+      if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+      const scope = await checkCustomerInScope(customerId);
+      if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy khách hàng hoặc bạn không có quyền với khách hàng này.' }, 403);
+      const { data: existing } = await admin.from('zalo_customers').select('customer_id').eq('customer_id', customerId).maybeSingle();
+      if (existing) return json({ ok: false, reason: 'Khách hàng này đã có trong danh sách OA rồi.' });
+      const { error } = await admin.from('zalo_customers').insert({ customer_id: customerId, added_by: caller.id });
+      if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      return json({ ok: true });
+    }
+
+    if (body.type === 'remove-zalo-customer') {
+      const customerId = String(body.customerId || '').trim();
+      if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+      const scope = await checkCustomerInScope(customerId);
+      if (!scope.ok) return json({ ok: false, reason: 'Bạn không có quyền với khách hàng này.' }, 403);
+      // Xóa khỏi Tầng 1 tự động XÓA THEO mọi lựa chọn gửi tự động (Tầng 2) của khách này, kể cả của
+      // NGƯỜI KHÁC đã chọn — do khóa ngoại on delete cascade (xem docs mục 10.5). Chấp nhận đánh đổi
+      // này vì đã bỏ hẳn khỏi danh sách OA thì không còn lý do gì để còn gửi tự động cho khách đó nữa.
+      const { error } = await admin.from('zalo_customers').delete().eq('customer_id', customerId);
+      if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      return json({ ok: true });
+    }
 
     if (body.type === 'add-zalo-auto-send') {
       const contractId = String(body.contractId || '').trim();
       const kind = String(body.kind || 'den_han').trim();
+      const customDay = kind === 'lai_hang_thang_custom_day' ? Number(body.customDay) || null : null;
       if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
       const scope = await checkContractInScope(contractId);
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
+      // Tự thêm vào Tầng 1 (danh sách OA) nếu khách chưa có sẵn — Tầng 2 (gửi
+      // tự động) LUÔN đi kèm Tầng 1, đỡ bắt người dùng làm 2 bước riêng.
+      await ensureZaloCustomer(scope.contract.customer_id);
       const { error } = await admin.from('zalo_auto_send_list').insert({
-        id: genId('zas'), contract_id: contractId, customer_id: scope.contract.customer_id, kind, created_by: caller.id,
+        id: genId('zas'), contract_id: contractId, customer_id: scope.contract.customer_id, kind, custom_day: customDay, created_by: caller.id,
       });
       if (error) {
         if (String(error.message || '').toLowerCase().includes('duplicate')) {
-          return json({ ok: false, reason: 'Hợp đồng này đã có trong danh sách gửi tự động rồi.' });
+          // Tra xem AI đã chọn trước (không lộ gì nhạy cảm, chỉ tên) để báo đúng như yêu cầu.
+          const { data: existingRow } = await admin.from('zalo_auto_send_list').select('created_by').eq('contract_id', contractId).eq('kind', kind).maybeSingle();
+          const { data: existingAdmin } = existingRow?.created_by
+            ? await admin.from('admins').select('name').eq('id', existingRow.created_by).maybeSingle()
+            : { data: null };
+          const who = existingAdmin?.name ? `nhân viên "${existingAdmin.name}"` : 'người khác';
+          return json({ ok: false, reason: `Hợp đồng này đã được ${who} chọn gửi tự động (tình huống này) rồi.` });
         }
         return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       }
@@ -606,8 +665,12 @@ Deno.serve(async (req) => {
       if (!id) return json({ ok: false, reason: 'Thiếu mã.' }, 400);
       const { data: row } = await admin.from('zalo_auto_send_list').select('*').eq('id', id).maybeSingle();
       if (!row) return json({ ok: true }); // đã không còn -> coi như xong, khỏi báo lỗi
-      const scope = await checkContractInScope(row.contract_id);
-      if (!scope.ok) return json({ ok: false, reason: 'Bạn không có quyền với hợp đồng này.' }, 403);
+      // Chỉ chính người đã chọn (hoặc super) mới bỏ được — KHÔNG dùng
+      // checkContractInScope ở đây, vì lựa chọn Tầng 2 giờ riêng tư theo
+      // từng người, không phải cứ cùng phạm vi Thôn/Xóm là bỏ được của nhau.
+      if (caller.role !== 'super' && row.created_by !== caller.id) {
+        return json({ ok: false, reason: 'Bạn không có quyền bỏ lựa chọn của người khác.' }, 403);
+      }
       const { error } = await admin.from('zalo_auto_send_list').delete().eq('id', id);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       return json({ ok: true });
@@ -623,6 +686,7 @@ Deno.serve(async (req) => {
       if (!customer.phone) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
       const accessToken = await getZaloAccessToken();
       if (!accessToken) return json({ ok: false, reason: 'Chưa cấu hình kết nối Zalo OA trên server (thiếu Secret/Refresh Token) — liên hệ để cấu hình trước.' }, 500);
+      await ensureZaloCustomer(customer.id); // gửi tay cũng tính là "đã đưa vào OA" luôn, đỡ phải thêm tay riêng
 
       const now = new Date();
       const interest = accruedInterestZalo(contract, now);
