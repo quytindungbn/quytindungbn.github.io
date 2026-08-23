@@ -23,6 +23,7 @@ export const ADMIN_NAV_MANAGE_USERS = [
   { path: '#/admin/nhan-vien', label: 'Quản lý User', shortLabel: 'User', icon: 'idCard' },
 ];
 export const ADMIN_NAV_SUPER_ONLY = [
+  { path: '#/admin/zalo-oa', label: 'Quản lý OA', shortLabel: 'OA', icon: 'message' },
   { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings' },
 ];
 // Số mục tối đa hiện trực tiếp trên thanh menu dưới (mobile) — còn lại gộp vào "Thêm"

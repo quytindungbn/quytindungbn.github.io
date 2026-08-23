@@ -17,6 +17,7 @@ import * as AdminCustomers from './views/admin/customers.js';
 import * as AdminRequests from './views/admin/requests.js';
 import * as AdminSettings from './views/admin/settings.js';
 import * as AdminStaff from './views/admin/staff.js';
+import * as AdminZaloOA from './views/admin/zaloOA.js';
 
 const customerRoutes = [
   { re: /^#\/$/, view: Dashboard },
@@ -30,6 +31,7 @@ const adminRoutes = [
   { re: /^#\/admin\/khach-hang$/, view: AdminCustomers },
   { re: /^#\/admin\/yeu-cau$/, view: AdminRequests },
   { re: /^#\/admin\/cai-dat$/, view: AdminSettings, superOnly: true },
+  { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, superOnly: true },
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];

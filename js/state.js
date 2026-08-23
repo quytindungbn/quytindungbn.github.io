@@ -88,6 +88,13 @@ function mapOrgRow(row) {
     id: row.id, name: row.name, shortName: row.short_name, hotline: row.hotline, address: row.address,
     bannerEnabled: !!row.banner_enabled, bannerTitle: row.banner_title || '', bannerText: row.banner_text || '',
     bankBin: row.bank_bin || '', bankName: row.bank_name || '', bankAccountNo: row.bank_account_no || '', bankAccountName: row.bank_account_name || '',
+    // Mã mẫu tin Zalo OA (ZBS Template Message) dùng khi hợp đồng ĐẾN HẠN/QUÁ
+    // HẠN — xem trang "Quản lý OA" (js/views/admin/zaloOA.js). Chỉ lưu
+    // Template ID (không nhạy cảm) ở đây; App ID/Secret Key/Access Token thật
+    // KHÔNG lưu qua bảng orgs (bảng này ai cũng SELECT được, kể cả chưa đăng
+    // nhập — xem docs/supabase-migration.md mục 10), mà đặt riêng ở Supabase
+    // Secrets + bảng zalo_oa_tokens (chỉ Edge Function đọc được).
+    zaloTemplateDueId: row.zalo_template_due_id || '',
   };
 }
 
@@ -131,6 +138,7 @@ export async function updateOrg(patch) {
     name: 'name', shortName: 'short_name', hotline: 'hotline', address: 'address',
     bannerEnabled: 'banner_enabled', bannerTitle: 'banner_title', bannerText: 'banner_text',
     bankBin: 'bank_bin', bankName: 'bank_name', bankAccountNo: 'bank_account_no', bankAccountName: 'bank_account_name',
+    zaloTemplateDueId: 'zalo_template_due_id',
   };
   for (const [k, col] of Object.entries(map)) if (patch[k] !== undefined) dbPatch[col] = patch[k];
   const { error } = await sb.from('orgs').update(dbPatch).eq('id', state.org.id);

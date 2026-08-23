@@ -43,6 +43,14 @@ const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')!;
 // KHÔNG hiện ra cho người dùng cuối thấy.
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
 const CRON_SECRET = Deno.env.get('CRON_SECRET'); // tùy chọn nhưng khuyến nghị đặt — xem docs
+// Zalo OA (ZBS Template Message) — gửi tin qua số điện thoại khi hợp đồng
+// ĐẾN HẠN/QUÁ HẠN, song song với thông báo đẩy. App ID + Secret Key là bí
+// mật KHÔNG đổi, đặt cố định qua Secrets (xem docs mục 10). Refresh Token thì
+// NGƯỢC LẠI — Zalo tự đổi (rotate) mỗi lần làm mới, nên phải lưu trong bảng
+// zalo_oa_tokens (chỉ Edge Function này đọc/ghi được, không lộ ra ngoài) chứ
+// không đặt cố định trong Secrets như 2 cái trên được.
+const ZALO_APP_ID = Deno.env.get('ZALO_APP_ID');
+const ZALO_SECRET_KEY = Deno.env.get('ZALO_SECRET_KEY');
 
 const NEAR_DUE_START_DAYS = 10; // Bắt đầu nhắc "gần đến hạn/quá hạn" từ đúng X ngày trước hạn
 const NEAR_DUE_REPEAT_DAYS = 3; // ...rồi lặp lại mỗi X ngày, cả trước lẫn sau ngày đến hạn, tới khi tất toán
@@ -179,6 +187,86 @@ async function pushToCustomer(customerId: string, title: string, body: string, t
   return anyOk;
 }
 
+// ------------------------------------------------------------
+// Zalo OA (ZBS Template Message) — xem ghi chú ở khai báo ZALO_APP_ID phía trên.
+// ------------------------------------------------------------
+
+/** Y HỆT stripDiacritics() trong js/utils.js — bỏ dấu tiếng Việt, in hoa, bỏ ký tự lạ, dùng cho nội dung chuyển khoản. */
+function stripDiacriticsUpper(str: string): string {
+  return str
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .replace(/\s*₫/g, 'd') // ký hiệu tiền "₫" là 1 ký tự riêng (U+20AB), NFD không đụng tới — xem utils.js
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Chuẩn hóa SĐT sang định dạng Zalo yêu cầu: mã quốc gia 84, không số 0 đầu, không dấu cách/gạch. */
+function normalizeZaloPhone(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.startsWith('84')) return digits;
+  if (digits.startsWith('0')) return '84' + digits.slice(1);
+  return digits;
+}
+
+/**
+ * Lấy Access Token OA hiện hành — tự làm mới bằng Refresh Token đang lưu
+ * trong bảng zalo_oa_tokens mỗi lần Edge Function này chạy (Access Token chỉ
+ * sống ~1 tiếng nên không cache dài hạn). Refresh Token Zalo trả về CÓ THỂ
+ * khác Refresh Token cũ (tự xoay vòng) — ghi đè lại vào bảng luôn để lần chạy
+ * sau vẫn dùng được. Trả về null nếu chưa cấu hình đủ (ZALO_APP_ID/SECRET_KEY
+ * chưa đặt Secret, hoặc bảng zalo_oa_tokens chưa có dòng nào) — các nơi gọi
+ * hàm này phải tự bỏ qua việc gửi Zalo khi null, KHÔNG được chặn cả hàm nhắc
+ * lịch (thông báo đẩy vẫn phải chạy bình thường dù chưa cấu hình Zalo).
+ */
+async function getZaloAccessToken(): Promise<string | null> {
+  if (!ZALO_APP_ID || !ZALO_SECRET_KEY) return null;
+  const { data: tokenRow } = await admin.from('zalo_oa_tokens').select('*').eq('id', 'default').maybeSingle();
+  if (!tokenRow?.refresh_token) return null;
+  try {
+    const res = await fetch('https://oauth.zaloapp.com/v4/oa/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', secret_key: ZALO_SECRET_KEY },
+      body: new URLSearchParams({ app_id: ZALO_APP_ID, grant_type: 'refresh_token', refresh_token: tokenRow.refresh_token }),
+    });
+    const json = await res.json();
+    if (!json.access_token) { console.error('Lỗi làm mới Zalo access token:', json); return null; }
+    await admin.from('zalo_oa_tokens').update({
+      access_token: json.access_token,
+      refresh_token: json.refresh_token || tokenRow.refresh_token,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 'default');
+    return json.access_token as string;
+  } catch (e) {
+    console.error('Lỗi gọi API làm mới Zalo access token:', e);
+    return null;
+  }
+}
+
+/** Gửi 1 tin nhắn mẫu (ZBS Template Message) qua số điện thoại. Trả về true nếu Zalo báo gửi thành công. */
+async function sendZaloTemplate(accessToken: string, phone: string, templateId: string, templateData: Record<string, string>): Promise<boolean> {
+  try {
+    const res = await fetch('https://business.openapi.zalo.me/message/template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', access_token: accessToken },
+      body: JSON.stringify({
+        phone: normalizeZaloPhone(phone),
+        template_id: templateId,
+        template_data: templateData,
+        tracking_id: `qtd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      }),
+    });
+    const json = await res.json();
+    if (json.error !== 0) { console.error('Lỗi gửi tin Zalo:', json); return false; }
+    return true;
+  } catch (e) {
+    console.error('Lỗi gọi API gửi tin Zalo:', e);
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (CRON_SECRET) {
     const provided = req.headers.get('x-cron-secret') || '';
@@ -186,17 +274,28 @@ Deno.serve(async (req) => {
   }
 
   const now = new Date();
-  const result = { laiHangThang: 0, ganDenHanQuaHan: 0 };
+  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloDenHan: 0 };
 
   // Tiêu đề thông báo LUÔN đồng nhất "<tên quỹ> thông báo:" cho mọi loại nhắc
   // (không còn tiêu đề riêng theo từng loại như trước) — khớp với tiêu đề
   // mặc định ở popup admin tự gửi tay (xem buildContractNotificationPreset()
   // trong js/views/admin/customers.js).
-  const { data: orgRow } = await admin.from('orgs').select('short_name').limit(1).maybeSingle();
+  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_due_id').limit(1).maybeSingle();
   const NOTI_TITLE = `${orgRow?.short_name || 'Quỹ tín dụng'} thông báo:`;
 
   const { data: contracts, error: ctErr } = await admin.from('contracts').select('*');
   if (ctErr) return new Response(JSON.stringify({ ok: false, reason: ctErr.message }), { status: 500 });
+
+  // Cần thêm tên + SĐT khách hàng để gửi Zalo (bảng contracts không có sẵn 2 cột này).
+  const { data: customersData } = await admin.from('customers').select('id, name, phone');
+  const customerMap = new Map<string, { name: string; phone: string }>(
+    (customersData || []).map((c: any) => [c.id, { name: c.name, phone: c.phone }])
+  );
+
+  // Chỉ tốn 1 lần làm mới token/lượt chạy (không phải mỗi hợp đồng 1 lần) —
+  // và CHỈ làm khi đã cấu hình sẵn mẫu tin "đến hạn" (mục Quản lý OA), tránh
+  // gọi API Zalo vô ích lúc chưa cấu hình gì.
+  const zaloAccessToken = orgRow?.zalo_template_due_id ? await getZaloAccessToken() : null;
 
   /** Có nên gửi thông báo "kind" cho 1 hợp đồng cụ thể hôm nay không — chặn gửi lại trong cùng 1 ngày. */
   async function shouldSend(contractId: string, kind: string): Promise<boolean> {
@@ -241,6 +340,33 @@ Deno.serve(async (req) => {
         }
         const ok = await pushToCustomer(ct.customer_id, NOTI_TITLE, body, 'gan-den-han');
         if (ok) { await logSent(ct.customer_id, ct.id, 'gan_den_han'); result.ganDenHanQuaHan++; }
+
+        // Zalo OA — CHỈ gửi khi đã ĐẾN/QUÁ HẠN thật (daysToDue <= 0), vì mẫu
+        // tin đã cấu hình (519351) có đủ cả Gốc lẫn Lãi, hợp với lúc này hơn
+        // là lúc còn "gần đến hạn" (chưa tới ngày, gốc chưa thật sự phải trả)
+        // — xem ghi chú ở khai báo ZALO_APP_ID phía trên và mục Quản lý OA
+        // trong app (chọn mẫu tin dùng cho "đến hạn").
+        if (daysToDue <= 0 && zaloAccessToken && orgRow?.zalo_template_due_id) {
+          const customer = customerMap.get(ct.customer_id);
+          if (customer?.phone && await shouldSend(ct.id, 'zalo_den_han')) {
+            const interest = accruedInterest(ct, now);
+            const total = Number(ct.balance) + interest;
+            const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
+            const templateData = {
+              TEN_KHACH_HANG: customer.name || '',
+              SO_HDTD: ct.code,
+              SO_KHE_UOC: ct.code,
+              SO_DU: String(Math.round(ct.balance)),
+              GOC_PHAI_TRA: String(Math.round(ct.balance)),
+              LAI_PHAI_TRA: String(Math.round(interest)),
+              SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)),
+              NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN HDTD ${ct.code} ${nameNoDiacritics}`),
+              NGAY_DAO_HAN: formatDateVN(ct.due_date),
+            };
+            const zaloOk = await sendZaloTemplate(zaloAccessToken, customer.phone, orgRow.zalo_template_due_id, templateData);
+            if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_den_han'); result.zaloDenHan++; }
+          }
+        }
       }
     }
   }

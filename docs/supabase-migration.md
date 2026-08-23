@@ -700,6 +700,73 @@ gửi thông báo — không cần làm gì thêm.
 - Đổi số ngày (chu kỳ lãi 30 ngày, nhắc trước 5 ngày...) → sửa 2 hằng số `INTEREST_CYCLE_DAYS` và
   `NOTIFY_BEFORE_DUE_DAYS` ở đầu file `send-due-reminders/index.ts`.
 
+## 10. Gửi thông báo qua Zalo OA (ZBS Template Message) — nhắc nợ khi ĐẾN HẠN/QUÁ HẠN
+
+Gửi song song với thông báo đẩy (Web Push) ở mục 9 — KHÔNG thay thế, mà thêm 1 kênh nữa, riêng cho
+tình huống hợp đồng đến/quá hạn (dùng mẫu tin đã đăng ký và được Zalo duyệt, xem trang "Quản lý OA"
+trong app để chọn mẫu). Nếu chưa cấu hình Template ID nào thì hệ thống tự bỏ qua bước gửi Zalo, không
+ảnh hưởng gì đến thông báo đẩy.
+
+### 10.1. Schema (SQL Editor)
+
+```sql
+-- Lưu Template ID (không nhạy cảm) — quản lý qua trang "Quản lý OA" trong app,
+-- admin toàn quyền chỉnh được (đúng policy "super admin updates org" đã có sẵn ở mục 3/4).
+alter table orgs add column if not exists zalo_template_due_id text;
+
+-- Access Token/Refresh Token của Zalo OA — KHÔNG lưu vào bảng orgs (bảng đó
+-- cho SELECT công khai, kể cả chưa đăng nhập — lộ token thật ra ngoài). Bảng
+-- riêng này bật RLS nhưng KHÔNG tạo policy nào cho anon/authenticated =>
+-- hoàn toàn không ai qua trình duyệt (kể cả admin) đọc/sửa được — chỉ Edge
+-- Function "send-due-reminders" (dùng service_role, tự bỏ qua RLS) đụng tới.
+create table if not exists zalo_oa_tokens (
+  id text primary key,
+  refresh_token text not null,
+  access_token text,
+  updated_at timestamptz default now()
+);
+alter table zalo_oa_tokens enable row level security;
+grant usage on schema public to service_role;
+grant select, insert, update on zalo_oa_tokens to service_role;
+
+-- Nạp Refresh Token BAN ĐẦU (lấy từ API Explorer bên Zalo for Developers) —
+-- THAY ĐÚNG GIÁ TRỊ REFRESH TOKEN THẬT của bạn vào chỗ '<REFRESH_TOKEN_CỦA_BẠN>'
+-- trước khi chạy (không dán chuỗi ví dụ này nguyên văn, và KHÔNG commit giá
+-- trị thật lên GitHub ở bất kỳ đâu — chỉ chạy 1 lần ngay trong SQL Editor).
+insert into zalo_oa_tokens (id, refresh_token) values ('default', '<REFRESH_TOKEN_CỦA_BẠN>')
+on conflict (id) do update set refresh_token = excluded.refresh_token;
+```
+
+### 10.2. Việc cần bạn làm để deploy
+
+1. Chạy SQL ở mục 10.1 trên Supabase Dashboard → SQL Editor (nhớ thay đúng Refresh Token thật vào
+   trước khi chạy dòng `insert`).
+2. Deploy lại Edge Function **`send-due-reminders`** (đã sửa thêm phần gửi Zalo) — Supabase Dashboard
+   → Edge Functions → chọn function này → dán đè toàn bộ nội dung file `supabase/functions/send-due-reminders/index.ts`
+   trong repo → **Deploy**.
+3. Vào **Edge Functions → Secrets**, thêm 2 secret mới:
+   - `ZALO_APP_ID` — App ID lấy từ Zalo for Developers (App đã tạo, liên kết với OA).
+   - `ZALO_SECRET_KEY` — Khóa bí mật của App đó (mục Cài đặt của App). **Không dán vào đây bất kỳ đâu
+     khác, không commit lên git.**
+4. Vào app → **Quản lý OA** (menu chỉ quản trị viên toàn quyền thấy) → điền **Template ID** của mẫu
+   tin dùng cho tình huống "Đến hạn/Quá hạn" (mẫu phải ở trạng thái "Đã duyệt" bên Zalo) → Lưu.
+
+Xong cả 4 bước, lần chạy cron kế tiếp (xem mục 9.3) sẽ tự gửi Zalo cho khách hàng đến/quá hạn có số
+điện thoại, song song với thông báo đẩy — không cần làm gì thêm định kỳ. Access Token tự làm mới bằng
+Refresh Token mỗi lần chạy; Refresh Token do Zalo trả về mới hơn cũng tự ghi đè lại vào bảng
+`zalo_oa_tokens`, không cần bạn tự lấy lại trừ khi Zalo báo Refresh Token hết hạn hẳn (thường sau vài
+tháng không dùng).
+
+### 10.3. Giới hạn hiện tại (v1)
+
+- Mới chỉ có mẫu tin cho tình huống **"Đến hạn/Quá hạn"** (Template ID lưu ở `orgs.zalo_template_due_id`).
+  "Gần đến hạn" và "Lãi hàng tháng" chưa gửi Zalo (chỉ còn thông báo đẩy) — cần tạo thêm mẫu bên Zalo
+  rồi báo lại để bổ sung code + thêm ô nhập Template ID tương ứng trong trang "Quản lý OA".
+- Chỉ gửi cho khách hàng **có số điện thoại** trong hồ sơ — thiếu SĐT thì tự bỏ qua khách đó, không lỗi.
+- Không tự kiểm tra hạn mức gửi/ngày (`dailyQuota`) trước khi gửi — nếu vượt hạn mức, Zalo sẽ trả lỗi
+  và tin đó được ghi log lỗi (xem Supabase → Edge Functions → Logs), không tự động thử lại trong ngày
+  đó (sẽ tự gửi lại vào lần nhắc kế tiếp theo lịch — mỗi 3 ngày — như bình thường).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
