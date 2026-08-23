@@ -207,15 +207,17 @@ function openAddCustomerToOAModal(admin, onDone) {
         // Hiện TOÀN BỘ khách phù hợp (không phân trang) — mục này cần thấy
         // hết để tích chọn nhiều cùng lúc, có ô tìm + lọc Thôn/Xóm để thu hẹp.
         const list = getFiltered();
+        // Checkbox + avatar thu nhỏ hơn hẳn mặc định (danh sách chọn nhiều,
+        // ưu tiên chỗ cho tên — tên dài dễ bị che nếu 2 thứ này quá to).
         sheet.querySelector('#add-oa-list').innerHTML = list.length ? list.map((c) => `
           <div class="list-row" data-row="${c.id}" style="cursor:pointer;padding:8px 4px">
-            <input type="checkbox" data-check="${c.id}" ${selected.has(c.id) ? 'checked' : ''} style="width:18px;height:18px;flex-shrink:0"/>
-            <div class="row-thumb" style="background:${colorFor(c.id)}">${initials(c.name)}</div>
+            <input type="checkbox" data-check="${c.id}" ${selected.has(c.id) ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0"/>
+            <div class="row-thumb" style="background:${colorFor(c.id)};width:28px;height:28px;font-size:11px;border-radius:8px;flex-shrink:0">${initials(c.name)}</div>
             <div class="row-main">
               <div class="row-title" style="font-size:13.5px">${c.name}</div>
               <div class="row-sub">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
             </div>
-            <b style="font-size:13px;white-space:nowrap">${c.phone}</b>
+            <b style="font-size:13px;white-space:nowrap;flex-shrink:0">${c.phone}</b>
           </div>
         `).join('') : `<p class="text-sm text-muted">Không có khách hàng phù hợp (đã lọc bớt khách chưa có SĐT hoặc đã có sẵn trong danh sách OA).</p>`;
         sheet.querySelectorAll('[data-row]').forEach((row) => {
