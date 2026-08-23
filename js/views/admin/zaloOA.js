@@ -349,26 +349,23 @@ function intervalSelectHtml(rowId, intervalMonths) {
 
 /**
  * Dòng hiển thị 1 hợp đồng trong 1 trong 2 mục Tầng 2 — dùng chung cho preview
- * lẫn popup "Xem chi tiết". Hàng trên CHỈ hiện tên khách + mã hợp đồng (+ ngày
- * gửi đã chọn với mục "Gửi theo ngày cụ thể") — tự "..." nếu quá dài (CSS
- * .row-title), không còn ảnh hưởng gì đến hàng dưới. Hàng dưới: địa chỉ bên
- * trái (tự "..." riêng nếu dài); ô chọn định kỳ + số tiền + nút xóa đứng
- * CHUNG 1 nhóm bên phải, LUÔN cố định/không co lại — tên khách dù dài cỡ nào
- * cũng không còn che mất được ô chọn định kỳ hay nút xóa nữa (trước đây cả 2
- * thứ này nằm chung hàng với tên, bị CSS "..." của hàng trên nuốt mất khi tên
- * dài). GIỐNG NHAU cho cả 2 mục.
+ * lẫn popup "Xem chi tiết". Hàng trên: tên khách + mã hợp đồng, với mục "Gửi
+ * theo ngày cụ thể" có thêm "· Ngày X" (chữ nhỏ, không đậm — phân biệt với
+ * tên/mã hợp đồng), rồi đến ô chọn định kỳ báo (1-4 tháng) — luôn đứng SAU
+ * CÙNG trên hàng này. Hàng dưới: địa chỉ bên trái, số tiền + nút xóa đứng
+ * chung 1 nhóm cố định bên phải (không co lại) — nút xóa không còn bị tên
+ * khách dài che mất nữa. GIỐNG NHAU cho cả 2 mục.
  */
 function autoSendRowHtml(kind, r, customer, contract) {
   const addr = [customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn';
-  const dayLabel = kind === 'lai_hang_thang_custom_day' ? ` · Ngày ${r.customDay || '?'}` : '';
+  const dayLabel = kind === 'lai_hang_thang_custom_day' ? ` · <span style="font-weight:400;font-size:12px">Ngày ${r.customDay || '?'}</span>` : '';
   return `
     <div class="list-row" data-row="${r.id}" data-contract="${contract.id}" data-customer="${customer.id}" style="cursor:pointer;padding:8px 4px">
       <div class="row-main">
-        <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}${dayLabel}</div>
-        <div class="row-sub" style="display:flex;justify-content:space-between;align-items:center;gap:8px;white-space:normal;overflow:visible;text-overflow:clip">
+        <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}${dayLabel} ${intervalSelectHtml(r.id, r.intervalMonths)}</div>
+        <div class="row-sub" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${addr}</span>
           <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            ${intervalSelectHtml(r.id, r.intervalMonths)}
             <b style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>
             <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách" style="width:26px;height:26px;flex-shrink:0">${icon('trash', 'icon-sm')}</button>
           </span>
