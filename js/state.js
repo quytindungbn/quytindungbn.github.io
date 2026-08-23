@@ -962,16 +962,7 @@ function mapZaloSendLogRow(row) {
     id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, templateId: row.template_id,
     phone: row.phone, status: row.status, errorMessage: row.error_message,
     triggeredBy: row.triggered_by, triggeredByAdminId: row.triggered_by_admin_id, sentAt: row.sent_at,
-    // deliveredAt: Zalo báo (qua webhook riêng, xem supabase/functions/zalo-webhook)
-    // là tin ĐÃ TỚI MÁY KHÁCH — có thể null dù status='success' (mới chỉ tới
-    // được Zalo/"trung tâm", chưa xác nhận tới khách), xem deliveryLabel().
-    deliveredAt: row.delivered_at || null,
   };
-}
-/** Nhãn trạng thái gửi — phân biệt "tới trung tâm Zalo" (status='success' nhưng chưa có deliveredAt) và "tới khách hàng" (đã có deliveredAt). */
-export function zaloSendDeliveryLabel(row) {
-  if (row.status !== 'success') return 'Lỗi';
-  return row.deliveredAt ? 'Thành công đến khách hàng' : 'Thành công đến trung tâm Zalo';
 }
 
 function mapAdminRow(row) {

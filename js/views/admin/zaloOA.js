@@ -10,10 +10,8 @@
 //     theo từng người tự chọn, 1 hợp đồng chỉ ở được 1 trong 2 mục (loại
 //     trừ nhau) và chỉ 1 người chọn được — người khác cố chọn trùng bị
 //     chặn, báo rõ tên người đã chọn + mục họ chọn.
-//   "Quản lý gửi tin": log mọi lần gửi (tự động lẫn gửi tay) — 3 trạng thái
-//     "Đến khách hàng"/"Đến Zalo" (đã gửi, Zalo chưa xác nhận tới máy khách —
-//     xem supabase/functions/zalo-webhook)/"Lỗi", lọc được theo trạng thái +
-//     khoảng thời gian.
+//   "Quản lý gửi tin": log mọi lần gửi (tự động lẫn gửi tay) — thành công/lỗi,
+//     lọc được theo trạng thái + khoảng thời gian.
 //   "Cấu hình" (CHỈ quản trị viên toàn quyền): nhập Template ID cho 2 mẫu
 //     ("Đến hạn" và "Báo lãi").
 import * as S from '../../state.js';
@@ -35,7 +33,7 @@ let activeTab = 'oa';
 let filterThon = [];
 let filterXom = [];
 let oaQuery = ''; // ô tìm kiếm tên/SĐT ở tab "Danh sách OA"
-let logStatusFilter = 'all'; // 'all' | 'delivered' (đến khách hàng) | 'sent' (đến Zalo, chưa xác nhận) | 'error'
+let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
 
@@ -621,27 +619,12 @@ function bindDayInputClamp(inputEl) {
 // ------------------------------------------------------------
 // Tab "Quản lý gửi tin" (log)
 // ------------------------------------------------------------
-// Zalo báo "đã nhận yêu cầu gửi" NGAY LÚC GỬI (status='success') — KHÁC với
-// đã thực sự tới máy khách, việc này Zalo báo RIÊNG/MUỘN HƠN qua webhook
-// (deliveredAt, xem supabase/functions/zalo-webhook + zaloSendDeliveryLabel()
-// trong state.js). Tách 4 trạng thái lọc rõ ràng thay vì gộp chung
-// "Thành công" như trước — tránh hiểu lầm "thành công" là đã chắc chắn tới
-// tay khách.
-function logRowKind(l) {
-  if (l.status !== 'success') return 'error';
-  return l.deliveredAt ? 'delivered' : 'sent';
-}
-const LOG_KIND_META = {
-  all: { label: 'Tất cả' },
-  delivered: { label: 'Đến khách hàng', color: 'var(--success)', iconName: 'check' },
-  sent: { label: 'Đến Zalo', color: 'var(--color-primary)', iconName: 'clock' },
-  error: { label: 'Lỗi', color: 'var(--danger)', iconName: 'x' },
-};
-
 function drawLogTab(slot) {
   slot.innerHTML = `
     <div class="segmented-row mb-8" id="log-status-filter">
-      ${Object.entries(LOG_KIND_META).map(([kind, meta]) => `<button class="${logStatusFilter === kind ? 'active' : ''}" data-status="${kind}">${meta.label}</button>`).join('')}
+      <button class="${logStatusFilter === 'all' ? 'active' : ''}" data-status="all">Tất cả</button>
+      <button class="${logStatusFilter === 'success' ? 'active' : ''}" data-status="success">Thành công</button>
+      <button class="${logStatusFilter === 'error' ? 'active' : ''}" data-status="error">Lỗi</button>
     </div>
     <div class="field-row mb-8">
       <div class="field"><label>Từ ngày</label><input type="date" id="log-from" value="${logFromDate}"/></div>
@@ -665,30 +648,23 @@ function drawLogTab(slot) {
     // lọc theo khoảng ngày cũ hơn phạm vi đó sẽ không thấy đủ, chấp nhận
     // được với quy mô hiện tại.
     let logs = S.listZaloSendLog();
-    if (logStatusFilter !== 'all') logs = logs.filter((l) => logRowKind(l) === logStatusFilter);
+    if (logStatusFilter !== 'all') logs = logs.filter((l) => l.status === logStatusFilter);
     if (logFromDate) logs = logs.filter((l) => new Date(l.sentAt) >= new Date(`${logFromDate}T00:00:00`));
     if (logToDate) logs = logs.filter((l) => new Date(l.sentAt) <= new Date(`${logToDate}T23:59:59`));
-    const deliveredCount = logs.filter((l) => logRowKind(l) === 'delivered').length;
-    const sentCount = logs.filter((l) => logRowKind(l) === 'sent').length;
-    const errorCount = logs.filter((l) => logRowKind(l) === 'error').length;
+    const successCount = logs.filter((l) => l.status === 'success').length;
+    const errorCount = logs.filter((l) => l.status === 'error').length;
     const hasFilter = logStatusFilter !== 'all' || logFromDate || logToDate;
     slot.querySelector('#log-list').innerHTML = `
-      <div class="text-sm text-muted mb-8">
-        ${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ' gần nhất'} ·
-        <b style="color:${LOG_KIND_META.delivered.color}">${deliveredCount} đến khách hàng</b> ·
-        <b style="color:${LOG_KIND_META.sent.color}">${sentCount} đến Zalo</b> ·
-        <b style="color:${LOG_KIND_META.error.color}">${errorCount} lỗi</b>
-      </div>
+      <div class="text-sm text-muted mb-8">${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ' gần nhất'} · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
       ${logs.length ? logs.map((l) => {
         const customer = S.getCustomer(l.customerId);
         const contract = l.contractId ? S.getContract(l.contractId) : null;
-        const meta = LOG_KIND_META[logRowKind(l)];
         return `
         <div class="list-row" style="padding:12px 4px">
-          <div class="row-thumb" style="background:${meta.color}">${icon(meta.iconName, 'icon-sm')}</div>
+          <div class="row-thumb" style="background:${l.status === 'success' ? 'var(--success)' : 'var(--danger)'}">${icon(l.status === 'success' ? 'check' : 'x', 'icon-sm')}</div>
           <div class="row-main">
             <div class="row-title">${customer ? customer.name : '—'}${contract ? ' · ' + contract.code : ''}</div>
-            <div class="row-sub">${formatDateTime(l.sentAt)} · ${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'} · <b style="color:${meta.color}">${meta.label}</b>${l.status === 'error' && l.errorMessage ? ' · ' + l.errorMessage : ''}</div>
+            <div class="row-sub">${formatDateTime(l.sentAt)} · ${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}${l.status === 'error' && l.errorMessage ? ' · ' + l.errorMessage : ''}</div>
           </div>
         </div>`;
       }).join('') : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt bộ lọc trạng thái/thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}

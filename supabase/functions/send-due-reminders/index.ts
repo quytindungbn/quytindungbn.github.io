@@ -304,9 +304,7 @@ async function getZaloAccessToken(): Promise<string | null> {
  * Gửi 1 tin nhắn mẫu (ZBS Template Message) qua số điện thoại, TỰ GHI LOG vào
  * bảng zalo_send_log (cả thành công lẫn lỗi, kèm nội dung lỗi) — để trang
  * "Quản lý OA" > "Quản lý gửi tin" xem được. Trả về true nếu Zalo báo gửi
- * thành công (nghĩa là ZALO ĐÃ NHẬN yêu cầu gửi — CHƯA chắc đã tới máy khách,
- * xem "tracking_id" + zalo-webhook/index.ts để hiểu trạng thái "đã đến khách
- * hàng" được cập nhật riêng, muộn hơn, qua webhook).
+ * thành công.
  */
 async function sendZaloTemplate(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
@@ -314,10 +312,6 @@ async function sendZaloTemplate(opts: {
 }): Promise<boolean> {
   let status: 'success' | 'error' = 'error';
   let errorMessage = '';
-  // tracking_id do MÌNH tự sinh, gửi kèm cho Zalo — Zalo lát sau gọi webhook
-  // báo "đã đến máy khách" sẽ đính kèm lại đúng tracking_id này, dùng để dò
-  // ra đúng dòng log cần cập nhật (xem zalo-webhook/index.ts).
-  const trackingId = `qtd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const res = await fetch('https://business.openapi.zalo.me/message/template', {
       method: 'POST',
@@ -326,7 +320,7 @@ async function sendZaloTemplate(opts: {
         phone: normalizeZaloPhone(opts.phone),
         template_id: opts.templateId,
         template_data: opts.templateData,
-        tracking_id: trackingId,
+        tracking_id: `qtd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       }),
     });
     const json = await res.json();
@@ -338,7 +332,6 @@ async function sendZaloTemplate(opts: {
   await admin.from('zalo_send_log').insert({
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null, triggered_by: 'auto',
-    tracking_id: status === 'success' ? trackingId : null,
   });
   return status === 'success';
 }
