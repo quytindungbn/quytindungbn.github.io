@@ -1297,6 +1297,28 @@ GitHub Pages tự deploy khi push `main`.
 
 ---
 
+### 10.20. Làm lại đúng cách: popup "Chọn ngân hàng của bạn" trước khi mở app (KHÔNG cần chạy SQL)
+
+Thay vì tự đoán/gõ tay bảng mã `app` cho từng ngân hàng (rủi ro sai như mục 10.19), giờ nút "Mở app ngân
+hàng để thanh toán" (popup Thanh toán, `js/views/contractDetail.js`) mở ra 1 popup nhỏ **"Chọn ngân hàng
+của bạn"** — danh sách logo + tên các app ngân hàng được **TẢI TRỰC TIẾP TỪ VIETQR lúc khách bấm** (API
+công khai `https://api.vietqr.io/v2/android-app-deeplinks` hoặc `ios-app-deeplinks` tùy hệ điều hành máy
+khách — cùng hệ thống Zalo dùng khi thanh toán VietQR), không hề gõ tay/đoán mã ngân hàng nào trong code
+— luôn đúng, luôn cập nhật theo đúng danh sách thật của VietQR. Khách bấm đúng ngân hàng mình dùng → mở
+app đó kèm sẵn số tài khoản Quỹ/số tiền/nội dung, khách chỉ cần xác nhận chuyển.
+
+Lưu ý: môi trường code (Claude Code) vẫn bị chặn mạng ra vietqr.io nên **không tự bấm thử trực tiếp
+được** — chỉ dựa trên cấu trúc JSON tra cứu được qua tìm kiếm công khai. Vẫn giữ nguyên **BỔ SUNG THÊM**
+như trước: mã QR/nút tải ảnh/chia sẻ ảnh QR còn nguyên bên dưới làm phương án dự phòng nếu 1 ngân hàng
+nào đó không mở đúng/không tự điền được thông tin. Fetch lỗi mạng (hoặc danh sách rỗng) thì popup tự báo
+"Không tải được danh sách ngân hàng — dùng mã QR bên dưới", không chặn luồng thanh toán chính.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
+GitHub Pages tự deploy khi push `main`. **Nhờ bạn tự bấm thử với vài tài khoản ngân hàng thật (Agribank,
+Vietcombank, BIDV, VietinBank...) sau khi deploy** để xác nhận mở đúng app + điền đúng thông tin.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

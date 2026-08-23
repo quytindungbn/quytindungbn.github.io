@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { pageHeader, bindHeaderActions } from '../components/shell.js';
 import { statusBadge } from '../components/ui.js';
 import { openModal } from '../components/modal.js';
-import { formatVND, formatDate, formatNumber, daysUntil, stripDiacritics, debounce } from '../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, stripDiacritics, debounce, escapeHtml } from '../utils.js';
 import { toast } from '../components/toast.js';
 
 export function renderHeader(headerEl) {
@@ -67,6 +67,68 @@ export function buildVietQrUrl({ bin, accountNo, amount, content, accountName })
   const info = encodeURIComponent(content);
   const name = encodeURIComponent(accountName);
   return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?amount=${Math.round(amount)}&addInfo=${info}&accountName=${name}`;
+}
+
+/**
+ * Danh sách app ngân hàng (tên/logo/link mở app) — LẤY TRỰC TIẾP TỪ VIETQR
+ * lúc hiển thị (KHÔNG tự đoán/gõ tay danh sách mã ngân hàng — mỗi ngân hàng
+ * có 1 mã app riêng để mở đúng app, gõ tay rất dễ sai/lỗi thời). API công
+ * khai, không cần key — cùng hệ thống Zalo dùng khi thanh toán VietQR. Tự
+ * chọn đúng danh sách theo hệ điều hành (iOS/Android) vì link mở app có thể
+ * khác nhau giữa 2 nền tảng.
+ */
+async function fetchBankApps() {
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const url = isIOS ? 'https://api.vietqr.io/v2/ios-app-deeplinks' : 'https://api.vietqr.io/v2/android-app-deeplinks';
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('fetch failed');
+  const data = await res.json();
+  return Array.isArray(data?.apps) ? data.apps : [];
+}
+
+/**
+ * Popup "Chọn ngân hàng của bạn" — khách chọn đúng app mình đang dùng, mở
+ * app đó kèm sẵn số tài khoản Quỹ/số tiền/nội dung (khách chỉ cần xác nhận
+ * chuyển) — giống trải nghiệm thanh toán VietQR trong Zalo. `getPayInfo()`
+ * gọi LÚC KHÁCH BẤM CHỌN NGÂN HÀNG (không phải lúc mở popup này) để luôn lấy
+ * đúng số tiền/nội dung MỚI NHẤT (khách có thể đổi loại thanh toán/số tiền
+ * sau khi đã mở popup mã QR nhưng trước khi bấm nút này).
+ */
+function openBankChooserModal({ bin, accountNo, accountName, getPayInfo }) {
+  const close = openModal({
+    title: 'Chọn ngân hàng của bạn',
+    bodyHtml: `<div id="bank-app-list" class="mt-8"><p class="text-sm text-muted">Đang tải danh sách ngân hàng...</p></div>`,
+    onMount(sheet, closeFn) {
+      const listEl = sheet.querySelector('#bank-app-list');
+      fetchBankApps().then((apps) => {
+        if (!apps.length) throw new Error('empty');
+        listEl.innerHTML = `<ul class="flex-col gap-6">${apps.map((app) => `
+          <li>
+            <button class="list-row w-full" data-app="${escapeHtml(app.appId)}" style="border:none;padding:9px 4px;background:none;text-align:left;cursor:pointer">
+              ${app.appLogo ? `<img src="${escapeHtml(app.appLogo)}" alt="" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0"/>` : ''}
+              <div class="row-main"><div class="row-title" style="font-size:14px">${escapeHtml(app.appName || app.bankName)}</div></div>
+            </button>
+          </li>`).join('')}</ul>`;
+        listEl.querySelectorAll('[data-app]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const app = apps.find((a) => a.appId === btn.dataset.app);
+            if (!app?.deeplink) return;
+            const { total, text } = getPayInfo();
+            const url = new URL(app.deeplink);
+            url.searchParams.set('ba', `${accountNo}@${bin}`);
+            url.searchParams.set('am', String(Math.round(total)));
+            url.searchParams.set('tn', text);
+            url.searchParams.set('bn', accountName);
+            window.open(url.toString(), '_blank', 'noopener');
+            closeFn();
+          });
+        });
+      }).catch(() => {
+        listEl.innerHTML = `<p class="text-sm text-danger">Không tải được danh sách ngân hàng (lỗi mạng) — vui lòng dùng mã QR bên dưới để thanh toán.</p>`;
+      });
+    },
+  });
+  return close;
 }
 
 /**
@@ -218,6 +280,8 @@ function openPaymentModal(contract, customer, accrued) {
             <div class="oc-line" style="align-items:flex-start"><span>Nội dung</span><b id="sum-content" style="text-align:right;max-width:65%"></b></div>
           </div>
           ${hasBank ? `
+            <button type="button" class="btn btn-primary btn-block mb-8" id="btn-open-bank-app">${icon('wallet', 'icon-sm')} Mở app ngân hàng để thanh toán</button>
+            <div class="field-hint mb-16" style="text-align:center">Chọn đúng ngân hàng bạn đang dùng, app sẽ tự điền sẵn số tiền/nội dung — không mở được thì quét mã QR bên dưới.</div>
             <div style="text-align:center">
               <button type="button" class="btn btn-outline btn-block mb-8" id="btn-download-qr">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
               <img id="qr-img" alt="Mã QR chuyển khoản" style="max-width:220px;width:100%;border:1px solid var(--border);border-radius:12px"/>
@@ -235,6 +299,10 @@ function openPaymentModal(contract, customer, accrued) {
         if (pInput) bindMoneyInput(pInput, principalAmount, (v) => { principalAmount = v; updateSummaryTyping(); }, contract.balance);
         const iInput = body.querySelector('#interest-input');
         if (iInput) bindMoneyInput(iInput, interestAmount, (v) => { interestAmount = v; updateSummaryTyping(); });
+        const openBankAppBtn = body.querySelector('#btn-open-bank-app');
+        if (openBankAppBtn) openBankAppBtn.addEventListener('click', () => {
+          openBankChooserModal({ bin: org.bankBin, accountNo: org.bankAccountNo, accountName: org.bankAccountName, getPayInfo: content });
+        });
         const shareBtn = body.querySelector('#btn-share-qr');
         if (shareBtn) shareBtn.addEventListener('click', () => {
           const { text } = content();
