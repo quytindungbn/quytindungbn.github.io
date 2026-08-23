@@ -102,7 +102,7 @@ async function fetchBankApps() {
  * "Mở app ngân hàng" (chỗ gọi hàm này), không đổi lại sau đó nữa vì bấm nút
  * mở popup này rồi thì khách không còn sửa được số tiền ở popup dưới nữa.
  */
-function openBankChooserModal({ bin, accountNo, accountName, getPayInfo }) {
+function openBankChooserModal({ bankShortCode, accountNo, accountName, getPayInfo }) {
   const { total, text } = getPayInfo();
   const close = openModal({
     title: 'Chọn ngân hàng của bạn',
@@ -113,7 +113,11 @@ function openBankChooserModal({ bin, accountNo, accountName, getPayInfo }) {
         if (!apps.length) throw new Error('empty');
         listEl.innerHTML = `<ul class="flex-col gap-6">${apps.filter((app) => app.deeplink).map((app) => {
           const url = new URL(app.deeplink);
-          url.searchParams.set('ba', `${accountNo}@${bin}`);
+          // "ba" đòi hỏi MÃ VIẾT TẮT VietQR của ngân hàng nhận tiền (VD:
+          // coopbank), KHÔNG dùng được mã số/BIN (970446) — dùng nhầm mã số
+          // khiến app mở lên nhưng không tự điền được thông tin (xem
+          // docs/supabase-migration.md mục 10.20c).
+          url.searchParams.set('ba', `${accountNo}@${bankShortCode}`);
           url.searchParams.set('am', String(Math.round(total)));
           url.searchParams.set('tn', text);
           url.searchParams.set('bn', accountName);
@@ -304,7 +308,7 @@ function openPaymentModal(contract, customer, accrued) {
         if (iInput) bindMoneyInput(iInput, interestAmount, (v) => { interestAmount = v; updateSummaryTyping(); });
         const openBankAppBtn = body.querySelector('#btn-open-bank-app');
         if (openBankAppBtn) openBankAppBtn.addEventListener('click', () => {
-          openBankChooserModal({ bin: org.bankBin, accountNo: org.bankAccountNo, accountName: org.bankAccountName, getPayInfo: content });
+          openBankChooserModal({ bankShortCode: org.bankShortCode, accountNo: org.bankAccountNo, accountName: org.bankAccountName, getPayInfo: content });
         });
         const shareBtn = body.querySelector('#btn-share-qr');
         if (shareBtn) shareBtn.addEventListener('click', () => {

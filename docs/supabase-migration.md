@@ -1338,6 +1338,26 @@ giờ đã tự điền được thông tin chưa.
 
 ---
 
+### 10.20c. Sửa tiếp: `ba=` phải dùng mã VIẾT TẮT VietQR, không dùng mã số/BIN
+
+Đổi sang thẻ `<a>` thật (10.20b) vẫn KHÔNG tự điền được thông tin. Xem lại toàn bộ ví dụ thực tế tra cứu
+được thì phát hiện: tham số `ba=<số_TK>@<mã_ngân_hàng>` đòi hỏi **mã VIẾT TẮT VietQR** của ngân hàng
+NHẬN tiền (VD: `icb`, `ocb`, `bidv`...), KHÔNG chấp nhận mã số/BIN (`970446`) như code đang dùng — đây là
+2 hệ mã KHÁC NHAU của VietQR (mã số/BIN dùng cho ảnh QR ở `img.vietqr.io`, mã viết tắt dùng riêng cho
+deep link `dl.vietqr.io/pay`). Dùng nhầm mã số khiến dịch vụ mở đúng app (vì tham số `app` đúng) nhưng
+không nhận diện được ngân hàng nhận tiền nên bỏ qua luôn phần điền thông tin, y hệt triệu chứng đã gặp.
+
+**Đã sửa**: thêm hằng số `bankShortCode: 'coopbank'` (mã viết tắt VietQR của Ngân hàng Hợp tác xã Việt
+Nam) vào `BANK_INFO` (`js/state.js`), dùng riêng cho tham số `ba=` ở link "Mở app ngân hàng"
+(`js/views/contractDetail.js`) — mã số/BIN (`970446`) vẫn giữ nguyên dùng cho ảnh QR như cũ, không đổi.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
+GitHub Pages tự deploy khi push `main`. **Nhờ bạn test lại lần nữa** để xác nhận đã tự điền được thông
+tin chưa — nếu vẫn chưa được, khả năng cao tính năng tự điền đầy đủ chỉ dành cho đối tác đã đăng ký
+merchant với VietQR (không mở công khai), cần cân nhắc hướng đăng ký cổng thanh toán riêng.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
