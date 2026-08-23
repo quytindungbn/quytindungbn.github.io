@@ -25,14 +25,18 @@
 //
 // Riêng Zalo OA (ZBS Template Message, xem phần dưới): KHÔNG gửi tràn lan
 // như thông báo đẩy — vì Zalo tốn phí thật + không có cách xác minh trước
-// SĐT có đúng chủ hay không, chỉ gửi khi admin đã tự xác minh + đưa vào 1
-// trong 2 "tầng" sau (trang "Quản lý OA" trong app):
-//   - "Đến hạn/Quá hạn": tự động cho MỌI hợp đồng của khách đã có trong
-//     Tầng 1 "Danh sách OA" (bảng zalo_customers) — không cần chọn riêng
-//     từng hợp đồng.
-//   - "Báo lãi tự động hàng tháng" / "Gửi theo ngày cụ thể": phải CHỌN
-//     RIÊNG từng hợp đồng vào Tầng 2 (bảng zalo_auto_send_list, loại trừ
-//     nhau — 1 hợp đồng chỉ ở 1 trong 2 mục này).
+// SĐT có đúng chủ hay không. Function này CHỈ tự động gửi 2 mục Tầng 2 (phải
+// CHỌN RIÊNG từng hợp đồng vào bảng zalo_auto_send_list, loại trừ nhau — 1
+// hợp đồng chỉ ở 1 trong 2 mục):
+//   - "Báo lãi tự động hàng tháng": đúng lịch nhắc lãi hàng tháng (mục #1
+//     trên), gửi ĐÚNG 1 lần/tháng.
+//   - "Gửi theo ngày cụ thể": đúng 1 lần/tháng vào ngày admin tự chọn, CHỈ
+//     gửi nếu đã tính lãi > 20 ngày kể từ lần đóng gần nhất (mới đóng gần
+//     đây thì bỏ qua, dồn qua tháng sau).
+// Mẫu "Đến hạn/Quá hạn" KHÔNG còn tự động gửi ở đây nữa — CHỈ gửi được qua
+// nút gửi tay ở chi tiết hợp đồng (type 'send-zalo-manual' trong
+// create-account), giới hạn 5 ngày/lần, bắt buộc khách đã có sẵn trong
+// Tầng 1 "Danh sách OA" (bảng zalo_customers, thêm/bỏ ở chi tiết khách hàng).
 //
 // KHÔNG dùng chung Edge Function với create-account (function đó phục vụ
 // request TRỰC TIẾP từ trình duyệt qua anon key; function này CHỈ được gọi
@@ -335,13 +339,13 @@ Deno.serve(async (req) => {
   }
 
   const now = new Date();
-  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloDenHan: 0, zaloBaoLai: 0 };
+  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0 };
 
   // Tiêu đề thông báo LUÔN đồng nhất "<tên quỹ> thông báo:" cho mọi loại nhắc
   // (không còn tiêu đề riêng theo từng loại như trước) — khớp với tiêu đề
   // mặc định ở popup admin tự gửi tay (xem buildContractNotificationPreset()
   // trong js/views/admin/customers.js).
-  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_due_id, zalo_template_interest_id').limit(1).maybeSingle();
+  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_interest_id').limit(1).maybeSingle();
   const NOTI_TITLE = `${orgRow?.short_name || 'Quỹ tín dụng'} thông báo:`;
 
   const { data: contracts, error: ctErr } = await admin.from('contracts').select('*');
@@ -354,16 +358,11 @@ Deno.serve(async (req) => {
   );
 
   // Chỉ tốn 1 lần làm mới token/lượt chạy (không phải mỗi hợp đồng 1 lần) —
-  // và CHỈ làm khi đã cấu hình ít nhất 1 trong 2 mẫu tin (mục Quản lý OA >
-  // Cấu hình), tránh gọi API Zalo vô ích lúc chưa cấu hình gì.
-  const zaloAccessToken = (orgRow?.zalo_template_due_id || orgRow?.zalo_template_interest_id) ? await getZaloAccessToken() : null;
-
-  // Tầng 1 "Danh sách OA" — "Đến hạn/Quá hạn" giờ TỰ ĐỘNG áp dụng cho MỌI
-  // hợp đồng của khách hàng có trong danh sách này (không cần chọn riêng
-  // từng hợp đồng nữa) — admin đã tự xác minh đúng chủ số điện thoại trước
-  // khi thêm khách vào danh sách OA.
-  const { data: zaloCustRows } = await admin.from('zalo_customers').select('customer_id');
-  const zaloCustomerIds = new Set((zaloCustRows || []).map((r: any) => r.customer_id));
+  // và CHỈ làm khi đã cấu hình mẫu "Báo lãi" (mục Quản lý OA > Cấu hình),
+  // tránh gọi API Zalo vô ích lúc chưa cấu hình gì. Mẫu "Đến hạn" KHÔNG còn
+  // dùng ở function này nữa (đã bỏ tự động gửi cho gần/đến hạn — mẫu đó giờ
+  // CHỈ gửi được qua nút gửi tay ở create-account).
+  const zaloAccessToken = orgRow?.zalo_template_interest_id ? await getZaloAccessToken() : null;
 
   // Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi (loại trừ nhau, 1 hợp
   // đồng chỉ ở 1 trong 2): 'lai_hang_thang_auto' theo đúng lịch nhắc lãi
@@ -425,10 +424,14 @@ Deno.serve(async (req) => {
 
     // Zalo OA — mục "Gửi theo ngày cụ thể" (Tầng 2): gửi ĐÚNG 1 lần/tháng
     // vào ngày admin tự chọn (custom_day), không phụ thuộc lịch nhắc lãi
-    // hàng tháng thông thường ở trên.
+    // hàng tháng thông thường ở trên. CHỈ gửi nếu số ngày đã tính lãi (kể từ
+    // lần đóng lãi gần nhất) đã QUÁ 20 ngày — mới đóng lãi gần đây (<=20
+    // ngày) thì bỏ qua đợt này, để dồn qua đúng ngày này tháng sau (không có
+    // gì phải nhắc ngay lúc khách vừa đóng).
     {
       const autoEntry = autoSendMap.get(ct.id);
       if (autoEntry?.kind === 'lai_hang_thang_custom_day' && autoEntry.customDay && now.getDate() === autoEntry.customDay
+        && interestDaysAccrued(ct, now) > 20
         && zaloAccessToken && orgRow?.zalo_template_interest_id) {
         const customer = customerMap.get(ct.customer_id);
         if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_ngay_cu_the')) {
@@ -456,23 +459,11 @@ Deno.serve(async (req) => {
         }
         const ok = await pushToCustomer(ct.customer_id, NOTI_TITLE, body, 'gan-den-han');
         if (ok) { await logSent(ct.customer_id, ct.id, 'gan_den_han'); result.ganDenHanQuaHan++; }
-
-        // Zalo OA — CHỈ gửi khi (a) đã ĐẾN/QUÁ HẠN thật (daysToDue <= 0, mẫu
-        // tin có đủ Gốc lẫn Lãi hợp với lúc này hơn là lúc còn "gần đến hạn")
-        // VÀ (b) KHÁCH HÀNG của hợp đồng này có trong "Danh sách OA" (Tầng
-        // 1) — tự động cho MỌI hợp đồng của khách đó, không cần chọn riêng
-        // từng hợp đồng nữa (xem ghi chú ở khai báo zaloCustomerIds).
-        if (daysToDue <= 0 && zaloAccessToken && orgRow?.zalo_template_due_id && zaloCustomerIds.has(ct.customer_id)) {
-          const customer = customerMap.get(ct.customer_id);
-          if (customer?.phone && await shouldSend(ct.id, 'zalo_den_han')) {
-            const zaloOk = await sendZaloTemplate({
-              accessToken: zaloAccessToken, phone: customer.phone, templateId: orgRow.zalo_template_due_id,
-              templateData: buildZaloTemplateData(ct, customer, now, true),
-              contractId: ct.id, customerId: ct.customer_id, kind: 'den_han',
-            });
-            if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_den_han'); result.zaloDenHan++; }
-          }
-        }
+        // Zalo OA KHÔNG còn tự động gửi cho "gần đến hạn/đến hạn" nữa (theo
+        // yêu cầu) — mẫu "Đến hạn" giờ CHỈ gửi được qua nút gửi tay ở chi
+        // tiết hợp đồng (type 'send-zalo-manual' trong create-account), tự
+        // chọn mẫu theo tình huống. Thông báo đẩy (push) ở trên vẫn giữ
+        // nguyên lịch tự động như cũ, không đổi.
       }
     }
   }

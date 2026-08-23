@@ -40,10 +40,16 @@
 //     đồng với người khác thì bị chặn kèm tên người đã chọn + mục họ chọn).
 //   { type: 'send-zalo-manual', contractId } -> gửi tay ngay 1 khách, TỰ
 //     CHỌN MẪU theo tình huống hợp đồng (gần/đã đến hạn dùng mẫu Đến hạn,
-//     còn xa hạn dùng mẫu Báo lãi) — không cần tự chọn templateId nữa. Cần
-//     cờ RIÊNG canManageZaloOA (không dùng chung canManageUsers) HOẶC role='super'.
-//     Nhân viên staff chỉ thao tác được hợp đồng/khách trong đúng phạm vi
-//     Thôn/Xóm được gán — xem docs/supabase-migration.md mục 10.
+//     còn xa hạn dùng mẫu Báo lãi) — không cần tự chọn templateId nữa. BẮT
+//     BUỘC khách đã có sẵn trong Tầng 1 "Danh sách OA" (KHÔNG còn tự thêm
+//     ngầm lúc gửi như trước — chưa có thì báo lỗi, phải tự thêm trước qua
+//     nút "Thêm vào OA" ở chi tiết khách hàng). Giới hạn 5 NGÀY mới gửi tay
+//     lại được cho cùng 1 hợp đồng (tính theo lần gửi thành công gần nhất,
+//     bất kể tự động hay gửi tay), báo rõ đã gửi ngày nào nếu còn trong hạn
+//     chờ. Cần cờ RIÊNG canManageZaloOA (không dùng chung canManageUsers)
+//     HOẶC role='super'. Nhân viên staff chỉ thao tác được hợp đồng/khách
+//     trong đúng phạm vi Thôn/Xóm được gán — xem docs/supabase-migration.md
+//     mục 10.
 //   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
 //   của 1 admin đã đăng nhập (xác minh lại tại server, không tin JWT mù) —
 //   2 nhóm quyền khác nhau:
@@ -722,11 +728,33 @@ Deno.serve(async (req) => {
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       const { customer, contract } = scope;
       if (!customer.phone) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
+      const now = new Date();
+
+      // PHẢI đã có sẵn trong Tầng 1 "Danh sách OA" mới gửi tay được — KHÔNG
+      // còn tự thêm ngầm lúc gửi như trước nữa (đổi theo yêu cầu: admin phải
+      // chủ động xác minh đúng chủ SĐT rồi thêm vào OA trước, xem nút "Thêm
+      // vào OA" ở chi tiết khách hàng).
+      const { data: zaloCustRow } = await admin.from('zalo_customers').select('customer_id').eq('customer_id', customer.id).maybeSingle();
+      if (!zaloCustRow) {
+        return json({ ok: false, reason: 'Khách hàng chưa có trong Danh sách OA — vào chi tiết khách hàng (mục Khách hàng & Hợp đồng) để thêm vào OA trước khi gửi.' });
+      }
+
+      // Giới hạn gửi tay: 5 ngày mới gửi lại được cho CÙNG 1 hợp đồng (tránh
+      // gửi trùng/spam khách) — tính theo lần gửi Zalo THÀNH CÔNG gần nhất
+      // của hợp đồng này (bất kể tự động hay gửi tay), báo rõ đã gửi ngày nào.
+      const { data: lastLog } = await admin.from('zalo_send_log').select('sent_at')
+        .eq('contract_id', contractId).eq('status', 'success')
+        .order('sent_at', { ascending: false }).limit(1).maybeSingle();
+      if (lastLog?.sent_at) {
+        const daysSinceLast = daysBetweenZalo(new Date(lastLog.sent_at), now);
+        if (daysSinceLast < 5) {
+          return json({ ok: false, reason: `Hợp đồng này đã gửi Zalo gần nhất vào ngày ${formatDateVNZalo(lastLog.sent_at)} — phải đợi đủ 5 ngày mới gửi lại được (còn ${5 - daysSinceLast} ngày nữa).` });
+        }
+      }
 
       // Tự chọn mẫu theo tình huống hợp đồng — KHÔNG cần người gọi tự chọn
       // nữa: gần/đã đến hạn (<=15 ngày) dùng mẫu "Đến hạn", còn xa hạn dùng
       // mẫu "Báo lãi" (chỉ báo lãi, gốc chưa thật sự phải trả).
-      const now = new Date();
       const usesDueTemplate = isNearOrPastDueZalo(contract, now);
       const { data: orgRow } = await admin.from('orgs').select('zalo_template_due_id, zalo_template_interest_id').limit(1).maybeSingle();
       const templateId = usesDueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id;
@@ -736,7 +764,6 @@ Deno.serve(async (req) => {
       }
       const accessToken = await getZaloAccessToken();
       if (!accessToken) return json({ ok: false, reason: 'Chưa cấu hình kết nối Zalo OA trên server (thiếu Secret/Refresh Token) — liên hệ để cấu hình trước.' }, 500);
-      await ensureZaloCustomer(customer.id); // gửi tay cũng tính là "đã đưa vào OA" luôn, đỡ phải thêm tay riêng
 
       const interest = accruedInterestZalo(contract, now);
       const goc = usesDueTemplate ? Number(contract.balance) : 0; // chưa đến hạn thì gốc chưa thật sự phải trả, chỉ báo lãi

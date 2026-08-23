@@ -4,7 +4,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatVND, formatDate, formatNumber, daysUntil, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv } from '../../lib/excelLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 
@@ -562,6 +562,14 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const canPay = S.effectiveContractStatus(contract) !== 'da_tat_toan';
   const session = S.getSession();
   const canManageZalo = S.canManageZaloOA(session.id);
+  // Gửi tay Zalo: BẮT BUỘC khách đã có trong Tầng 1 "Danh sách OA", và cách
+  // lần gửi thành công gần nhất phải >= 5 ngày — server luôn là nơi quyết
+  // định thật sự (chặn cả 2 điều kiện này), ở đây chỉ tính trước để BÁO
+  // TRƯỚC cho admin biết lý do trước khi bấm, đỡ bấm xong mới biết bị chặn.
+  const inZaloList = customer ? S.isZaloCustomer(customer.id) : false;
+  const lastZaloSend = customer ? S.lastSuccessfulZaloSend(contract.id) : null;
+  const daysSinceZaloSend = lastZaloSend ? daysBetween(new Date(lastZaloSend.sentAt), new Date()) : null;
+  const zaloCooldownDaysLeft = daysSinceZaloSend !== null ? Math.max(0, 5 - daysSinceZaloSend) : 0;
 
   // Mã QR VietQR cho quản trị viên/nhân viên — 2 ô Gốc/Lãi riêng, cộng lại ra
   // số tiền trên QR. Mặc định chỉ có sẵn Lãi (= "Lãi đến nay", giống nội dung
@@ -605,8 +613,14 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       ` : ''}
       ${customer && customer.phone && canPay && canManageZalo ? `
       <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
-        <button type="button" class="btn btn-outline btn-sm btn-block" id="btn-zalo-manual-ct">${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
+        <button type="button" class="btn btn-outline btn-sm btn-block" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
+        ${!inZaloList ? `
+        <div class="field-hint text-danger">${icon('alert', 'icon-sm')} Khách chưa có trong Danh sách OA — vào chi tiết khách hàng (nút "Thêm vào OA") để thêm trước khi gửi được.</div>
+        ` : zaloCooldownDaysLeft > 0 ? `
+        <div class="field-hint text-danger">${icon('alert', 'icon-sm')} Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — còn ${zaloCooldownDaysLeft} ngày nữa mới gửi lại được (giới hạn 5 ngày/lần).</div>
+        ` : `
         <div class="field-hint">Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>
+        `}
       </div>
       ` : ''}
       ${canPay ? `

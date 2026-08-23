@@ -601,6 +601,12 @@ export function findZaloAutoSend(contractId) {
 export function listZaloAutoSend() { return state.zaloAutoSendList || []; }
 export function listZaloAutoSendByKind(kind) { return (state.zaloAutoSendList || []).filter((r) => r.kind === kind); }
 export function listZaloSendLog() { return state.zaloSendLog || []; }
+/** Lần gửi Zalo THÀNH CÔNG gần nhất của 1 hợp đồng (từ cache log, tối đa 200 dòng gần nhất) — dùng hiện cảnh báo "còn N ngày mới gửi lại được" trước khi bấm gửi tay. Trả về null nếu chưa gửi lần nào (trong phạm vi cache). */
+export function lastSuccessfulZaloSend(contractId) {
+  const rows = (state.zaloSendLog || []).filter((l) => l.contractId === contractId && l.status === 'success');
+  if (!rows.length) return null;
+  return rows.reduce((a, b) => (new Date(a.sentAt) > new Date(b.sentAt) ? a : b));
+}
 
 export async function addZaloCustomer(customerId) {
   const session = getSession();
@@ -617,8 +623,8 @@ export async function removeZaloCustomer(customerId) {
 /**
  * Thêm 1 hợp đồng vào Tầng 2 (gửi tự động) — tự đảm bảo khách đã ở Tầng 1,
  * không cần thêm tay riêng trước. "kind": 'lai_hang_thang_auto' (mặc định)
- * hoặc 'lai_hang_thang_custom_day' (cần kèm customDay, 1-28) — KHÔNG còn
- * 'den_han' nữa (đến hạn giờ tự động theo Tầng 1, xem docs mục 10.6).
+ * hoặc 'lai_hang_thang_custom_day' (cần kèm customDay, 1-30) — KHÔNG còn
+ * 'den_han' nữa (đến hạn giờ CHỈ gửi tay, xem sendZaloManual()).
  */
 export async function addZaloAutoSend(contractId, kind = 'lai_hang_thang_auto', customDay = null) {
   const session = getSession();
@@ -647,13 +653,16 @@ export async function updateZaloAutoSendDay(id, customDay) {
 /**
  * Gửi tay ngay 1 tin Zalo cho khách hàng của 1 hợp đồng — server TỰ CHỌN
  * mẫu theo tình huống (gần/đã đến hạn dùng mẫu Đến hạn, còn xa hạn dùng mẫu
- * Báo lãi), không cần tự chọn mẫu ở đây nữa. Trả về { ok, reason }.
+ * Báo lãi), không cần tự chọn mẫu ở đây nữa. BẮT BUỘC khách đã có sẵn trong
+ * Tầng 1 "Danh sách OA" và cách lần gửi thành công gần nhất >= 5 ngày (server
+ * tự chặn + trả reason rõ ràng nếu chưa đủ điều kiện). Trả về { ok, reason }.
  */
 export async function sendZaloManual(contractId) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'send-zalo-manual', contractId });
-  // Gửi tay có ghi log ở server (zalo_send_log) + có thể tự thêm Tầng 1 —
-  // tải lại session data để hiện ngay, không cần đợi refreshSessionData() định kỳ.
+  // Gửi tay có ghi log ở server (zalo_send_log) — tải lại session data để
+  // hiện ngay (VD: cảnh báo "còn N ngày" ở lần mở tiếp theo), không cần đợi
+  // refreshSessionData() định kỳ.
   await refreshSessionData();
   return res;
 }

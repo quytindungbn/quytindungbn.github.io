@@ -2,14 +2,16 @@
 //   Tầng 1 "Danh sách OA": khách hàng nào "có Zalo, đủ điều kiện gửi" — theo
 //     KHÁCH HÀNG (không hiện thông tin hợp đồng ở đây), CHUNG cho mọi người
 //     có quyền (không riêng ai), giống "Use" không tự xóa khi hết hợp
-//     đồng/dư nợ. "Đến hạn/Quá hạn" tự động áp dụng cho MỌI hợp đồng của
-//     khách trong danh sách này, không cần chọn riêng.
+//     đồng/dư nợ. Là điều kiện BẮT BUỘC để gửi tay mẫu "Đến hạn/Quá hạn" ở
+//     chi tiết hợp đồng — mẫu này KHÔNG tự động gửi (chỉ gửi tay, giới hạn
+//     5 ngày/lần cho mỗi hợp đồng).
 //   Tầng 2 "Gửi tin tự động": CHỈ còn 2 mục báo lãi (Báo lãi tự động hàng
 //     tháng / Gửi theo ngày cụ thể), RÚT RA từ khách đã ở Tầng 1 — RIÊNG TƯ
 //     theo từng người tự chọn, 1 hợp đồng chỉ ở được 1 trong 2 mục (loại
 //     trừ nhau) và chỉ 1 người chọn được — người khác cố chọn trùng bị
 //     chặn, báo rõ tên người đã chọn + mục họ chọn.
-//   "Quản lý gửi tin": log mọi lần gửi (tự động lẫn gửi tay) — thành công/lỗi.
+//   "Quản lý gửi tin": log mọi lần gửi (tự động lẫn gửi tay) — thành công/lỗi,
+//     lọc được theo trạng thái + khoảng thời gian.
 //   "Cấu hình" (CHỈ quản trị viên toàn quyền): nhập Template ID cho 2 mẫu
 //     ("Đến hạn" và "Báo lãi").
 import * as S from '../../state.js';
@@ -30,6 +32,9 @@ const PAGE_SIZE = 20; // hiện ít trước, bấm "Xem thêm" mới tải thê
 let activeTab = 'oa';
 let filterThon = [];
 let filterXom = [];
+let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
+let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
+let logToDate = '';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Quản lý OA' });
@@ -535,24 +540,56 @@ function bindDayInputClamp(inputEl) {
 // Tab "Quản lý gửi tin" (log)
 // ------------------------------------------------------------
 function drawLogTab(slot) {
-  const logs = S.listZaloSendLog();
-  const successCount = logs.filter((l) => l.status === 'success').length;
-  const errorCount = logs.filter((l) => l.status === 'error').length;
   slot.innerHTML = `
-    <div class="text-sm text-muted mb-8">${logs.length} lần gửi gần nhất · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
-    ${logs.length ? logs.map((l) => {
-      const customer = S.getCustomer(l.customerId);
-      const contract = l.contractId ? S.getContract(l.contractId) : null;
-      return `
-      <div class="list-row" style="padding:12px 4px">
-        <div class="row-thumb" style="background:${l.status === 'success' ? 'var(--success)' : 'var(--danger)'}">${icon(l.status === 'success' ? 'check' : 'x', 'icon-sm')}</div>
-        <div class="row-main">
-          <div class="row-title">${customer ? customer.name : '—'}${contract ? ' · ' + contract.code : ''}</div>
-          <div class="row-sub">${formatDateTime(l.sentAt)} · ${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}${l.status === 'error' && l.errorMessage ? ' · ' + l.errorMessage : ''}</div>
-        </div>
-      </div>`;
-    }).join('') : emptyState({ iconName: 'message', title: 'Chưa có lần gửi nào', message: 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
+    <div class="segmented-row mb-8" id="log-status-filter">
+      <button class="${logStatusFilter === 'all' ? 'active' : ''}" data-status="all">Tất cả</button>
+      <button class="${logStatusFilter === 'success' ? 'active' : ''}" data-status="success">Thành công</button>
+      <button class="${logStatusFilter === 'error' ? 'active' : ''}" data-status="error">Lỗi</button>
+    </div>
+    <div class="field-row mb-8">
+      <div class="field"><label>Từ ngày</label><input type="date" id="log-from" value="${logFromDate}"/></div>
+      <div class="field"><label>Đến ngày</label><input type="date" id="log-to" value="${logToDate}"/></div>
+    </div>
+    <div id="log-list"></div>
   `;
+  slot.querySelectorAll('[data-status]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      logStatusFilter = btn.dataset.status;
+      slot.querySelectorAll('[data-status]').forEach((b) => b.classList.toggle('active', b.dataset.status === logStatusFilter));
+      drawList();
+    });
+  });
+  slot.querySelector('#log-from').addEventListener('change', (e) => { logFromDate = e.target.value; drawList(); });
+  slot.querySelector('#log-to').addEventListener('change', (e) => { logToDate = e.target.value; drawList(); });
+  drawList();
+
+  function drawList() {
+    // Nguồn dữ liệu là 200 lần gửi GẦN NHẤT (toàn hệ thống, xem state.js) —
+    // lọc theo khoảng ngày cũ hơn phạm vi đó sẽ không thấy đủ, chấp nhận
+    // được với quy mô hiện tại.
+    let logs = S.listZaloSendLog();
+    if (logStatusFilter !== 'all') logs = logs.filter((l) => l.status === logStatusFilter);
+    if (logFromDate) logs = logs.filter((l) => new Date(l.sentAt) >= new Date(`${logFromDate}T00:00:00`));
+    if (logToDate) logs = logs.filter((l) => new Date(l.sentAt) <= new Date(`${logToDate}T23:59:59`));
+    const successCount = logs.filter((l) => l.status === 'success').length;
+    const errorCount = logs.filter((l) => l.status === 'error').length;
+    const hasFilter = logStatusFilter !== 'all' || logFromDate || logToDate;
+    slot.querySelector('#log-list').innerHTML = `
+      <div class="text-sm text-muted mb-8">${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ' gần nhất'} · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
+      ${logs.length ? logs.map((l) => {
+        const customer = S.getCustomer(l.customerId);
+        const contract = l.contractId ? S.getContract(l.contractId) : null;
+        return `
+        <div class="list-row" style="padding:12px 4px">
+          <div class="row-thumb" style="background:${l.status === 'success' ? 'var(--success)' : 'var(--danger)'}">${icon(l.status === 'success' ? 'check' : 'x', 'icon-sm')}</div>
+          <div class="row-main">
+            <div class="row-title">${customer ? customer.name : '—'}${contract ? ' · ' + contract.code : ''}</div>
+            <div class="row-sub">${formatDateTime(l.sentAt)} · ${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}${l.status === 'error' && l.errorMessage ? ' · ' + l.errorMessage : ''}</div>
+          </div>
+        </div>`;
+      }).join('') : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt bộ lọc trạng thái/thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
+    `;
+  }
 }
 
 // ------------------------------------------------------------

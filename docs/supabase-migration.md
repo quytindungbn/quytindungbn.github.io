@@ -967,6 +967,28 @@ alter table zalo_auto_send_list add constraint zalo_auto_send_list_contract_id_k
 ID cho "Mẫu Báo lãi" khi bạn tạo xong mẫu đó bên Zalo (để trống trước cũng được, không lỗi gì — chỉ là
 lúc đó hợp đồng chưa đến hạn sẽ không gửi được Zalo cho tới khi điền).
 
+### 10.7. Bỏ tự động gửi "Đến hạn", thêm giới hạn 5 ngày/lần cho gửi tay + điều kiện 20 ngày cho "Gửi theo ngày cụ thể" (KHÔNG cần chạy SQL — chỉ đổi hành vi trong code)
+
+Đổi tiếp theo yêu cầu, không cần schema mới:
+
+- **Bỏ hẳn tự động gửi Zalo mẫu "Đến hạn/Quá hạn"** — trước đây (mục 10.6) tự động gửi cho mọi hợp
+  đồng đến/quá hạn của khách trong Danh sách OA; giờ mẫu này **CHỈ gửi được qua nút gửi tay** ở chi
+  tiết hợp đồng. Thông báo đẩy (push) cho gần/đến hạn vẫn tự động như cũ, không đổi.
+- **Gửi tay bắt buộc khách đã có sẵn trong Danh sách OA** (Tầng 1) — trước đây gửi tay sẽ TỰ ĐỘNG thêm
+  khách vào OA luôn; giờ nếu chưa có sẽ báo lỗi "Khách hàng chưa có trong Danh sách OA", phải tự thêm
+  trước (nút "Thêm vào OA"/"Bỏ khỏi OA" ở chi tiết khách hàng — mục Khách hàng & Hợp đồng lẫn Quản lý
+  User).
+- **Giới hạn gửi tay 5 ngày/lần cho mỗi hợp đồng** — tính theo lần gửi Zalo THÀNH CÔNG gần nhất (bất kể
+  tự động hay gửi tay), báo rõ đã gửi ngày nào + còn bao nhiêu ngày nữa mới gửi lại được. Giao diện chi
+  tiết hợp đồng cũng tự hiện cảnh báo này (và disable nút) TRƯỚC khi bấm, đỡ bấm hụt.
+- **"Gửi theo ngày cụ thể"**: chỉ gửi nếu hợp đồng đã tính lãi > 20 ngày kể từ lần đóng lãi gần nhất —
+  mới đóng lãi gần đây (≤ 20 ngày) thì bỏ qua đợt này, dồn qua đúng ngày đó tháng sau.
+- **"Quản lý gửi tin"**: thêm bộ lọc theo trạng thái (Tất cả/Thành công/Lỗi) + khoảng thời gian (Từ
+  ngày/Đến ngày).
+
+**Việc cần bạn làm**: chỉ cần deploy lại **CẢ 2** Edge Function (`create-account` và
+`send-due-reminders`) — không có SQL nào cần chạy thêm.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
