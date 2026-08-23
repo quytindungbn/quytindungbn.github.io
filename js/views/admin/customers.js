@@ -606,7 +606,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       ${customer && customer.phone && canPay && canManageZalo ? `
       <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
         <button type="button" class="btn btn-outline btn-sm btn-block" id="btn-zalo-manual-ct">${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
-        <div class="field-hint">Tự chọn mẫu theo tình huống: gần/đã đến hạn dùng mẫu "Đến hạn", còn xa hạn dùng mẫu "Báo lãi". Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>
+        <div class="field-hint">Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>
       </div>
       ` : ''}
       ${canPay ? `

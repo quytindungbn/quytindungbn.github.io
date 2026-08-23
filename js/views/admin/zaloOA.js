@@ -266,7 +266,10 @@ function drawAutoTab(slot, admin) {
     <p class="text-sm text-muted mb-8">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại. 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
     ${AUTO_SEND_SECTIONS.map((s) => `
       <div class="card card-pad mb-16">
-        <div class="section-head"><h2 style="font-size:14px">${s.title}</h2></div>
+        <div class="section-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <h2 style="font-size:14px">${s.title}</h2>
+          <button class="btn btn-outline btn-sm" data-view-all="${s.kind}" style="display:none;white-space:nowrap;flex-shrink:0">Xem chi tiết</button>
+        </div>
         <div id="auto-list-${s.kind}"></div>
         <button class="btn btn-outline btn-sm btn-block mt-8" data-add-kind="${s.kind}">${s.addLabel}</button>
       </div>
@@ -276,37 +279,50 @@ function drawAutoTab(slot, admin) {
   slot.querySelectorAll('[data-add-kind]').forEach((btn) => {
     btn.addEventListener('click', () => openAddAutoSendModal(btn.dataset.addKind, admin, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind))));
   });
+  // Gắn 1 LẦN duy nhất ở đây (nút "Xem chi tiết" nằm trong tiêu đề, KHÔNG bị
+  // vẽ lại mỗi lần drawSection() như danh sách bên dưới) — tránh gắn trùng
+  // nhiều listener nếu bind lại mỗi lần drawSection() chạy.
+  slot.querySelectorAll('[data-view-all]').forEach((btn) => {
+    const kind = btn.dataset.viewAll;
+    btn.addEventListener('click', () => openAutoSendListModal(kind, admin, () => drawSection(kind)));
+  });
 
   function drawSection(kind) {
     const listEl = slot.querySelector(`#auto-list-${kind}`);
+    const viewAllBtn = slot.querySelector(`[data-view-all="${kind}"]`);
     const allRows = S.listZaloAutoSendByKind(kind)
       .map((r) => ({ r, customer: S.getCustomer(r.customerId), contract: S.getContract(r.contractId) }))
       .filter((x) => x.customer && x.contract);
     const preview = allRows.slice(0, AUTO_PREVIEW_COUNT);
-    listEl.innerHTML = `
-      ${preview.length ? preview.map(({ r, customer, contract }) => autoSendRowHtml(kind, r, customer, contract)).join('') : `<p class="text-sm text-muted">Chưa có hợp đồng nào.</p>`}
-      ${allRows.length > AUTO_PREVIEW_COUNT ? `<button class="btn btn-outline btn-sm btn-block mt-8" data-view-all>Xem chi tiết (${allRows.length})</button>` : ''}
-    `;
+    listEl.innerHTML = preview.length ? preview.map(({ r, customer, contract }) => autoSendRowHtml(kind, r, customer, contract)).join('') : `<p class="text-sm text-muted">Chưa có hợp đồng nào.</p>`;
     bindAutoRowHandlers(listEl, kind, () => drawSection(kind));
-    const viewAllBtn = listEl.querySelector('[data-view-all]');
-    if (viewAllBtn) viewAllBtn.addEventListener('click', () => openAutoSendListModal(kind, admin, () => drawSection(kind)));
+    if (viewAllBtn) {
+      const hasMore = allRows.length > AUTO_PREVIEW_COUNT;
+      viewAllBtn.style.display = hasMore ? '' : 'none';
+      viewAllBtn.textContent = `Xem chi tiết (${allRows.length})`;
+    }
   }
 }
 
-/** Dòng hiển thị 1 hợp đồng trong 1 trong 2 mục Tầng 2 — dùng chung cho preview lẫn popup "Xem chi tiết". */
+/**
+ * Dòng hiển thị 1 hợp đồng trong 1 trong 2 mục Tầng 2 — dùng chung cho preview
+ * lẫn popup "Xem chi tiết". Hàng trên hiện ĐỦ tên khách + mã hợp đồng (+ ngày
+ * gửi đã chọn với mục "Gửi theo ngày cụ thể") — không còn bị số tiền chen vào
+ * cùng hàng gây che khuất. Hàng dưới: địa chỉ bên trái, số tiền in đậm màu
+ * xanh (color-primary) bên phải — GIỐNG NHAU cho cả 2 mục.
+ */
 function autoSendRowHtml(kind, r, customer, contract) {
   const addr = [customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn';
   const dayLabel = kind === 'lai_hang_thang_custom_day' ? ` · Ngày ${r.customDay || '?'}` : '';
-  const amountHtml = kind === 'lai_hang_thang_custom_day'
-    ? `<span style="font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</span>`
-    : `<b style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>`;
   return `
     <div class="list-row" data-row="${r.id}" data-contract="${contract.id}" data-customer="${customer.id}" style="cursor:pointer;padding:8px 4px">
       <div class="row-main">
         <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}${dayLabel}</div>
-        <div class="row-sub">${addr}</div>
+        <div class="row-sub" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span>${addr}</span>
+          <b style="color:var(--color-primary);font-size:13px;white-space:nowrap;flex-shrink:0">${formatVND(contract.balance)}</b>
+        </div>
       </div>
-      ${amountHtml}
       <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách">${icon('trash', 'icon-sm')}</button>
     </div>
   `;
