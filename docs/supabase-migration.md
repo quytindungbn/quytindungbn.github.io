@@ -1319,6 +1319,25 @@ Vietcombank, BIDV, VietinBank...) sau khi deploy** để xác nhận mở đúng
 
 ---
 
+### 10.20b. Sửa lỗi mở app nhưng KHÔNG tự điền thông tin — dùng thẻ `<a>` thật thay vì `window.open()`
+
+Bạn test mục 10.20: mở đúng app ngân hàng nhưng KHÔNG tự điền được số tiền/nội dung (phải tự nhập tay).
+Nguyên nhân: code lúc đó tạo danh sách bằng `<button>` + gọi `window.open(url)` bằng JavaScript khi bấm —
+cách này TRÊN NHIỀU ĐIỆN THOẠI (đặc biệt iPhone/Safari) vẫn mở được app nhưng KHÔNG chuyển được đầy đủ dữ
+liệu kèm theo link qua cho app (app mở lên trống). Máy/trình duyệt chỉ nhận diện đúng để chuyển hẳn dữ
+liệu qua app khi đó là 1 cú bấm vào 1 thẻ `<a href="...">` THẬT (giống bấm 1 chữ có gạch dưới màu xanh),
+không phải mở bằng lệnh JS.
+
+**Đã sửa**: mỗi dòng ngân hàng trong popup "Chọn ngân hàng của bạn" giờ là 1 thẻ `<a href="...">` thật —
+link đầy đủ (kèm sẵn số tài khoản/số tiền/nội dung) được dựng sẵn ngay khi vẽ danh sách, không còn qua
+`window.open()` bằng JS nữa.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
+GitHub Pages tự deploy khi push `main`. **Nhờ bạn test lại đúng ngân hàng lúc nãy bị lỗi** để xác nhận
+giờ đã tự điền được thông tin chưa.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

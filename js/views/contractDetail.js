@@ -89,12 +89,21 @@ async function fetchBankApps() {
 /**
  * Popup "Chọn ngân hàng của bạn" — khách chọn đúng app mình đang dùng, mở
  * app đó kèm sẵn số tài khoản Quỹ/số tiền/nội dung (khách chỉ cần xác nhận
- * chuyển) — giống trải nghiệm thanh toán VietQR trong Zalo. `getPayInfo()`
- * gọi LÚC KHÁCH BẤM CHỌN NGÂN HÀNG (không phải lúc mở popup này) để luôn lấy
- * đúng số tiền/nội dung MỚI NHẤT (khách có thể đổi loại thanh toán/số tiền
- * sau khi đã mở popup mã QR nhưng trước khi bấm nút này).
+ * chuyển) — giống trải nghiệm thanh toán VietQR trong Zalo.
+ *
+ * QUAN TRỌNG: mỗi dòng ngân hàng phải là 1 thẻ <a href="..."> THẬT (không
+ * phải <button> + window.open() bằng JS) — điện thoại (đặc biệt iPhone/
+ * Safari) chỉ nhận diện link để CHUYỂN HẲN THÔNG TIN (số tiền/nội dung) qua
+ * cho app khi đó là 1 cú bấm vào link thật; window.open() gọi bằng JS tuy
+ * vẫn MỞ ĐƯỢC app nhưng nhiều máy không truyền được dữ liệu kèm theo, app mở
+ * lên trống trơn — đúng lỗi thực tế đã gặp. `getPayInfo()` gọi NGAY LÚC MỞ
+ * popup này (không phải lúc bấm chọn ngân hàng) để build sẵn href cho từng
+ * <a> — cần lấy đúng số tiền/nội dung MỚI NHẤT tại thời điểm khách bấm nút
+ * "Mở app ngân hàng" (chỗ gọi hàm này), không đổi lại sau đó nữa vì bấm nút
+ * mở popup này rồi thì khách không còn sửa được số tiền ở popup dưới nữa.
  */
 function openBankChooserModal({ bin, accountNo, accountName, getPayInfo }) {
+  const { total, text } = getPayInfo();
   const close = openModal({
     title: 'Chọn ngân hàng của bạn',
     bodyHtml: `<div id="bank-app-list" class="mt-8"><p class="text-sm text-muted">Đang tải danh sách ngân hàng...</p></div>`,
@@ -102,27 +111,21 @@ function openBankChooserModal({ bin, accountNo, accountName, getPayInfo }) {
       const listEl = sheet.querySelector('#bank-app-list');
       fetchBankApps().then((apps) => {
         if (!apps.length) throw new Error('empty');
-        listEl.innerHTML = `<ul class="flex-col gap-6">${apps.map((app) => `
+        listEl.innerHTML = `<ul class="flex-col gap-6">${apps.filter((app) => app.deeplink).map((app) => {
+          const url = new URL(app.deeplink);
+          url.searchParams.set('ba', `${accountNo}@${bin}`);
+          url.searchParams.set('am', String(Math.round(total)));
+          url.searchParams.set('tn', text);
+          url.searchParams.set('bn', accountName);
+          return `
           <li>
-            <button class="list-row w-full" data-app="${escapeHtml(app.appId)}" style="border:none;padding:9px 4px;background:none;text-align:left;cursor:pointer">
+            <a href="${escapeHtml(url.toString())}" target="_blank" rel="noopener" class="list-row w-full" style="text-decoration:none;color:inherit;padding:9px 4px">
               ${app.appLogo ? `<img src="${escapeHtml(app.appLogo)}" alt="" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0"/>` : ''}
               <div class="row-main"><div class="row-title" style="font-size:14px">${escapeHtml(app.appName || app.bankName)}</div></div>
-            </button>
-          </li>`).join('')}</ul>`;
-        listEl.querySelectorAll('[data-app]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const app = apps.find((a) => a.appId === btn.dataset.app);
-            if (!app?.deeplink) return;
-            const { total, text } = getPayInfo();
-            const url = new URL(app.deeplink);
-            url.searchParams.set('ba', `${accountNo}@${bin}`);
-            url.searchParams.set('am', String(Math.round(total)));
-            url.searchParams.set('tn', text);
-            url.searchParams.set('bn', accountName);
-            window.open(url.toString(), '_blank', 'noopener');
-            closeFn();
-          });
-        });
+            </a>
+          </li>`;
+        }).join('')}</ul>`;
+        listEl.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => closeFn()));
       }).catch(() => {
         listEl.innerHTML = `<p class="text-sm text-danger">Không tải được danh sách ngân hàng (lỗi mạng) — vui lòng dùng mã QR bên dưới để thanh toán.</p>`;
       });
