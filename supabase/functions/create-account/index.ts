@@ -654,6 +654,12 @@ Deno.serve(async (req) => {
       const kind = body.kind === 'lai_hang_thang_custom_day' ? 'lai_hang_thang_custom_day' : 'lai_hang_thang_auto';
       const customDay = kind === 'lai_hang_thang_custom_day' ? Number(body.customDay) || null : null;
       if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
+      // Ngày gửi phải 1-30 (không có tháng nào ít hơn) — thiếu chặn này thì
+      // ngày nhập lố (VD 31-35) sẽ KHÔNG BAO GIỜ khớp Date().getDate() nên
+      // không tháng nào gửi được, âm thầm hỏng mà không báo lỗi gì cả.
+      if (kind === 'lai_hang_thang_custom_day' && (!customDay || customDay < 1 || customDay > 30)) {
+        return json({ ok: false, reason: 'Ngày gửi không hợp lệ (1-30).' }, 400);
+      }
       const scope = await checkContractInScope(contractId);
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       // Tự thêm vào Tầng 1 (danh sách OA) nếu khách chưa có sẵn — Tầng 2 (gửi
@@ -697,7 +703,7 @@ Deno.serve(async (req) => {
     if (body.type === 'update-zalo-auto-send-day') {
       const id = String(body.id || '').trim();
       const customDay = Number(body.customDay) || null;
-      if (!id || !customDay || customDay < 1 || customDay > 28) return json({ ok: false, reason: 'Ngày không hợp lệ (1-28).' }, 400);
+      if (!id || !customDay || customDay < 1 || customDay > 30) return json({ ok: false, reason: 'Ngày không hợp lệ (1-30).' }, 400);
       const { data: row } = await admin.from('zalo_auto_send_list').select('*').eq('id', id).maybeSingle();
       if (!row) return json({ ok: false, reason: 'Không tìm thấy lựa chọn này (có thể đã bị xóa).' }, 404);
       if (row.kind !== 'lai_hang_thang_custom_day') return json({ ok: false, reason: 'Chỉ mục "Gửi theo ngày cụ thể" mới sửa được ngày.' }, 400);
