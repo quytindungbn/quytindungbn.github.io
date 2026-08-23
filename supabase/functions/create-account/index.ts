@@ -257,18 +257,12 @@ function formatDateVNZalo(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
-/** Định dạng số tiền cho mẫu Zalo OA — có dấu chấm ngăn cách hàng nghìn + " đ" cách 1 khoảng trắng (VD: "500.000 đ"), y hệt send-due-reminders/index.ts. */
-function formatVNDZaloTemplate(n: number): string {
-  return Math.round(n).toLocaleString('vi-VN') + ' đ';
-}
 /**
- * SO_TIEN_CHUYEN_KHOAN gắn với nút chuyển khoản có sẵn của Zalo — tham số
- * này Zalo validate kiểu SỐ THUẦN, không chấp nhận CHỮ ("đ") lẫn dấu chấm
- * ngăn hàng nghìn (đã thử cả 2 kiểu, vẫn báo lỗi định dạng) — CHỈ còn đúng
- * chuỗi chữ số, không có gì khác. KHÔNG dùng formatVNDZaloTemplate() ở trên
- * cho riêng trường này.
+ * Định dạng số tiền cho MỌI tham số tiền trong mẫu Zalo OA — CHỈ chuỗi chữ
+ * số thuần, không dấu chấm ngăn hàng nghìn, không chữ "đ", y hệt
+ * send-due-reminders/index.ts — xem ghi chú đầy đủ ở đó.
  */
-function formatVNDTransferAmount(n: number): string {
+function formatVNDZaloTemplate(n: number): string {
   return String(Math.round(n));
 }
 /** Y HỆT stripDiacritics() trong js/utils.js — bỏ dấu tiếng Việt, in hoa, bỏ ký tự lạ, dùng cho nội dung chuyển khoản. */
@@ -790,7 +784,7 @@ Deno.serve(async (req) => {
         SO_DU: formatVNDZaloTemplate(contract.balance),
         GOC_PHAI_TRA: formatVNDZaloTemplate(goc),
         LAI_PHAI_TRA: formatVNDZaloTemplate(interest),
-        SO_TIEN_CHUYEN_KHOAN: formatVNDTransferAmount(total),
+        SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
         NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${usesDueTemplate ? '' : 'LAI '}HDTD ${contract.code} ${nameNoDiacritics}`),
         NGAY_DAO_HAN: formatDateVNZalo(contract.due_date),
         // Ngày gửi tin (hôm nay) — KHÁC với NGAY_DAO_HAN (ngày đến hạn thật của hợp đồng).

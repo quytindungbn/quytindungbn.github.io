@@ -309,18 +309,14 @@ async function sendZaloTemplate(opts: {
   return status === 'success';
 }
 
-/** Định dạng số tiền cho mẫu Zalo OA — có dấu chấm ngăn cách hàng nghìn + " đ" cách 1 khoảng trắng (VD: "500.000 đ"), KHÁC với formatVND() ở trên (dùng cho thông báo đẩy, không có khoảng trắng). */
-function formatVNDZaloTemplate(n: number): string {
-  return Math.round(n).toLocaleString('vi-VN') + ' đ';
-}
 /**
- * SO_TIEN_CHUYEN_KHOAN gắn với nút chuyển khoản có sẵn của Zalo — tham số
- * này Zalo validate kiểu SỐ THUẦN, không chấp nhận CHỮ ("đ") lẫn dấu chấm
- * ngăn hàng nghìn (đã thử cả 2 kiểu, vẫn báo lỗi định dạng) — CHỈ còn đúng
- * chuỗi chữ số, không có gì khác. KHÔNG dùng formatVNDZaloTemplate() ở trên
- * cho riêng trường này.
+ * Định dạng số tiền cho MỌI tham số tiền trong mẫu Zalo OA — CHỈ chuỗi chữ
+ * số thuần, không dấu chấm ngăn hàng nghìn, không chữ "đ". Đã thử thêm "đ"
+ * (báo lỗi định dạng ở SO_TIEN_CHUYEN_KHOAN), rồi thử thêm dấu chấm (báo lỗi
+ * tiếp ở LAI_PHAI_TRA) — Zalo validate các tham số tiền này rất nghiêm ngặt,
+ * chỉ chấp nhận đúng số thuần. Quay lại định dạng CHUẨN ban đầu cho TẤT CẢ.
  */
-function formatVNDTransferAmount(n: number): string {
+function formatVNDZaloTemplate(n: number): string {
   return String(Math.round(n));
 }
 
@@ -343,7 +339,7 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
     SO_DU: formatVNDZaloTemplate(ct.balance),
     GOC_PHAI_TRA: formatVNDZaloTemplate(goc),
     LAI_PHAI_TRA: formatVNDZaloTemplate(interest),
-    SO_TIEN_CHUYEN_KHOAN: formatVNDTransferAmount(total),
+    SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
     NGAY_KE_HOACH: formatDateVN(now.toISOString()),
     NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${dueTemplate ? '' : 'LAI '}HDTD ${ct.code} ${nameNoDiacritics}`),
     NGAY_DAO_HAN: formatDateVN(ct.due_date),

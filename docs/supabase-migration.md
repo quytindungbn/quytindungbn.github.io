@@ -1081,6 +1081,28 @@ create policy "admin sees zalo customers" on zalo_customers
 2** Edge Function (`create-account` và `send-due-reminders`) cho phần sửa `SO_TIEN_CHUYEN_KHOAN` — ô tìm
 kiếm tự lên khi GitHub Pages deploy lại, không cần làm gì thêm.
 
+### 10.12. Định dạng số tiền Zalo OA về chuẩn ban đầu (số thuần) + thêm/bỏ OA nhanh hơn (KHÔNG cần chạy SQL)
+
+- **Định dạng tiền trong mẫu Zalo OA**: `LAI_PHAI_TRA` tiếp tục báo lỗi định dạng dù đã bỏ "đ" + dấu
+  chấm riêng cho `SO_TIEN_CHUYEN_KHOAN` ở mục 10.11 — hóa ra Zalo validate NGHIÊM NGẶT cho **mọi** tham
+  số tiền, không chỉ riêng trường gắn nút chuyển khoản. Quay lại đúng định dạng CHUẨN ban đầu cho **cả 4
+  trường** (`SO_DU`, `GOC_PHAI_TRA`, `LAI_PHAI_TRA`, `SO_TIEN_CHUYEN_KHOAN`): chuỗi chữ số thuần, không
+  chấm không đ (VD: `80000000`).
+- **Thêm/bỏ khỏi Danh sách OA nhanh hơn**: trước đây mỗi lần thêm/bỏ 1 khách đều gọi lại
+  `refreshSessionData()` — tải lại TOÀN BỘ dữ liệu phiên (8 bảng cùng lúc), rất nặng cho 1 thao tác đơn
+  giản, đặc biệt rõ khi thêm HÀNG LOẠT nhiều khách 1 lúc ở modal "Thêm khách hàng vào OA" (mỗi khách một
+  lượt tải lại đầy đủ, trông như khung bị tải lại liên tục). Giờ vá thẳng vào cache cục bộ + `notify()`
+  thay vì tải lại toàn bộ — nhanh hơn hẳn, đặc biệt khi chọn thêm nhiều khách cùng lúc. Trang "Quản lý
+  OA" cũng chỉ vẽ lại đúng tab đang mở thay vì dựng lại cả khung (thanh tab + bộ lọc) mỗi lần có cập
+  nhật, đỡ giật hơn.
+- **Import Excel tự cập nhật SĐT/địa chỉ đổi**: đã có sẵn từ trước, không đổi gì — dòng nào trong file
+  có SĐT/địa chỉ khác với hồ sơ hiện tại thì tự cập nhật đè lên (ô trống trong file thì GIỮ NGUYÊN dữ
+  liệu cũ, không xóa mất).
+
+**Việc cần bạn làm**: deploy lại **CẢ 2** Edge Function (`create-account` và `send-due-reminders`) cho
+phần định dạng tiền — phần tốc độ tự lên khi GitHub Pages deploy lại, không cần làm gì thêm trên
+Supabase.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

@@ -75,6 +75,22 @@ export function render(contentEl) {
   else drawConfigTab(slot);
 }
 
+/**
+ * Có dữ liệu mới nhưng vẫn đang đứng ở trang này (xem renderApp() trong
+ * app.js) — chỉ vẽ lại ĐÚNG tab đang mở, KHÔNG dựng lại cả khung (thanh tab
+ * + bộ lọc) như render() — đỡ giật/"như bị tải lại khung" mỗi khi thêm/bỏ
+ * OA, nhất là thêm hàng loạt nhiều khách liền (mỗi khách xong 1 lượt notify()).
+ */
+export function refresh(contentEl) {
+  const slot = contentEl.querySelector('#zalo-tab-content');
+  if (!slot) { render(contentEl); return; } // chưa từng render() lần nào ở trang này -> vẽ đầy đủ
+  const admin = currentAdmin();
+  if (activeTab === 'oa') drawOATab(slot, admin);
+  else if (activeTab === 'auto') drawAutoTab(slot, admin);
+  else if (activeTab === 'log') drawLogTab(slot);
+  else drawConfigTab(slot);
+}
+
 // ------------------------------------------------------------
 // Bộ lọc Thôn/Xóm dùng chung — KHÔNG gắn cứng vào 1 biến module-level, để
 // dùng lại được cho cả bộ lọc ở tab lẫn bộ lọc RIÊNG bên trong từng popup

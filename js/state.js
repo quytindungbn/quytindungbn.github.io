@@ -608,17 +608,34 @@ export function lastSuccessfulZaloSend(contractId) {
   return rows.reduce((a, b) => (new Date(a.sentAt) > new Date(b.sentAt) ? a : b));
 }
 
+/**
+ * Thêm/bỏ khỏi Tầng 1 "Danh sách OA" — vá thẳng vào cache cục bộ + notify()
+ * thay vì refreshSessionData() (tải lại TOÀN BỘ dữ liệu phiên — admins,
+ * customers, contracts, requests, push, cả 3 bảng Zalo... rất nặng cho 1
+ * thao tác đơn giản, đặc biệt rõ khi thêm hàng loạt nhiều khách 1 lúc ở
+ * modal "Thêm khách hàng vào OA" — mỗi lần thêm phải đợi 1 lượt tải lại đầy
+ * đủ mới xong). Server trả về đủ để tự vá, không cần đợi tải lại.
+ */
 export async function addZaloCustomer(customerId) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'add-zalo-customer', customerId });
   if (!res.ok) throw new Error(res.reason || 'Không thêm được vào danh sách OA.');
-  await refreshSessionData();
+  if (!state.zaloCustomers.some((r) => r.customerId === customerId)) {
+    state.zaloCustomers.push({ customerId, addedBy: session?.id || null, addedAt: new Date().toISOString() });
+  }
+  notify();
 }
 export async function removeZaloCustomer(customerId) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'remove-zalo-customer', customerId });
   if (!res.ok) throw new Error(res.reason || 'Không xóa được khỏi danh sách OA.');
-  await refreshSessionData();
+  state.zaloCustomers = state.zaloCustomers.filter((r) => r.customerId !== customerId);
+  // Server tự cascade xóa mọi lựa chọn Tầng 2 (zalo_auto_send_list) của
+  // khách này khi bỏ khỏi Tầng 1 — kể cả của người khác đã chọn, nhưng RLS
+  // chỉ cho client thấy đúng lựa chọn CỦA CHÍNH MÌNH nên chỉ cần dọn phần
+  // đó ở cache cục bộ, không lệch gì so với việc tải lại.
+  state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.customerId !== customerId);
+  notify();
 }
 /**
  * Thêm 1 hợp đồng vào Tầng 2 (gửi tự động) — tự đảm bảo khách đã ở Tầng 1,
