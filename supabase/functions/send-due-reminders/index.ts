@@ -313,9 +313,15 @@ async function sendZaloTemplate(opts: {
 function formatVNDZaloTemplate(n: number): string {
   return Math.round(n).toLocaleString('vi-VN') + ' đ';
 }
-/** SO_TIEN_CHUYEN_KHOAN gắn với nút chuyển khoản có sẵn của Zalo — CHỈ nhận số thuần (có thể có dấu chấm ngăn hàng nghìn), có chữ "đ" phía sau là Zalo báo lỗi định dạng ngay — KHÔNG dùng formatVNDZaloTemplate() ở trên cho riêng trường này. */
+/**
+ * SO_TIEN_CHUYEN_KHOAN gắn với nút chuyển khoản có sẵn của Zalo — tham số
+ * này Zalo validate kiểu SỐ THUẦN, không chấp nhận CHỮ ("đ") lẫn dấu chấm
+ * ngăn hàng nghìn (đã thử cả 2 kiểu, vẫn báo lỗi định dạng) — CHỈ còn đúng
+ * chuỗi chữ số, không có gì khác. KHÔNG dùng formatVNDZaloTemplate() ở trên
+ * cho riêng trường này.
+ */
 function formatVNDTransferAmount(n: number): string {
-  return Math.round(n).toLocaleString('vi-VN');
+  return String(Math.round(n));
 }
 
 /**

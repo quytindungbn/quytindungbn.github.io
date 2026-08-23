@@ -32,13 +32,14 @@ const PAGE_SIZE = 20; // hiện ít trước, bấm "Xem thêm" mới tải thê
 let activeTab = 'oa';
 let filterThon = [];
 let filterXom = [];
+let oaQuery = ''; // ô tìm kiếm tên/SĐT ở tab "Danh sách OA"
 let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
 
 /** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
 export function resetFilters() {
-  activeTab = 'oa'; filterThon = []; filterXom = []; logStatusFilter = 'all'; logFromDate = ''; logToDate = '';
+  activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; logStatusFilter = 'all'; logFromDate = ''; logToDate = '';
 }
 
 export function renderHeader(headerEl) {
@@ -126,10 +127,12 @@ function drawOATab(slot, admin) {
 
   slot.innerHTML = `
     <button class="btn btn-primary btn-sm mb-8" id="btn-add-oa">${icon('plus', 'icon-sm')} Thêm khách hàng vào OA</button>
-    <div class="filter-row mb-8" id="oa-filter-pills"></div>
+    ${searchBoxHtml('oa-search', 'Tìm theo tên, SĐT...', oaQuery)}
+    <div class="filter-row mb-8 mt-8" id="oa-filter-pills"></div>
     <div id="oa-list"></div>
   `;
   slot.querySelector('#btn-add-oa').addEventListener('click', () => openAddCustomerToOAModal(admin, drawList));
+  bindSearchBox(slot, 'oa-search', (v) => { oaQuery = v; drawList(); });
   renderPills();
   drawList();
 
@@ -147,6 +150,10 @@ function drawOATab(slot, admin) {
     let rows = S.listZaloCustomers().map((r) => ({ r, customer: S.getCustomer(r.customerId) })).filter((x) => x.customer);
     if (filterThon.length) rows = rows.filter((x) => filterThon.includes(x.customer.thon));
     if (filterXom.length) rows = rows.filter((x) => filterXom.includes(x.customer.xom));
+    if (oaQuery.trim()) {
+      const q = oaQuery.trim().toLowerCase();
+      rows = rows.filter((x) => x.customer.name.toLowerCase().includes(q) || (x.customer.phone || '').includes(q));
+    }
 
     listEl.innerHTML = `
       <div class="text-sm text-muted mb-8">${rows.length} khách hàng trong danh sách OA</div>
