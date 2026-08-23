@@ -163,7 +163,7 @@ function adminRowHtml(a) {
     <div class="list-row" data-open-admin="${a.id}" style="cursor:pointer">
       <div class="row-thumb" style="background:${colorFor(a.id)}">${initials(a.name)}</div>
       <div class="row-main">
-        <div class="row-title">${a.name} <span class="badge ${a.role === 'super' ? 'badge-purple' : 'badge-green'}">Quản trị viên · ${roleLabel}</span>${a.role === 'staff' && a.canManageUsers ? ' <span class="badge badge-blue">+ Quản lý User</span>' : ''}</div>
+        <div class="row-title">${a.name} <span class="badge ${a.role === 'super' ? 'badge-purple' : 'badge-green'}">Quản trị viên · ${roleLabel}</span>${a.role === 'staff' && a.canManageUsers ? ' <span class="badge badge-blue">+ Quản lý User</span>' : ''}${a.role === 'staff' && a.canManageZaloOA ? ' <span class="badge badge-blue">+ Quản lý OA</span>' : ''}</div>
         <div class="row-sub">@${a.username}${a.role === 'staff' ? ' · Xem được: ' + permissionSummary(a) : ''}</div>
       </div>
     </div>`;
@@ -247,6 +247,11 @@ function adminPermissionSectionHtml(admin, tree, isSelf = false) {
   // tự nhảy ra trang ngoài" đã gặp. Y hệt cách khối đổi vai trò đã tự chặn
   // isSelf ở trên.
   const lockCheckbox = isSelf ? 'checked disabled' : (admin.canManageUsers ? 'checked' : '');
+  // Cờ quản lý gửi tin Zalo OA — RIÊNG, không khóa cứng khi tự xem chính mình
+  // như canManageUsers ở trên, vì trang "Quản lý OA" không có gì để "tự nhảy
+  // ra giữa chừng" nghiêm trọng như Quản lý User (không đang đứng sẵn ở đó
+  // lúc sửa quyền này).
+  const zaloChecked = admin.canManageZaloOA ? 'checked' : '';
   return `
     <div class="section-head mt-16"><h2 style="font-size:14px">Địa bàn được xem</h2></div>
     <form id="perm-form">
@@ -258,6 +263,11 @@ function adminPermissionSectionHtml(admin, tree, isSelf = false) {
       ${isSelf
         ? `<div class="field-hint">Không thể tự bỏ quyền này của chính mình (sẽ tự mất quyền vào trang này ngay lập tức) — cần quản trị viên toàn quyền hoặc 1 nhân viên khác có quyền này thao tác giúp.</div>`
         : `<div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền, không đụng được tài khoản Toàn quyền khác).</div>`}
+      <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
+        <input type="checkbox" name="canManageZaloOA" ${zaloChecked}/>
+        Cho phép quản lý gửi tin Zalo OA
+      </label>
+      <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý OA" — thêm/bớt khách hàng vào danh sách gửi Zalo tự động, gửi tay, xem log gửi tin — CHỈ trong đúng Thôn/Xóm được gán ở trên.</div>
     </form>
   `;
 }
@@ -352,7 +362,8 @@ function openAdminDetail(admin, tree, contentEl) {
               // giá trị cũ, không đọc từ form (không sẽ vô tình gửi lên
               // false, tự xóa quyền của chính mình).
               const canManage = isSelf ? admin.canManageUsers : fd.get('canManageUsers') === 'on';
-              await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), canManage);
+              const canManageZalo = fd.get('canManageZaloOA') === 'on';
+              await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), canManage, canManageZalo);
             }
             toast('Đã lưu quyền', 'success');
             closeFn();

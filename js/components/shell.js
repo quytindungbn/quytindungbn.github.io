@@ -22,8 +22,12 @@ export const ADMIN_NAV = [
 export const ADMIN_NAV_MANAGE_USERS = [
   { path: '#/admin/nhan-vien', label: 'Quản lý User', shortLabel: 'User', icon: 'idCard' },
 ];
-export const ADMIN_NAV_SUPER_ONLY = [
+// "Quản lý OA" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được cấp
+// riêng cờ canManageZaloOA (xem js/state.js) — y hệt kiểu ADMIN_NAV_MANAGE_USERS.
+export const ADMIN_NAV_MANAGE_ZALO_OA = [
   { path: '#/admin/zalo-oa', label: 'Quản lý OA', shortLabel: 'OA', icon: 'message' },
+];
+export const ADMIN_NAV_SUPER_ONLY = [
   { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings' },
 ];
 // Số mục tối đa hiện trực tiếp trên thanh menu dưới (mobile) — còn lại gộp vào "Thêm"
@@ -78,9 +82,9 @@ function profileBlockHtml(info) {
   `;
 }
 
-export function buildShell(root, role, isSuper, canManageUsers) {
+export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA) {
   const nav = role === 'admin'
-    ? [...ADMIN_NAV, ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
+    ? [...ADMIN_NAV, ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
     : CUSTOMER_NAV;
   root.innerHTML = `
     <div class="app-shell">

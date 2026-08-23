@@ -55,6 +55,8 @@ function migrateState() {
     if (!Array.isArray(a.allowedXom)) a.allowedXom = [];
   });
   if (!Array.isArray(state.pushSubscribedCustomerIds)) state.pushSubscribedCustomerIds = [];
+  if (!Array.isArray(state.zaloAutoSendList)) state.zaloAutoSendList = [];
+  if (!Array.isArray(state.zaloSendLog)) state.zaloSendLog = [];
 }
 
 export async function init() {
@@ -571,6 +573,44 @@ export async function sendManualNotification(customerId, title, body) {
   return callCreateAccountFunction(session?.sbToken, { type: 'send-manual-notification', customerId, title, body });
 }
 
+// ------------------------------------------------------------
+// Zalo OA (ZBS Template Message) — danh sách gửi tự động + gửi tay + log gửi
+// tin. Xem trang "Quản lý OA" (js/views/admin/zaloOA.js) và
+// docs/supabase-migration.md mục 10. Cần quyền canManageZaloOA (hoặc super).
+// ------------------------------------------------------------
+/** Hợp đồng này đã có trong danh sách gửi tự động (theo "kind") chưa — trả về dòng nếu có, null nếu chưa. */
+export function findZaloAutoSend(contractId, kind = 'den_han') {
+  return (state.zaloAutoSendList || []).find((r) => r.contractId === contractId && r.kind === kind) || null;
+}
+export function listZaloAutoSend() { return state.zaloAutoSendList || []; }
+export function listZaloSendLog() { return state.zaloSendLog || []; }
+
+export async function addZaloAutoSend(contractId, kind = 'den_han') {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'add-zalo-auto-send', contractId, kind });
+  if (!res.ok) throw new Error(res.reason || 'Không thêm được vào danh sách gửi tự động.');
+  const ct = getContract(contractId);
+  state.zaloAutoSendList.push({ id: genId('zas'), contractId, customerId: ct?.customerId, kind, createdBy: session?.id, createdAt: new Date().toISOString() });
+  notify();
+}
+export async function removeZaloAutoSend(id) {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'remove-zalo-auto-send', id });
+  if (!res.ok) throw new Error(res.reason || 'Không xóa được khỏi danh sách gửi tự động.');
+  state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.id !== id);
+  notify();
+}
+/** Gửi tay ngay 1 tin Zalo cho khách hàng của 1 hợp đồng, theo 1 mẫu cụ thể — trả về { ok, reason }. */
+export async function sendZaloManual(contractId, templateId) {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'send-zalo-manual', contractId, templateId });
+  // Gửi tay có ghi log ở server (zalo_send_log) — tải lại session data để
+  // log mới hiện ngay trong "Quản lý gửi tin" mà không cần đợi tới lần
+  // refreshSessionData() định kỳ tiếp theo.
+  await refreshSessionData();
+  return res;
+}
+
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account" — hợp đồng tự xóa theo (FK cascade). */
 export async function deleteCustomer(id) {
   const session = getSession();
@@ -770,7 +810,7 @@ export async function refreshSessionData() {
 
 async function loadAdminSessionData(token) {
   const sb = getSupabaseClient(token);
-  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes] = await Promise.all([
+  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes, zaloListRes, zaloLogRes] = await Promise.all([
     sb.from('admins').select('*'),
     sb.from('customers').select('*'),
     sb.from('contracts').select('*'),
@@ -781,6 +821,12 @@ async function loadAdminSessionData(token) {
     // trong docs/supabase-migration.md) — lỗi (chưa chạy policy) thì bỏ qua,
     // coi như chưa biết ai bật thông báo, không chặn tải các dữ liệu khác.
     sb.from('push_subscriptions').select('owner_type, owner_id').eq('owner_type', 'customer').then((r) => r, () => ({ data: [] })),
+    // Danh sách gửi Zalo tự động + log gửi tin — RLS tự lọc đúng phạm vi
+    // Thôn/Xóm cho nhân viên được cấp canManageZaloOA (quản trị toàn quyền
+    // thấy hết); ai không có quyền thì RLS trả về rỗng, không lỗi. Bọc an
+    // toàn (giống push_subscriptions) phòng lúc chưa chạy policy (mục 10).
+    sb.from('zalo_auto_send_list').select('*').then((r) => r, () => ({ data: [] })),
+    sb.from('zalo_send_log').select('*').order('sent_at', { ascending: false }).limit(200).then((r) => r, () => ({ data: [] })),
   ]);
   state.admins = (adminRows || []).map(mapAdminRow);
   state.customers = (customerRows || []).map(mapCustomerRow);
@@ -791,6 +837,19 @@ async function loadAdminSessionData(token) {
   // serialize (JSON.stringify(new Set(...)) ra "{}"), lần tải lại từ cache sẽ
   // gọi .has() trên object thường và văng lỗi ngay khi vẽ trang.
   state.pushSubscribedCustomerIds = [...new Set((pushRes?.data || []).map((r) => r.owner_id))];
+  state.zaloAutoSendList = (zaloListRes?.data || []).map(mapZaloAutoSendRow);
+  state.zaloSendLog = (zaloLogRes?.data || []).map(mapZaloSendLogRow);
+}
+
+function mapZaloAutoSendRow(row) {
+  return { id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, createdBy: row.created_by, createdAt: row.created_at };
+}
+function mapZaloSendLogRow(row) {
+  return {
+    id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, templateId: row.template_id,
+    phone: row.phone, status: row.status, errorMessage: row.error_message,
+    triggeredBy: row.triggered_by, triggeredByAdminId: row.triggered_by_admin_id, sentAt: row.sent_at,
+  };
 }
 
 function mapAdminRow(row) {
@@ -798,6 +857,11 @@ function mapAdminRow(row) {
     id: row.id, username: row.username, name: row.name, role: row.role,
     allowedThon: row.allowed_thon || [], allowedXom: row.allowed_xom || [],
     canManageUsers: !!row.can_manage_users,
+    // Cờ RIÊNG cho quyền quản lý gửi tin Zalo OA — KHÔNG dùng chung
+    // canManageUsers, vì gửi tin OA tốn phí thật, cấp riêng để admin toàn
+    // quyền kiểm soát được từng nhân viên muốn cho gửi OA hay không, độc lập
+    // với việc có cho quản lý Use hay không. Xem canManageZaloOA() bên dưới.
+    canManageZaloOA: !!row.can_manage_zalo_oa,
     salt: row.salt, hash: row.hash, mustChangePassword: !!row.must_change_password, createdAt: row.created_at,
   };
 }
@@ -813,6 +877,11 @@ export function isSuperAdmin(id) { return getAdmin(id)?.role === 'super'; }
 export function canManageUsers(id) {
   const a = getAdmin(id);
   return !!a && (a.role === 'super' || !!a.canManageUsers);
+}
+/** Y HỆT canManageUsers() nhưng cho quyền quản lý gửi tin Zalo OA — xem ghi chú ở mapAdminRow(). */
+export function canManageZaloOA(id) {
+  const a = getAdmin(id);
+  return !!a && (a.role === 'super' || !!a.canManageZaloOA);
 }
 
 /**
@@ -842,15 +911,19 @@ export async function addStaffAdmin({ username, name, password, role, allowedTho
   return { staff, tempPassword: res.tempPassword };
 }
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
-export async function updateStaffPermissions(id, allowedThon, allowedXom, canManage) {
+export async function updateStaffPermissions(id, allowedThon, allowedXom, canManage, canManageZalo) {
   const a = getAdmin(id);
   if (!a || a.role !== 'staff') return;
   const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-staff-permissions', staffId: id, allowedThon, allowedXom, canManageUsers: !!canManage });
+  const res = await callCreateAccountFunction(session?.sbToken, {
+    type: 'update-staff-permissions', staffId: id, allowedThon, allowedXom,
+    canManageUsers: !!canManage, canManageZaloOA: !!canManageZalo,
+  });
   if (!res.ok) throw new Error(res.reason || 'Không cập nhật được quyền xem.');
   a.allowedThon = Array.isArray(allowedThon) ? allowedThon : [];
   a.allowedXom = Array.isArray(allowedXom) ? allowedXom : [];
   a.canManageUsers = !!canManage;
+  a.canManageZaloOA = !!canManageZalo;
   notify();
 }
 /**
@@ -1101,5 +1174,5 @@ async function seedDemoData() {
     },
   ];
 
-  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [] };
+  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloAutoSendList: [], zaloSendLog: [] };
 }

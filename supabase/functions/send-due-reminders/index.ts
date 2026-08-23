@@ -23,6 +23,13 @@
 // Chống gửi trùng bằng bảng notification_log (ghi lại lần gửi gần nhất theo
 // từng hợp đồng + loại nhắc).
 //
+// Riêng Zalo OA (ZBS Template Message, xem phần dưới): KHÔNG gửi tràn lan
+// như thông báo đẩy — CHỈ gửi cho hợp đồng đã được admin CHỦ ĐỘNG thêm vào
+// bảng zalo_auto_send_list (trang "Quản lý OA" trong app, hoặc tick trong
+// chi tiết hợp đồng) — vì Zalo tốn phí thật + không có cách xác minh trước
+// SĐT có đúng chủ hay không, nên để admin tự xác minh rồi mới thêm vào danh
+// sách, thay vì tự động gửi cho mọi hợp đồng đến/quá hạn.
+//
 // KHÔNG dùng chung Edge Function với create-account (function đó phục vụ
 // request TRỰC TIẾP từ trình duyệt qua anon key; function này CHỈ được gọi
 // bởi Supabase Cron/pg_cron nội bộ, kèm secret riêng CRON_SECRET để không ai
@@ -245,26 +252,40 @@ async function getZaloAccessToken(): Promise<string | null> {
   }
 }
 
-/** Gửi 1 tin nhắn mẫu (ZBS Template Message) qua số điện thoại. Trả về true nếu Zalo báo gửi thành công. */
-async function sendZaloTemplate(accessToken: string, phone: string, templateId: string, templateData: Record<string, string>): Promise<boolean> {
+/**
+ * Gửi 1 tin nhắn mẫu (ZBS Template Message) qua số điện thoại, TỰ GHI LOG vào
+ * bảng zalo_send_log (cả thành công lẫn lỗi, kèm nội dung lỗi) — để trang
+ * "Quản lý OA" > "Quản lý gửi tin" xem được. Trả về true nếu Zalo báo gửi
+ * thành công.
+ */
+async function sendZaloTemplate(opts: {
+  accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
+  contractId: string; customerId: string; kind: string;
+}): Promise<boolean> {
+  let status: 'success' | 'error' = 'error';
+  let errorMessage = '';
   try {
     const res = await fetch('https://business.openapi.zalo.me/message/template', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', access_token: accessToken },
+      headers: { 'Content-Type': 'application/json', access_token: opts.accessToken },
       body: JSON.stringify({
-        phone: normalizeZaloPhone(phone),
-        template_id: templateId,
-        template_data: templateData,
+        phone: normalizeZaloPhone(opts.phone),
+        template_id: opts.templateId,
+        template_data: opts.templateData,
         tracking_id: `qtd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       }),
     });
     const json = await res.json();
-    if (json.error !== 0) { console.error('Lỗi gửi tin Zalo:', json); return false; }
-    return true;
-  } catch (e) {
+    if (json.error === 0) { status = 'success'; } else { errorMessage = json.message || JSON.stringify(json); console.error('Lỗi gửi tin Zalo:', json); }
+  } catch (e: any) {
+    errorMessage = String(e?.message || e);
     console.error('Lỗi gọi API gửi tin Zalo:', e);
-    return false;
   }
+  await admin.from('zalo_send_log').insert({
+    contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
+    phone: opts.phone, status, error_message: errorMessage || null, triggered_by: 'auto',
+  });
+  return status === 'success';
 }
 
 Deno.serve(async (req) => {
@@ -296,6 +317,14 @@ Deno.serve(async (req) => {
   // và CHỈ làm khi đã cấu hình sẵn mẫu tin "đến hạn" (mục Quản lý OA), tránh
   // gọi API Zalo vô ích lúc chưa cấu hình gì.
   const zaloAccessToken = orgRow?.zalo_template_due_id ? await getZaloAccessToken() : null;
+
+  // Danh sách hợp đồng ĐÃ ĐƯỢC ADMIN THÊM VÀO danh sách gửi Zalo tự động
+  // (trang "Quản lý OA" > "Gửi tin tự động", hoặc bấm tick trong chi tiết
+  // hợp đồng) — KHÔNG còn gửi tràn lan mọi hợp đồng đến/quá hạn có SĐT như
+  // trước nữa, chỉ gửi đúng những hợp đồng nằm trong danh sách này (admin đã
+  // tự xác minh đúng chủ số điện thoại trước khi thêm vào).
+  const { data: autoSendRows } = await admin.from('zalo_auto_send_list').select('contract_id, kind').eq('kind', 'den_han');
+  const autoSendContractIds = new Set((autoSendRows || []).map((r: any) => r.contract_id));
 
   /** Có nên gửi thông báo "kind" cho 1 hợp đồng cụ thể hôm nay không — chặn gửi lại trong cùng 1 ngày. */
   async function shouldSend(contractId: string, kind: string): Promise<boolean> {
@@ -341,12 +370,11 @@ Deno.serve(async (req) => {
         const ok = await pushToCustomer(ct.customer_id, NOTI_TITLE, body, 'gan-den-han');
         if (ok) { await logSent(ct.customer_id, ct.id, 'gan_den_han'); result.ganDenHanQuaHan++; }
 
-        // Zalo OA — CHỈ gửi khi đã ĐẾN/QUÁ HẠN thật (daysToDue <= 0), vì mẫu
-        // tin đã cấu hình (519351) có đủ cả Gốc lẫn Lãi, hợp với lúc này hơn
-        // là lúc còn "gần đến hạn" (chưa tới ngày, gốc chưa thật sự phải trả)
-        // — xem ghi chú ở khai báo ZALO_APP_ID phía trên và mục Quản lý OA
-        // trong app (chọn mẫu tin dùng cho "đến hạn").
-        if (daysToDue <= 0 && zaloAccessToken && orgRow?.zalo_template_due_id) {
+        // Zalo OA — CHỈ gửi khi (a) đã ĐẾN/QUÁ HẠN thật (daysToDue <= 0, mẫu
+        // tin có đủ Gốc lẫn Lãi hợp với lúc này hơn là lúc còn "gần đến hạn")
+        // VÀ (b) hợp đồng này đã được admin CHỦ ĐỘNG thêm vào danh sách gửi
+        // tự động (autoSendContractIds) — xem ghi chú ở khai báo biến đó.
+        if (daysToDue <= 0 && zaloAccessToken && orgRow?.zalo_template_due_id && autoSendContractIds.has(ct.id)) {
           const customer = customerMap.get(ct.customer_id);
           if (customer?.phone && await shouldSend(ct.id, 'zalo_den_han')) {
             const interest = accruedInterest(ct, now);
@@ -363,7 +391,10 @@ Deno.serve(async (req) => {
               NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN HDTD ${ct.code} ${nameNoDiacritics}`),
               NGAY_DAO_HAN: formatDateVN(ct.due_date),
             };
-            const zaloOk = await sendZaloTemplate(zaloAccessToken, customer.phone, orgRow.zalo_template_due_id, templateData);
+            const zaloOk = await sendZaloTemplate({
+              accessToken: zaloAccessToken, phone: customer.phone, templateId: orgRow.zalo_template_due_id, templateData,
+              contractId: ct.id, customerId: ct.customer_id, kind: 'den_han',
+            });
             if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_den_han'); result.zaloDenHan++; }
           }
         }

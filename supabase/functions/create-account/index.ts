@@ -26,6 +26,12 @@
 //     nhất 1 thiết bị). Nhân viên (role='staff') CHỈ gửi được cho khách
 //     trong đúng phạm vi Thôn/Xóm được gán — y hệt điều kiện RLS bảng
 //     customers, xem docs/supabase-migration.md mục 5b.
+//   { type: 'add-zalo-auto-send', contractId, kind? } / { type:
+//     'remove-zalo-auto-send', id } / { type: 'send-zalo-manual', contractId,
+//     templateId } -> quản lý danh sách gửi Zalo OA tự động + gửi tay ngay 1
+//     khách. Cần cờ RIÊNG canManageZaloOA (không dùng chung canManageUsers)
+//     HOẶC role='super'. Nhân viên staff chỉ thao tác được hợp đồng trong
+//     đúng phạm vi Thôn/Xóm được gán — xem docs/supabase-migration.md mục 10.
 //   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
 //   của 1 admin đã đăng nhập (xác minh lại tại server, không tin JWT mù) —
 //   2 nhóm quyền khác nhau:
@@ -41,7 +47,7 @@
 //       xem cho 1 tài khoản đã có sẵn (giữ lại ít nhất 1 toàn quyền)
 //     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom?, canManageUsers? }
 //     { type: 'reset-staff-password', staffId, password? }
-//     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom?, canManageUsers? }
+//     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom?, canManageUsers?, canManageZaloOA? }
 //     { type: 'delete-staff', staffId }
 //   - role='super' HOẶC nhân viên "chỉ xem" được cấp cờ canManageUsers=true
 //     đều gọi được — CHỈ giới hạn trong phạm vi Use KHÁCH HÀNG:
@@ -62,6 +68,11 @@ const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') || '';
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') || '';
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+// Zalo OA (ZBS Template Message) — dùng cho gửi tay 1 khách ngay tại đây
+// (type 'send-zalo-manual'), Y HỆT cặp secret đã đặt cho send-due-reminders
+// (gửi tự động theo lịch) — xem docs/supabase-migration.md mục 10.
+const ZALO_APP_ID = Deno.env.get('ZALO_APP_ID') || '';
+const ZALO_SECRET_KEY = Deno.env.get('ZALO_SECRET_KEY') || '';
 
 const LOCK_AFTER_FAILS = 5;
 const LOCK_MINUTES = 15;
@@ -186,6 +197,110 @@ async function verifyJwt(token: string): Promise<Record<string, any> | null> {
   // làm hỏng phiên đăng nhập đang có sẵn của khách/nhân viên.
   if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
   return payload;
+}
+
+// ------------------------------------------------------------
+// Zalo OA (ZBS Template Message) — Y HỆT logic trong send-due-reminders/index.ts
+// (function riêng, không chia sẻ code được giữa 2 Edge Function nên phải chép
+// lại) — dùng cho type 'send-zalo-manual' (gửi tay ngay 1 khách từ màn hình
+// chi tiết hợp đồng).
+// ------------------------------------------------------------
+function daysBetweenZalo(a: Date, b: Date): number {
+  const sa = new Date(a); sa.setHours(0, 0, 0, 0);
+  const sb = new Date(b); sb.setHours(0, 0, 0, 0);
+  return Math.round((sb.getTime() - sa.getTime()) / 86400000);
+}
+function effectiveStatusZalo(contract: any, asOf: Date): 'da_tat_toan' | 'qua_han' | 'dang_vay' {
+  if ((contract.balance || 0) <= 0) return 'da_tat_toan';
+  if (daysBetweenZalo(new Date(contract.due_date), asOf) > 0) return 'qua_han';
+  return 'dang_vay';
+}
+function interestDaysAccruedZalo(contract: any, asOf: Date): number {
+  const paidUntil = contract.interest_paid_until || contract.disbursed_date;
+  let days = daysBetweenZalo(new Date(paidUntil), asOf);
+  if (contract.disbursed_date && daysBetweenZalo(new Date(contract.disbursed_date), new Date(paidUntil)) === 1) days += 1;
+  return Math.max(0, days);
+}
+function accruedInterestZalo(contract: any, asOf: Date): number {
+  if (effectiveStatusZalo(contract, asOf) === 'da_tat_toan') return 0;
+  const days = interestDaysAccruedZalo(contract, asOf);
+  const raw = Number(contract.balance) * days * (Number(contract.interest_rate) / 100) / 365;
+  return Math.round(raw / 1000) * 1000;
+}
+function formatDateVNZalo(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+/** Y HỆT stripDiacritics() trong js/utils.js — bỏ dấu tiếng Việt, in hoa, bỏ ký tự lạ, dùng cho nội dung chuyển khoản. */
+function stripDiacriticsUpper(str: string): string {
+  return str
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .replace(/\s*₫/g, 'd')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function normalizeZaloPhone(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.startsWith('84')) return digits;
+  if (digits.startsWith('0')) return '84' + digits.slice(1);
+  return digits;
+}
+/** Lấy Access Token hiện hành, tự làm mới bằng Refresh Token lưu trong bảng zalo_oa_tokens — xem ghi chú y hệt trong send-due-reminders/index.ts. */
+async function getZaloAccessToken(): Promise<string | null> {
+  if (!ZALO_APP_ID || !ZALO_SECRET_KEY) return null;
+  const { data: tokenRow } = await admin.from('zalo_oa_tokens').select('*').eq('id', 'default').maybeSingle();
+  if (!tokenRow?.refresh_token) return null;
+  try {
+    const res = await fetch('https://oauth.zaloapp.com/v4/oa/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', secret_key: ZALO_SECRET_KEY },
+      body: new URLSearchParams({ app_id: ZALO_APP_ID, grant_type: 'refresh_token', refresh_token: tokenRow.refresh_token }),
+    });
+    const json2 = await res.json();
+    if (!json2.access_token) { console.error('Lỗi làm mới Zalo access token:', json2); return null; }
+    await admin.from('zalo_oa_tokens').update({
+      access_token: json2.access_token,
+      refresh_token: json2.refresh_token || tokenRow.refresh_token,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 'default');
+    return json2.access_token as string;
+  } catch (e) {
+    console.error('Lỗi gọi API làm mới Zalo access token:', e);
+    return null;
+  }
+}
+/** Gửi 1 tin mẫu Zalo qua SĐT, TỰ GHI LOG vào zalo_send_log (dùng cho cả gửi tay lẫn xem trong "Quản lý gửi tin"). */
+async function sendZaloTemplateLogged(opts: {
+  accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
+  contractId: string; customerId: string; kind: string; triggeredBy: 'auto' | 'manual'; triggeredByAdminId?: string | null;
+}): Promise<{ ok: boolean; reason?: string }> {
+  let status: 'success' | 'error' = 'error';
+  let errorMessage = '';
+  try {
+    const res = await fetch('https://business.openapi.zalo.me/message/template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', access_token: opts.accessToken },
+      body: JSON.stringify({
+        phone: normalizeZaloPhone(opts.phone),
+        template_id: opts.templateId,
+        template_data: opts.templateData,
+        tracking_id: `qtd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      }),
+    });
+    const respJson = await res.json();
+    if (respJson.error === 0) { status = 'success'; } else { errorMessage = respJson.message || JSON.stringify(respJson); }
+  } catch (e: any) {
+    errorMessage = String(e?.message || e);
+  }
+  await admin.from('zalo_send_log').insert({
+    contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
+    phone: opts.phone, status, error_message: errorMessage || null,
+    triggered_by: opts.triggeredBy, triggered_by_admin_id: opts.triggeredByAdminId || null,
+  });
+  return status === 'success' ? { ok: true } : { ok: false, reason: errorMessage || 'Gửi thất bại.' };
 }
 
 Deno.serve(async (req) => {
@@ -434,6 +549,104 @@ Deno.serve(async (req) => {
     return json({ ok: true, sentCount });
   }
 
+  // ===== type: 'add-zalo-auto-send' / 'remove-zalo-auto-send' / 'send-zalo-manual'
+  // — quản lý danh sách gửi Zalo OA tự động + gửi tay ngay 1 khách. Cần quyền
+  // canManageZaloOA (cờ RIÊNG, KHÔNG dùng chung canManageUsers) HOẶC
+  // role='super'. Nhân viên staff chỉ thao tác được với hợp đồng của khách
+  // trong đúng phạm vi Thôn/Xóm được gán — y hệt kiểu kiểm tra ở
+  // 'send-manual-notification' phía trên. =====
+  if (body.type === 'add-zalo-auto-send' || body.type === 'remove-zalo-auto-send' || body.type === 'send-zalo-manual') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') {
+      return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
+    const { data: caller, error: callerErr } = await admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerErr || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    if (caller.role !== 'super' && caller.can_manage_zalo_oa !== true) {
+      return json({ ok: false, reason: 'Bạn không có quyền quản lý gửi tin Zalo OA — liên hệ quản trị viên toàn quyền để được cấp quyền.' }, 403);
+    }
+
+    /** Kiểm tra hợp đồng có tồn tại + có nằm trong phạm vi Thôn/Xóm của người gọi không (super thì luôn true). */
+    async function checkContractInScope(contractId: string): Promise<{ ok: boolean; contract?: any; customer?: any }> {
+      const { data: contract } = await admin.from('contracts').select('*').eq('id', contractId).maybeSingle();
+      if (!contract) return { ok: false };
+      const { data: customer } = await admin.from('customers').select('*').eq('id', contract.customer_id).maybeSingle();
+      if (!customer) return { ok: false };
+      if (caller.role !== 'super') {
+        const allowedThon: string[] = caller.allowed_thon || [];
+        const allowedXom: string[] = caller.allowed_xom || [];
+        const inScope = allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`);
+        if (!inScope) return { ok: false };
+      }
+      return { ok: true, contract, customer };
+    }
+
+    if (body.type === 'add-zalo-auto-send') {
+      const contractId = String(body.contractId || '').trim();
+      const kind = String(body.kind || 'den_han').trim();
+      if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
+      const scope = await checkContractInScope(contractId);
+      if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
+      const { error } = await admin.from('zalo_auto_send_list').insert({
+        id: genId('zas'), contract_id: contractId, customer_id: scope.contract.customer_id, kind, created_by: caller.id,
+      });
+      if (error) {
+        if (String(error.message || '').toLowerCase().includes('duplicate')) {
+          return json({ ok: false, reason: 'Hợp đồng này đã có trong danh sách gửi tự động rồi.' });
+        }
+        return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      }
+      return json({ ok: true });
+    }
+
+    if (body.type === 'remove-zalo-auto-send') {
+      const id = String(body.id || '').trim();
+      if (!id) return json({ ok: false, reason: 'Thiếu mã.' }, 400);
+      const { data: row } = await admin.from('zalo_auto_send_list').select('*').eq('id', id).maybeSingle();
+      if (!row) return json({ ok: true }); // đã không còn -> coi như xong, khỏi báo lỗi
+      const scope = await checkContractInScope(row.contract_id);
+      if (!scope.ok) return json({ ok: false, reason: 'Bạn không có quyền với hợp đồng này.' }, 403);
+      const { error } = await admin.from('zalo_auto_send_list').delete().eq('id', id);
+      if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      return json({ ok: true });
+    }
+
+    if (body.type === 'send-zalo-manual') {
+      const contractId = String(body.contractId || '').trim();
+      const templateId = String(body.templateId || '').trim();
+      if (!contractId || !templateId) return json({ ok: false, reason: 'Thiếu thông tin.' }, 400);
+      const scope = await checkContractInScope(contractId);
+      if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
+      const { customer, contract } = scope;
+      if (!customer.phone) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
+      const accessToken = await getZaloAccessToken();
+      if (!accessToken) return json({ ok: false, reason: 'Chưa cấu hình kết nối Zalo OA trên server (thiếu Secret/Refresh Token) — liên hệ để cấu hình trước.' }, 500);
+
+      const now = new Date();
+      const interest = accruedInterestZalo(contract, now);
+      const total = Number(contract.balance) + interest;
+      const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
+      const templateData = {
+        TEN_KHACH_HANG: customer.name || '',
+        SO_HDTD: contract.code,
+        SO_KHE_UOC: contract.code,
+        SO_DU: String(Math.round(contract.balance)),
+        GOC_PHAI_TRA: String(Math.round(contract.balance)),
+        LAI_PHAI_TRA: String(Math.round(interest)),
+        SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)),
+        NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN HDTD ${contract.code} ${nameNoDiacritics}`),
+        NGAY_DAO_HAN: formatDateVNZalo(contract.due_date),
+      };
+      const result = await sendZaloTemplateLogged({
+        accessToken, phone: customer.phone, templateId, templateData,
+        contractId, customerId: customer.id, kind: 'den_han', triggeredBy: 'manual', triggeredByAdminId: caller.id,
+      });
+      return json(result.ok ? { ok: true } : { ok: false, reason: result.reason });
+    }
+  }
+
   // ===== Mọi type khác: bắt buộc JWT của 1 admin đã đăng nhập (super HOẶC
   // staff) — phân quyền chi tiết theo từng "type" ngay bên dưới, không còn
   // chặn cứng "chỉ super" ở 1 chỗ như trước nữa. =====
@@ -621,6 +834,7 @@ Deno.serve(async (req) => {
       allowed_thon: Array.isArray(body.allowedThon) ? body.allowedThon : [],
       allowed_xom: Array.isArray(body.allowedXom) ? body.allowedXom : [],
       can_manage_users: !!body.canManageUsers,
+      can_manage_zalo_oa: !!body.canManageZaloOA,
     }).eq('id', staffId).eq('role', 'staff');
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     return json({ ok: true });

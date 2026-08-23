@@ -31,7 +31,7 @@ const adminRoutes = [
   { re: /^#\/admin\/khach-hang$/, view: AdminCustomers },
   { re: /^#\/admin\/yeu-cau$/, view: AdminRequests },
   { re: /^#\/admin\/cai-dat$/, view: AdminSettings, superOnly: true },
-  { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, superOnly: true },
+  { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, requiresManageZaloOA: true },
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];
@@ -56,7 +56,7 @@ function matchRoute(path, routes) {
     if (m) {
       const params = {};
       (r.params || []).forEach((name, i) => { params[name] = decodeURIComponent(m[i + 1]); });
-      return { view: r.view, params, superOnly: !!r.superOnly, requiresManageUsers: !!r.requiresManageUsers };
+      return { view: r.view, params, superOnly: !!r.superOnly, requiresManageUsers: !!r.requiresManageUsers, requiresManageZaloOA: !!r.requiresManageZaloOA };
     }
   }
   return null;
@@ -95,19 +95,20 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
 
   const isSuper = session.role === 'admin' ? S.isSuperAdmin(session.id) : false;
   const canManageUsers = session.role === 'admin' ? S.canManageUsers(session.id) : false;
+  const canManageZaloOA = session.role === 'admin' ? S.canManageZaloOA(session.id) : false;
   const { path, query } = splitHash();
   const routes = session.role === 'admin' ? adminRoutes : customerRoutes;
   const defaultPath = session.role === 'admin' ? '#/admin' : '#/';
   let match = matchRoute(path, routes);
-  if (!match || (match.superOnly && !isSuper) || (match.requiresManageUsers && !canManageUsers)) {
+  if (!match || (match.superOnly && !isSuper) || (match.requiresManageUsers && !canManageUsers) || (match.requiresManageZaloOA && !canManageZaloOA)) {
     // Trang không hợp lệ / không đủ quyền với vai trò hiện tại -> về trang mặc định
     if (location.hash !== defaultPath) { location.hash = defaultPath; return; }
     match = matchRoute(defaultPath, routes);
   }
 
-  const newShellKey = session.role + ':' + isSuper + ':' + canManageUsers;
+  const newShellKey = session.role + ':' + isSuper + ':' + canManageUsers + ':' + canManageZaloOA;
   if (shellKey !== newShellKey) {
-    buildShell(root, session.role, isSuper, canManageUsers);
+    buildShell(root, session.role, isSuper, canManageUsers, canManageZaloOA);
     shellKey = newShellKey;
   }
   document.getElementById('brand-name').textContent = S.getOrg().shortName;

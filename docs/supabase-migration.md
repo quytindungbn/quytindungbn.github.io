@@ -767,6 +767,107 @@ tháng không dùng).
   và tin đó được ghi log lỗi (xem Supabase → Edge Functions → Logs), không tự động thử lại trong ngày
   đó (sẽ tự gửi lại vào lần nhắc kế tiếp theo lịch — mỗi 3 ngày — như bình thường).
 
+### 10.4. Danh sách gửi tự động (opt-in) + phân quyền riêng + log gửi tin (BẮT BUỘC chạy nếu project đã tạo trước đoạn này)
+
+Đổi hành vi so với 10.1-10.3: Zalo KHÔNG còn tự động gửi cho MỌI hợp đồng đến/quá hạn có SĐT nữa — chỉ
+gửi cho hợp đồng đã được admin **chủ động thêm vào danh sách** (do Zalo không có cách xác minh trước
+SĐT có đúng chủ hay không — xem trang "Quản lý OA" trong app). Đồng thời quyền quản lý gửi tin OA giờ
+là 1 cờ RIÊNG (`can_manage_zalo_oa`) có thể cấp cho từng nhân viên, tách biệt hẳn với `can_manage_users`.
+
+```sql
+-- Cờ RIÊNG cho quyền quản lý gửi tin Zalo OA (không dùng chung can_manage_users).
+alter table admins add column if not exists can_manage_zalo_oa boolean default false;
+
+-- Danh sách hợp đồng đã được thêm để gửi Zalo tự động.
+create table if not exists zalo_auto_send_list (
+  id text primary key,
+  contract_id text not null references contracts(id) on delete cascade,
+  customer_id text not null references customers(id) on delete cascade,
+  kind text not null default 'den_han',
+  created_by text,
+  created_at timestamptz default now(),
+  unique (contract_id, kind)
+);
+create index if not exists zalo_auto_send_list_customer_idx on zalo_auto_send_list (customer_id);
+
+-- Log mọi lần gửi Zalo (tự động lẫn gửi tay) — thành công/lỗi, kèm nội dung lỗi.
+create table if not exists zalo_send_log (
+  id uuid primary key default gen_random_uuid(),
+  contract_id text references contracts(id) on delete cascade,
+  customer_id text not null,
+  kind text not null,
+  template_id text,
+  phone text,
+  status text not null check (status in ('success', 'error')),
+  error_message text,
+  triggered_by text not null check (triggered_by in ('auto', 'manual')),
+  triggered_by_admin_id text,
+  sent_at timestamptz not null default now()
+);
+create index if not exists zalo_send_log_contract_idx on zalo_send_log (contract_id, sent_at desc);
+create index if not exists zalo_send_log_customer_idx on zalo_send_log (customer_id, sent_at desc);
+
+alter table zalo_auto_send_list enable row level security;
+alter table zalo_send_log enable row level security;
+grant usage on schema public to anon, authenticated, service_role;
+-- Chỉ cấp SELECT cho anon/authenticated (đọc để hiện lên trang "Quản lý OA")
+-- — mọi thao tác thêm/xóa/ghi log đều đi qua Edge Function (service_role,
+-- tự bỏ qua RLS), KHÔNG cho client ghi thẳng, xem type 'add-zalo-auto-send'/
+-- 'remove-zalo-auto-send'/'send-zalo-manual' trong create-account/index.ts.
+grant select on zalo_auto_send_list, zalo_send_log to anon, authenticated, service_role;
+grant insert, update, delete on zalo_auto_send_list, zalo_send_log to service_role;
+
+-- Chỉ admin có can_manage_zalo_oa=true (hoặc role='super') xem được, và
+-- nhân viên "chỉ xem" CHỈ thấy đúng phạm vi Thôn/Xóm được gán — y hệt kiểu
+-- "admin sees push subscriptions in scope" ở mục 9.
+create policy "admin sees zalo auto send list in scope" on zalo_auto_send_list
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (a.role = 'super' or a.can_manage_zalo_oa = true)
+        and (
+          a.role = 'super'
+          or exists (
+            select 1 from customers c
+            where c.id = zalo_auto_send_list.customer_id
+              and (c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
+          )
+        )
+    )
+  );
+
+create policy "admin sees zalo send log in scope" on zalo_send_log
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (a.role = 'super' or a.can_manage_zalo_oa = true)
+        and (
+          a.role = 'super'
+          or exists (
+            select 1 from customers c
+            where c.id = zalo_send_log.customer_id
+              and (c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
+          )
+        )
+    )
+  );
+```
+
+**Việc cần bạn làm**:
+1. Chạy SQL ở trên trong SQL Editor.
+2. Deploy lại **CẢ 2** Edge Function `create-account` và `send-due-reminders` (cả 2 đều có sửa) — dán
+   đè toàn bộ nội dung file tương ứng trong repo, Deploy từng cái.
+3. Không cần thêm secret mới cho phần này (dùng lại `ZALO_APP_ID`/`ZALO_SECRET_KEY` đã đặt ở mục 10.2).
+4. Cấp quyền `can_manage_zalo_oa` cho nhân viên nào cần quản lý gửi tin OA — vào **Quản lý User** →
+   chọn nhân viên → tích "Cho phép quản lý gửi tin Zalo OA" → Lưu quyền.
+5. Vào chi tiết từng hợp đồng muốn gửi Zalo tự động (mục Khách hàng & Hợp đồng) → tích "Thêm vào danh
+   sách gửi Zalo tự động" — hợp đồng nào KHÔNG tích thì cron sẽ KHÔNG gửi Zalo cho hợp đồng đó nữa (kể
+   cả đã đến/quá hạn), chỉ còn thông báo đẩy như cũ.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
