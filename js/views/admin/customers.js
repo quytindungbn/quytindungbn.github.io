@@ -407,8 +407,9 @@ function openSendNotificationModal(customer, preset = {}) {
 }
 
 /**
- * context 'customer' (mặc định, mở từ trang Khách hàng & Hợp đồng): nút xóa
- * là "Xóa khách hàng" — xóa cả hồ sơ lẫn hợp đồng.
+ * context 'customer' (mặc định, mở từ trang Khách hàng & Hợp đồng): KHÔNG có
+ * nút xóa — hồ sơ/hợp đồng đến từ file Excel, tất toán/không còn trong file
+ * nữa thì tự dọn theo (xem full-sync), không xóa tay từ màn chi tiết này.
  * context 'use' (mở từ trang Quản lý User): nút xóa là "Xóa Use" — chỉ gỡ
  * tài khoản đăng nhập, KHÔNG đụng đến hồ sơ/hợp đồng vì 2 thứ này độc lập
  * với nhau (hợp đồng vẫn còn nguyên trong Khách hàng & Hợp đồng sau khi xóa).
@@ -438,7 +439,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         ${context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
         ${canManageZalo && !inZaloList ? `<button class="btn btn-outline btn-sm" id="btn-add-zalo-cust">${icon('message', 'icon-sm')} Thêm vào OA</button>` : ''}
         ${canManageZalo && inZaloList ? `<button class="btn btn-outline btn-sm" id="btn-remove-zalo-cust">${icon('message', 'icon-sm')} Bỏ khỏi OA</button>` : ''}
-        <button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} ${context === 'use' ? 'Xóa Use' : ''}</button>
+        ${context === 'use' ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} Xóa Use</button>` : ''}
       </div>` : '<div class="mt-16"></div>'}
       <div class="section-head"><h2 style="font-size:14px">Hợp đồng (${contracts.length})</h2></div>
       <div id="contract-list">${contracts.map((ct) => contractRowCompact(ct)).join('') || '<p class="text-sm text-muted">Chưa có hợp đồng — nhập từ Excel để thêm.</p>'}</div>
@@ -481,23 +482,17 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       sheet.querySelector('#btn-send-noti').addEventListener('click', () => openSendNotificationModal(c));
       const editBtn = sheet.querySelector('#btn-edit-cust');
       if (editBtn) editBtn.addEventListener('click', () => { closeFn(); openCustomerForm(c); });
-      sheet.querySelector('#btn-del-cust').addEventListener('click', () => {
-        if (context === 'use') {
-          confirmDialog({
-            title: 'Xóa Use?', message: `Gỡ tài khoản đăng nhập của "${c.name}"? Hồ sơ và hợp đồng vẫn được giữ nguyên bên Khách hàng & Hợp đồng — có thể "Tạo User" lại bất cứ lúc nào.`,
-            confirmLabel: 'Xóa Use', danger: true,
-            onConfirm: async () => {
-              try { await S.deactivateCustomerAccount(customerId); closeFn(); toast('Đã xóa Use (hồ sơ/hợp đồng vẫn còn)', 'success'); }
-              catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-            },
-          });
-          return;
-        }
+      // Chỉ context 'use' (Quản lý User) mới có nút xóa — gỡ tài khoản đăng
+      // nhập thôi, KHÔNG đụng hồ sơ/hợp đồng. Đã bỏ hẳn "Xóa khách hàng và
+      // toàn bộ hợp đồng liên quan" ở context 'customer' — vô lý, khách hàng
+      // & hợp đồng đến từ file Excel, không nên xóa tay từ đây.
+      const delBtn = sheet.querySelector('#btn-del-cust');
+      if (delBtn) delBtn.addEventListener('click', () => {
         confirmDialog({
-          title: 'Xóa khách hàng?', message: `Xóa "${c.name}" và toàn bộ hợp đồng liên quan?`,
-          confirmLabel: 'Xóa', danger: true,
+          title: 'Xóa Use?', message: `Gỡ tài khoản đăng nhập của "${c.name}"? Hồ sơ và hợp đồng vẫn được giữ nguyên bên Khách hàng & Hợp đồng — có thể "Tạo User" lại bất cứ lúc nào.`,
+          confirmLabel: 'Xóa Use', danger: true,
           onConfirm: async () => {
-            try { await S.deleteCustomer(customerId); closeFn(); toast('Đã xóa khách hàng', 'success'); window.__qtdRedrawCustomers?.(); }
+            try { await S.deactivateCustomerAccount(customerId); closeFn(); toast('Đã xóa Use (hồ sơ/hợp đồng vẫn còn)', 'success'); }
             catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
           },
         });
