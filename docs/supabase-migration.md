@@ -1277,26 +1277,23 @@ GitHub Pages tự deploy khi push `main`.
 
 ---
 
-### 10.19. Nút "Mở app ngân hàng để thanh toán" (VietQR deep link) ở popup Thanh toán của khách (KHÔNG cần chạy SQL)
+### 10.19. Thử nút "Mở app ngân hàng" (VietQR deep link) rồi GỠ BỎ — API bắt buộc biết trước ngân hàng của khách
 
-Trước đây khách chỉ có mã QR để quét (phải tự mở app ngân hàng trước rồi mới quét được). Giờ thêm 1 nút
-**"Mở app ngân hàng để thanh toán"** ngay phía trên mã QR (chỉ ở popup "Thanh toán" mà KHÁCH HÀNG tự bấm
-ở trang chi tiết hợp đồng — `js/views/contractDetail.js`, không đổi gì ở popup nội bộ cho nhân viên trong
-`js/views/admin/customers.js`) — bấm là hệ điều hành tự mở đúng app ngân hàng khách đã cài (hoặc hiện
-bảng chọn nếu cài nhiều app), điền sẵn sẵn số tài khoản/số tiền/nội dung, khách chỉ cần xác nhận chuyển —
-giống trải nghiệm bấm thanh toán VietQR trong Zalo. Dùng dịch vụ **VietQR deep link chuẩn của NAPAS**
-(`https://dl.vietqr.io/pay?ba=<số_TK>@<mã_BIN>&am=<số_tiền>&tn=<nội_dung>&bn=<tên_chủ_TK>`) — không
-qua dịch vụ riêng nào của quỹ, không cần API key.
+Từng thêm thử 1 nút "Mở app ngân hàng để thanh toán" dùng dịch vụ `dl.vietqr.io/pay` (deep link chuẩn
+NAPAS). Bạn test thực tế báo lỗi `{"message":"Missing parameter app"}` — hóa ra dịch vụ này BẮT BUỘC
+phải biết trước khách dùng đúng ngân hàng nào (tham số `app`, VD `app=vcb`/`app=mbbank`...) mới mở đúng
+app được, KHÔNG có chế độ "để trống thì tự hiện bảng chọn mọi app" như tài liệu công khai gợi ý lúc đầu
+(môi trường code không gọi thẳng được vietqr.io để tự kiểm thử trước, nên chỉ phát hiện được lỗi này khi
+bạn bấm thử thật). Vì quỹ không biết trước khách dùng ngân hàng nào nên đã **GỠ BỎ nút này** — quay lại
+đúng như cũ: chỉ còn mã QR để khách tự mở app ngân hàng rồi quét (+ nút tải ảnh/chia sẻ ảnh QR sẵn có).
 
-**Lưu ý quan trọng**: môi trường code hiện tại (Claude Code) bị chặn mạng ra ngoài tới vietqr.io nên
-KHÔNG tự kiểm thử trực tiếp được link này — chỉ dựa trên tài liệu công khai tra cứu được. Nút này thêm
-vào dưới dạng **BỔ SUNG THÊM**, không thay thế gì — mã QR/nút tải ảnh/chia sẻ ảnh QR vẫn y nguyên bên
-dưới làm phương án dự phòng nếu nút mới không mở đúng app trên máy khách nào đó. **Sau khi deploy, nhờ
-bạn tự bấm thử trên điện thoại có cài app ngân hàng thật để xác nhận mở đúng app + điền đúng thông tin
-trước khi yên tâm là khách dùng được.**
+Muốn làm lại đúng cách sau này thì cần thêm 1 bước "chọn ngân hàng của bạn" cho khách chọn trước (danh
+sách icon các ngân hàng), rồi mới ghép đúng mã `app` tương ứng để mở — cần bảng mã `app` chính xác cho
+từng ngân hàng (tra từ `https://api.vietqr.io/v2/android-app-deeplinks`/`ios-app-deeplinks`) và test kỹ
+trên điện thoại thật trước khi dùng, vì đoán sai mã có thể mở nhầm app hoặc báo lỗi như lần này.
 
-**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
-GitHub Pages tự deploy khi push `main`. **Cần bạn tự test lại trên điện thoại thật sau khi deploy.**
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là gỡ code JS tĩnh,
+GitHub Pages tự deploy khi push `main`.
 
 ---
 
