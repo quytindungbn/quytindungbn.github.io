@@ -349,10 +349,14 @@ function intervalSelectHtml(rowId, intervalMonths) {
 
 /**
  * Dòng hiển thị 1 hợp đồng trong 1 trong 2 mục Tầng 2 — dùng chung cho preview
- * lẫn popup "Xem chi tiết". Hàng trên hiện ĐỦ tên khách + mã hợp đồng + ô chọn
- * định kỳ báo (+ ngày gửi đã chọn với mục "Gửi theo ngày cụ thể") — không còn
- * bị số tiền chen vào cùng hàng gây che khuất. Hàng dưới: địa chỉ bên trái, số
- * tiền in đậm màu xanh (color-primary) bên phải — GIỐNG NHAU cho cả 2 mục.
+ * lẫn popup "Xem chi tiết". Hàng trên CHỈ hiện tên khách + mã hợp đồng (+ ngày
+ * gửi đã chọn với mục "Gửi theo ngày cụ thể") — tự "..." nếu quá dài (CSS
+ * .row-title), không còn ảnh hưởng gì đến hàng dưới. Hàng dưới: địa chỉ bên
+ * trái (tự "..." riêng nếu dài); ô chọn định kỳ + số tiền + nút xóa đứng
+ * CHUNG 1 nhóm bên phải, LUÔN cố định/không co lại — tên khách dù dài cỡ nào
+ * cũng không còn che mất được ô chọn định kỳ hay nút xóa nữa (trước đây cả 2
+ * thứ này nằm chung hàng với tên, bị CSS "..." của hàng trên nuốt mất khi tên
+ * dài). GIỐNG NHAU cho cả 2 mục.
  */
 function autoSendRowHtml(kind, r, customer, contract) {
   const addr = [customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn';
@@ -360,13 +364,16 @@ function autoSendRowHtml(kind, r, customer, contract) {
   return `
     <div class="list-row" data-row="${r.id}" data-contract="${contract.id}" data-customer="${customer.id}" style="cursor:pointer;padding:8px 4px">
       <div class="row-main">
-        <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code} ${intervalSelectHtml(r.id, r.intervalMonths)}${dayLabel}</div>
-        <div class="row-sub" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-          <span>${addr}</span>
-          <b style="color:var(--color-primary);font-size:13px;white-space:nowrap;flex-shrink:0">${formatVND(contract.balance)}</b>
+        <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}${dayLabel}</div>
+        <div class="row-sub" style="display:flex;justify-content:space-between;align-items:center;gap:8px;white-space:normal;overflow:visible;text-overflow:clip">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${addr}</span>
+          <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            ${intervalSelectHtml(r.id, r.intervalMonths)}
+            <b style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>
+            <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách" style="width:26px;height:26px;flex-shrink:0">${icon('trash', 'icon-sm')}</button>
+          </span>
         </div>
       </div>
-      <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách">${icon('trash', 'icon-sm')}</button>
     </div>
   `;
 }
