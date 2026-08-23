@@ -1383,6 +1383,30 @@ GitHub Pages tự deploy khi push `main`.
 
 ---
 
+### 10.21. Thử tách "Đến khách hàng"/"Đến trung tâm Zalo" rồi GỠ — trùng Webhook URL với phần mềm đang dùng thật
+
+Từng làm thử (Edge Function mới `zalo-webhook` + cột `tracking_id`/`delivered_at` ở `zalo_send_log` + 3
+trạng thái ở "Quản lý gửi tin") để phân biệt tin Zalo mới gửi thành công (tới "trung tâm" Zalo) với tin
+đã THỰC SỰ tới máy khách — dựa trên webhook Zalo báo lại. Khi ra thực tế thì phát hiện: ứng dụng Zalo của
+Quỹ (App ID `506937899189567646`) **ĐÃ CÓ SẴN 1 Webhook URL đang chạy thật**, trỏ về
+`https://epas.qtd.vn/api-zalo/webhook` — đây là **phần mềm đang được Quỹ sử dụng thật** (không phải hệ
+thống cũ/bỏ), và Zalo chỉ cho phép **1 Webhook URL duy nhất** cho mỗi ứng dụng — không đổi được sang
+webhook mới của mình mà không làm `epas.qtd.vn` ngừng nhận sự kiện Zalo.
+
+**Đã GỠ HẲN** toàn bộ thay đổi (revert đúng 1 commit) — quay lại y như cũ: "Quản lý gửi tin" chỉ còn 2
+trạng thái "Thành công"/"Lỗi" (đúng nghĩa "đã gửi thành công tới Zalo", không phân biệt đã tới máy khách
+hay chưa). **KHÔNG cần chạy SQL đã nêu ở lần thử trước, KHÔNG có Edge Function `zalo-webhook` nào cần
+deploy** — coi như bỏ qua mục 10.21 (giữ lại đoạn này để nhớ đã thử và vì sao dừng).
+
+**Muốn làm lại đúng cách sau này** thì cần 1 trong 2 hướng: (1) hỏi bên quản lý/phát triển `epas.qtd.vn`
+xem có thể để chính hệ thống đó CHUYỂN TIẾP lại sự kiện cần thiết sang hệ thống mới không, hoặc (2) đổi
+Webhook URL sang hệ thống mới nhưng hệ thống mới đó phải TỰ CHUYỂN TIẾP y nguyên mọi dữ liệu nhận được
+sang `epas.qtd.vn/api-zalo/webhook` như cũ (rủi ro nhỏ: có sự cố mạng đúng lúc chuyển tiếp thì
+`epas.qtd.vn` có thể trễ/mất 1 sự kiện) — CẦN người quản lý `epas.qtd.vn` xác nhận đồng ý trước khi đổi
+Webhook URL, tránh làm gián đoạn phần mềm đang dùng thật.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
