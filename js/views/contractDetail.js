@@ -70,6 +70,27 @@ export function buildVietQrUrl({ bin, accountNo, amount, content, accountName })
 }
 
 /**
+ * Link "Mở app ngân hàng" (VietQR deep link chuẩn NAPAS, dịch vụ dl.vietqr.io
+ * — Zalo/nhiều ví cũng dùng chung dịch vụ này khi thanh toán VietQR) — bấm là
+ * hệ điều hành tự mở app ngân hàng có cài trên máy (hoặc bảng chọn nếu cài
+ * nhiều app), điền sẵn số tài khoản/số tiền/nội dung, khách chỉ cần xác nhận
+ * chuyển — không cần tự mở app rồi quét QR như trước. Không truyền "app" cụ
+ * thể (để trống) vì không biết khách dùng ngân hàng nào — mở đúng bảng chọn
+ * mọi app đã cài, giống trải nghiệm thanh toán VietQR trong Zalo. Nếu máy
+ * không có app nào hỗ trợ, link tự chuyển sang trang web của VietQR (không
+ * lỗi) — luôn còn cách quét mã QR bên dưới làm phương án dự phòng.
+ */
+export function buildVietQrPayLink({ bin, accountNo, amount, content, accountName }) {
+  const params = new URLSearchParams({
+    ba: `${accountNo}@${bin}`,
+    am: String(Math.round(amount)),
+    tn: content,
+    bn: accountName,
+  });
+  return `https://dl.vietqr.io/pay?${params.toString()}`;
+}
+
+/**
  * Tải ảnh QR về máy. img.vietqr.io là ảnh khác nguồn (cross-origin) nên thử
  * tải qua fetch+blob trước (tải file thật); nếu bị chặn CORS thì mở ảnh ở
  * tab mới để khách tự nhấn giữ ảnh (long-press) chọn "Lưu ảnh" — luôn dùng
@@ -164,11 +185,15 @@ function openPaymentModal(contract, customer, accrued) {
 
       const hasBank = org.bankBin && org.bankAccountNo;
 
-      /** Cập nhật phần số tiền/nội dung chữ — luôn tức thì, không phụ thuộc mạng. */
+      /** Cập nhật phần số tiền/nội dung chữ + link "Mở app ngân hàng" — luôn tức thì, không phụ thuộc mạng (khác ảnh QR bên dưới, không cần debounce). */
       function updateAmountText() {
         const { total, text } = content();
         body.querySelector('#sum-amount').textContent = formatVND(total);
         body.querySelector('#sum-content').textContent = text;
+        const payLink = body.querySelector('#btn-open-bank-app');
+        if (payLink && hasBank) {
+          payLink.href = buildVietQrPayLink({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: total, content: text, accountName: org.bankAccountName });
+        }
       }
       function updateQrNow() {
         if (!hasBank) return;
@@ -218,6 +243,8 @@ function openPaymentModal(contract, customer, accrued) {
             <div class="oc-line" style="align-items:flex-start"><span>Nội dung</span><b id="sum-content" style="text-align:right;max-width:65%"></b></div>
           </div>
           ${hasBank ? `
+            <a href="#" id="btn-open-bank-app" target="_blank" rel="noopener" class="btn btn-primary btn-block mb-8">${icon('wallet', 'icon-sm')} Mở app ngân hàng để thanh toán</a>
+            <div class="field-hint mb-16" style="text-align:center">Tự mở app ngân hàng đã cài trên máy, điền sẵn thông tin — không mở được thì quét mã QR bên dưới.</div>
             <div style="text-align:center">
               <button type="button" class="btn btn-outline btn-block mb-8" id="btn-download-qr">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
               <img id="qr-img" alt="Mã QR chuyển khoản" style="max-width:220px;width:100%;border:1px solid var(--border);border-radius:12px"/>

@@ -1277,6 +1277,29 @@ GitHub Pages tự deploy khi push `main`.
 
 ---
 
+### 10.19. Nút "Mở app ngân hàng để thanh toán" (VietQR deep link) ở popup Thanh toán của khách (KHÔNG cần chạy SQL)
+
+Trước đây khách chỉ có mã QR để quét (phải tự mở app ngân hàng trước rồi mới quét được). Giờ thêm 1 nút
+**"Mở app ngân hàng để thanh toán"** ngay phía trên mã QR (chỉ ở popup "Thanh toán" mà KHÁCH HÀNG tự bấm
+ở trang chi tiết hợp đồng — `js/views/contractDetail.js`, không đổi gì ở popup nội bộ cho nhân viên trong
+`js/views/admin/customers.js`) — bấm là hệ điều hành tự mở đúng app ngân hàng khách đã cài (hoặc hiện
+bảng chọn nếu cài nhiều app), điền sẵn sẵn số tài khoản/số tiền/nội dung, khách chỉ cần xác nhận chuyển —
+giống trải nghiệm bấm thanh toán VietQR trong Zalo. Dùng dịch vụ **VietQR deep link chuẩn của NAPAS**
+(`https://dl.vietqr.io/pay?ba=<số_TK>@<mã_BIN>&am=<số_tiền>&tn=<nội_dung>&bn=<tên_chủ_TK>`) — không
+qua dịch vụ riêng nào của quỹ, không cần API key.
+
+**Lưu ý quan trọng**: môi trường code hiện tại (Claude Code) bị chặn mạng ra ngoài tới vietqr.io nên
+KHÔNG tự kiểm thử trực tiếp được link này — chỉ dựa trên tài liệu công khai tra cứu được. Nút này thêm
+vào dưới dạng **BỔ SUNG THÊM**, không thay thế gì — mã QR/nút tải ảnh/chia sẻ ảnh QR vẫn y nguyên bên
+dưới làm phương án dự phòng nếu nút mới không mở đúng app trên máy khách nào đó. **Sau khi deploy, nhờ
+bạn tự bấm thử trên điện thoại có cài app ngân hàng thật để xác nhận mở đúng app + điền đúng thông tin
+trước khi yên tâm là khách dùng được.**
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
+GitHub Pages tự deploy khi push `main`. **Cần bạn tự test lại trên điện thoại thật sau khi deploy.**
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
