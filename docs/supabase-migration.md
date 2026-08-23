@@ -1162,14 +1162,50 @@ policy đọc dữ liệu + sửa file .js tĩnh, GitHub Pages tự deploy khi p
 
 Trước đây 2 mục Tầng 2 ("Báo lãi tự động hàng tháng"/"Gửi theo ngày cụ thể") LUÔN dùng mẫu "Báo lãi" bất
 kể hợp đồng còn xa hạn hay đã sắp/tới hạn — dẫn tới tình huống báo lãi suông ngay lúc khách sắp phải trả
-cả gốc lẫn lãi. Giờ CẢ 2 mục tự kiểm tra độ gần hạn mỗi lần tới lượt gửi (đúng ngưỡng 15 ngày, y hệt lúc
-gửi tay tự chọn mẫu): còn xa hạn (> 15 ngày) → vẫn dùng mẫu "Báo lãi" như cũ; gần/tới/qua hạn (≤ 15
-ngày) → tự đổi sang mẫu "Đến hạn/Quá hạn" (đủ cả Gốc lẫn Lãi). Lịch gửi (đúng ngày này tháng sau/ngày
-tự chọn, điều kiện >20 ngày đã tính lãi...) không đổi gì — chỉ đổi ĐÚNG việc chọn mẫu nào để gửi.
+cả gốc lẫn lãi. Giờ CẢ 2 mục tự kiểm tra độ gần hạn mỗi lần tới lượt gửi, **báo trước khách hàng đúng 10
+ngày** (ngưỡng RIÊNG cho 2 mục Tầng 2 này — KHÁC với ngưỡng 15 ngày của nút gửi tay ở create-account,
+cố tình để khác nhau): còn xa hạn (> 10 ngày) → vẫn dùng mẫu "Báo lãi" như cũ; gần/tới/qua hạn (≤ 10
+ngày) → tự đổi sang mẫu "Đến hạn/Quá hạn" (đủ cả Gốc lẫn Lãi). CHỈ áp dụng cho hợp đồng ĐÃ được thêm vào
+1 trong 2 mục Tầng 2 — hợp đồng nào chưa thêm thì không gửi gì (như cũ). Lịch gửi (đúng ngày này tháng
+sau/ngày tự chọn, điều kiện >20 ngày đã tính lãi...) không đổi gì — chỉ đổi ĐÚNG việc chọn mẫu nào để gửi.
 
 **Việc cần bạn làm**: deploy lại **`send-due-reminders`** (file duy nhất có sửa lần này — `create-account`
 không đổi, không cần deploy lại) — Supabase Dashboard → Edge Functions → chọn `send-due-reminders` →
 dán đè toàn bộ → Deploy. Không có SQL nào cần chạy thêm.
+
+### 10.15. "Use đã đăng nhập"/"Use đã bật thông báo" ở Quản lý User đúng cho cả nhân viên có can_manage_users (BẮT BUỘC chạy SQL)
+
+Mục 10.13 mới nới lỏng `customers`/`contracts` — nhưng "Use đã bật thông báo" còn phải tra thêm bảng
+`push_subscriptions`, bảng này VẪN giới hạn theo Thôn/Xóm cho staff (không có ngoại lệ can_manage_users/
+can_manage_zalo_oa), nên số liệu "Use đã bật thông báo" ở trang "Quản lý User" vẫn sai/thiếu với nhân
+viên có quyền này (không khớp số admin toàn quyền xem được) dù danh sách khách hàng đã đúng. Sửa tận
+gốc bảng này giống hệt cách đã làm ở mục 10.13:
+
+```sql
+drop policy if exists "admin sees push subscriptions in scope" on push_subscriptions;
+create policy "admin sees push subscriptions in scope" on push_subscriptions
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and owner_type = 'customer'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (
+          a.role = 'super' or a.can_manage_users = true or a.can_manage_zalo_oa = true
+          or exists (
+            select 1 from customers c
+            where c.id = push_subscriptions.owner_id
+              and (c.thon = any(a.allowed_thon) or (c.thon || '||' || c.xom) = any(a.allowed_xom))
+          )
+        )
+    )
+  );
+```
+
+Lưu ý: nếu bạn CHƯA chạy SQL ở mục 10.13 (nới lỏng `customers`/`contracts`) thì "Use đã đăng nhập" cũng
+sẽ sai/thiếu — chạy CẢ 2 đoạn SQL (10.13 và đoạn trên) thì cả 2 số liệu mới đúng đầy đủ.
+
+**Việc cần bạn làm**: chạy SQL trên (SQL Editor) — **không cần deploy Edge Function nào**.
 
 ---
 
