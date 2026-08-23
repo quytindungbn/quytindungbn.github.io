@@ -444,14 +444,14 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       <div class="oc-line"><span>Mật khẩu hiện tại</span><b style="color:var(--color-primary)">${c.tempPassword}</b></div>
       <div class="field-hint">Khách chưa đăng nhập lần nào (hoặc đã đăng nhập nhưng chưa đổi mật khẩu) nên vẫn xem được mật khẩu này để đưa cho khách.</div>
       ` : !readOnly ? `<div class="field-hint">Khách đã tự đổi mật khẩu — không thể xem lại, dùng nút "Cấp lại mật khẩu" nếu cần đặt mật khẩu mới.</div>` : ''}
-      ${!readOnly ? `
+      ${!readOnly || canManageZalo ? `
       <div class="flex gap-8 mt-16 mb-16" style="flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>
-        <button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>
-        ${context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
+        ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>` : ''}
+        ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>` : ''}
+        ${!readOnly && context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
         ${canManageZalo && !inZaloList ? `<button class="btn btn-outline btn-sm" id="btn-add-zalo-cust">${icon('message', 'icon-sm')} Thêm vào OA</button>` : ''}
         ${canManageZalo && inZaloList ? `<button class="btn btn-outline btn-sm" id="btn-remove-zalo-cust">${icon('message', 'icon-sm')} Bỏ khỏi OA</button>` : ''}
-        ${context === 'use' ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} Xóa Use</button>` : ''}
+        ${!readOnly && context === 'use' ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} Xóa Use</button>` : ''}
       </div>` : '<div class="mt-16"></div>'}
       <div class="section-head"><h2 style="font-size:14px">Hợp đồng (${contracts.length})</h2></div>
       <div id="contract-list">${contracts.map((ct) => contractRowCompact(ct)).join('') || '<p class="text-sm text-muted">Chưa có hợp đồng — nhập từ Excel để thêm.</p>'}</div>
@@ -463,7 +463,11 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       sheet.querySelectorAll('[data-view-contract]').forEach((btn) => {
         btn.addEventListener('click', () => { openContractView(customerId, S.getContract(btn.dataset.viewContract), { readOnly }); });
       });
-      if (readOnly) return;
+      // Thêm/bỏ OA KHÔNG phụ thuộc readOnly — nhân viên chỉ xem nhưng có
+      // riêng quyền canManageZaloOA vẫn thêm/bỏ được nhanh ngay từ đây (xem
+      // khai báo canManageZalo/inZaloList ở đầu hàm), dù không sửa được các
+      // thứ khác của khách hàng. Các nút còn lại (đổi mật khẩu/thông báo/
+      // sửa/xóa Use) vẫn giữ nguyên chặn readOnly như cũ.
       const addZaloBtn = sheet.querySelector('#btn-add-zalo-cust');
       if (addZaloBtn) addZaloBtn.addEventListener('click', async () => {
         addZaloBtn.disabled = true;
@@ -482,6 +486,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           },
         });
       });
+      if (readOnly) return;
       sheet.querySelector('#btn-reset-pw').addEventListener('click', () => {
         openResetPasswordModal({
           title: 'Cấp lại mật khẩu cho khách',

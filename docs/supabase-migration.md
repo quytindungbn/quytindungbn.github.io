@@ -1005,6 +1005,34 @@ lúc đó hợp đồng chưa đến hạn sẽ không gửi được Zalo cho t
 `send-due-reminders`) — phần sửa lỗi bộ lọc tự lên khi GitHub Pages deploy lại (không cần làm gì thêm
 trên Supabase).
 
+### 10.9. "Quản lý gửi tin" xem được TOÀN BỘ (bỏ giới hạn theo Thôn/Xóm) + thêm/bỏ OA không phụ thuộc chế độ chỉ xem (BẮT BUỘC chạy SQL nếu muốn có ngay)
+
+- **"Quản lý gửi tin"**: trước đây nhân viên "chỉ xem" có quyền `can_manage_zalo_oa` chỉ thấy log gửi
+  tin của khách trong đúng Thôn/Xóm được gán (giống các mục Zalo khác) — giờ đổi thành **bất kỳ ai có
+  quyền `can_manage_zalo_oa` (hoặc super) đều xem được TOÀN BỘ log**, không giới hạn theo Thôn/Xóm nữa.
+  Chỉ áp dụng cho `zalo_send_log` — "Danh sách OA" (`zalo_customers`) và "Gửi tin tự động"
+  (`zalo_auto_send_list`, riêng tư theo từng người) vẫn giữ nguyên như cũ.
+- **Thêm/bỏ OA ở chi tiết khách hàng**: sửa lỗi nút "Thêm vào OA"/"Bỏ khỏi OA" bị ẩn mất với nhân viên
+  "chỉ xem" dù có quyền `can_manage_zalo_oa` — do màn chi tiết khách hàng mở ở chế độ chỉ xem (không sửa
+  được hồ sơ) nên vô tình ẩn LUÔN cả 2 nút này. Giờ 2 nút này hiện độc lập với chế độ chỉ xem, chỉ cần
+  có quyền `can_manage_zalo_oa` là thêm/bỏ được ngay từ trang Khách hàng & Hợp đồng.
+
+```sql
+drop policy if exists "admin sees zalo send log in scope" on zalo_send_log;
+create policy "admin sees zalo send log" on zalo_send_log
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (a.role = 'super' or a.can_manage_zalo_oa = true)
+    )
+  );
+```
+
+**Việc cần bạn làm**: chạy SQL trên trong SQL Editor — **không cần deploy Edge Function nào** (chỉ đổi
+policy đọc dữ liệu + sửa file .js tĩnh, GitHub Pages tự deploy khi push `main`).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
