@@ -43,6 +43,18 @@ let shellKey = null;
 // trang này nhưng có dữ liệu mới" (chỉ nên vẽ lại danh sách, giữ nguyên mọi
 // bộ lọc/ô đang gõ — xem renderApp() và refresh() của từng view bên dưới).
 let lastRoutePath = null;
+// "Chữ ký" của người đang đăng nhập lần render() gần nhất (role:id, hoặc
+// null nếu chưa đăng nhập) — dùng để phát hiện đúng lúc ĐỔI NGƯỜI (đăng
+// xuất, đăng nhập tài khoản khác, hết phiên) để reset bộ lọc/tìm kiếm của
+// các trang có lưu bộ lọc kiểu "giữ nguyên khi quay lại" (module-level, sống
+// suốt vòng đời trang web, KHÔNG tự mất khi đổi người dùng — xem
+// resetFilters() ở customers.js/zaloOA.js/requests.js). undefined = chưa
+// render() lần nào, để phân biệt với null (đã render() 1 lần lúc chưa đăng
+// nhập) — cả 2 đều coi là "trạng thái ban đầu", không cần reset gì thêm.
+let lastSessionKey = undefined;
+function sessionKey(session) {
+  return session ? `${session.role}:${session.id}` : null;
+}
 
 function splitHash() {
   const raw = location.hash || '#/';
@@ -66,6 +78,19 @@ function clearFabs() { document.querySelectorAll('.fab').forEach((el) => el.remo
 
 function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   const session = S.getSession();
+
+  const curSessionKey = sessionKey(session);
+  if (curSessionKey !== lastSessionKey) {
+    // Vừa đổi người đang đăng nhập — reset bộ lọc/tìm kiếm còn lưu ở các
+    // trang, rồi ép render() ĐẦY ĐỦ (bỏ qua nhánh dataOnly giữ nguyên bộ
+    // lọc) dù đang đứng đúng route cũ, để người mới vào không thấy sót lại
+    // bộ lọc/kết quả tìm kiếm của người trước.
+    AdminCustomers.resetFilters?.();
+    AdminZaloOA.resetFilters?.();
+    AdminRequests.resetFilters?.();
+    lastSessionKey = curSessionKey;
+    dataOnly = false;
+  }
 
   if (!session) {
     shellKey = null;

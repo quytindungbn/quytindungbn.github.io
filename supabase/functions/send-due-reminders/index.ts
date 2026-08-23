@@ -313,6 +313,8 @@ async function sendZaloTemplate(opts: {
  * Dựng template_data dùng chung cho cả 2 mẫu Zalo — "Đến hạn" (dueTemplate
  * = true, có đủ Gốc lẫn Lãi) và "Báo lãi" (dueTemplate = false, Gốc = 0 vì
  * chưa thật sự phải trả). Tên tham số y hệt mẫu 519351 (xem docs mục 10).
+ * NGAY_KE_HOACH = ngày gửi tin (hôm nay), KHÔNG phải ngày đến hạn thật của
+ * hợp đồng (đã có NGAY_DAO_HAN riêng) — theo đúng yêu cầu.
  */
 function buildZaloTemplateData(ct: any, customer: { name: string; phone: string }, now: Date, dueTemplate: boolean): Record<string, string> {
   const interest = accruedInterest(ct, now);
@@ -323,10 +325,11 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
     TEN_KHACH_HANG: customer.name || '',
     SO_HDTD: ct.code,
     SO_KHE_UOC: ct.code,
-    SO_DU: String(Math.round(ct.balance)),
-    GOC_PHAI_TRA: String(Math.round(goc)),
-    LAI_PHAI_TRA: String(Math.round(interest)),
-    SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)),
+    SO_DU: String(Math.round(ct.balance)) + 'đ',
+    GOC_PHAI_TRA: String(Math.round(goc)) + 'đ',
+    LAI_PHAI_TRA: String(Math.round(interest)) + 'đ',
+    SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)) + 'đ',
+    NGAY_KE_HOACH: formatDateVN(now.toISOString()),
     NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${dueTemplate ? '' : 'LAI '}HDTD ${ct.code} ${nameNoDiacritics}`),
     NGAY_DAO_HAN: formatDateVN(ct.due_date),
   };

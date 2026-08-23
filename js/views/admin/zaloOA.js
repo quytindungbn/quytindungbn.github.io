@@ -36,6 +36,11 @@ let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
 
+/** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
+export function resetFilters() {
+  activeTab = 'oa'; filterThon = []; filterXom = []; logStatusFilter = 'all'; logFromDate = ''; logToDate = '';
+}
+
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Quản lý OA' });
 }

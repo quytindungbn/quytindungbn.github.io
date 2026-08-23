@@ -11,6 +11,11 @@ export function renderHeader(headerEl) {
 
 let activeStatus = 'all';
 
+/** Reset bộ lọc trạng thái về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
+export function resetFilters() {
+  activeStatus = 'all';
+}
+
 export function render(contentEl, filterEl) {
   filterEl.innerHTML = `
     <div class="chip-row" style="padding:10px 14px">

@@ -773,12 +773,14 @@ Deno.serve(async (req) => {
         TEN_KHACH_HANG: customer.name || '',
         SO_HDTD: contract.code,
         SO_KHE_UOC: contract.code,
-        SO_DU: String(Math.round(contract.balance)),
-        GOC_PHAI_TRA: String(Math.round(goc)),
-        LAI_PHAI_TRA: String(Math.round(interest)),
-        SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)),
+        SO_DU: String(Math.round(contract.balance)) + 'đ',
+        GOC_PHAI_TRA: String(Math.round(goc)) + 'đ',
+        LAI_PHAI_TRA: String(Math.round(interest)) + 'đ',
+        SO_TIEN_CHUYEN_KHOAN: String(Math.round(total)) + 'đ',
         NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${usesDueTemplate ? '' : 'LAI '}HDTD ${contract.code} ${nameNoDiacritics}`),
         NGAY_DAO_HAN: formatDateVNZalo(contract.due_date),
+        // Ngày gửi tin (hôm nay) — KHÁC với NGAY_DAO_HAN (ngày đến hạn thật của hợp đồng).
+        NGAY_KE_HOACH: formatDateVNZalo(now.toISOString()),
       };
       const result = await sendZaloTemplateLogged({
         accessToken, phone: customer.phone, templateId, templateData,

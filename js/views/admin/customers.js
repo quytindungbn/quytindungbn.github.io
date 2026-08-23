@@ -27,6 +27,18 @@ let filterXom = [];  // rỗng = Tất cả — có thể tích chọn nhiều X
 let urgencyFilters = new Set(); // rỗng = Tất cả — có thể tích cả "qua_han" lẫn "gan_den_han" cùng lúc
 let sortMode = 'default';
 
+/**
+ * Reset MỌI bộ lọc/ô tìm kiếm về mặc định — KHÔNG gọi từ render() (cố tình
+ * giữ bộ lọc khi CÙNG 1 người chuyển qua trang khác rồi quay lại, xem ghi
+ * chú trong render()), CHỈ gọi từ app.js đúng lúc đổi NGƯỜI đang đăng nhập
+ * (đăng xuất/đăng nhập tài khoản khác) — biến ở đây sống theo cả trang web
+ * (module-level), không tự mất khi đổi phiên, nếu không reset thì người
+ * vào sau sẽ thấy nguyên bộ lọc/kết quả tìm kiếm của người trước để lại.
+ */
+export function resetFilters() {
+  query = ''; filterThon = []; filterXom = []; urgencyFilters = new Set(); sortMode = 'default';
+}
+
 function multiPillLabel(prefix, values) {
   if (!values.length) return `${prefix}: Tất cả `;
   if (values.length === 1) return `${prefix}: ${values[0]} `;

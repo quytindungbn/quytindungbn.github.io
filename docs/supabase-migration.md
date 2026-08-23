@@ -989,6 +989,22 @@ lúc đó hợp đồng chưa đến hạn sẽ không gửi được Zalo cho t
 **Việc cần bạn làm**: chỉ cần deploy lại **CẢ 2** Edge Function (`create-account` và
 `send-due-reminders`) — không có SQL nào cần chạy thêm.
 
+### 10.8. Thêm tham số NGAY_KE_HOACH, thêm "đ" sau số tiền trong mẫu OA + sửa lỗi bộ lọc/tìm kiếm còn sót lại sau khi đổi tài khoản (KHÔNG cần chạy SQL)
+
+- **Mẫu Zalo OA**: thêm tham số `NGAY_KE_HOACH` = ngày GỬI tin (hôm nay) — khác với `NGAY_DAO_HAN` (ngày
+  đến hạn thật của hợp đồng). Các tham số tiền (`SO_DU`, `GOC_PHAI_TRA`, `LAI_PHAI_TRA`,
+  `SO_TIEN_CHUYEN_KHOAN`) giờ có thêm chữ **"đ"** ngay sau số (VD: `500000đ`).
+- **Sửa lỗi**: bộ lọc/ô tìm kiếm ở trang Khách hàng & Hợp đồng, Quản lý OA, Yêu cầu tư vấn cố tình
+  KHÔNG tự reset khi chuyển qua trang khác rồi quay lại (để tiện cho CÙNG 1 người) — nhưng biến lưu bộ
+  lọc đó sống suốt vòng đời trang web (không phải theo phiên đăng nhập), nên đăng xuất xong đăng nhập
+  tài khoản khác vẫn thấy nguyên bộ lọc/kết quả tìm kiếm của người trước để lại. Giờ `js/app.js` tự phát
+  hiện đúng lúc ĐỔI người đăng nhập (so khớp "role:id") để reset các trang này — hoàn toàn ở phía trình
+  duyệt (file .js tĩnh), không đụng gì tới Edge Function/Supabase.
+
+**Việc cần bạn làm**: chỉ cần deploy lại **CẢ 2** Edge Function (`create-account` và
+`send-due-reminders`) — phần sửa lỗi bộ lọc tự lên khi GitHub Pages deploy lại (không cần làm gì thêm
+trên Supabase).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
