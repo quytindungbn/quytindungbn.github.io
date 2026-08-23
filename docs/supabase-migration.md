@@ -1044,14 +1044,42 @@ policy đọc dữ liệu + sửa file .js tĩnh, GitHub Pages tự deploy khi p
   lịch sử nếu có modal khác mở ra ngay sau đó) — áp dụng cho MỌI modal trong app, không riêng gì sửa
   khách hàng.
 - **Sửa lỗi định dạng chuyển khoản trong mẫu OA**: tham số `SO_TIEN_CHUYEN_KHOAN` gắn với nút chuyển
-  khoản có sẵn của Zalo — CHỈ nhận số thuần (có dấu chấm ngăn hàng nghìn được, VD: `80.000.000`), thêm
-  chữ "đ" phía sau (như mục 10.9 lỡ thêm) làm Zalo báo lỗi định dạng ngay. Đã bỏ "đ" khỏi riêng trường
-  này, giữ nguyên "đ" ở 3 trường còn lại (`SO_DU`, `GOC_PHAI_TRA`, `LAI_PHAI_TRA` — chỉ hiển thị trong
-  nội dung tin, không gắn nút chuyển khoản nên không bị giới hạn định dạng).
+  khoản có sẵn của Zalo — validate rất nghiêm ngặt, thử cả "80.000.000 đ" lẫn "80.000.000" (có dấu chấm)
+  đều báo lỗi định dạng, CHỈ nhận đúng chuỗi chữ số thuần (VD: `80000000`, không chấm không đ) — xem cập
+  nhật tiếp ở mục 10.11. Giữ nguyên "đ" ở 3 trường còn lại (`SO_DU`, `GOC_PHAI_TRA`, `LAI_PHAI_TRA` —
+  chỉ hiển thị trong nội dung tin, không gắn nút chuyển khoản nên không bị giới hạn định dạng).
 
 **Việc cần bạn làm**: deploy lại **CẢ 2** Edge Function (`create-account` và `send-due-reminders`) cho
 phần sửa định dạng chuyển khoản — phần sửa lỗi tự nhảy về trang chủ tự lên khi GitHub Pages deploy lại,
 không cần làm gì thêm trên Supabase.
+
+### 10.11. SO_TIEN_CHUYEN_KHOAN chỉ còn số thuần + thêm ô tìm kiếm Danh sách OA + Danh sách OA cho TOÀN BỘ admin có quyền xem (BẮT BUỘC chạy SQL cho phần cuối)
+
+- **SO_TIEN_CHUYEN_KHOAN**: bỏ luôn dấu chấm ngăn hàng nghìn (mục 10.10 vẫn còn báo lỗi) — giờ chỉ còn
+  đúng chuỗi chữ số, không chấm không đ.
+- **"Danh sách OA"**: thêm ô tìm kiếm theo tên/SĐT (kết hợp được với bộ lọc Thôn/Xóm sẵn có).
+- **"Danh sách OA" cho TOÀN BỘ admin có quyền xem** — trước đây vẫn giới hạn theo Thôn/Xóm như "Gửi tin
+  tự động"; giờ đổi giống `zalo_send_log` ở mục 10.9: bất kỳ ai có quyền `can_manage_zalo_oa` (hoặc
+  super) đều xem được **toàn bộ** Danh sách OA, không giới hạn theo Thôn/Xóm. Ngược lại, **"Gửi tin tự
+  động" (Tầng 2) vẫn RIÊNG TƯ theo từng người như cũ, KHÔNG đổi** — đã đúng theo yêu cầu từ trước
+  (`created_by = chính người đó`, super mới thấy hết).
+
+```sql
+drop policy if exists "admin sees zalo customers in scope" on zalo_customers;
+create policy "admin sees zalo customers" on zalo_customers
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (a.role = 'super' or a.can_manage_zalo_oa = true)
+    )
+  );
+```
+
+**Việc cần bạn làm**: chạy SQL trên (SQL Editor) cho phần Danh sách OA xem toàn bộ, và deploy lại **CẢ
+2** Edge Function (`create-account` và `send-due-reminders`) cho phần sửa `SO_TIEN_CHUYEN_KHOAN` — ô tìm
+kiếm tự lên khi GitHub Pages deploy lại, không cần làm gì thêm.
 
 ---
 
