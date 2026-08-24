@@ -21,10 +21,22 @@ const SORT_OPTIONS = [
 ];
 const SORT_LABEL = Object.fromEntries(SORT_OPTIONS.map((o) => [o.value, o.label]));
 
+// "Gần đến hạn" ở đây rộng hơn hẳn NEAR_DUE_DAYS (15 ngày, dùng cho nhắc nợ/
+// Zalo OA...) — hiển thị TRƯỚC tới 45 ngày, y hệt ngưỡng của popup "Gần đến
+// hạn" ở Tổng quan (xem UPCOMING_LIST_CAP_DAYS trong overview.js), để xem
+// trước lịch sắp tới xa hơn ngay tại trang này thay vì phải qua Tổng quan.
+const WIDE_NEAR_DUE_DAYS = 45;
+/** Hợp đồng còn trong hạn VÀ còn tối đa WIDE_NEAR_DUE_DAYS ngày nữa mới đến hạn (kể cả đã lọt qua ngưỡng 15 ngày "chính thức" của contractUrgency). */
+function isWideNearDue(ct) {
+  if (S.effectiveContractStatus(ct) !== 'dang_vay') return false;
+  const d = daysUntil(ct.dueDate);
+  return d >= 0 && d <= WIDE_NEAR_DUE_DAYS;
+}
+
 let query = '';
 let filterThon = []; // rỗng = Tất cả — có thể tích chọn nhiều Thôn cùng lúc
 let filterXom = [];  // rỗng = Tất cả — có thể tích chọn nhiều Xóm cùng lúc
-let urgencyFilters = new Set(); // rỗng = Tất cả — có thể tích cả "qua_han" lẫn "gan_den_han" cùng lúc
+let urgencyFilter = 'all'; // 'all' | 'qua_han' | 'gan_den_han' — CHỈ chọn được 1 trong 3 (không phải nhiều lựa chọn cùng lúc như trước)
 let sortMode = 'default';
 
 /**
@@ -36,7 +48,7 @@ let sortMode = 'default';
  * vào sau sẽ thấy nguyên bộ lọc/kết quả tìm kiếm của người trước để lại.
  */
 export function resetFilters() {
-  query = ''; filterThon = []; filterXom = []; urgencyFilters = new Set(); sortMode = 'default';
+  query = ''; filterThon = []; filterXom = []; urgencyFilter = 'all'; sortMode = 'default';
 }
 
 function multiPillLabel(prefix, values) {
@@ -55,7 +67,7 @@ export function render(contentEl, filterEl) {
   const isStaff = admin.role === 'staff';
   // KHÔNG reset filterThon/filterXom/sortMode ở đây nữa — giữ nguyên bộ lọc
   // đang chọn khi chuyển qua trang khác rồi quay lại, giống hệt cách
-  // urgencyFilters (Quá hạn/Gần đến hạn) và query (ô tìm kiếm) đã làm từ
+  // urgencyFilter (Quá hạn/Gần đến hạn) và query (ô tìm kiếm) đã làm từ
   // trước (2 biến đó cũng không hề bị reset ở render()).
 
   filterEl.innerHTML = `
@@ -63,9 +75,9 @@ export function render(contentEl, filterEl) {
       ${searchBoxHtml('search-input', 'Tìm theo tên, số CCCD, SĐT...', query)}
       <div class="filter-row" style="padding:0 0 8px" id="filter-pills-row"></div>
       <div class="segmented-row mb-8">
-        <button class="${urgencyFilters.size === 0 ? 'active' : ''}" data-urgency="all">Tất cả</button>
-        <button class="${urgencyFilters.has('qua_han') ? 'active' : ''}" data-urgency="qua_han">${icon('alert', 'icon-sm')} Nợ quá hạn</button>
-        <button class="${urgencyFilters.has('gan_den_han') ? 'active' : ''}" data-urgency="gan_den_han">Gần đến hạn</button>
+        <button class="${urgencyFilter === 'all' ? 'active' : ''}" data-urgency="all">Tất cả</button>
+        <button class="${urgencyFilter === 'qua_han' ? 'active' : ''}" data-urgency="qua_han">${icon('alert', 'icon-sm')} Nợ quá hạn</button>
+        <button class="${urgencyFilter === 'gan_den_han' ? 'active' : ''}" data-urgency="gan_den_han">Gần đến hạn</button>
       </div>
       ${!isStaff ? `
       <div class="flex gap-8 mb-8">
@@ -81,16 +93,15 @@ export function render(contentEl, filterEl) {
   }
   filterEl.querySelectorAll('[data-urgency]').forEach((chip) => {
     chip.addEventListener('click', () => {
-      const val = chip.dataset.urgency;
-      if (val === 'all') urgencyFilters.clear();
-      else if (urgencyFilters.has(val)) urgencyFilters.delete(val);
-      else urgencyFilters.add(val);
+      // CHỈ chọn được 1 trong 3 tại 1 thời điểm (giống nút radio) — bấm 1 nút
+      // là tự bỏ chọn nút kia, khác kiểu tích nhiều trước đây.
+      urgencyFilter = chip.dataset.urgency;
       // Chỉ vẽ lại phần danh sách (draw()), KHÔNG gọi lại render() — render()
       // reset cả filterThon/filterXom/sortMode (chỉ nên xảy ra lúc mới vào
       // trang), gọi lại nó ở đây sẽ xóa mất bộ lọc Thôn/Xóm đang chọn mỗi
       // lần bấm "Quá hạn"/"Gần đến hạn".
       filterEl.querySelectorAll('[data-urgency]').forEach((c) => {
-        c.classList.toggle('active', c.dataset.urgency === 'all' ? urgencyFilters.size === 0 : urgencyFilters.has(c.dataset.urgency));
+        c.classList.toggle('active', c.dataset.urgency === urgencyFilter);
       });
       draw();
     });
@@ -185,7 +196,10 @@ export function render(contentEl, filterEl) {
     // — dù hồ sơ/tài khoản Use của họ vẫn được giữ (xem Quản lý User), chỉ
     // là không còn hiện trong danh sách khách hàng đang vay này.
     enriched = enriched.filter((e) => e.totalBalance > 0);
-    if (urgencyFilters.size) enriched = enriched.filter((e) => e.contracts.some((ct) => urgencyFilters.has(S.contractUrgency(ct))));
+    if (urgencyFilter === 'qua_han') enriched = enriched.filter((e) => e.contracts.some((ct) => S.contractUrgency(ct) === 'qua_han'));
+    // "Gần đến hạn" dùng ngưỡng RỘNG 45 ngày (isWideNearDue), không phải
+    // đúng 15 ngày của contractUrgency() — xem giải thích ở WIDE_NEAR_DUE_DAYS.
+    else if (urgencyFilter === 'gan_den_han') enriched = enriched.filter((e) => e.contracts.some((ct) => isWideNearDue(ct)));
     if (sortMode !== 'default') {
       const [field, dir] = sortMode.split('-');
       const key = field === 'principal' ? 'totalBalance' : 'totalInterest';
@@ -198,18 +212,27 @@ export function render(contentEl, filterEl) {
       <div class="text-sm text-muted mb-8">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <b style="color:var(--color-primary)">${formatVND(totalAmount)}</b></div>
       ${enriched.length ? enriched.map(({ c, contracts }) => {
         const overdueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'qua_han');
-        const nearDueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'gan_den_han');
+        // Ngưỡng RỘNG 45 ngày (khớp popup "Gần đến hạn" ở Tổng quan) — không
+        // phải đúng 15 ngày "chính thức" của contractUrgency() nữa.
+        const nearDueContracts = contracts.filter((ct) => !overdueContracts.includes(ct) && isWideNearDue(ct));
         const hasOverdue = overdueContracts.length > 0;
         const hasNearDue = !hasOverdue && nearDueContracts.length > 0;
         // Hợp đồng quá hạn/gần đến hạn NHIỀU ngày nhất (đáng chú ý nhất) — hiện kèm số ngày cho dễ nhìn ngay từ danh sách.
         const mostOverdueDays = hasOverdue ? Math.max(...overdueContracts.map((ct) => Math.abs(daysUntil(ct.dueDate)))) : 0;
         const mostNearDueDays = hasNearDue ? Math.min(...nearDueContracts.map((ct) => daysUntil(ct.dueDate))) : 0;
+        // Trong đúng NEAR_DUE_DAYS (15 ngày) mới tô khung vàng cảnh báo như cũ
+        // — xa hơn (tới 45 ngày) chỉ hiện chữ nhỏ bình thường, y hệt cách
+        // popup "Gần đến hạn" ở Tổng quan đang làm (xem openContractListModal
+        // trong overview.js).
+        const nearDueHighlight = hasNearDue && mostNearDueDays <= S.NEAR_DUE_DAYS;
         return `
         <div class="card mb-8" style="padding:12px 16px">
           <div class="flex items-center gap-6 mb-6" style="flex-wrap:wrap">
             <span style="font-size:15px;font-weight:700">${c.name}</span>
             ${hasOverdue ? `<span class="badge badge-red">Quá hạn ${mostOverdueDays} ngày</span>` : ''}
-            ${hasNearDue ? `<span class="badge badge-yellow">Gần đến hạn ${mostNearDueDays} ngày</span>` : ''}
+            ${hasNearDue ? (nearDueHighlight
+              ? `<span class="badge badge-yellow">Gần đến hạn ${mostNearDueDays} ngày</span>`
+              : `<span class="text-sm text-muted">Gần đến hạn ${mostNearDueDays} ngày</span>`) : ''}
             <span style="margin-left:auto">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
           </div>
           <div class="list-row" data-id="${c.id}" style="cursor:pointer;padding:0;gap:8px">
@@ -571,14 +594,22 @@ function contractAmountsHtml(ct) {
 
 /** Dòng hợp đồng gọn — chỉ mã + trạng thái + gốc/lãi, bấm vào mới ra đầy đủ chi tiết (openContractView). */
 function contractRowCompact(ct) {
-  // "Trong hạn" thay bằng "Gần đến hạn" khi sắp tới ngày đến hạn, để dễ chú ý hơn ở dòng hợp đồng gọn.
+  // "Trong hạn" thay bằng "Gần đến hạn" khi sắp tới ngày đến hạn, để dễ chú ý
+  // hơn ở dòng hợp đồng gọn — trong đúng NEAR_DUE_DAYS (15 ngày) tô khung
+  // vàng như cũ, xa hơn (tới WIDE_NEAR_DUE_DAYS = 45 ngày) chỉ hiện chữ nhỏ
+  // bình thường, y hệt cách popup "Gần đến hạn" ở Tổng quan đang làm.
   const urgency = S.contractUrgency(ct);
-  const status = urgency === 'gan_den_han' ? { badge: 'badge-yellow', label: 'Gần đến hạn' } : S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(ct)];
+  const days = daysUntil(ct.dueDate);
+  const wideNearDue = !urgency && isWideNearDue(ct);
+  let statusHtml;
+  if (urgency === 'gan_den_han') statusHtml = statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${days} ngày` });
+  else if (wideNearDue) statusHtml = `<span class="text-sm text-muted">Gần đến hạn ${days} ngày</span>`;
+  else statusHtml = statusBadge(S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(ct)]);
   return `
     <div class="list-row" data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" style="cursor:pointer;padding:8px 0">
       <div class="row-main">
         <div class="row-title" style="font-size:13.5px">Hợp đồng: ${ct.code}</div>
-        <div>${statusBadge(status)}</div>
+        <div>${statusHtml}</div>
       </div>
       ${contractAmountsHtml(ct)}
     </div>`;

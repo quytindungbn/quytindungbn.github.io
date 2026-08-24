@@ -1675,6 +1675,32 @@ xem đúng tab nào thì đúng phần đó tự hết, số ở mục menu gi�
 
 ---
 
+### 10.27. Đảo tên 2 tab trang Hỗ trợ, ẩn thông báo yêu cầu đã xử lý xong, dời Quản lý OA lên nhóm menu chính, lọc Nợ quá hạn/Gần đến hạn chỉ chọn 1 (KHÔNG cần chạy SQL)
+
+Gộp 4 chỉnh sửa nhỏ cùng đợt, đều CHỈ sửa file `.js`/`.css` tĩnh, không đụng gì tới database:
+
+1. **Đảo tên 2 tab ở trang "Hỗ trợ"** (mục 10.26) cho hợp lý hơn: tab yêu cầu tư vấn/vay mới đổi tên
+   hiển thị thành **"Hỗ trợ"** (mỗi yêu cầu là 1 việc cần hỗ trợ xử lý), tab chat đổi tên hiển thị thành
+   **"Tư vấn"** (trò chuyện trực tiếp = tư vấn ngay cho khách). Tên mục menu cấp cao nhất ("Hỗ trợ") và
+   toàn bộ chức năng/quyền hạn bên trong KHÔNG đổi gì — chỉ đổi đúng 2 chữ hiển thị trên 2 tab.
+2. **Yêu cầu tư vấn đã chuyển "Đã liên hệ" (xử lý xong) không tính vào chấm đỏ chưa đọc nữa** — dù trước
+   đó chưa từng mở ra xem, đã xử lý xong thì thôi báo, khớp đúng cách "Yêu cầu mới nhất" ở Tổng quan cũng
+   tự ẩn các yêu cầu đã xử lý xong.
+3. **"Quản lý OA" dời lên đi cùng nhóm 3 mục chính** (Tổng quan/Khách hàng & Hợp đồng/Hỗ trợ) thay vì xếp
+   sau "Quản lý User" như trước — vẫn giữ nguyên điều kiện hiển thị (toàn quyền hoặc được cấp
+   `can_manage_zalo_oa`), chỉ đổi vị trí trong danh sách menu.
+4. **Lọc "Nợ quá hạn"/"Gần đến hạn" ở trang Khách hàng & Hợp đồng giờ CHỈ chọn được 1 trong 2** (giống nút
+   radio, bấm mục này tự bỏ chọn mục kia) — trước đây chọn được cả 2 cùng lúc. Đồng thời **"Gần đến hạn"
+   mở rộng ngưỡng lên 45 ngày** (trước chỉ đúng 15 ngày) và **hiển thị y hệt popup "Gần đến hạn" ở Tổng
+   quan**: hợp đồng còn trong đúng 15 ngày mới tô khung vàng cảnh báo, còn xa hơn (16-45 ngày) chỉ hiện
+   chữ nhỏ bình thường kèm số ngày, không khung — áp dụng cho cả badge ở đầu thẻ khách hàng lẫn dòng hợp
+   đồng gọn khi khách có nhiều hợp đồng.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ cần đợi GitHub Pages tự deploy sau
+khi push `main` (thường vài phút), rồi tải lại trang để thấy thay đổi.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

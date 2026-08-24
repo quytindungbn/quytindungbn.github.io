@@ -89,8 +89,11 @@ function profileBlockHtml(info) {
 }
 
 export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA) {
+  // "Quản lý OA" đặt NGAY SAU 3 mục chính (ADMIN_NAV) — cùng nhóm "chính",
+  // KHÔNG còn xếp sau "Quản lý User" như trước (vẫn giữ nguyên điều kiện
+  // canManageZaloOA, chỉ đổi VỊ TRÍ trong danh sách menu).
   const nav = role === 'admin'
-    ? [...ADMIN_NAV, ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
+    ? [...ADMIN_NAV, ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
     : CUSTOMER_NAV;
   root.innerHTML = `
     <div class="app-shell">

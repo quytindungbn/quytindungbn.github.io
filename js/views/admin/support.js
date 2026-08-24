@@ -8,36 +8,44 @@ import { formatVND, formatDateTime, initials, colorFor, escapeHtml, stripDiacrit
 
 // ------------------------------------------------------------
 // Trang "Hỗ trợ" — GỘP 2 mục menu cũ ("Yêu cầu tư vấn" + "Hỗ trợ") thành 1,
-// hiện dưới dạng 2 tab trong CÙNG 1 trang: "Tư vấn" (yêu cầu tư vấn/vay mới
-// — nội dung y hệt trang "Yêu cầu tư vấn" cũ) và "Hỗ trợ" (chat — nội dung y
-// hệt trang "Hỗ trợ" cũ). Cả 2 đều có chấm đỏ báo số CHƯA ĐỌC, tự tắt ngay
-// khi admin xem xong (xem markAllRequestsRead()/markChatRead() ở state.js).
+// hiện dưới dạng 2 tab trong CÙNG 1 trang. Tên 2 tab CỐ Ý đảo ngược so với
+// tên gọi kỹ thuật của từng phần (xem `activeTab` bên dưới) theo đúng yêu
+// cầu — "Hỗ trợ" (tab) = danh sách yêu cầu tư vấn/vay mới (mỗi yêu cầu = 1
+// lần cần được HỖ TRỢ xử lý), "Tư vấn" (tab) = khung chat (trò chuyện trực
+// tiếp = TƯ VẤN cho khách ngay lúc đó) — khớp đúng cách đặt tên trực quan
+// hơn theo góc nhìn người dùng, dù bên trong code vẫn gọi 2 phần này là
+// 'requests'/'chat' cho dễ đọc (KHÔNG đổi theo tên hiển thị, tránh phải sửa
+// lại toàn bộ code mỗi khi đổi tên hiển thị lần nữa).
 //
-// Tab "Hỗ trợ" CHỈ hiện cho ai có quyền xem chat (super hoặc canManageUsers,
+// Cả 2 tab đều có chấm đỏ báo số CHƯA ĐỌC, tự tắt ngay khi admin xem xong
+// (xem markAllRequestsRead()/markChatRead() ở state.js).
+//
+// Tab chat CHỈ hiện cho ai có quyền xem chat (super hoặc canManageUsers,
 // khớp đúng RLS bảng chat_messages) — nhân viên "chỉ xem" không có quyền
-// này thấy đúng nội dung "Tư vấn" y hệt trang cũ, không có tab nào cả (giữ
-// nguyên trải nghiệm/phạm vi cũ, chỉ đổi tên + vị trí mục menu).
+// này thấy đúng nội dung yêu cầu tư vấn y hệt trang cũ, không có tab nào cả
+// (giữ nguyên trải nghiệm/phạm vi cũ, chỉ đổi tên + vị trí mục menu).
 // ------------------------------------------------------------
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Hỗ trợ' });
 }
 
-let activeTab = 'tuvan'; // 'tuvan' | 'hotro'
-let activeStatus = 'all'; // bộ lọc trạng thái của tab "Tư vấn"
-let searchQuery = ''; // ô tìm kiếm của tab "Hỗ trợ"
+let activeTab = 'requests'; // 'requests' (hiển thị "Hỗ trợ") | 'chat' (hiển thị "Tư vấn")
+let activeStatus = 'all'; // bộ lọc trạng thái của tab yêu cầu tư vấn
+let searchQuery = ''; // ô tìm kiếm của tab chat
 // Ghi nhớ ĐÚNG 1 lần "hash?query" gần nhất đã áp dụng tham số ?tab= từ URL
 // (VD: link "Xem tất cả" cạnh "Yêu cầu mới nhất" ở trang Tổng quan trỏ tới
-// #/admin/ho-tro?tab=tuvan, ép mở đúng tab "Tư vấn" dù đang đứng ở tab
-// "Hỗ trợ" trước đó) — CHỈ áp dụng lúc thật sự vừa ĐIỀU HƯỚNG tới (hash đổi),
-// không áp dụng lại ở các lượt render() tiếp theo do dữ liệu tự làm mới (hash
-// không đổi) — nếu không, mỗi lần notify() sẽ ép quay lại đúng ?tab= cũ, làm
-// người dùng không tài nào bấm chuyển sang tab khác được (xem render() bên dưới).
+// #/admin/ho-tro?tab=requests, ép mở đúng tab yêu cầu tư vấn dù đang đứng ở
+// tab chat trước đó) — CHỈ áp dụng lúc thật sự vừa ĐIỀU HƯỚNG tới (hash
+// đổi), không áp dụng lại ở các lượt render() tiếp theo do dữ liệu tự làm
+// mới (hash không đổi) — nếu không, mỗi lần notify() sẽ ép quay lại đúng
+// ?tab= cũ, làm người dùng không tài nào bấm chuyển sang tab khác được (xem
+// render() bên dưới).
 let lastNavKey = null;
 
 /** Reset toàn bộ tab/bộ lọc về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt ở customers.js/zaloOA.js. */
 export function resetFilters() {
-  activeTab = 'tuvan';
+  activeTab = 'requests';
   activeStatus = 'all';
   searchQuery = '';
   lastNavKey = null;
@@ -63,17 +71,17 @@ export async function render(contentEl, filterEl, params, query) {
   if (location.hash !== lastNavKey) {
     lastNavKey = location.hash;
     const tabParam = query?.get('tab');
-    if (tabParam === 'tuvan' || tabParam === 'hotro') activeTab = tabParam;
+    if (tabParam === 'requests' || tabParam === 'chat') activeTab = tabParam;
   }
 
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
   const canChat = S.canManageUsers(admin.id); // trùng đúng điều kiện RLS "admin sees chat"
-  if (!canChat) activeTab = 'tuvan'; // phòng hờ mất quyền canManageUsers giữa chừng mà vẫn đang đứng ở tab Hỗ trợ
+  if (!canChat) activeTab = 'requests'; // phòng hờ mất quyền canManageUsers giữa chừng mà vẫn đang đứng ở tab chat
 
   renderFilterBar(contentEl, filterEl, admin, canChat);
 
-  if (activeTab === 'hotro') await renderConversationList(contentEl, filterEl);
+  if (activeTab === 'chat') await renderConversationList(contentEl, filterEl);
   else renderRequestsList(contentEl, admin);
 }
 
@@ -82,10 +90,10 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
   const chatUnread = S.getState()?.chatUnreadCount || 0;
   const tabsHtml = canChat ? `
     <div class="tabs" style="margin:10px 14px 0">
-      <button data-tab="tuvan" class="${activeTab === 'tuvan' ? 'active' : ''}">Tư vấn${reqUnread ? `<span class="tab-badge">${reqUnread}</span>` : ''}</button>
-      <button data-tab="hotro" class="${activeTab === 'hotro' ? 'active' : ''}">Hỗ trợ${chatUnread ? `<span class="tab-badge">${chatUnread}</span>` : ''}</button>
+      <button data-tab="requests" class="${activeTab === 'requests' ? 'active' : ''}">Hỗ trợ${reqUnread ? `<span class="tab-badge">${reqUnread}</span>` : ''}</button>
+      <button data-tab="chat" class="${activeTab === 'chat' ? 'active' : ''}">Tư vấn${chatUnread ? `<span class="tab-badge">${chatUnread}</span>` : ''}</button>
     </div>` : '';
-  const subFilterHtml = activeTab === 'tuvan' ? `
+  const subFilterHtml = activeTab === 'requests' ? `
     <div class="chip-row" style="padding:10px 14px">
       <button class="chip ${activeStatus === 'all' ? 'active' : ''}" data-s="all">Tất cả</button>
       ${S.REQUEST_STATUS.map((s) => `<button class="chip ${activeStatus === s.id ? 'active' : ''}" data-s="${s.id}">${s.label}</button>`).join('')}
@@ -97,7 +105,7 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
   filterEl.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => { activeTab = btn.dataset.tab; render(contentEl, filterEl); });
   });
-  if (activeTab === 'tuvan') {
+  if (activeTab === 'requests') {
     filterEl.querySelectorAll('[data-s]').forEach((chip) => {
       chip.addEventListener('click', () => { activeStatus = chip.dataset.s; render(contentEl, filterEl); });
     });
@@ -109,7 +117,7 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
   }
 }
 
-// ---------------- Tab "Tư vấn" (yêu cầu tư vấn/vay mới) ----------------
+// ---------------- Tab "Hỗ trợ" (yêu cầu tư vấn/vay mới) ----------------
 function renderRequestsList(contentEl, admin) {
   const isStaff = admin.role === 'staff';
   let list = S.listRequests({ status: activeStatus });
@@ -153,12 +161,12 @@ function renderRequestsList(contentEl, admin) {
   });
 
   // Danh sách đã hiện TRỌN VẸN nội dung từng yêu cầu ngay tại đây (không như
-  // tab "Hỗ trợ", chỉ hiện xem trước) — nên coi như admin ĐÃ ĐỌC ngay khi
-  // tab này hiện ra, tự tắt chấm đỏ. Không chặn/chờ gì (chạy ngầm).
+  // tab "Tư vấn" (chat), chỉ hiện xem trước) — nên coi như admin ĐÃ ĐỌC ngay
+  // khi tab này hiện ra, tự tắt chấm đỏ. Không chặn/chờ gì (chạy ngầm).
   S.markAllRequestsRead(admin.id).catch(() => {});
 }
 
-// ---------------- Tab "Hỗ trợ" (chat) ----------------
+// ---------------- Tab "Tư vấn" (chat) ----------------
 async function renderConversationList(contentEl, filterEl) {
   contentEl.innerHTML = `<div class="card card-pad text-sm text-muted" style="text-align:center">Đang tải...</div>`;
   try {

@@ -1323,7 +1323,10 @@ function mapRequestRow(row) {
  * chat, chỉ hiện xem trước — phải mở hẳn 1 hội thoại mới coi là "đã đọc").
  */
 export function countUnreadRequests(adminId) {
-  let list = state.requests.filter((r) => !r.readAt);
+  // Yêu cầu đã chuyển "Đã liên hệ" (xử lý xong) KHÔNG tính vào đây nữa dù
+  // chưa từng "đọc" — coi như xong việc thì thôi báo, khớp đúng cách "Yêu
+  // cầu mới nhất" ở Tổng quan cũng tự ẩn các yêu cầu đã xử lý xong.
+  let list = state.requests.filter((r) => !r.readAt && r.status !== 'da_lien_he');
   const admin = getAdmin(adminId);
   if (admin && admin.role === 'staff') {
     const allowedIds = new Set(listCustomers({ adminId }).map((c) => c.id));
@@ -1332,9 +1335,9 @@ export function countUnreadRequests(adminId) {
   return list.length;
 }
 
-/** Đánh dấu TOÀN BỘ yêu cầu tư vấn (trong đúng phạm vi Thôn/Xóm của adminId, kể cả đang lọc theo trạng thái nào) là đã đọc — gọi mỗi khi tab "Tư vấn" hiện ra, để chấm đỏ tự tắt ngay lúc admin thật sự nhìn thấy danh sách. */
+/** Đánh dấu TOÀN BỘ yêu cầu tư vấn CHƯA XỬ LÝ XONG (trong đúng phạm vi Thôn/Xóm của adminId, kể cả đang lọc theo trạng thái nào) là đã đọc — gọi mỗi khi tab "Hỗ trợ" (yêu cầu tư vấn) hiện ra, để chấm đỏ tự tắt ngay lúc admin thật sự nhìn thấy danh sách. */
 export async function markAllRequestsRead(adminId) {
-  let unread = state.requests.filter((r) => !r.readAt);
+  let unread = state.requests.filter((r) => !r.readAt && r.status !== 'da_lien_he');
   const admin = getAdmin(adminId);
   if (admin && admin.role === 'staff') {
     const allowedIds = new Set(listCustomers({ adminId }).map((c) => c.id));

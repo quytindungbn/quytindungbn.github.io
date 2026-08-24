@@ -66,7 +66,7 @@ export function render(contentEl) {
     </div>
 
     <div class="card card-pad">
-      <div class="section-head"><h2>Yêu cầu mới nhất</h2><a href="#/admin/ho-tro?tab=tuvan" class="link-more">Xem tất cả</a></div>
+      <div class="section-head"><h2>Yêu cầu mới nhất</h2><a href="#/admin/ho-tro?tab=requests" class="link-more">Xem tất cả</a></div>
       ${requests.length ? requests.slice(0, 5).map((r) => {
         const cust = S.getCustomer(r.customerId);
         const typeLabel = S.REQUEST_TYPE.find((t) => t.id === r.type)?.label || '';
