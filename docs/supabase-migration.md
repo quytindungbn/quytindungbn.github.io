@@ -1735,6 +1735,25 @@ không đổi, không cần deploy lại) — Supabase Dashboard → Edge Functi
 
 ---
 
+### 10.29. Vẫn hiện ngày gửi Zalo gần nhất kể cả khi đã hết 5 ngày chờ (KHÔNG cần chạy SQL)
+
+Ở popup chi tiết hợp đồng (nút "Gửi tin Zalo OA ngay"), dòng "Đã gửi Zalo gần nhất ngày X — còn N ngày
+nữa mới gửi lại được" trước đây CHỈ hiện trong lúc còn đang chờ đủ 5 ngày — hết hạn chờ (gửi lại được rồi)
+thì dòng này biến mất hẳn, thay bằng gợi ý chung "Muốn gửi tự động hàng tháng thì vào mục Quản lý OA",
+không còn thấy lần gửi gần nhất là ngày nào nữa. Giờ dù đã hết hạn chờ vẫn giữ lại đúng ngày gửi gần nhất
+("Đã gửi Zalo gần nhất ngày X — đã đủ 5 ngày, gửi lại được rồi"), kèm thêm gợi ý cũ ngay sau đó.
+
+Ngày gửi gần nhất này vốn đã tính đúng cho **cả gửi tay lẫn gửi tự động** (2 luồng đều ghi vào cùng bảng
+`zalo_send_log` — gửi tay ghi `triggered_by = 'manual'`, tự động ghi `triggered_by = 'auto'` — hàm phía
+client `lastSuccessfulZaloSend()` không lọc theo cột này nên luôn lấy đúng lần gửi thành công gần nhất bất
+kể nguồn nào) — không có gì cần sửa ở phần này, chỉ là màn hình trước đây có lúc không CHO XEM đúng ngày
+đó thôi.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS tĩnh, GitHub Pages tự
+deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

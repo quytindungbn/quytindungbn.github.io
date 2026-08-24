@@ -711,7 +711,9 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         ` : zaloCooldownDaysLeft > 0 ? `
         <div class="field-hint text-danger">${icon('alert', 'icon-sm')} Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — còn ${zaloCooldownDaysLeft} ngày nữa mới gửi lại được (giới hạn 5 ngày/lần).</div>
         ` : `
-        <div class="field-hint">Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>
+        <div class="field-hint">
+          ${lastZaloSend ? `Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — đã đủ 5 ngày, gửi lại được rồi. ` : ''}Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.
+        </div>
         `}
       </div>
       ` : ''}
