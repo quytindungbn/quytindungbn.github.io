@@ -5,7 +5,7 @@
 // biết gửi với vai trò nào dựa theo session đang đăng nhập, không cần phân
 // biệt gì thêm ở đây.
 //
-// Cập nhật tin nhắn mới bằng POLLING NGẮN (mỗi 7 giây) — NHƯNG chỉ chạy
+// Cập nhật tin nhắn mới bằng POLLING NGẮN (mỗi 3 giây) — NHƯNG chỉ chạy
 // trong lúc khung chat này đang mở (bắt đầu lúc mở, tự dừng lúc đóng, xem
 // onClose) — KHÔNG phải polling toàn app kiểu setInterval đã bị bỏ trước đây
 // (xem ghi chú ở js/state.js refreshSessionData()) — 2 việc khác hẳn nhau:
@@ -28,7 +28,7 @@ import { icon } from '../icons.js';
 import { toast } from './toast.js';
 import { escapeHtml, initials, colorFor, formatDate } from '../utils.js';
 
-const POLL_MS = 7000;
+const POLL_MS = 3000;
 const COMPOSER_MAX_HEIGHT = 110;
 
 function isNearBottom(el) {

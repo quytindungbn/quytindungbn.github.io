@@ -1296,14 +1296,26 @@ export async function sendChatMessage(customerId, message) {
   return mapChatMessageRow({ ...row, created_at: new Date().toISOString(), read_at: null });
 }
 
-/** Đánh dấu đã đọc mọi tin nhắn CỦA PHÍA BÊN KIA (chưa đọc) trong 1 hội thoại — gọi mỗi khi khung chat đang mở/vừa tải lại tin mới, để chấm "chưa đọc" tự tắt đúng lúc người dùng thật sự đã xem. */
+/**
+ * Đánh dấu đã đọc mọi tin nhắn CỦA PHÍA BÊN KIA (chưa đọc) trong 1 hội thoại
+ * — gọi mỗi khi khung chat đang mở/vừa tải lại tin mới. `.select('id')` để
+ * biết CHÍNH XÁC vừa đánh dấu đọc bao nhiêu dòng — nhờ đó trừ thẳng vào
+ * state.chatUnreadCount (đang cache trong bộ nhớ, dùng chung cho chấm đỏ nút
+ * chat nổi/mục menu "Hỗ trợ", xem js/components/shell.js) rồi notify() NGAY,
+ * để chấm đỏ tắt NGAY LÚC xem xong — KHÔNG phải đợi tới lần
+ * refreshSessionData() kế tiếp (đổi tab/chuyển trang) mới cập nhật.
+ */
 export async function markChatRead(customerId) {
   const session = getSession();
   if (!session) return;
   const otherRole = session.role === 'admin' ? 'customer' : 'admin';
   const sb = getSupabaseClient(session.sbToken);
-  await sb.from('chat_messages').update({ read_at: new Date().toISOString() })
-    .eq('customer_id', customerId).eq('sender_role', otherRole).is('read_at', null);
+  const { data } = await sb.from('chat_messages').update({ read_at: new Date().toISOString() })
+    .eq('customer_id', customerId).eq('sender_role', otherRole).is('read_at', null)
+    .select('id');
+  if (!data || !data.length) return; // không có gì mới để đánh dấu -> khỏi notify() thừa
+  state.chatUnreadCount = Math.max(0, (state.chatUnreadCount || 0) - data.length);
+  notify();
 }
 
 /**
