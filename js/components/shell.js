@@ -31,7 +31,7 @@ export const ADMIN_NAV_MANAGE_USERS = [
 // "Quản lý OA" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được cấp
 // riêng cờ canManageZaloOA (xem js/state.js) — y hệt kiểu ADMIN_NAV_MANAGE_USERS.
 export const ADMIN_NAV_MANAGE_ZALO_OA = [
-  { path: '#/admin/zalo-oa', label: 'Quản lý OA', shortLabel: 'OA', icon: 'message' },
+  { path: '#/admin/zalo-oa', label: 'Quản lý OA', shortLabel: 'Quản lý OA', icon: 'message' },
 ];
 export const ADMIN_NAV_SUPER_ONLY = [
   { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings' },
