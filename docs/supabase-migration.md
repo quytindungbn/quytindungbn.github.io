@@ -1640,6 +1640,41 @@ tiết càng tốt (đang làm gì lúc đó, có mở nhiều tab/nhiều thi�
 
 ---
 
+### 10.26. Gộp menu "Yêu cầu tư vấn" + "Hỗ trợ" thành 1 mục "Hỗ trợ" (2 tab: Tư vấn/Hỗ trợ) — chấm đỏ chưa đọc cho cả 2 (BẮT BUỘC chạy SQL, KHÔNG cần deploy Edge Function)
+
+Gộp 2 mục menu quản trị trước đây thành 1 mục **"Hỗ trợ"** duy nhất, bên trong chia 2 tab:
+
+- **Tư vấn** — nội dung y hệt trang "Yêu cầu tư vấn" cũ (danh sách yêu cầu tư vấn/vay mới, lọc theo trạng
+  thái, cập nhật trạng thái...). Luôn hiện cho MỌI quản trị viên/nhân viên — giữ đúng phạm vi cũ, không
+  đổi gì về quyền truy cập.
+- **Hỗ trợ** — nội dung y hệt trang "Hỗ trợ" (chat) cũ. CHỈ hiện tab này cho ai có quyền xem chat (toàn
+  quyền hoặc `can_manage_users`, khớp đúng RLS mục 10.24) — nhân viên "chỉ xem" không có quyền này sẽ
+  không thấy tab "Hỗ trợ" đâu cả, chỉ còn đúng nội dung "Tư vấn" như trước (không có thanh chuyển tab).
+
+Cả 2 tab đều có **chấm đỏ số CHƯA ĐỌC**, tự tắt ngay khi admin xem xong — tab "Hỗ trợ" dùng lại đúng cơ
+chế đã có (mục 10.24); tab "Tư vấn" là MỚI, cần thêm 1 cột `read_at` cho bảng `requests`:
+
+```sql
+alter table requests add column if not exists read_at timestamptz;
+```
+
+Không cần thêm policy RLS nào — policy `admin updates requests` sẵn có (mục 3) đã cho phép admin ghi mọi
+cột của bảng `requests`, tự áp dụng luôn cho cột mới này.
+
+**"Đã đọc" của tab Tư vấn được tính khác tab Hỗ trợ 1 chút** — danh sách "Tư vấn" đã hiện TRỌN VẸN nội
+dung từng yêu cầu ngay tại đó (không như "Hỗ trợ", chỉ hiện xem trước 1 dòng) — nên **CHỈ CẦN MỞ TAB "Tư
+vấn" ra xem là tự tính là đã đọc hết** (không cần bấm thêm gì), tự tắt chấm đỏ ngay.
+
+Mục menu **"Hỗ trợ"** (cấp cao nhất) hiện chấm đỏ **gộp chung cả 2 tab** (chat + tư vấn cộng lại) — vào
+xem đúng tab nào thì đúng phần đó tự hết, số ở mục menu giảm theo tương ứng.
+
+**Việc cần bạn làm**:
+1. Chạy SQL trên (SQL Editor) — **không cần deploy Edge Function nào** (chỉ sửa file `.js`/`.css` tĩnh).
+2. Kiểm tra lại: mục "Yêu cầu tư vấn" ở menu cũ đã biến mất, thay bằng "Hỗ trợ" (đã gộp) — bấm vào thấy 2
+   tab "Tư vấn"/"Hỗ trợ" (nếu có quyền xem chat) hoặc thẳng nội dung "Tư vấn" (nếu không có quyền).
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

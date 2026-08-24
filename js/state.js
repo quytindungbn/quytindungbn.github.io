@@ -1310,8 +1310,44 @@ function mapRequestRow(row) {
   return {
     id: row.id, customerId: row.customer_id, type: row.type, amount: row.amount,
     purpose: row.purpose || '', termMonths: row.term_months, note: row.note || '',
-    status: row.status, createdAt: row.created_at,
+    status: row.status, createdAt: row.created_at, readAt: row.read_at || null,
   };
+}
+
+/**
+ * Số yêu cầu tư vấn CHƯA ĐỌC trong phạm vi của adminId — dùng cho chấm đỏ ở
+ * tab "Tư vấn" và mục menu "Hỗ trợ" gộp chung (xem js/views/admin/support.js,
+ * js/components/shell.js). "Chưa đọc" = read_at còn rỗng — tự đánh dấu đã
+ * đọc ngay khi admin VÀO XEM tab "Tư vấn" (xem markAllRequestsRead() bên
+ * dưới), vì danh sách đã hiện sẵn TRỌN VẸN nội dung từng yêu cầu (không như
+ * chat, chỉ hiện xem trước — phải mở hẳn 1 hội thoại mới coi là "đã đọc").
+ */
+export function countUnreadRequests(adminId) {
+  let list = state.requests.filter((r) => !r.readAt);
+  const admin = getAdmin(adminId);
+  if (admin && admin.role === 'staff') {
+    const allowedIds = new Set(listCustomers({ adminId }).map((c) => c.id));
+    list = list.filter((r) => allowedIds.has(r.customerId));
+  }
+  return list.length;
+}
+
+/** Đánh dấu TOÀN BỘ yêu cầu tư vấn (trong đúng phạm vi Thôn/Xóm của adminId, kể cả đang lọc theo trạng thái nào) là đã đọc — gọi mỗi khi tab "Tư vấn" hiện ra, để chấm đỏ tự tắt ngay lúc admin thật sự nhìn thấy danh sách. */
+export async function markAllRequestsRead(adminId) {
+  let unread = state.requests.filter((r) => !r.readAt);
+  const admin = getAdmin(adminId);
+  if (admin && admin.role === 'staff') {
+    const allowedIds = new Set(listCustomers({ adminId }).map((c) => c.id));
+    unread = unread.filter((r) => allowedIds.has(r.customerId));
+  }
+  if (!unread.length) return;
+  const session = getSession();
+  const sb = getSupabaseClient(session?.sbToken);
+  const { error } = await sb.from('requests').update({ read_at: new Date().toISOString() }).in('id', unread.map((r) => r.id));
+  if (error) return; // im lặng, thử lại ở lượt sau — không chặn/báo lỗi gì cho người dùng vì đây chỉ là chấm đỏ, không phải thao tác họ chủ động bấm
+  const now = new Date().toISOString();
+  unread.forEach((r) => { r.readAt = now; });
+  notify();
 }
 
 // ------------------------------------------------------------

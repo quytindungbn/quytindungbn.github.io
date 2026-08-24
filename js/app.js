@@ -14,7 +14,6 @@ import * as Account from './views/account.js';
 import * as ChangePasswordSelf from './views/changePasswordSelf.js';
 import * as AdminOverview from './views/admin/overview.js';
 import * as AdminCustomers from './views/admin/customers.js';
-import * as AdminRequests from './views/admin/requests.js';
 import * as AdminSettings from './views/admin/settings.js';
 import * as AdminStaff from './views/admin/staff.js';
 import * as AdminZaloOA from './views/admin/zaloOA.js';
@@ -30,11 +29,15 @@ const customerRoutes = [
 const adminRoutes = [
   { re: /^#\/admin$/, view: AdminOverview },
   { re: /^#\/admin\/khach-hang$/, view: AdminCustomers },
-  { re: /^#\/admin\/yeu-cau$/, view: AdminRequests },
+  // "Hỗ trợ" GỘP "Yêu cầu tư vấn" + chat thành 1 trang (2 tab bên trong, xem
+  // js/views/admin/support.js) — luôn mở được cho MỌI quản trị viên (không
+  // riêng canManageUsers, giữ đúng phạm vi cũ của "Yêu cầu tư vấn"); tab con
+  // "Hỗ trợ" (chat) bên trong trang tự ẩn/hiện theo quyền, không cần chặn ở
+  // cấp route.
+  { re: /^#\/admin\/ho-tro$/, view: AdminSupport },
   { re: /^#\/admin\/cai-dat$/, view: AdminSettings, superOnly: true },
   { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, requiresManageZaloOA: true },
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
-  { re: /^#\/admin\/ho-tro$/, view: AdminSupport, requiresManageUsers: true },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];
 
@@ -89,7 +92,6 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
     // bộ lọc/kết quả tìm kiếm của người trước.
     AdminCustomers.resetFilters?.();
     AdminZaloOA.resetFilters?.();
-    AdminRequests.resetFilters?.();
     AdminSupport.resetFilters?.();
     lastSessionKey = curSessionKey;
     dataOnly = false;

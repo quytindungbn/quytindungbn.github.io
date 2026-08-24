@@ -15,17 +15,18 @@ export const CUSTOMER_NAV = [
 export const ADMIN_NAV = [
   { path: '#/admin', label: 'Tổng quan', shortLabel: 'Tổng quan', icon: 'chart' },
   { path: '#/admin/khach-hang', label: 'Khách hàng & Hợp đồng', shortLabel: 'Khách hàng', icon: 'users' },
-  { path: '#/admin/yeu-cau', label: 'Yêu cầu tư vấn', shortLabel: 'Yêu cầu', icon: 'clipboard' },
+  // "Hỗ trợ" GỘP 2 mục cũ ("Yêu cầu tư vấn" + "Hỗ trợ" chat) thành 1, hiện
+  // dưới dạng 2 tab trong CÙNG trang (xem js/views/admin/support.js) — luôn
+  // hiện cho MỌI quản trị viên (không riêng gì canManageUsers, giữ đúng
+  // phạm vi cũ của "Yêu cầu tư vấn"); tab con "Hỗ trợ" (chat) bên trong mới
+  // cần canManageUsers, tự ẩn/hiện ngay trong trang đó.
+  { path: '#/admin/ho-tro', label: 'Hỗ trợ', shortLabel: 'Hỗ trợ', icon: 'message' },
 ];
 // "Quản lý User" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được
 // cấp riêng cờ canManageUsers (xem js/views/admin/staff.js) — không còn
 // bó cứng "chỉ toàn quyền" như "Cài đặt" nữa.
 export const ADMIN_NAV_MANAGE_USERS = [
   { path: '#/admin/nhan-vien', label: 'Quản lý User', shortLabel: 'User', icon: 'idCard' },
-  // "Hỗ trợ" (chat với khách hàng) đi CHUNG quyền với "Quản lý User" — quản
-  // trị viên toàn quyền hoặc nhân viên được cấp canManageUsers, xem
-  // docs/supabase-migration.md mục 10.24.
-  { path: '#/admin/ho-tro', label: 'Hỗ trợ', shortLabel: 'Hỗ trợ', icon: 'message' },
 ];
 // "Quản lý OA" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được cấp
 // riêng cờ canManageZaloOA (xem js/state.js) — y hệt kiểu ADMIN_NAV_MANAGE_USERS.
@@ -137,15 +138,23 @@ export function renderSidebarProfile() {
 }
 
 /**
- * Chấm đỏ số tin nhắn hỗ trợ (chat) chưa đọc — CHỈ gắn cho đúng mục "Hỗ trợ"
- * (path #/admin/ho-tro), đọc trực tiếp state.chatUnreadCount (đã tải kèm lúc
- * loadAdminSessionData()/refreshSessionData(), xem js/state.js). Dùng chung
- * cho cả sidebar, bảng "Thêm" (mobile) — xem renderSidebarNav/openMoreSheet.
+ * Tổng số CHƯA ĐỌC gộp chung của mục "Hỗ trợ" (GỘP 2 tab "Tư vấn" + "Hỗ trợ"
+ * chat, xem js/views/admin/support.js) — chat + yêu cầu tư vấn cộng lại,
+ * đọc trực tiếp state.chatUnreadCount/state.requests (đã tải kèm lúc
+ * loadAdminSessionData()/refreshSessionData(), xem js/state.js), KHÔNG gọi
+ * mạng riêng gì thêm ở đây.
  */
-function unreadBadgeHtml(path) {
+function totalSupportUnread() {
+  const session = S.getSession();
+  if (!session || session.role !== 'admin') return 0;
+  return (S.getState()?.chatUnreadCount || 0) + S.countUnreadRequests(session.id);
+}
+
+/** Chấm đỏ gắn cho đúng mục "Hỗ trợ" (path #/admin/ho-tro) — dùng chung cho sidebar, bảng "Thêm" (mobile), xem renderSidebarNav/openMoreSheet. `cls` khác nhau tùy vị trí đặt (xem CSS .nav-badge/.bottom-nav-badge). */
+function unreadBadgeHtml(path, cls = 'nav-badge') {
   if (path !== '#/admin/ho-tro') return '';
-  const unread = S.getState()?.chatUnreadCount || 0;
-  return unread ? `<span class="nav-badge">${unread > 99 ? '99+' : unread}</span>` : '';
+  const unread = totalSupportUnread();
+  return unread ? `<span class="${cls}">${unread > 99 ? '99+' : unread}</span>` : '';
 }
 
 function renderSidebarNav(nav) {
@@ -160,7 +169,7 @@ function renderBottomNav(nav) {
   const direct = nav.slice(0, BOTTOM_NAV_MAX_DIRECT);
   const overflow = [...nav.slice(BOTTOM_NAV_MAX_DIRECT), CHANGE_PW_ITEM];
   // Luôn còn ít nhất "Đổi mật khẩu" trong "Thêm" nên nút Thêm luôn hiện trên mobile.
-  el.innerHTML = direct.map((item) => `<a href="${item.path}" data-path="${item.path}">${icon(item.icon)}<span>${item.shortLabel || item.label}</span></a>`).join('')
+  el.innerHTML = direct.map((item) => `<a href="${item.path}" data-path="${item.path}">${icon(item.icon)}<span>${item.shortLabel || item.label}</span>${unreadBadgeHtml(item.path, 'bottom-nav-badge')}</a>`).join('')
     + `<button class="more-btn" id="btn-more-bottom">${icon('more')}<span>Thêm</span></button>`;
   const moreBtn = document.getElementById('btn-more-bottom');
   if (moreBtn) moreBtn.addEventListener('click', () => openMoreSheet(overflow));
@@ -257,13 +266,17 @@ export function renderChatFab(session) {
  * liệu mới nhất — chỉ SỬA lại đúng span đã có sẵn, không vẽ lại cả mục menu.
  */
 export function renderSupportNavBadge() {
-  const a = document.querySelector('.sidebar-nav a[data-path="#/admin/ho-tro"]');
-  if (!a) return; // không có quyền "Hỗ trợ" hoặc chưa dựng sidebar (VD: đang ở màn đăng nhập)
-  let badge = a.querySelector('.nav-badge');
-  const unread = S.getState()?.chatUnreadCount || 0;
-  if (!unread) { if (badge) badge.remove(); return; }
-  if (!badge) { badge = document.createElement('span'); badge.className = 'nav-badge'; a.appendChild(badge); }
-  badge.textContent = unread > 99 ? '99+' : String(unread);
+  const unread = totalSupportUnread();
+  // Cả sidebar (desktop) LẪN thanh dưới (mobile, "Hỗ trợ" giờ luôn đủ chỗ
+  // hiện trực tiếp — xem BOTTOM_NAV_MAX_DIRECT) đều có thể có mục này cùng
+  // lúc — cập nhật hết, mỗi nơi dùng đúng class riêng của nó.
+  document.querySelectorAll('a[data-path="#/admin/ho-tro"]').forEach((a) => {
+    const cls = a.closest('#bottom-nav') ? 'bottom-nav-badge' : 'nav-badge';
+    let badge = a.querySelector(`.${cls}`);
+    if (!unread) { if (badge) badge.remove(); return; }
+    if (!badge) { badge = document.createElement('span'); badge.className = cls; a.appendChild(badge); }
+    badge.textContent = unread > 99 ? '99+' : String(unread);
+  });
 }
 
 export function updateActiveNav(hash) {

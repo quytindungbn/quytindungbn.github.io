@@ -78,7 +78,7 @@ Trang hiện **số lượng Use / Quản trị viên đã tạo**, có **ô tì
 Nút **"Xóa Use"** ở màn chi tiết chỉ gỡ tài khoản đăng nhập, **không xóa hồ sơ/hợp đồng** của khách (2 thứ độc lập) — hợp đồng vẫn còn nguyên bên Khách hàng & Hợp đồng, admin có thể "Tạo User" lại bất cứ lúc nào.
 
 Quản trị viên chỉ xem (`staff`) đăng nhập sẽ:
-- Chỉ thấy khách hàng, hợp đồng, yêu cầu tư vấn thuộc Thôn/Xóm được gán (ở mọi trang: Tổng quan, Khách hàng & Hợp đồng, Yêu cầu tư vấn).
+- Chỉ thấy khách hàng, hợp đồng, yêu cầu tư vấn thuộc Thôn/Xóm được gán (ở mọi trang: Tổng quan, Khách hàng & Hợp đồng, Hỗ trợ).
 - Không thấy mục **Cài đặt** và **Quản lý User** (chỉ quản trị viên toàn quyền mới truy cập được, kể cả gõ thẳng địa chỉ cũng bị chuyển hướng ra ngoài).
 - Không sửa/xóa được khách hàng, hợp đồng — chỉ xem.
 - Danh sách khách hàng lọc thêm được theo Thôn/Xóm (**chọn được nhiều mục cùng lúc, kèm nút "Chọn tất cả"/"Bỏ chọn tất cả"**) và theo **Nợ quá hạn** / **Gần đến hạn** (chọn được cả 2 cùng lúc) để tra cứu nhanh.

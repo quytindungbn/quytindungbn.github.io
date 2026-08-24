@@ -206,6 +206,7 @@ svg { display: block; }
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 .bottom-nav a, .bottom-nav button.more-btn {
+  position: relative;
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px;
@@ -214,6 +215,12 @@ svg { display: block; }
   border: none; background: none; cursor: pointer;
 }
 .bottom-nav a.active, .bottom-nav button.more-btn.active { color: var(--color-primary); }
+.bottom-nav-badge {
+  position: absolute; top: 2px; left: calc(50% + 6px);
+  min-width: 15px; height: 15px; padding: 0 3px;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 9.5px; font-weight: 800; line-height: 15px; text-align: center;
+}
 
 /* ---------------- Cards / layout ---------------- */
 .card {
@@ -384,6 +391,12 @@ svg { display: block; }
   cursor: pointer;
 }
 .tabs button.active { background: var(--surface); color: var(--color-primary); box-shadow: var(--shadow-sm); }
+.tab-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 4px; margin-left: 5px;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 10px; font-weight: 800; vertical-align: middle;
+}
 
 .subtabs { display: flex; gap: 18px; border-bottom: 1px solid var(--border); padding: 0 2px; overflow-x: auto; }
 .subtabs button {
