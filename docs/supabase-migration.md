@@ -1701,6 +1701,23 @@ khi push `main` (thường vài phút), rồi tải lại trang để thấy tha
 
 ---
 
+### 10.27b. Sửa 2 thiếu sót của mục 10.27: sắp xếp theo số ngày + "Quản lý OA" chưa thật sự hiện trên thanh menu điện thoại (KHÔNG cần chạy SQL)
+
+1. **Danh sách "Nợ quá hạn"/"Gần đến hạn" (trang Khách hàng & Hợp đồng) giờ tự sắp theo số ngày tăng dần
+   (0, 1, 2, 3...)** — đúng số ngày đáng chú ý nhất của từng khách hàng — khi đang chọn đúng 1 trong 2
+   bộ lọc đó (thay hẳn cho lựa chọn ở nút "Sắp xếp" trong lúc đó, vì Gốc/Lãi không còn ý nghĩa ưu tiên
+   bằng số ngày khi đang xem đúng 1 nhóm cần chú ý này).
+2. **"Quản lý OA" nay THẬT SỰ hiện trực tiếp trên thanh menu dưới điện thoại** — mục 10.27 mới dời được
+   vị trí trong danh sách menu (ảnh hưởng sidebar máy tính + bảng "Thêm"), nhưng thanh menu dưới điện
+   thoại vẫn giới hạn cứng đúng 3 mục đầu tiên nên chưa thấy gì đổi — đã nâng giới hạn đó lên 4 mục, tài
+   khoản có quyền xem OA giờ thấy đủ 4 icon trực tiếp (Tổng quan/Khách hàng/Hỗ trợ/Quản lý OA) thay vì
+   phải mở "Thêm". Tài khoản không có quyền OA không bị ảnh hưởng gì (vẫn đúng 3 mục như cũ).
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy gì — chỉ cần đợi GitHub Pages deploy xong rồi tải lại
+trang (trên điện thoại có thể cần đóng hẳn app/xóa cache trình duyệt nếu vẫn thấy giao diện cũ).
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

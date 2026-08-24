@@ -183,24 +183,41 @@ export function render(contentEl, filterEl) {
       const q = query.trim().toLowerCase();
       list = list.filter((c) => c.name.toLowerCase().includes(q) || c.cccd.includes(q) || (c.phone || '').includes(q));
     }
-    // Gộp sẵn hợp đồng + tổng gốc (= dư nợ hiện tại)/lãi từng khách hàng — dùng để hiển thị & sắp xếp.
-    // Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào danh sách hiển thị nữa — bỏ hẳn ngay từ đây.
+    // Gộp sẵn hợp đồng + tổng gốc (= dư nợ hiện tại)/lãi + mức "đáng chú ý
+    // nhất" (quá hạn/gần đến hạn bao nhiêu ngày) từng khách hàng — dùng để
+    // hiển thị & sắp xếp. Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào
+    // danh sách hiển thị nữa — bỏ hẳn ngay từ đây.
     let enriched = list.map((c) => {
       const contracts = S.listContractsByCustomer(c.id).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
       const totalBalance = contracts.reduce((s, ct) => s + (ct.balance || 0), 0);
       const totalInterest = contracts.reduce((s, ct) => s + S.accruedInterest(ct), 0);
-      return { c, contracts, totalBalance, totalInterest };
+      const overdueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'qua_han');
+      // Ngưỡng RỘNG 45 ngày (khớp popup "Gần đến hạn" ở Tổng quan) — không
+      // phải đúng 15 ngày "chính thức" của contractUrgency() nữa.
+      const nearDueContracts = contracts.filter((ct) => !overdueContracts.includes(ct) && isWideNearDue(ct));
+      const hasOverdue = overdueContracts.length > 0;
+      const hasNearDue = !hasOverdue && nearDueContracts.length > 0;
+      // Hợp đồng quá hạn/gần đến hạn NHIỀU ngày nhất (đáng chú ý nhất) — hiện kèm số ngày cho dễ nhìn ngay từ danh sách.
+      const mostOverdueDays = hasOverdue ? Math.max(...overdueContracts.map((ct) => Math.abs(daysUntil(ct.dueDate)))) : 0;
+      const mostNearDueDays = hasNearDue ? Math.min(...nearDueContracts.map((ct) => daysUntil(ct.dueDate))) : 0;
+      return { c, contracts, totalBalance, totalInterest, hasOverdue, hasNearDue, mostOverdueDays, mostNearDueDays };
     });
     // Khách không còn dư nợ nào (hết hợp đồng, hoặc file mới nhất không còn
     // họ nữa nên hợp đồng đã bị full-sync xóa) thì KHÔNG hiển thị ở đây nữa
     // — dù hồ sơ/tài khoản Use của họ vẫn được giữ (xem Quản lý User), chỉ
     // là không còn hiện trong danh sách khách hàng đang vay này.
     enriched = enriched.filter((e) => e.totalBalance > 0);
-    if (urgencyFilter === 'qua_han') enriched = enriched.filter((e) => e.contracts.some((ct) => S.contractUrgency(ct) === 'qua_han'));
+    if (urgencyFilter === 'qua_han') enriched = enriched.filter((e) => e.hasOverdue);
     // "Gần đến hạn" dùng ngưỡng RỘNG 45 ngày (isWideNearDue), không phải
     // đúng 15 ngày của contractUrgency() — xem giải thích ở WIDE_NEAR_DUE_DAYS.
-    else if (urgencyFilter === 'gan_den_han') enriched = enriched.filter((e) => e.contracts.some((ct) => isWideNearDue(ct)));
-    if (sortMode !== 'default') {
+    else if (urgencyFilter === 'gan_den_han') enriched = enriched.filter((e) => e.hasNearDue);
+    // Đang lọc theo "Nợ quá hạn"/"Gần đến hạn" thì tự sắp theo SỐ NGÀY tăng
+    // dần (0, 1, 2, 3...) — đúng số ngày đáng chú ý nhất của từng khách hàng
+    // — thay hẳn cho lựa chọn ở nút "Sắp xếp" (Gốc/Lãi không còn ý nghĩa ưu
+    // tiên bằng số ngày khi đang xem đúng 1 nhóm cần chú ý này).
+    if (urgencyFilter === 'qua_han') enriched.sort((a, b) => a.mostOverdueDays - b.mostOverdueDays);
+    else if (urgencyFilter === 'gan_den_han') enriched.sort((a, b) => a.mostNearDueDays - b.mostNearDueDays);
+    else if (sortMode !== 'default') {
       const [field, dir] = sortMode.split('-');
       const key = field === 'principal' ? 'totalBalance' : 'totalInterest';
       enriched.sort((a, b) => (dir === 'asc' ? a[key] - b[key] : b[key] - a[key]));
@@ -210,16 +227,7 @@ export function render(contentEl, filterEl) {
 
     contentEl.innerHTML = `
       <div class="text-sm text-muted mb-8">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <b style="color:var(--color-primary)">${formatVND(totalAmount)}</b></div>
-      ${enriched.length ? enriched.map(({ c, contracts }) => {
-        const overdueContracts = contracts.filter((ct) => S.contractUrgency(ct) === 'qua_han');
-        // Ngưỡng RỘNG 45 ngày (khớp popup "Gần đến hạn" ở Tổng quan) — không
-        // phải đúng 15 ngày "chính thức" của contractUrgency() nữa.
-        const nearDueContracts = contracts.filter((ct) => !overdueContracts.includes(ct) && isWideNearDue(ct));
-        const hasOverdue = overdueContracts.length > 0;
-        const hasNearDue = !hasOverdue && nearDueContracts.length > 0;
-        // Hợp đồng quá hạn/gần đến hạn NHIỀU ngày nhất (đáng chú ý nhất) — hiện kèm số ngày cho dễ nhìn ngay từ danh sách.
-        const mostOverdueDays = hasOverdue ? Math.max(...overdueContracts.map((ct) => Math.abs(daysUntil(ct.dueDate)))) : 0;
-        const mostNearDueDays = hasNearDue ? Math.min(...nearDueContracts.map((ct) => daysUntil(ct.dueDate))) : 0;
+      ${enriched.length ? enriched.map(({ c, contracts, hasOverdue, hasNearDue, mostOverdueDays, mostNearDueDays }) => {
         // Trong đúng NEAR_DUE_DAYS (15 ngày) mới tô khung vàng cảnh báo như cũ
         // — xa hơn (tới 45 ngày) chỉ hiện chữ nhỏ bình thường, y hệt cách
         // popup "Gần đến hạn" ở Tổng quan đang làm (xem openContractListModal

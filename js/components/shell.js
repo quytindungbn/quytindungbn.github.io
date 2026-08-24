@@ -38,7 +38,12 @@ export const ADMIN_NAV_SUPER_ONLY = [
 ];
 // Số mục tối đa hiện trực tiếp trên thanh menu dưới (mobile) — còn lại gộp vào "Thêm"
 // để không bị lệch/chồng chữ khi có nhiều mục (đặc biệt tài khoản quản trị toàn quyền).
-const BOTTOM_NAV_MAX_DIRECT = 3;
+// Nâng từ 3 lên 4 để "Quản lý OA" (nếu có quyền) cũng hiện TRỰC TIẾP ở đây —
+// trước đó dù đã dời lên đứng cùng nhóm 3 mục chính trong buildShell(), thanh
+// menu dưới vẫn chỉ lấy đúng 3 mục đầu (chưa tới lượt OA) nên không thấy gì
+// đổi trên điện thoại. Tài khoản không có quyền OA thì nav chỉ có 3 mục như
+// cũ, không bị ảnh hưởng gì (slice(0,4) trên mảng 3 phần tử vẫn ra đủ 3).
+const BOTTOM_NAV_MAX_DIRECT = 4;
 
 function matchPath(navPath, current) {
   if (navPath === '#/') return current === '#/' || current === '' || current === '#';
