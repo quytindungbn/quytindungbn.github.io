@@ -51,6 +51,7 @@ const PATHS = {
   paperclip: '<path d="M8 12.5 15 5.5a3 3 0 0 1 4.2 4.2L11 18a5 5 0 0 1-7-7l7.5-7.5"/>',
   key: '<circle cx="7.5" cy="15.5" r="3.5"/><path d="m10 13 8.5-8.5"/><path d="m16 7 2 2M13 10l2 2"/>',
   message: '<path d="M4 5h16v11H8l-4 4V5Z"/><path d="M8 9h8M8 12h5"/>',
+  send: '<path d="m3 20 18-8L3 4v6l13 2-13 2v6Z"/>',
   sort: '<path d="M6 4v16M6 4 3 7M6 4l3 3"/><path d="M18 20V4M18 20l-3-3M18 20l3-3"/>',
 };
 

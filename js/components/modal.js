@@ -64,7 +64,11 @@ export function closeAllModals() {
 
 /**
  * Mở một modal/bottom-sheet.
- * opts: { title, bodyHtml, footHtml, onMount(root), onClose }
+ * opts: { title, bodyHtml, footHtml, onMount(root), onClose, sheetClass }
+ * sheetClass (tùy chọn) — thêm class riêng vào .modal-sheet, dùng khi 1 khung
+ * cần kích thước/bố cục khác mặc định (VD: khung chat cần cao gần hết màn
+ * hình trên điện thoại thay vì co theo nội dung như modal thường, xem
+ * .chat-modal-sheet trong css/styles.css).
  * Trả về hàm close() — LUÔN gọi được không tham số (kể cả khi gán thẳng làm
  * event handler, VD: `btn.addEventListener('click', closeFn)` — cách dùng
  * phổ biến khắp nơi trong dự án — Event truyền vào bị bỏ qua, không ảnh
@@ -74,7 +78,7 @@ export function openModal(opts) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-sheet ${opts.sheetClass || ''}" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h3>${opts.title || ''}</h3>
         <button class="icon-btn" data-close>${icon('x')}</button>
