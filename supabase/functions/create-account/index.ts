@@ -68,6 +68,7 @@
 //       xem cho 1 tài khoản đã có sẵn (giữ lại ít nhất 1 toàn quyền)
 //     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom?, canManageUsers? }
 //     { type: 'reset-staff-password', staffId, password? }
+//     { type: 'force-logout-staff', staffId } — đăng xuất ngay, KHÔNG cấp lại mật khẩu
 //     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom?, canManageUsers?, canManageZaloOA? }
 //     { type: 'delete-staff', staffId }
 //   - role='super' HOẶC nhân viên "chỉ xem" được cấp cờ canManageUsers=true
@@ -845,7 +846,7 @@ Deno.serve(async (req) => {
   // chỉ được quản lý Use khách hàng, không được quản lý Use Quản trị viên.
   const SUPER_ONLY_TYPES = [
     'update-customer-profile', 'delete-contract', 'import', 'update-staff-role',
-    'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff',
+    'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff', 'force-logout-staff',
   ];
   if (SUPER_ONLY_TYPES.includes(body.type) && !isSuper) {
     return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
@@ -998,6 +999,16 @@ Deno.serve(async (req) => {
     const contractId = String(body.contractId || '').trim();
     if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
     const { error } = await admin.from('contracts').delete().eq('id', contractId);
+    if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    return json({ ok: true });
+  }
+
+  // Đăng xuất quản trị viên/nhân viên ngay (KHÔNG cấp lại mật khẩu) — cùng cơ
+  // chế với force-logout-customer ở trên (xem ghi chú tại đó).
+  if (body.type === 'force-logout-staff') {
+    const staffId = String(body.staffId || '').trim();
+    if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
+    const { error } = await admin.from('admins').update({ force_logout_at: new Date().toISOString() }).eq('id', staffId);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     return json({ ok: true });
   }

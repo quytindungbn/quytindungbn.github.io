@@ -1463,26 +1463,38 @@ mới dữ liệu) — tự "bung ra" đăng xuất y hệt, không cần tải 
 admin bấm "Đăng xuất" chỉ ghi lại đúng thời điểm bấm vào cột này, phiên đang mở của use đó phát hiện mốc
 thời gian vừa đổi khác lần trước đã biết thì tự đăng xuất.
 
-**Phạm vi CHỈ áp dụng cho Use (khách hàng)**, đúng như yêu cầu — KHÔNG có ở tài khoản Quản trị viên/nhân
-viên:
-- Nút chỉ hiện ở **chi tiết khách hàng mở TỪ "Quản lý User"** (`context === 'use'`) — không hiện khi mở
-  từ "Khách hàng & Hợp đồng".
-- Nút chỉ hiện khi Use đó **đang đăng nhập** (`S.hasCustomerLoggedIn(c)`, đúng cờ dùng cho 2 chấm trạng
-  thái/ô thống kê "Use đã đăng nhập" có sẵn) — Use chưa từng đăng nhập/đã đăng xuất từ trước thì ẩn nút
-  này (không có gì để đăng xuất).
-- Quyền hạn: quản trị viên toàn quyền HOẶC nhân viên có quyền "Quản lý User" đều bấm được (giống hệt
-  "Cấp lại mật khẩu" cho khách hàng).
+**Phạm vi**: cho CẢ khách hàng (Use) lẫn quản trị viên/nhân viên, quyền hạn giống hệt "Cấp lại mật khẩu"
+tương ứng của từng loại:
+- **Use (khách hàng)**: nút chỉ hiện ở chi tiết khách hàng mở TỪ "Quản lý User" (`context === 'use'`) —
+  không hiện khi mở từ "Khách hàng & Hợp đồng"; và CHỈ hiện khi Use đó **đang đăng nhập**
+  (`S.hasCustomerLoggedIn(c)`, đúng cờ dùng cho 2 chấm trạng thái/ô thống kê "Use đã đăng nhập" có sẵn) —
+  chưa từng đăng nhập/đã đăng xuất từ trước thì ẩn nút (không có gì để đăng xuất). Quyền: toàn quyền HOẶC
+  nhân viên có quyền "Quản lý User".
+- **Quản trị viên/nhân viên**: nút hiện ở chi tiết 1 tài khoản Quản trị viên/nhân viên KHÁC (không tự
+  đăng xuất chính mình) — bảng `admins` KHÔNG có cờ "đang đăng nhập" như `customers` nên nút LUÔN hiện
+  (không lọc theo trạng thái online). Quyền: CHỈ quản trị viên toàn quyền (khớp đúng quyền của "Cấp lại
+  mật khẩu" cho quản trị viên/nhân viên).
 
 ```sql
+alter table admins add column if not exists force_logout_at timestamptz;
 alter table customers add column if not exists force_logout_at timestamptz;
 ```
 
 **Việc cần bạn làm**:
 1. Chạy SQL trên (SQL Editor).
 2. Deploy lại **`create-account`** (file duy nhất có sửa lần này).
-3. Tự test lại: khách đăng nhập ở máy B (điện thoại/máy tính khách), ở máy A vào "Quản lý User" → chọn
-   đúng khách đó (nút chỉ hiện khi đang có chấm "đã đăng nhập") → bấm "Đăng xuất" — máy B phải tự thoát
-   ra khi chuyển tab/bấm sang trang khác (đúng như cơ chế mục 10.22).
+3. Tự test lại cho cả 2 loại tài khoản (đăng nhập ở máy B, thao tác ở máy A, chuyển tab/bấm sang trang
+   khác ở máy B để thấy tự đăng xuất — đúng như cơ chế mục 10.22).
+
+---
+
+### 10.23b. Sửa lỗi "báo thiếu hoặc sai type" khi đăng xuất quản trị viên/nhân viên
+
+Ở lần sửa trước (10.23) đã gỡ nhầm hẳn tính năng "Đăng xuất" khỏi tài khoản Quản trị viên/nhân viên (hiểu
+lầm "Use" chỉ có nghĩa khách hàng) — bấm đăng xuất 1 tài khoản Quản trị viên/nhân viên báo lỗi "thiếu
+hoặc sai type" vì nút vẫn còn ở giao diện cũ nhưng server đã bỏ hẳn `type: 'force-logout-staff'`. Đã khôi
+phục lại đầy đủ cho cả 2 loại tài khoản như mô tả ở mục 10.23 — nếu bạn đã chạy SQL/deploy Edge Function
+ở lần 10.23 trước, chạy lại đúng 2 dòng SQL + deploy lại `create-account` 1 lần nữa cho chắc.
 
 ---
 

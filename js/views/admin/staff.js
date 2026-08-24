@@ -321,8 +321,9 @@ function openAdminDetail(admin, tree, contentEl) {
       ${isSelf ? `<p class="field-hint">Không thể tự đổi vai trò của chính mình đang đăng nhập.</p>` : ''}`}
       <div id="perm-section">${adminPermissionSectionHtml({ ...admin, role: pendingRole }, tree, isSelf)}</div>
       ${canShowSaveBtn ? `<button class="btn btn-primary btn-block mt-16" id="btn-save-perm">Lưu quyền</button>` : ''}
-      <div class="flex gap-8 mt-16">
+      <div class="flex gap-8 mt-16 flex-wrap">
         <button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>
+        ${!isSelf ? `<button class="btn btn-outline btn-sm" id="btn-force-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>` : ''}
         ${!isSelf ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-admin">${icon('trash', 'icon-sm')} Xóa</button>` : ''}
       </div>
       ${isSelf ? `<p class="field-hint mt-8">Không thể tự xóa tài khoản đang đăng nhập.</p>` : ''}
@@ -382,6 +383,18 @@ function openAdminDetail(admin, tree, contentEl) {
             const temp = await S.resetStaffPassword(admin.id, val);
             closeFn();
             showCredential('Đã cấp lại mật khẩu', admin.username, temp);
+          },
+        });
+      });
+      const forceLogoutBtn = sheet.querySelector('#btn-force-logout');
+      if (forceLogoutBtn) forceLogoutBtn.addEventListener('click', () => {
+        confirmDialog({
+          title: 'Đăng xuất tài khoản này?',
+          message: `"${admin.name}" (@${admin.username}) sẽ bị đăng xuất khỏi mọi nơi đang đăng nhập, không cần đổi mật khẩu.`,
+          confirmLabel: 'Đăng xuất',
+          onConfirm: async () => {
+            try { await S.forceLogoutStaff(admin.id); toast('Đã đăng xuất tài khoản này', 'success'); closeFn(); }
+            catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
           },
         });
       });
