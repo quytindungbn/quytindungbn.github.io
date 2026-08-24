@@ -10,7 +10,7 @@
 // thị TẠM lúc app chưa kết nối được mạng, không phải nguồn sự thật nữa.
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween } from './utils.js';
-import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
+import { getSupabaseClient, getRealtimeClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
 
 export const STORAGE_KEY = 'qtd_demo_v3';
 
@@ -90,6 +90,12 @@ export async function init() {
   // orgs cho phép SELECT công khai (không nhạy cảm — banner + số tài khoản
   // ngân hàng vốn phải công khai để khách chuyển khoản), chỉ cần anon key.
   await loadOrgPublic();
+  // Phiên đăng nhập cũ khôi phục từ localStorage (tải lại trang/mở lại app)
+  // KHÔNG đi qua setSession() nên phải tự bật lắng nghe thời gian thực ở đây
+  // — để "tự đăng xuất ngay khi bị cấp lại mật khẩu ở nơi khác" cũng hoạt
+  // động đúng cho phiên đã đăng nhập từ trước, không chỉ phiên vừa đăng nhập
+  // mới trong đúng lượt mở app này.
+  if (state.session) subscribeForceLogout(state.session.role, state.session.id, state.session.sbToken);
   persist();
 }
 
@@ -1182,7 +1188,45 @@ function mapRequestRow(row) {
 // Session (đăng nhập hiện tại)
 // ------------------------------------------------------------
 export function getSession() { return state.session; }
-export function setSession(session) { state.session = session; notify(); }
+export function setSession(session) {
+  state.session = session;
+  if (session) subscribeForceLogout(session.role, session.id, session.sbToken);
+  else unsubscribeForceLogout();
+  notify();
+}
+
+// ------------------------------------------------------------
+// "Bị cấp lại mật khẩu ở nơi khác thì tự đăng xuất NGAY" — lắng nghe thời
+// gian thực (Supabase Realtime, WebSocket) đúng dòng admins/customers của
+// CHÍNH phiên đang mở ở đây. Trước đây admin cấp lại mật khẩu cho ai đó chỉ
+// đổi được cột must_change_password trên server — nếu người đó ĐANG mở sẵn
+// phiên đăng nhập ở máy khác thì phiên cũ đó vẫn dùng được bình thường cho
+// tới khi tự tải lại trang mới thấy bị bắt đổi mật khẩu. Giờ hễ dòng của
+// mình đổi VÀ must_change_password=true (đúng lúc BỊ NGƯỜI KHÁC cấp lại —
+// tự đổi mật khẩu của chính mình luôn set cờ này về false nên không đụng
+// nhánh này) thì ĐĂNG XUẤT NGAY, không cần đợi tải lại trang.
+// ------------------------------------------------------------
+let forceLogoutChannel = null;
+function subscribeForceLogout(role, rowId, jwt) {
+  unsubscribeForceLogout();
+  if (!rowId || !jwt) return;
+  const table = role === 'customer' ? 'customers' : 'admins';
+  try {
+    const sb = getRealtimeClient(jwt);
+    forceLogoutChannel = sb
+      .channel(`force-logout-${table}-${rowId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter: `id=eq.${rowId}` }, (payload) => {
+        if (payload.new?.must_change_password) logout();
+      })
+      .subscribe();
+  } catch (e) {
+    console.warn('Không lắng nghe được thời gian thực (đăng xuất tự động khi bị cấp lại mật khẩu sẽ không hoạt động, không ảnh hưởng gì khác).', e);
+  }
+}
+function unsubscribeForceLogout() {
+  if (forceLogoutChannel) { forceLogoutChannel.unsubscribe(); forceLogoutChannel = null; }
+}
+
 /**
  * Đăng xuất — với khách hàng, báo luôn cho server biết để tắt cờ is_online
  * NGAY (dùng cho chấm "đã đăng nhập" ở trang admin) — bắn đi KHÔNG chờ kết
@@ -1195,6 +1239,7 @@ export function logout() {
   if (session && session.role === 'customer') {
     callCreateAccountFunction(session.sbToken, { type: 'customer-logout' }).catch(() => {});
   }
+  unsubscribeForceLogout();
   state.session = null;
   notify();
 }

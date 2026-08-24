@@ -1407,6 +1407,36 @@ Webhook URL, tránh làm gián đoạn phần mềm đang dùng thật.
 
 ---
 
+### 10.22. Cấp lại mật khẩu cho use → TỰ ĐĂNG XUẤT NGAY phiên cũ (không cần tải lại trang) (BẮT BUỘC chạy SQL)
+
+Trước đây admin cấp lại mật khẩu cho ai đó (nhân viên/khách hàng) chỉ đổi được mật khẩu ở server — nếu
+người đó ĐANG mở sẵn phiên đăng nhập cũ ở máy khác thì phiên đó vẫn dùng bình thường, chỉ khi nào họ tự
+tải lại trang mới bị bắt đặt mật khẩu mới. Giờ dùng **Supabase Realtime** (lắng nghe thay đổi tức thì qua
+WebSocket) — hễ đúng dòng của mình (bảng `admins`/`customers`) bị đổi VÀ `must_change_password=true`
+(đúng lúc BỊ NGƯỜI KHÁC cấp lại — tự đổi mật khẩu của chính mình luôn set cờ này về `false` nên không bị
+đăng xuất oan) thì **đăng xuất ngay lập tức, không cần tải lại trang** — về thẳng màn đăng nhập, phải
+đăng nhập lại bằng mật khẩu mới (không còn màn "nhập mật khẩu mới" ngay trong phiên cũ nữa).
+
+```sql
+alter publication supabase_realtime add table admins, customers;
+```
+
+Nếu SQL trên báo lỗi kiểu "already member of publication" — nghĩa là 2 bảng này đã được bật Realtime từ
+trước rồi, bỏ qua, không cần làm gì thêm.
+
+**Lưu ý**: đây là tính năng dùng đúng cơ chế chính thức của Supabase (Realtime + JWT tùy biến qua
+`accessToken` callback, không phải dịch vụ ngoài như VietQR/Zalo ở các mục trước) — độ tin cậy cao hơn
+hẳn, nhưng vẫn nên **tự test lại 1 lần**: mở 2 trình duyệt/2 máy, đăng nhập cùng 1 tài khoản nhân viên ở
+cả 2 nơi, rồi ở máy A (tài khoản `super`) vào "Quản lý User" cấp lại mật khẩu cho đúng tài khoản đó — máy
+B phải tự bật về màn đăng nhập ngay, không cần bấm gì/tải lại trang.
+
+**Việc cần bạn làm**:
+1. Chạy SQL trên (SQL Editor).
+2. KHÔNG cần deploy Edge Function nào — chỉ sửa file JS tĩnh, GitHub Pages tự deploy khi push `main`.
+3. Tự test lại theo hướng dẫn ở trên (2 trình duyệt/2 máy) để xác nhận hoạt động đúng.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
