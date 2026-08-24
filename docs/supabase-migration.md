@@ -1718,6 +1718,23 @@ trang (trên điện thoại có thể cần đóng hẳn app/xóa cache trình 
 
 ---
 
+### 10.28. Ngưỡng đổi mẫu "Đến hạn" của 2 mục "Gửi tin tự động" (Tầng 2) đổi từ 10 → 15 ngày, khớp với gửi tay (BẮT BUỘC deploy lại `send-due-reminders`)
+
+Trước đây "Báo lãi tự động hàng tháng" và "Gửi theo ngày cụ thể" (Tầng 2) tự chuyển sang mẫu "Đến hạn/
+Quá hạn" khi hợp đồng còn ≤ **10 ngày** nữa tới hạn (mục 10.14) — CỐ TÌNH khác với ngưỡng **15 ngày** của
+nút gửi tay (mục create-account). Theo yêu cầu, đổi ngưỡng của 2 mục Tầng 2 này thành **15 ngày**, khớp
+đúng ngưỡng gửi tay — hợp đồng còn ≤ 15 ngày là tự động dùng mẫu "Đến hạn/Quá hạn" (gồm cả gốc lẫn lãi)
+thay vì tiếp tục dùng mẫu "Báo lãi" (chỉ lãi), dù đang tới lượt gửi tự động hàng tháng hay theo ngày cụ
+thể đã chọn. Không đổi gì khác — lịch gửi (đúng ngày này tháng sau/ngày tự chọn, điều kiện > 20 ngày đã
+tính lãi cho "Gửi theo ngày cụ thể"...) và ngưỡng riêng của thông báo đẩy (Web Push, vẫn 10 ngày,
+`NEAR_DUE_START_DAYS`, không liên quan tới mẫu Zalo) giữ nguyên như cũ.
+
+**Việc cần bạn làm**: deploy lại **`send-due-reminders`** (file duy nhất có sửa lần này — `create-account`
+không đổi, không cần deploy lại) — Supabase Dashboard → Edge Functions → chọn `send-due-reminders` → dán
+đè toàn bộ nội dung file mới → Deploy. Không có SQL nào cần chạy thêm.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

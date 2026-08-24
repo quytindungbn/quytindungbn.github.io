@@ -34,10 +34,11 @@
 //     gửi nếu đã tính lãi > 20 ngày kể từ lần đóng gần nhất (mới đóng gần
 //     đây thì bỏ qua, dồn qua tháng sau).
 // CẢ 2 mục trên TỰ CHUYỂN sang mẫu "Đến hạn/Quá hạn" thay vì tiếp tục báo
-// lãi ngay khi hợp đồng đã GẦN/ĐÃ đến hạn (đúng NEAR_DUE_DAYS_ZALO = 10
-// ngày ở function này — báo trước khách 10 ngày theo yêu cầu, KHÁC với
-// ngưỡng 15 ngày riêng của nút gửi tay ở create-account) — không còn báo
-// lãi suông lúc sắp phải trả cả gốc lẫn lãi nữa. Riêng việc gửi tay VẪN
+// lãi ngay khi hợp đồng đã GẦN/ĐÃ đến hạn (đúng NEAR_DUE_DAYS_ZALO = 15
+// ngày ở function này — KHỚP ĐÚNG ngưỡng 15 ngày của nút gửi tay ở
+// create-account, theo yêu cầu đổi cho đồng nhất, trước đây từng cố tình để
+// 10 ngày riêng) — không còn báo lãi suông lúc sắp phải trả cả gốc lẫn lãi
+// nữa. Riêng việc gửi tay VẪN
 // không đổi: khách phải có sẵn trong Tầng 1 "Danh sách OA", giới hạn 5
 // ngày/lần cho mỗi hợp đồng.
 //
@@ -73,12 +74,12 @@ const ZALO_SECRET_KEY = Deno.env.get('ZALO_SECRET_KEY');
 const NEAR_DUE_START_DAYS = 10; // Bắt đầu nhắc "gần đến hạn/quá hạn" từ đúng X ngày trước hạn
 const NEAR_DUE_REPEAT_DAYS = 3; // ...rồi lặp lại mỗi X ngày, cả trước lẫn sau ngày đến hạn, tới khi tất toán
 const MONTHLY_REMINDER_OFFSETS = [0, 2]; // Lãi (nợ trong hạn): mỗi tháng nhắc đúng 2 LẦN — ngay ngày mốc (offset 0) và 2 ngày sau đó (offset 2), KHÔNG liên tục — nếu chưa đóng
-// Ngưỡng RIÊNG để 2 mục Tầng 2 (báo lãi hàng tháng/theo ngày) tự CHUYỂN
-// sang mẫu "Đến hạn/Quá hạn" thay vì tiếp tục báo lãi — báo trước khách
-// hàng đúng 10 ngày theo yêu cầu. LƯU Ý: KHÁC với NEAR_DUE_DAYS_ZALO=15
-// trong create-account/index.ts (ngưỡng riêng cho nút gửi tay tự chọn
-// mẫu) — 2 ngưỡng này cố tình để khác nhau, không phải gõ nhầm.
-const NEAR_DUE_DAYS_ZALO = 10;
+// Ngưỡng để 2 mục Tầng 2 (báo lãi hàng tháng/theo ngày) tự CHUYỂN sang mẫu
+// "Đến hạn/Quá hạn" thay vì tiếp tục báo lãi — GIỐNG HỆT NEAR_DUE_DAYS_ZALO
+// trong create-account/index.ts (ngưỡng của nút gửi tay tự chọn mẫu), theo
+// yêu cầu đổi cho đồng nhất giữa gửi tay và gửi tự động (trước đây 2 ngưỡng
+// này cố tình để khác nhau — 10 ở đây, 15 ở create-account — giờ gộp về 1).
+const NEAR_DUE_DAYS_ZALO = 15;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -347,7 +348,7 @@ function formatVNDZaloTemplate(n: number): string {
   return String(Math.round(n));
 }
 
-/** Cùng DẠNG với isNearOrPastDueZalo() trong create-account/index.ts nhưng dùng ngưỡng RIÊNG (10 ngày, xem NEAR_DUE_DAYS_ZALO ở trên) — true khi hợp đồng đã gần/tới/qua hạn. */
+/** Cùng DẠNG và CÙNG NGƯỠNG với isNearOrPastDueZalo() trong create-account/index.ts (15 ngày, xem NEAR_DUE_DAYS_ZALO ở trên) — true khi hợp đồng đã gần/tới/qua hạn. */
 function isNearOrPastDueZalo(contract: any, asOf: Date): boolean {
   const d = daysBetween(asOf, new Date(contract.due_date));
   return d <= NEAR_DUE_DAYS_ZALO;
