@@ -1407,33 +1407,42 @@ Webhook URL, tránh làm gián đoạn phần mềm đang dùng thật.
 
 ---
 
-### 10.22. Cấp lại mật khẩu cho use → TỰ ĐĂNG XUẤT NGAY phiên cũ (không cần tải lại trang) (BẮT BUỘC chạy SQL)
+### 10.22. Cấp lại mật khẩu cho use → TỰ ĐĂNG XUẤT NGAY phiên cũ (không cần tải lại trang)
 
 Trước đây admin cấp lại mật khẩu cho ai đó (nhân viên/khách hàng) chỉ đổi được mật khẩu ở server — nếu
 người đó ĐANG mở sẵn phiên đăng nhập cũ ở máy khác thì phiên đó vẫn dùng bình thường, chỉ khi nào họ tự
-tải lại trang mới bị bắt đặt mật khẩu mới. Giờ dùng **Supabase Realtime** (lắng nghe thay đổi tức thì qua
-WebSocket) — hễ đúng dòng của mình (bảng `admins`/`customers`) bị đổi VÀ `must_change_password=true`
-(đúng lúc BỊ NGƯỜI KHÁC cấp lại — tự đổi mật khẩu của chính mình luôn set cờ này về `false` nên không bị
-đăng xuất oan) thì **đăng xuất ngay lập tức, không cần tải lại trang** — về thẳng màn đăng nhập, phải
-đăng nhập lại bằng mật khẩu mới (không còn màn "nhập mật khẩu mới" ngay trong phiên cũ nữa).
+tải lại trang mới bị bắt đặt mật khẩu mới.
 
+**Lần đầu thử bằng Supabase Realtime (WebSocket)** — đã chạy SQL bật Realtime cho 2 bảng, test thực tế
+thì kênh kết nối được (`SUBSCRIBED`) nhưng KHÔNG nhận được bất kỳ sự kiện nào cả — nhiều khả năng do RLS
+chặn Realtime nhận diện đúng JWT tùy biến của app (khác REST bình thường, vốn đã hoạt động tốt), cần cấu
+hình thêm "Third-Party Auth" khá phức tạp trên Supabase Dashboard mà không chắc giải quyết được (đã bỏ,
+xem mục 10.22b để biết chi tiết SQL nào không còn cần thiết nữa).
+
+**Đã đổi sang cách chắc chắn hoạt động hơn**: tự hỏi lại máy chủ ĐỊNH KỲ (mỗi 20 giây, và mỗi khi quay
+lại tab đang ẩn) bằng đúng cách gọi API REST bình thường (không qua Realtime nữa) — nếu phát hiện đúng
+dòng của mình có `must_change_password=true` (đúng lúc BỊ NGƯỜI KHÁC cấp lại — tự đổi mật khẩu của chính
+mình luôn set cờ này về `false` nên không bị đăng xuất oan) thì **đăng xuất ngay, không cần tải lại
+trang** — về thẳng màn đăng nhập, phải đăng nhập lại bằng mật khẩu mới. Không "tức thì tuyệt đối" như
+Realtime (tối đa trễ ~20 giây, hoặc ngay khi quay lại tab) nhưng gần như tức thì trong thực tế sử dụng.
+Áp dụng cho CẢ quản trị viên/nhân viên lẫn khách hàng.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
+GitHub Pages tự deploy khi push `main`. Nhờ bạn test lại theo đúng cách trước (2 trình duyệt/2 máy, cấp
+lại mật khẩu ở máy A, đợi tối đa ~20 giây hoặc chuyển qua lại tab ở máy B) để xác nhận hoạt động đúng.
+
+---
+
+### 10.22b. Không còn cần bật Realtime cho admins/customers nữa (KHÔNG bắt buộc, có thể để nguyên)
+
+Sau khi đổi sang cách kiểm tra định kỳ (10.22), SQL đã chạy trước đó ở lần thử Realtime không còn được
+dùng tới nữa:
 ```sql
 alter publication supabase_realtime add table admins, customers;
 ```
-
-Nếu SQL trên báo lỗi kiểu "already member of publication" — nghĩa là 2 bảng này đã được bật Realtime từ
-trước rồi, bỏ qua, không cần làm gì thêm.
-
-**Lưu ý**: đây là tính năng dùng đúng cơ chế chính thức của Supabase (Realtime + JWT tùy biến qua
-`accessToken` callback, không phải dịch vụ ngoài như VietQR/Zalo ở các mục trước) — độ tin cậy cao hơn
-hẳn, nhưng vẫn nên **tự test lại 1 lần**: mở 2 trình duyệt/2 máy, đăng nhập cùng 1 tài khoản nhân viên ở
-cả 2 nơi, rồi ở máy A (tài khoản `super`) vào "Quản lý User" cấp lại mật khẩu cho đúng tài khoản đó — máy
-B phải tự bật về màn đăng nhập ngay, không cần bấm gì/tải lại trang.
-
-**Việc cần bạn làm**:
-1. Chạy SQL trên (SQL Editor).
-2. KHÔNG cần deploy Edge Function nào — chỉ sửa file JS tĩnh, GitHub Pages tự deploy khi push `main`.
-3. Tự test lại theo hướng dẫn ở trên (2 trình duyệt/2 máy) để xác nhận hoạt động đúng.
+Không cần gỡ lại (`alter publication supabase_realtime drop table admins, customers;`) — để nguyên không
+ảnh hưởng/không tốn phí gì thêm, chỉ đơn giản là không dùng tới. Bỏ qua mục này nếu bạn không quan tâm
+tới việc dọn dẹp.
 
 ---
 

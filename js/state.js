@@ -10,7 +10,7 @@
 // thị TẠM lúc app chưa kết nối được mạng, không phải nguồn sự thật nữa.
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween } from './utils.js';
-import { getSupabaseClient, getRealtimeClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
+import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
 
 export const STORAGE_KEY = 'qtd_demo_v3';
 
@@ -1196,43 +1196,45 @@ export function setSession(session) {
 }
 
 // ------------------------------------------------------------
-// "Bị cấp lại mật khẩu ở nơi khác thì tự đăng xuất NGAY" — lắng nghe thời
-// gian thực (Supabase Realtime, WebSocket) đúng dòng admins/customers của
-// CHÍNH phiên đang mở ở đây. Trước đây admin cấp lại mật khẩu cho ai đó chỉ
-// đổi được cột must_change_password trên server — nếu người đó ĐANG mở sẵn
-// phiên đăng nhập ở máy khác thì phiên cũ đó vẫn dùng được bình thường cho
-// tới khi tự tải lại trang mới thấy bị bắt đổi mật khẩu. Giờ hễ dòng của
-// mình đổi VÀ must_change_password=true (đúng lúc BỊ NGƯỜI KHÁC cấp lại —
-// tự đổi mật khẩu của chính mình luôn set cờ này về false nên không đụng
-// nhánh này) thì ĐĂNG XUẤT NGAY, không cần đợi tải lại trang.
+// "Bị cấp lại mật khẩu ở nơi khác thì tự đăng xuất" — KHÔNG dùng Realtime/
+// WebSocket nữa (đã thử — kênh kết nối được nhưng RLS chặn không nhận được
+// sự kiện nào cả, cần cấu hình thêm "Third-Party Auth" khá phức tạp trên
+// Supabase Dashboard mà chưa chắc giải quyết được). Thay bằng cách CHẮC CHẮN
+// HOẠT ĐỘNG hơn: tự hỏi lại máy chủ ĐỊNH KỲ bằng đúng cách gọi API thường
+// (REST + RLS) đã chạy ổn định trong toàn bộ app từ đầu tới giờ — mỗi
+// FORCE_LOGOUT_CHECK_INTERVAL_MS một lần, VÀ mỗi khi quay lại tab (đang ẩn
+// rồi mở lại, hay gặp nhất khi khách/nhân viên chuyển qua app khác rồi quay
+// lại). Không "tức thì tuyệt đối" như realtime nhưng gần như tức thì trong
+// thực tế sử dụng, không phụ thuộc cấu hình phức tạp nào thêm. Nếu phát hiện
+// đúng dòng CỦA MÌNH có must_change_password=true (đúng lúc BỊ NGƯỜI KHÁC
+// cấp lại — tự đổi mật khẩu của chính mình luôn set cờ này về false ngay nên
+// không đụng nhánh này) thì ĐĂNG XUẤT NGAY, không cần tải lại trang.
 // ------------------------------------------------------------
-let forceLogoutChannel = null;
+const FORCE_LOGOUT_CHECK_INTERVAL_MS = 20000; // 20 giây/lần
+let forceLogoutTimer = null;
+let forceLogoutVisibilityHandler = null;
 function subscribeForceLogout(role, rowId, jwt) {
   unsubscribeForceLogout();
   if (!rowId || !jwt) return;
   const table = role === 'customer' ? 'customers' : 'admins';
-  try {
-    const sb = getRealtimeClient(jwt);
-    forceLogoutChannel = sb
-      .channel(`force-logout-${table}-${rowId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter: `id=eq.${rowId}` }, (payload) => {
-        // Log TẠM để chẩn đoán — xem Console (F12) có in ra dòng này khi admin
-        // cấp lại mật khẩu không, và must_change_password trong đó là gì.
-        console.log('[force-logout] Nhận sự kiện realtime:', payload);
-        if (payload.new?.must_change_password) logout();
-      })
-      // Log TẠM trạng thái đăng ký kênh — phải thấy "SUBSCRIBED" thì mới thật
-      // sự đang lắng nghe; "CHANNEL_ERROR"/"TIMED_OUT"/"CLOSED" nghĩa là chưa
-      // kết nối được (thường do Realtime chưa bật cho bảng, hoặc RLS chặn).
-      .subscribe((status, err) => {
-        console.log('[force-logout] Trạng thái kênh:', status, err || '');
-      });
-  } catch (e) {
-    console.warn('Không lắng nghe được thời gian thực (đăng xuất tự động khi bị cấp lại mật khẩu sẽ không hoạt động, không ảnh hưởng gì khác).', e);
+  async function check() {
+    // Phiên đã đổi (đăng xuất/đăng nhập tài khoản khác) từ lúc hẹn giờ này
+    // được lập ra -> bỏ qua, tránh tự đăng xuất nhầm 1 phiên MỚI khác rồi.
+    const cur = state.session;
+    if (!cur || cur.id !== rowId || cur.sbToken !== jwt) return;
+    try {
+      const sb = getSupabaseClient(jwt);
+      const { data } = await sb.from(table).select('must_change_password').eq('id', rowId).maybeSingle();
+      if (data?.must_change_password) logout();
+    } catch (e) { /* lỗi mạng tạm thời — bỏ qua, tự thử lại ở lần kiểm tra kế tiếp */ }
   }
+  forceLogoutTimer = setInterval(check, FORCE_LOGOUT_CHECK_INTERVAL_MS);
+  forceLogoutVisibilityHandler = () => { if (document.visibilityState === 'visible') check(); };
+  document.addEventListener('visibilitychange', forceLogoutVisibilityHandler);
 }
 function unsubscribeForceLogout() {
-  if (forceLogoutChannel) { forceLogoutChannel.unsubscribe(); forceLogoutChannel = null; }
+  if (forceLogoutTimer) { clearInterval(forceLogoutTimer); forceLogoutTimer = null; }
+  if (forceLogoutVisibilityHandler) { document.removeEventListener('visibilitychange', forceLogoutVisibilityHandler); forceLogoutVisibilityHandler = null; }
 }
 
 /**

@@ -28,23 +28,6 @@ export function getSupabaseClient(jwt) {
   });
 }
 
-/**
- * Tạo 1 Supabase client CHUYÊN DÙNG CHO REALTIME (theo dõi thay đổi tức thì
- * qua WebSocket, VD: bị cấp lại mật khẩu ở nơi khác trong lúc đang đăng nhập
- * sẵn ở đây thì tự đăng xuất ngay — xem subscribeForceLogout() trong
- * state.js) — khác với getSupabaseClient() ở trên (chỉ gắn JWT vào header
- * cho các lệnh REST thường), Realtime cần truyền JWT qua callback
- * "accessToken" riêng (đúng cách Supabase tài liệu hướng dẫn cho hệ thống
- * đăng nhập tự làm riêng như app này, không dùng Supabase Auth có sẵn) thì
- * RLS mới lọc đúng theo "auth.jwt()" khi có sự kiện đẩy về qua WebSocket.
- */
-export function getRealtimeClient(jwt) {
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    accessToken: async () => jwt,
-  });
-}
-
 /** Gọi thẳng Edge Function — dùng chung cho mọi "type", tự bọc lỗi mạng. */
 async function callApi(authToken, payload) {
   try {
