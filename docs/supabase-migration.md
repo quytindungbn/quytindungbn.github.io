@@ -1454,30 +1454,35 @@ tới việc dọn dẹp.
 
 ---
 
-### 10.23. Nút "Đăng xuất" cho use (KHÔNG cấp lại mật khẩu) — dùng lại đúng cơ chế của mục 10.22 (BẮT BUỘC chạy SQL + deploy Edge Function)
+### 10.23. Nút "Đăng xuất" CHỈ cho Use/khách hàng, CHỈ khi đã đăng nhập — dùng lại đúng cơ chế của mục 10.22 (BẮT BUỘC chạy SQL + deploy Edge Function)
 
-Thêm nút **"Đăng xuất"** cạnh nút "Cấp lại mật khẩu" (cả ở "Quản lý User" cho quản trị viên/nhân viên
-lẫn ở chi tiết khách hàng) — bấm là buộc tài khoản đó thoát khỏi mọi phiên đang đăng nhập ngay, **KHÔNG**
-đặt mật khẩu tạm/không bắt đổi mật khẩu (khác hẳn "Cấp lại mật khẩu"). Dùng đúng cơ chế tự phát hiện đã
-làm cho mục 10.22 (`refreshSessionData()` so sánh trước/sau mỗi lần tự làm mới dữ liệu) — tự "bung ra"
-đăng xuất y hệt, không cần tải lại trang: thêm cột mới `force_logout_at`, admin bấm "Đăng xuất" chỉ ghi
-lại đúng thời điểm bấm vào cột này, phiên đang mở của use đó phát hiện mốc thời gian vừa đổi khác lần
-trước đã biết thì tự đăng xuất.
+Thêm nút **"Đăng xuất"** cạnh nút "Cấp lại mật khẩu" — bấm là buộc tài khoản đó thoát khỏi mọi phiên đang
+đăng nhập ngay, **KHÔNG** đặt mật khẩu tạm/không bắt đổi mật khẩu (khác hẳn "Cấp lại mật khẩu"). Dùng
+đúng cơ chế tự phát hiện đã làm cho mục 10.22 (`refreshSessionData()` so sánh trước/sau mỗi lần tự làm
+mới dữ liệu) — tự "bung ra" đăng xuất y hệt, không cần tải lại trang: thêm cột mới `force_logout_at`,
+admin bấm "Đăng xuất" chỉ ghi lại đúng thời điểm bấm vào cột này, phiên đang mở của use đó phát hiện mốc
+thời gian vừa đổi khác lần trước đã biết thì tự đăng xuất.
 
-Quyền hạn giống hệt "Cấp lại mật khẩu" tương ứng: đăng xuất quản trị viên/nhân viên CHỈ dành cho quản trị
-viên toàn quyền; đăng xuất khách hàng thì quản trị viên toàn quyền HOẶC nhân viên có quyền "Quản lý User"
-đều làm được.
+**Phạm vi CHỈ áp dụng cho Use (khách hàng)**, đúng như yêu cầu — KHÔNG có ở tài khoản Quản trị viên/nhân
+viên:
+- Nút chỉ hiện ở **chi tiết khách hàng mở TỪ "Quản lý User"** (`context === 'use'`) — không hiện khi mở
+  từ "Khách hàng & Hợp đồng".
+- Nút chỉ hiện khi Use đó **đang đăng nhập** (`S.hasCustomerLoggedIn(c)`, đúng cờ dùng cho 2 chấm trạng
+  thái/ô thống kê "Use đã đăng nhập" có sẵn) — Use chưa từng đăng nhập/đã đăng xuất từ trước thì ẩn nút
+  này (không có gì để đăng xuất).
+- Quyền hạn: quản trị viên toàn quyền HOẶC nhân viên có quyền "Quản lý User" đều bấm được (giống hệt
+  "Cấp lại mật khẩu" cho khách hàng).
 
 ```sql
-alter table admins add column if not exists force_logout_at timestamptz;
 alter table customers add column if not exists force_logout_at timestamptz;
 ```
 
 **Việc cần bạn làm**:
 1. Chạy SQL trên (SQL Editor).
 2. Deploy lại **`create-account`** (file duy nhất có sửa lần này).
-3. Tự test lại: đăng nhập 1 tài khoản ở máy B, ở máy A (đủ quyền) mở đúng tài khoản đó bấm "Đăng xuất" —
-   máy B phải tự thoát ra khi chuyển tab/bấm sang trang khác (đúng như cơ chế mục 10.22).
+3. Tự test lại: khách đăng nhập ở máy B (điện thoại/máy tính khách), ở máy A vào "Quản lý User" → chọn
+   đúng khách đó (nút chỉ hiện khi đang có chấm "đã đăng nhập") → bấm "Đăng xuất" — máy B phải tự thoát
+   ra khi chuyển tab/bấm sang trang khác (đúng như cơ chế mục 10.22).
 
 ---
 

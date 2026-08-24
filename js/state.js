@@ -940,11 +940,13 @@ export async function refreshSessionData() {
     return;
   }
   if (!wasMustChange && getSelf()?.mustChangePassword) { logout(); return; }
-  // "Đăng xuất use" (forceLogoutStaff/forceLogoutCustomer) — CÙNG cơ chế:
-  // mốc thời gian đổi khác lần trước đã biết (kể cả từ null sang có giá trị,
-  // hoặc đổi sang giá trị MỚI hơn nếu đã từng bị đăng xuất kiểu này trước đó
-  // trong lịch sử tài khoản) nghĩa là VỪA bị buộc đăng xuất ngay trong lúc
-  // đang dùng phiên này -> đăng xuất thật, không cần tải lại trang.
+  // "Đăng xuất use" (forceLogoutCustomer, xem js/views/admin/customers.js)
+  // — CÙNG cơ chế: mốc thời gian đổi khác lần trước đã biết (kể cả từ null
+  // sang có giá trị, hoặc đổi sang giá trị MỚI hơn nếu đã từng bị đăng xuất
+  // kiểu này trước đó trong lịch sử tài khoản) nghĩa là VỪA bị buộc đăng
+  // xuất ngay trong lúc đang dùng phiên này -> đăng xuất thật, không cần
+  // tải lại trang. (Chỉ áp dụng cho Use/khách hàng — không có ở phía quản
+  // trị viên/nhân viên, nên getSelf() ở admin luôn có forceLogoutAt=null.)
   const nowForceLogoutAt = getSelf()?.forceLogoutAt || null;
   if (nowForceLogoutAt && nowForceLogoutAt !== wasForceLogoutAt) { logout(); return; }
   if (isTypingOutsideModal) persist(); // lưu tạm, chưa vẽ lại ngay
@@ -1011,8 +1013,7 @@ function mapAdminRow(row) {
     // quyền kiểm soát được từng nhân viên muốn cho gửi OA hay không, độc lập
     // với việc có cho quản lý Use hay không. Xem canManageZaloOA() bên dưới.
     canManageZaloOA: !!row.can_manage_zalo_oa,
-    salt: row.salt, hash: row.hash, mustChangePassword: !!row.must_change_password,
-    forceLogoutAt: row.force_logout_at || null, createdAt: row.created_at,
+    salt: row.salt, hash: row.hash, mustChangePassword: !!row.must_change_password, createdAt: row.created_at,
   };
 }
 export function getAdmin(id) { return state.admins.find((a) => a.id === id); }
@@ -1103,23 +1104,6 @@ export async function resetStaffPassword(id, customPassword) {
   a.mustChangePassword = true;
   notify();
   return res.tempPassword;
-}
-
-/**
- * Đăng xuất NGAY 1 quản trị viên/nhân viên đang có phiên đăng nhập ở đâu đó
- * — KHÔNG cấp lại mật khẩu (khác resetStaffPassword ở trên). Cùng cơ chế tự
- * phát hiện của "Cấp lại mật khẩu" (xem forceLogoutCustomer() ở trên/
- * refreshSessionData()) — CHỈ quản trị viên toàn quyền mới gọi được (khớp
- * đúng quyền của reset-staff-password ở server).
- */
-export async function forceLogoutStaff(id) {
-  const a = getAdmin(id);
-  if (!a) throw new Error('Không tìm thấy tài khoản');
-  const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'force-logout-staff', staffId: id });
-  if (!res.ok) throw new Error(res.reason || 'Không đăng xuất được tài khoản này.');
-  a.forceLogoutAt = new Date().toISOString();
-  notify();
 }
 /** Kiểm tra mật khẩu hiện tại của quản trị viên/nhân viên — dùng cho màn tự đổi mật khẩu. */
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function (chỉ tự xác minh chính mình). */
