@@ -287,11 +287,25 @@ function normalizeZaloPhone(phone: string): string {
   if (digits.startsWith('0')) return '84' + digits.slice(1);
   return digits;
 }
-/** Lấy Access Token hiện hành, tự làm mới bằng Refresh Token lưu trong bảng zalo_oa_tokens — xem ghi chú y hệt trong send-due-reminders/index.ts. */
+/**
+ * Lấy Access Token hiện hành, tự làm mới bằng Refresh Token lưu trong bảng
+ * zalo_oa_tokens — xem ghi chú y hệt trong send-due-reminders/index.ts.
+ * DÙNG LẠI access_token đã lưu nếu còn mới (< 50 phút, an toàn hơn hạn thật
+ * ~60 phút của Zalo) thay vì gọi API làm mới MỖI LẦN gửi — đỡ mất thêm 1
+ * lượt gọi mạng ra ngoài (ngoài lượt gửi tin thật sự), bấm "Gửi tin Zalo OA
+ * ngay" phản hồi nhanh hơn hẳn. AN TOÀN với việc Refresh Token tự xoay
+ * vòng: xoay vòng chỉ xảy ra ĐÚNG lúc gọi API làm mới, không liên quan gì
+ * tới việc tái sử dụng access_token đã có để GỬI TIN — gọi làm mới ít lại
+ * còn giảm rủi ro đá nhau giữa nhiều lượt gửi cùng lúc.
+ */
 async function getZaloAccessToken(): Promise<string | null> {
   if (!ZALO_APP_ID || !ZALO_SECRET_KEY) return null;
   const { data: tokenRow } = await admin.from('zalo_oa_tokens').select('*').eq('id', 'default').maybeSingle();
   if (!tokenRow?.refresh_token) return null;
+  if (tokenRow.access_token && tokenRow.updated_at) {
+    const ageMinutes = (Date.now() - new Date(tokenRow.updated_at).getTime()) / 60000;
+    if (ageMinutes < 50) return tokenRow.access_token as string;
+  }
   try {
     const res = await fetch('https://oauth.zaloapp.com/v4/oa/access_token', {
       method: 'POST',

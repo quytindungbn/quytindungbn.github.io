@@ -1754,6 +1754,32 @@ deploy khi push `main`.
 
 ---
 
+### 10.30. Gửi tay Zalo OA nhanh hơn (BẮT BUỘC deploy lại CẢ 2 Edge Function)
+
+"Bấm Gửi tin Zalo OA ngay" thấy lâu mới báo kết quả — do 2 nguyên nhân, đã sửa cả 2:
+
+1. **Client đợi thừa**: sau khi gửi xong, code cũ còn đợi thêm 1 lượt tải lại TOÀN BỘ dữ liệu phiên (8
+   bảng) rồi mới báo kết quả cho người bấm — trong khi việc tải lại đó chỉ để cập nhật số ngày chờ cho
+   LẦN SAU, không cần thiết phải có ngay mới báo được kết quả lần gửi này. Giờ báo kết quả (thành công/lỗi)
+   NGAY khi server trả lời, việc tải lại dữ liệu chạy ngầm phía sau — không ảnh hưởng gì đến việc cập nhật
+   đúng số liệu, chỉ là không còn bắt người bấm phải đợi thêm nữa. Nút cũng đổi thành "Đang gửi..." ngay
+   lúc bấm để biết chắc đã bấm trúng, không phải app bị đứng.
+2. **Máy chủ tự làm mới Access Token Zalo THỪA**: mỗi lần gửi (kể cả gửi tay lẫn 1 hợp đồng trong lượt
+   gửi tự động hàng ngày) đều gọi thêm 1 lượt xin Access Token mới từ Zalo — dù Access Token cũ (được lưu
+   sẵn) vẫn còn dùng tốt (Access Token của Zalo sống được ~1 tiếng). Mỗi lượt xin mới này là 1 lượt gọi
+   mạng ra ngoài, cộng dồn thêm thời gian chờ ngoài lượt gửi tin thật sự. Giờ chỉ xin mới khi Access Token
+   đã lưu quá 50 phút (an toàn hơn hạn thật ~60 phút) — còn mới thì dùng lại luôn.
+
+**Không ảnh hưởng gì tới cơ chế Refresh Token tự xoay vòng của Zalo** (đã có ghi chú kỹ trong code) — xoay
+vòng chỉ xảy ra ĐÚNG lúc gọi API xin Access Token mới, không liên quan gì tới việc dùng lại Access Token
+đã có sẵn để gửi tin — gọi xin mới ít lại còn giảm rủi ro đá nhau giữa nhiều lượt gửi cùng lúc.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL — deploy lại **CẢ 2** Edge Function (cả 2 đều có sửa lần này):
+Supabase Dashboard → Edge Functions → chọn từng function (`create-account`, rồi `send-due-reminders`) →
+dán đè toàn bộ nội dung file mới → Deploy.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

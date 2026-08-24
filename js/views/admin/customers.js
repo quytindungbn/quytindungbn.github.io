@@ -805,12 +805,19 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       });
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       if (zaloManualBtn) zaloManualBtn.addEventListener('click', async () => {
+        // Gửi Zalo phải gọi qua máy chủ Zalo (mạng ngoài, không phải máy chủ
+        // của quỹ) nên luôn mất vài giây thật sự, không có cách nào bấm phát
+        // ra kết quả ngay — đổi chữ trên nút thành "Đang gửi..." để người bấm
+        // biết ngay là đã bấm trúng, đang chờ, không phải app bị đứng/lag.
+        const originalLabel = zaloManualBtn.innerHTML;
         zaloManualBtn.disabled = true;
+        zaloManualBtn.innerHTML = `${icon('refresh', 'icon-sm')} Đang gửi...`;
         try {
           const res = await S.sendZaloManual(contract.id);
           toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error');
         } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
         zaloManualBtn.disabled = false;
+        zaloManualBtn.innerHTML = originalLabel;
       });
       const delBtn = sheet.querySelector('#del-contract');
       if (delBtn) delBtn.addEventListener('click', () => {

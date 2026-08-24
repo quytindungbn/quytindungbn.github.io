@@ -269,18 +269,31 @@ function normalizeZaloPhone(phone: string): string {
 
 /**
  * Lấy Access Token OA hiện hành — tự làm mới bằng Refresh Token đang lưu
- * trong bảng zalo_oa_tokens mỗi lần Edge Function này chạy (Access Token chỉ
- * sống ~1 tiếng nên không cache dài hạn). Refresh Token Zalo trả về CÓ THỂ
- * khác Refresh Token cũ (tự xoay vòng) — ghi đè lại vào bảng luôn để lần chạy
- * sau vẫn dùng được. Trả về null nếu chưa cấu hình đủ (ZALO_APP_ID/SECRET_KEY
- * chưa đặt Secret, hoặc bảng zalo_oa_tokens chưa có dòng nào) — các nơi gọi
- * hàm này phải tự bỏ qua việc gửi Zalo khi null, KHÔNG được chặn cả hàm nhắc
- * lịch (thông báo đẩy vẫn phải chạy bình thường dù chưa cấu hình Zalo).
+ * trong bảng zalo_oa_tokens (Access Token chỉ sống ~1 tiếng nên không cache
+ * dài hạn — nhưng DÙNG LẠI được trong đúng cửa sổ đó, xem ngay dưới). Refresh
+ * Token Zalo trả về CÓ THỂ khác Refresh Token cũ (tự xoay vòng) — ghi đè lại
+ * vào bảng luôn để lần chạy sau vẫn dùng được. Trả về null nếu chưa cấu hình
+ * đủ (ZALO_APP_ID/SECRET_KEY chưa đặt Secret, hoặc bảng zalo_oa_tokens chưa
+ * có dòng nào) — các nơi gọi hàm này phải tự bỏ qua việc gửi Zalo khi null,
+ * KHÔNG được chặn cả hàm nhắc lịch (thông báo đẩy vẫn phải chạy bình thường
+ * dù chưa cấu hình Zalo).
+ *
+ * DÙNG LẠI access_token đã lưu nếu còn mới (< 50 phút, an toàn hơn hạn thật
+ * ~60 phút) thay vì gọi API làm mới MỖI LẦN hàm này chạy — hàm cron chạy mỗi
+ * ngày gửi cho NHIỀU hợp đồng liên tiếp trong 1 lượt, trước đây mỗi hợp đồng
+ * đều làm mới token 1 lần dù chưa hết hạn, giờ chỉ làm mới đúng lần đầu tiên
+ * của cả lượt chạy. AN TOÀN với việc Refresh Token tự xoay vòng: xoay vòng
+ * chỉ xảy ra ĐÚNG lúc gọi API làm mới, không liên quan gì tới việc tái sử
+ * dụng access_token đã có để GỬI TIN.
  */
 async function getZaloAccessToken(): Promise<string | null> {
   if (!ZALO_APP_ID || !ZALO_SECRET_KEY) return null;
   const { data: tokenRow } = await admin.from('zalo_oa_tokens').select('*').eq('id', 'default').maybeSingle();
   if (!tokenRow?.refresh_token) return null;
+  if (tokenRow.access_token && tokenRow.updated_at) {
+    const ageMinutes = (Date.now() - new Date(tokenRow.updated_at).getTime()) / 60000;
+    if (ageMinutes < 50) return tokenRow.access_token as string;
+  }
   try {
     const res = await fetch('https://oauth.zaloapp.com/v4/oa/access_token', {
       method: 'POST',

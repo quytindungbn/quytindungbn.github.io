@@ -738,9 +738,12 @@ export async function sendZaloManual(contractId) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'send-zalo-manual', contractId });
   // Gửi tay có ghi log ở server (zalo_send_log) — tải lại session data để
-  // hiện ngay (VD: cảnh báo "còn N ngày" ở lần mở tiếp theo), không cần đợi
-  // refreshSessionData() định kỳ.
-  await refreshSessionData();
+  // hiện đúng (VD: cảnh báo "còn N ngày" ở lần mở tiếp theo), không cần đợi
+  // refreshSessionData() định kỳ. CHẠY NGẦM (không await) — người vừa bấm
+  // gửi cần biết kết quả THÀNH CÔNG/LỖI càng nhanh càng tốt (gửi Zalo qua
+  // mạng ngoài vốn đã mất vài giây rồi), không nên bắt họ đợi thêm cả 1 lượt
+  // tải lại TOÀN BỘ dữ liệu phiên (8 bảng) nữa mới thấy được kết quả.
+  refreshSessionData().catch(() => {});
   return res;
 }
 
