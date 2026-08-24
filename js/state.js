@@ -1216,9 +1216,17 @@ function subscribeForceLogout(role, rowId, jwt) {
     forceLogoutChannel = sb
       .channel(`force-logout-${table}-${rowId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter: `id=eq.${rowId}` }, (payload) => {
+        // Log TẠM để chẩn đoán — xem Console (F12) có in ra dòng này khi admin
+        // cấp lại mật khẩu không, và must_change_password trong đó là gì.
+        console.log('[force-logout] Nhận sự kiện realtime:', payload);
         if (payload.new?.must_change_password) logout();
       })
-      .subscribe();
+      // Log TẠM trạng thái đăng ký kênh — phải thấy "SUBSCRIBED" thì mới thật
+      // sự đang lắng nghe; "CHANNEL_ERROR"/"TIMED_OUT"/"CLOSED" nghĩa là chưa
+      // kết nối được (thường do Realtime chưa bật cho bảng, hoặc RLS chặn).
+      .subscribe((status, err) => {
+        console.log('[force-logout] Trạng thái kênh:', status, err || '');
+      });
   } catch (e) {
     console.warn('Không lắng nghe được thời gian thực (đăng xuất tự động khi bị cấp lại mật khẩu sẽ không hoạt động, không ảnh hưởng gì khác).', e);
   }
