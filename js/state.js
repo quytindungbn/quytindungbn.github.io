@@ -965,7 +965,7 @@ export async function refreshSessionData() {
 
 async function loadAdminSessionData(token) {
   const sb = getSupabaseClient(token);
-  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes, zaloCustRes, zaloListRes, zaloLogRes] = await Promise.all([
+  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes, zaloCustRes, zaloListRes, zaloLogRes, chatUnreadRes] = await Promise.all([
     sb.from('admins').select('*'),
     sb.from('customers').select('*'),
     sb.from('contracts').select('*'),
@@ -984,6 +984,11 @@ async function loadAdminSessionData(token) {
     // (giống push_subscriptions) phòng lúc chưa chạy policy (mục 10).
     sb.from('zalo_auto_send_list').select('*').then((r) => r, () => ({ data: [] })),
     sb.from('zalo_send_log').select('*').order('sent_at', { ascending: false }).limit(200).then((r) => r, () => ({ data: [] })),
+    // Tổng số tin nhắn hỗ trợ (chat) do KHÁCH HÀNG gửi mà CHƯA có ai trong
+    // phạm vi quản lý đọc — dùng cho chấm đỏ ở mục menu "Hỗ trợ" (xem
+    // js/components/shell.js renderSupportNavBadge). Bọc an toàn (giống
+    // push_subscriptions) phòng lúc chưa chạy SQL tạo bảng chat_messages.
+    sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('sender_role', 'customer').is('read_at', null).then((r) => r, () => ({ count: 0 })),
   ]);
   state.admins = (adminRows || []).map(mapAdminRow);
   state.customers = (customerRows || []).map(mapCustomerRow);
@@ -997,6 +1002,7 @@ async function loadAdminSessionData(token) {
   state.zaloCustomers = (zaloCustRes?.data || []).map(mapZaloCustomerRow);
   state.zaloAutoSendList = (zaloListRes?.data || []).map(mapZaloAutoSendRow);
   state.zaloSendLog = (zaloLogRes?.data || []).map(mapZaloSendLogRow);
+  state.chatUnreadCount = chatUnreadRes?.count || 0;
 }
 
 function mapZaloCustomerRow(row) {

@@ -1,5 +1,5 @@
 import * as S from './state.js';
-import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab } from './components/shell.js';
+import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
@@ -142,6 +142,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   }
   document.getElementById('brand-name').textContent = S.getOrg().shortName;
   renderSidebarProfile();
+  renderSupportNavBadge();
 
   const headerEl = document.getElementById('app-header');
   const filterEl = document.getElementById('filter-slot');

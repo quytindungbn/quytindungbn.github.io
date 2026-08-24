@@ -122,6 +122,12 @@ svg { display: block; }
 }
 .sidebar-nav a:hover { background: var(--surface-alt); color: var(--text); }
 .sidebar-nav a.active { background: var(--color-primary-light); color: var(--color-primary-dark); }
+.nav-badge {
+  margin-left: auto; flex: none;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 18px; text-align: center;
+}
 .sidebar-nav .nav-group-title {
   font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
   color: var(--text-faint); padding: 16px 12px 6px;
@@ -318,27 +324,27 @@ svg { display: block; }
 .chat-msg-row { display: flex; align-items: flex-end; gap: 8px; max-width: 100%; }
 .chat-msg-row.group-cont { margin-top: 2px; }
 .chat-msg-row.group-start { margin-top: 12px; }
-.chat-msg-row.mine { flex-direction: row-reverse; }
+/* CỐ ĐỊNH theo vai trò (không đổi theo ai đang xem): khách hàng luôn trái,
+   quản trị viên/nhân viên luôn phải — xem ghi chú đầu js/components/chatPanel.js. */
+.chat-msg-row.from-admin { flex-direction: row-reverse; }
 .chat-avatar-slot { width: 28px; flex: none; }
-.chat-msg-row.mine .chat-avatar-slot { display: none; }
 .chat-avatar {
   width: 28px; height: 28px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: #fff; font-size: 11px; font-weight: 800;
 }
+.chat-avatar-org { background: var(--color-primary); }
 .chat-bubble-wrap { display: flex; flex-direction: column; max-width: 78%; min-width: 0; }
-.chat-msg-row.mine .chat-bubble-wrap { align-items: flex-end; margin-left: auto; }
-.chat-sender-name { font-size: 11px; font-weight: 700; color: var(--text-muted); margin: 0 4px 3px; }
 .chat-bubble {
   background: var(--surface-alt); color: var(--text);
-  padding: 8px 10px; border-radius: 15px; border-bottom-left-radius: 4px;
+  padding: 8px 10px; border-radius: 15px;
   display: flex; align-items: flex-end; flex-wrap: wrap; gap: 2px 8px;
   max-width: 100%;
 }
 .chat-bubble-text { font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 .chat-bubble-time { font-size: 10px; opacity: .6; white-space: nowrap; margin-left: auto; align-self: flex-end; padding-bottom: 1px; }
-.chat-bubble.mine { background: var(--color-primary); color: #fff; border-bottom-left-radius: 15px; border-bottom-right-radius: 4px; }
-.chat-bubble.staff { background: var(--info-bg); color: var(--color-primary-dark); }
+.chat-bubble.customer { border-bottom-left-radius: 4px; }
+.chat-bubble.admin { background: var(--color-primary); color: #fff; border-bottom-right-radius: 4px; }
 
 .chat-input-row { display: flex; gap: 8px; width: 100%; align-items: flex-end; }
 .chat-input-row textarea {

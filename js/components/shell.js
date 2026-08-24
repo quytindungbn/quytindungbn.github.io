@@ -136,9 +136,21 @@ export function renderSidebarProfile() {
   if (slot) slot.innerHTML = profileBlockHtml(getProfileInfo());
 }
 
+/**
+ * Chấm đỏ số tin nhắn hỗ trợ (chat) chưa đọc — CHỈ gắn cho đúng mục "Hỗ trợ"
+ * (path #/admin/ho-tro), đọc trực tiếp state.chatUnreadCount (đã tải kèm lúc
+ * loadAdminSessionData()/refreshSessionData(), xem js/state.js). Dùng chung
+ * cho cả sidebar, bảng "Thêm" (mobile) — xem renderSidebarNav/openMoreSheet.
+ */
+function unreadBadgeHtml(path) {
+  if (path !== '#/admin/ho-tro') return '';
+  const unread = S.getState()?.chatUnreadCount || 0;
+  return unread ? `<span class="nav-badge">${unread > 99 ? '99+' : unread}</span>` : '';
+}
+
 function renderSidebarNav(nav) {
   const el = document.getElementById('sidebar-nav');
-  el.innerHTML = nav.map((item) => `<a href="${item.path}" data-path="${item.path}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
+  el.innerHTML = nav.map((item) => `<a href="${item.path}" data-path="${item.path}">${icon(item.icon)}<span>${item.label}</span>${unreadBadgeHtml(item.path)}</a>`).join('');
 }
 
 const CHANGE_PW_ITEM = { path: '#/doi-mat-khau', label: 'Đổi mật khẩu', icon: 'lock' };
@@ -165,6 +177,7 @@ function openMoreSheet(overflowItems) {
           <a href="${item.path}" data-path="${item.path}" class="list-row" style="cursor:pointer;text-decoration:none;color:inherit">
             <div class="row-thumb" style="background:var(--surface-alt);color:var(--text)">${icon(item.icon, 'icon-sm')}</div>
             <div class="row-main"><div class="row-title">${item.label}</div></div>
+            ${unreadBadgeHtml(item.path)}
           </a>`).join('')}
       </div>
     `,
@@ -234,6 +247,23 @@ export function renderChatFab(session) {
   btn.dataset.customerId = session.id;
   const unread = S.getState()?.chatUnreadCount || 0;
   btn.innerHTML = `${icon('message', 'icon-sm')}${unread ? `<span class="fab-badge">${unread > 9 ? '9+' : unread}</span>` : ''}`;
+}
+
+/**
+ * Cập nhật lại chấm đỏ số tin CHƯA ĐỌC ở mục menu "Hỗ trợ" (sidebar desktop)
+ * — mục này chỉ được DỰNG LẠI (renderSidebarNav) lúc buildShell() chạy (đổi
+ * role/quyền), không phải mỗi lần render() như renderChatFab, nên cần hàm
+ * riêng gọi lại ở MỌI lần renderApp() (xem app.js) để số luôn đúng theo dữ
+ * liệu mới nhất — chỉ SỬA lại đúng span đã có sẵn, không vẽ lại cả mục menu.
+ */
+export function renderSupportNavBadge() {
+  const a = document.querySelector('.sidebar-nav a[data-path="#/admin/ho-tro"]');
+  if (!a) return; // không có quyền "Hỗ trợ" hoặc chưa dựng sidebar (VD: đang ở màn đăng nhập)
+  let badge = a.querySelector('.nav-badge');
+  const unread = S.getState()?.chatUnreadCount || 0;
+  if (!unread) { if (badge) badge.remove(); return; }
+  if (!badge) { badge = document.createElement('span'); badge.className = 'nav-badge'; a.appendChild(badge); }
+  badge.textContent = unread > 99 ? '99+' : String(unread);
 }
 
 export function updateActiveNav(hash) {

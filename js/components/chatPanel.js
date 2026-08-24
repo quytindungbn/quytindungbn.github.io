@@ -12,16 +12,16 @@
 // polling ở ĐÂY chỉ ảnh hưởng đúng khung chat, người dùng đang thật sự nhìn
 // vào màn hình này nên không có gì để "mất" (không có ô lọc/gõ dở nào khác).
 //
-// Giao diện học theo các app nhắn tin/hỗ trợ phổ biến (Messenger/Zalo/
-// Intercom): gộp nhóm tin nhắn liên tiếp cùng 1 người (chỉ hiện avatar/tên ở
-// tin ĐẦU nhóm), có vạch chia ngày, giờ gửi nhỏ gọn nằm NGAY trong bong bóng
-// (không chiếm riêng 1 dòng), avatar khác màu theo từng người, VÀ phân biệt
-// RÕ 3 vai trò bằng màu bong bóng — chứ không chỉ 2 vai (trái/phải) như bản
-// trước: "của tôi" (chính người đang xem gửi) tô màu chủ đạo bên phải; "của
-// khách hàng" tô màu trung tính bên trái; "của đồng nghiệp khác" (1 quản trị
-// viên/nhân viên KHÁC cũng đang trả lời cùng hội thoại) tô màu xanh nhạt bên
-// trái — để quản trị viên luôn phân biệt được ngay đâu là câu hỏi thật của
-// khách, đâu là đồng nghiệp mình đã trả lời trước đó.
+// Giao diện kiểu Messenger, CỐ ĐỊNH theo VAI TRÒ (không đổi theo ai đang
+// xem): tin của KHÁCH HÀNG luôn ở bên TRÁI, tin của QUẢN TRỊ VIÊN/NHÂN VIÊN
+// (bất kể ai trong số họ trả lời) luôn ở bên PHẢI — cả 2 phía (khách hàng tự
+// xem hội thoại của mình lẫn admin xem hộ) đều thấy giống nhau, khỏi phải
+// suy nghĩ "bên nào là mình". Avatar tách 2 bên (khách hàng dùng tên viết
+// tắt của chính họ; quản trị viên/nhân viên dùng icon chung của quỹ, KHÔNG
+// hiện tên ai cụ thể — biết đang chat với "Quỹ tín dụng" là đủ, đúng ý không
+// cần lộ tên riêng từng nhân viên). Gộp nhóm tin nhắn liên tiếp cùng phía
+// (chỉ hiện avatar ở tin ĐẦU nhóm) + vạch chia ngày + giờ gửi nhỏ gọn nằm
+// ngay trong bong bóng, không chiếm riêng 1 dòng.
 import { openModal } from './modal.js';
 import * as S from '../state.js';
 import { icon } from '../icons.js';
@@ -56,40 +56,26 @@ function dayKey(d) {
   return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
 }
 
-/** "Nhóm" 1 tin nhắn thuộc về ai — dùng để gộp avatar/tên cho các tin liên tiếp cùng người, KHÔNG phân biệt "của tôi hay của người khác" (2 tin liên tiếp của 2 quản trị viên khác nhau vẫn phải tách nhóm riêng). */
-function senderGroupKey(m) {
-  return m.senderRole === 'admin' ? `admin:${m.senderAdminId || '?'}` : `customer:${m.customerId}`;
-}
-
-/**
- * Tên hiển thị + màu avatar cho 1 tin nhắn, tùy theo AI đang xem khung chat
- * này (session) — khách hàng không cần biết chính xác nhân viên nào đang trả
- * lời (không tải bảng admins về phía khách, xem loadCustomerSessionData) nên
- * hiện tên quỹ tín dụng thay cho tên riêng của người trả lời.
- */
-function senderInfo(m, session, customerName) {
-  if (m.senderRole === 'customer') {
-    return { name: customerName || 'Khách hàng', seed: m.customerId, kind: 'customer' };
-  }
-  if (session.role === 'admin') {
-    const admin = S.getAdmin(m.senderAdminId);
-    return { name: admin?.name || 'Nhân viên', seed: m.senderAdminId || 'admin', kind: 'staff' };
-  }
-  return { name: S.getOrg()?.shortName || 'Hỗ trợ', seed: m.senderAdminId || 'admin', kind: 'staff' };
-}
-
 function dividerHtml(label) {
   return `<div class="chat-date-divider"><span>${escapeHtml(label)}</span></div>`;
 }
 
-function rowHtml(m, { mine, showHead, info }) {
-  const bubbleKindCls = mine ? 'mine' : info.kind === 'staff' ? 'staff' : 'customer';
+/** Avatar bên khách hàng — viết tắt tên thật, màu riêng theo customerId (giống avatar dùng khắp app, xem colorFor/initials). */
+function customerAvatarHtml(customerName, customerId) {
+  return `<div class="chat-avatar" style="background:${colorFor(customerId || customerName || 'KH')}">${initials(customerName || 'KH')}</div>`;
+}
+/** Avatar bên quỹ tín dụng — icon CHUNG (không phải initials/tên riêng từng nhân viên), đại diện "quỹ đang trả lời" chứ không lộ danh tính người trả lời cụ thể. */
+function orgAvatarHtml() {
+  return `<div class="chat-avatar chat-avatar-org">${icon('landmark', 'icon-sm')}</div>`;
+}
+
+function rowHtml(m, { showHead, customerName }) {
+  const fromCustomer = m.senderRole === 'customer';
   return `
-    <div class="chat-msg-row ${mine ? 'mine' : 'theirs'} ${showHead ? 'group-start' : 'group-cont'}">
-      <div class="chat-avatar-slot">${!mine && showHead ? `<div class="chat-avatar" style="background:${colorFor(info.seed)}">${initials(info.name)}</div>` : ''}</div>
+    <div class="chat-msg-row ${fromCustomer ? 'from-customer' : 'from-admin'} ${showHead ? 'group-start' : 'group-cont'}">
+      <div class="chat-avatar-slot">${showHead ? (fromCustomer ? customerAvatarHtml(customerName, m.customerId) : orgAvatarHtml()) : ''}</div>
       <div class="chat-bubble-wrap">
-        ${!mine && showHead ? `<div class="chat-sender-name">${escapeHtml(info.name)}</div>` : ''}
-        <div class="chat-bubble ${bubbleKindCls}">
+        <div class="chat-bubble ${fromCustomer ? 'customer' : 'admin'}">
           <span class="chat-bubble-text">${escapeHtml(m.message)}</span>
           <span class="chat-bubble-time">${hhmm(m.createdAt)}</span>
         </div>
@@ -109,7 +95,7 @@ function autoResizeComposer(el) {
  * sách hội thoại ngay sau khi xem xong (cập nhật lại chấm đỏ "chưa đọc").
  */
 export function openChatPanel(customerId, title, opts = {}) {
-  let lastGroupKey = null;
+  let lastGroupKey = null; // 'customer' | 'admin' của tin gần nhất đã vẽ — đổi phía mới hiện lại avatar
   let lastDayKey = null;
   let renderedIds = new Set();
   let emptyShown = false;
@@ -141,7 +127,7 @@ export function openChatPanel(customerId, title, opts = {}) {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
       });
 
-      function appendNew(list, session) {
+      function appendNew(list) {
         const frag = document.createDocumentFragment();
         let any = false;
         for (const m of list) {
@@ -155,16 +141,14 @@ export function openChatPanel(customerId, title, opts = {}) {
             div.innerHTML = dividerHtml(dateDividerLabel(m.createdAt));
             frag.appendChild(div.firstElementChild);
             lastDayKey = dk;
-            lastGroupKey = null; // sang ngày mới thì luôn hiện lại avatar/tên, không gộp xuyên ngày
+            lastGroupKey = null; // sang ngày mới thì luôn hiện lại avatar, không gộp xuyên ngày
           }
 
-          const mine = session.role === 'admin' ? (m.senderRole === 'admin' && m.senderAdminId === session.id) : m.senderRole === 'customer';
-          const gk = senderGroupKey(m);
-          const showHead = !mine && gk !== lastGroupKey;
-          lastGroupKey = gk;
+          const showHead = m.senderRole !== lastGroupKey;
+          lastGroupKey = m.senderRole;
 
           const wrap = document.createElement('div');
-          wrap.innerHTML = rowHtml(m, { mine, showHead, info: senderInfo(m, session, customerName) });
+          wrap.innerHTML = rowHtml(m, { showHead, customerName });
           frag.appendChild(wrap.firstElementChild);
         }
         if (any) {
@@ -187,7 +171,7 @@ export function openChatPanel(customerId, title, opts = {}) {
             logEl.innerHTML = `<div class="chat-empty">${icon('message', 'icon-lg')}<p>Chưa có tin nhắn nào, hãy gửi câu hỏi của bạn.</p></div>`;
           }
         } else {
-          const added = appendNew(list, session);
+          const added = appendNew(list);
           if (added && (forceScroll || wasNearBottom)) logEl.scrollTop = logEl.scrollHeight;
         }
         S.markChatRead(customerId).catch(() => {});
