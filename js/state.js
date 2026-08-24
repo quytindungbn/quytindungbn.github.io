@@ -74,6 +74,7 @@ function migrateState() {
   if (!Array.isArray(state.zaloCustomers)) state.zaloCustomers = [];
   if (!Array.isArray(state.zaloAutoSendList)) state.zaloAutoSendList = [];
   if (!Array.isArray(state.zaloSendLog)) state.zaloSendLog = [];
+  if (typeof state.chatUnreadCount !== 'number') state.chatUnreadCount = 0;
 }
 
 export async function init() {
@@ -354,14 +355,23 @@ export async function requestPasswordReset(cccd, phone) {
 /** Tải hồ sơ + toàn bộ hợp đồng của 1 khách hàng từ Supabase, thay hoàn toàn state.customers/state.contracts. */
 async function loadCustomerSessionData(customerId, token) {
   const sb = getSupabaseClient(token);
-  const [{ data: custRow }, { data: contractRows }, { data: requestRows }] = await Promise.all([
+  const [{ data: custRow }, { data: contractRows }, { data: requestRows }, chatUnreadRes] = await Promise.all([
     sb.from('customers').select('*').eq('id', customerId).maybeSingle(),
     sb.from('contracts').select('*').eq('customer_id', customerId),
     sb.from('requests').select('*').eq('customer_id', customerId),
+    // Số tin nhắn hỗ trợ (chat) do quản trị viên/nhân viên gửi mà khách CHƯA
+    // đọc — dùng cho chấm đỏ ở nút chat nổi (xem js/components/shell.js
+    // renderChatFab). Bọc an toàn (giống push_subscriptions) phòng lúc chưa
+    // chạy SQL tạo bảng chat_messages (mục 10.24) — lỗi thì coi như 0, không
+    // chặn tải các dữ liệu khác.
+    sb.from('chat_messages').select('id', { count: 'exact', head: true })
+      .eq('customer_id', customerId).eq('sender_role', 'admin').is('read_at', null)
+      .then((r) => r, () => ({ count: 0 })),
   ]);
   state.customers = custRow ? [mapCustomerRow(custRow)] : [];
   state.contracts = (contractRows || []).map(mapContractRow);
   state.requests = (requestRows || []).map(mapRequestRow);
+  state.chatUnreadCount = chatUnreadRes?.count || 0;
 }
 
 /** snake_case (cột Postgres) -> camelCase (đúng field app đang dùng khắp nơi). */
@@ -1236,6 +1246,89 @@ function mapRequestRow(row) {
 }
 
 // ------------------------------------------------------------
+// Chat hỗ trợ — khách hàng hỏi, quản trị viên toàn quyền HOẶC nhân viên có
+// quyền "Quản lý User" trả lời (xem docs/supabase-migration.md mục 10.24).
+// Ghi thẳng qua RLS (không cần Edge Function, giống bảng "requests") — mỗi
+// tin nhắn là 1 dòng trong bảng chat_messages, "hội thoại" = toàn bộ tin
+// nhắn cùng 1 customer_id. KHÔNG tải vào state chung như các bảng khác (xem
+// loadAdminSessionData/loadCustomerSessionData) vì cần polling RIÊNG, CHỈ
+// khi khung chat đang mở (xem js/components/chatPanel.js) — các hàm dưới
+// đây được gọi trực tiếp theo yêu cầu, không phải lúc nào cũng có trong bộ
+// nhớ cache.
+// ------------------------------------------------------------
+function mapChatMessageRow(row) {
+  return {
+    id: row.id, customerId: row.customer_id, senderRole: row.sender_role,
+    senderAdminId: row.sender_admin_id || null, message: row.message,
+    createdAt: row.created_at, readAt: row.read_at || null,
+  };
+}
+
+/** Toàn bộ tin nhắn của 1 khách hàng, CŨ -> MỚI — dùng cho khung chat (khách tự xem hội thoại của mình, hoặc admin xem hộ hội thoại của khách đó). */
+export async function listChatMessages(customerId) {
+  const session = getSession();
+  const sb = getSupabaseClient(session?.sbToken);
+  const { data, error } = await sb.from('chat_messages').select('*').eq('customer_id', customerId).order('created_at', { ascending: true });
+  if (error) throw new Error('Không tải được tin nhắn, thử lại sau.');
+  return (data || []).map(mapChatMessageRow);
+}
+
+/** Gửi 1 tin nhắn vào hội thoại của customerId — khách hàng CHỈ gửi được cho CHÍNH MÌNH (RLS tự chặn gửi hộ người khác), admin gửi được cho khách bất kỳ trong phạm vi quản lý. */
+export async function sendChatMessage(customerId, message) {
+  const session = getSession();
+  const text = String(message || '').trim();
+  if (!text) throw new Error('Chưa nhập nội dung.');
+  const sb = getSupabaseClient(session?.sbToken);
+  const row = {
+    id: genId('chat'), customer_id: customerId,
+    sender_role: session.role === 'admin' ? 'admin' : 'customer',
+    sender_admin_id: session.role === 'admin' ? session.id : null,
+    message: text,
+  };
+  const { error } = await sb.from('chat_messages').insert(row);
+  if (error) throw new Error('Không gửi được tin nhắn, thử lại sau.');
+  return mapChatMessageRow({ ...row, created_at: new Date().toISOString(), read_at: null });
+}
+
+/** Đánh dấu đã đọc mọi tin nhắn CỦA PHÍA BÊN KIA (chưa đọc) trong 1 hội thoại — gọi mỗi khi khung chat đang mở/vừa tải lại tin mới, để chấm "chưa đọc" tự tắt đúng lúc người dùng thật sự đã xem. */
+export async function markChatRead(customerId) {
+  const session = getSession();
+  if (!session) return;
+  const otherRole = session.role === 'admin' ? 'customer' : 'admin';
+  const sb = getSupabaseClient(session.sbToken);
+  await sb.from('chat_messages').update({ read_at: new Date().toISOString() })
+    .eq('customer_id', customerId).eq('sender_role', otherRole).is('read_at', null);
+}
+
+/**
+ * Danh sách hội thoại cho trang "Hỗ trợ" (admin) — nhóm theo customer_id từ
+ * tối đa 500 tin nhắn gần nhất (đủ dùng cho quy mô 1 quỹ tín dụng, tránh tải
+ * cả lịch sử chat không giới hạn mỗi lần mở trang, giống cách zalo_send_log
+ * giới hạn 200 dòng gần nhất). Mỗi phần tử: { customerId, lastMessage, lastAt,
+ * lastSenderRole, unreadCount } — unreadCount đếm đúng tin CHƯA ĐỌC do KHÁCH
+ * gửi (khớp đúng phía admin cần trả lời, không tính tin admin tự gửi).
+ */
+export async function listChatConversations() {
+  const session = getSession();
+  const sb = getSupabaseClient(session?.sbToken);
+  const { data, error } = await sb.from('chat_messages').select('*').order('created_at', { ascending: false }).limit(500);
+  if (error) throw new Error('Không tải được danh sách hội thoại, thử lại sau.');
+  const map = new Map();
+  for (const row of (data || [])) {
+    const m = mapChatMessageRow(row);
+    let conv = map.get(m.customerId);
+    if (!conv) {
+      // Dòng ĐẦU TIÊN gặp cho 1 customerId (do đã sắp created_at giảm dần)
+      // chính là tin nhắn MỚI NHẤT của hội thoại đó.
+      conv = { customerId: m.customerId, lastMessage: m.message, lastAt: m.createdAt, lastSenderRole: m.senderRole, unreadCount: 0 };
+      map.set(m.customerId, conv);
+    }
+    if (m.senderRole === 'customer' && !m.readAt) conv.unreadCount++;
+  }
+  return [...map.values()].sort((a, b) => new Date(b.lastAt) - new Date(a.lastAt));
+}
+
+// ------------------------------------------------------------
 // Session (đăng nhập hiện tại)
 // ------------------------------------------------------------
 export function getSession() { return state.session; }
@@ -1343,5 +1436,5 @@ async function seedDemoData() {
     },
   ];
 
-  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloCustomers: [], zaloAutoSendList: [], zaloSendLog: [] };
+  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloCustomers: [], zaloAutoSendList: [], zaloSendLog: [], chatUnreadCount: 0 };
 }

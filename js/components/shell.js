@@ -4,6 +4,7 @@ import * as S from '../state.js';
 import { initials, colorFor, maskCccd } from '../utils.js';
 import { isStandalone } from '../lib/installPwa.js';
 import { bindInstallButton } from './installBtn.js';
+import { openChatPanel } from './chatPanel.js';
 
 export const CUSTOMER_NAV = [
   { path: '#/', label: 'Trang chủ', shortLabel: 'Trang chủ', icon: 'landmark' },
@@ -21,6 +22,10 @@ export const ADMIN_NAV = [
 // bó cứng "chỉ toàn quyền" như "Cài đặt" nữa.
 export const ADMIN_NAV_MANAGE_USERS = [
   { path: '#/admin/nhan-vien', label: 'Quản lý User', shortLabel: 'User', icon: 'idCard' },
+  // "Hỗ trợ" (chat với khách hàng) đi CHUNG quyền với "Quản lý User" — quản
+  // trị viên toàn quyền hoặc nhân viên được cấp canManageUsers, xem
+  // docs/supabase-migration.md mục 10.24.
+  { path: '#/admin/ho-tro', label: 'Hỗ trợ', shortLabel: 'Hỗ trợ', icon: 'message' },
 ];
 // "Quản lý OA" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được cấp
 // riêng cờ canManageZaloOA (xem js/state.js) — y hệt kiểu ADMIN_NAV_MANAGE_USERS.
@@ -198,6 +203,37 @@ function onLogoutClick() {
       });
     },
   });
+}
+
+/**
+ * Nút chat nổi "Hỗ trợ" — CHỈ hiện cho khách hàng (quản trị viên/nhân viên có
+ * trang "Hỗ trợ" riêng trong menu, xem ADMIN_NAV_MANAGE_USERS), ở MỌI trang
+ * (không phải 1 route riêng) kèm chấm đỏ số tin nhắn chưa đọc. Gọi lại ở MỌI
+ * lần renderApp() (kể cả dataOnly, xem app.js) để số chưa đọc luôn đúng theo
+ * dữ liệu mới nhất (tải qua state.chatUnreadCount cùng lúc với
+ * refreshSessionData(), không cần polling riêng gì thêm ở đây) — nút chỉ
+ * TẠO 1 lần, các lần sau chỉ cập nhật lại số.
+ */
+export function renderChatFab(session) {
+  let btn = document.getElementById('chat-fab');
+  if (!session || session.role !== 'customer') { if (btn) btn.remove(); return; }
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'chat-fab';
+    btn.className = 'fab';
+    btn.title = 'Hỗ trợ';
+    // Đọc customerId từ dataset (gán lại MỖI lần dưới đây) thay vì đóng kín
+    // trong closure lúc tạo nút — nút chỉ tạo 1 LẦN DUY NHẤT rồi tái dùng ở
+    // mọi lần gọi sau (xem if (!btn) ở trên), closure session.id lúc tạo sẽ
+    // bị "đông cứng" nếu lỡ có 2 khách hàng nối tiếp dùng chung 1 nút (dù
+    // thực tế luôn đi qua nhánh !session dọn nút giữa 2 lượt đăng nhập, vẫn
+    // phòng hờ cho chắc).
+    btn.addEventListener('click', () => openChatPanel(btn.dataset.customerId, 'Hỗ trợ'));
+    document.body.appendChild(btn);
+  }
+  btn.dataset.customerId = session.id;
+  const unread = S.getState()?.chatUnreadCount || 0;
+  btn.innerHTML = `${icon('message', 'icon-sm')}${unread ? `<span class="fab-badge">${unread > 9 ? '9+' : unread}</span>` : ''}`;
 }
 
 export function updateActiveNav(hash) {

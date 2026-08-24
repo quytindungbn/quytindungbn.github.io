@@ -1,5 +1,5 @@
 import * as S from './state.js';
-import { buildShell, updateActiveNav, renderSidebarProfile } from './components/shell.js';
+import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
@@ -18,6 +18,7 @@ import * as AdminRequests from './views/admin/requests.js';
 import * as AdminSettings from './views/admin/settings.js';
 import * as AdminStaff from './views/admin/staff.js';
 import * as AdminZaloOA from './views/admin/zaloOA.js';
+import * as AdminSupport from './views/admin/support.js';
 
 const customerRoutes = [
   { re: /^#\/$/, view: Dashboard },
@@ -33,6 +34,7 @@ const adminRoutes = [
   { re: /^#\/admin\/cai-dat$/, view: AdminSettings, superOnly: true },
   { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, requiresManageZaloOA: true },
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
+  { re: /^#\/admin\/ho-tro$/, view: AdminSupport, requiresManageUsers: true },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];
 
@@ -88,12 +90,14 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
     AdminCustomers.resetFilters?.();
     AdminZaloOA.resetFilters?.();
     AdminRequests.resetFilters?.();
+    AdminSupport.resetFilters?.();
     lastSessionKey = curSessionKey;
     dataOnly = false;
   }
 
   if (!session) {
     shellKey = null;
+    renderChatFab(null); // dọn nút chat nổi nếu vừa đăng xuất (còn sót lại từ phiên khách hàng trước)
     renderLogin(root, () => renderApp());
     return;
   }
@@ -152,6 +156,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   if (dataOnly && lastRoutePath === path && typeof match.view.refresh === 'function') {
     match.view.refresh(contentEl, filterEl, match.params, query);
     updateActiveNav(path);
+    renderChatFab(session); // nút đã có sẵn từ lần render() đầy đủ trước đó — chỉ cập nhật lại số tin chưa đọc
     return;
   }
 
@@ -163,6 +168,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   match.view.render(contentEl, filterEl, match.params, query);
   lastRoutePath = path;
   updateActiveNav(path);
+  renderChatFab(session); // clearFabs() ở trên vừa dọn nút cũ (nếu có) — tạo lại (hoặc bỏ qua nếu không phải khách hàng)
 }
 
 window.addEventListener('hashchange', () => {

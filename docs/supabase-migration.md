@@ -1498,6 +1498,104 @@ phục lại đầy đủ cho cả 2 loại tài khoản như mô tả ở mục
 
 ---
 
+### 10.24. Chat hỗ trợ — khách hàng hỏi, quản trị viên/nhân viên trả lời (BẮT BUỘC chạy SQL, KHÔNG cần deploy Edge Function)
+
+Thêm 1 kênh hỏi-đáp trực tiếp trong app, tách riêng với "Yêu cầu tư vấn" (mục kia vẫn giữ nguyên, dùng cho
+yêu cầu vay/tư vấn có cấu trúc — chat này dùng cho hỏi nhanh, qua lại nhiều lượt):
+
+- **Khách hàng**: 1 nút tròn nổi góc màn hình (mọi trang, sau khi đăng nhập), có chấm đỏ số tin quản trị
+  viên/nhân viên vừa trả lời mà khách CHƯA xem — bấm vào mở khung chat của chính mình.
+- **Quản trị viên/nhân viên**: mục **"Hỗ trợ"** mới trong menu (đi CHUNG quyền với "Quản lý User" — toàn
+  quyền HOẶC nhân viên được cấp `can_manage_users`, xem đúng người của mục 10.13) — liệt kê TOÀN BỘ hội
+  thoại (không giới hạn theo Thôn/Xóm, khớp đúng ý muốn: ai quản lý được Use thì cũng trả lời chat được),
+  sắp theo tin mới nhất, kèm chấm đỏ số tin khách CHƯA đọc ở mỗi hội thoại. Bấm vào 1 hội thoại mở đúng
+  khung chat của khách đó, gõ trả lời như nhắn tin thường.
+
+Tin nhắn mới cập nhật bằng **tự tải lại mỗi 7 giây, CHỈ khi khung chat đang mở** (đóng khung chat là tắt
+ngay, không có bộ đếm nào chạy ngầm ở nền) — tách hẳn khỏi cơ chế `refreshSessionData()` chung của toàn
+app (mục 9/10.22, chỉ chạy khi đổi tab/chuyển trang) vì chat cần thấy tin mới nhanh hơn hẳn trong lúc đang
+thật sự đứng nhìn màn hình đó, nhưng không được phép biến thành 1 bộ đếm chạy khắp nơi trong app như đã
+từng bị lỗi ở mục 10.22 (làm mất bộ lọc/chữ đang gõ dở ở các trang khác).
+
+Ghi tin nhắn **thẳng qua Row Level Security**, giống hệt cách bảng `requests` (Yêu cầu tư vấn) đang làm —
+KHÔNG qua Edge Function `create-account` nào cả, nên lần này **không cần deploy lại Edge Function**, chỉ
+cần chạy SQL bên dưới.
+
+```sql
+create table if not exists chat_messages (
+  id text primary key,
+  customer_id text not null references customers(id) on delete cascade,
+  sender_role text not null check (sender_role in ('customer', 'admin')),
+  sender_admin_id text references admins(id) on delete set null,
+  message text not null,
+  created_at timestamptz not null default now(),
+  read_at timestamptz
+);
+create index if not exists chat_messages_customer_idx on chat_messages (customer_id, created_at);
+
+alter table chat_messages enable row level security;
+grant select, insert, update on chat_messages to anon, authenticated, service_role;
+
+-- Khách hàng: chỉ thấy/gửi/đánh dấu-đã-đọc đúng hội thoại của CHÍNH MÌNH.
+create policy "customer sees own chat" on chat_messages
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'customer'
+    and customer_id = (auth.jwt() ->> 'row_id')
+  );
+create policy "customer sends own chat" on chat_messages
+  for insert with check (
+    (auth.jwt() ->> 'app_role') = 'customer'
+    and customer_id = (auth.jwt() ->> 'row_id')
+    and sender_role = 'customer'
+  );
+create policy "customer marks admin messages read" on chat_messages
+  for update using (
+    (auth.jwt() ->> 'app_role') = 'customer'
+    and customer_id = (auth.jwt() ->> 'row_id')
+    and sender_role = 'admin'
+  );
+
+-- Quản trị viên toàn quyền HOẶC nhân viên có can_manage_users: xem/trả lời TOÀN BỘ hội thoại (không giới
+-- hạn Thôn/Xóm — khớp đúng phạm vi "Quản lý User" hiện có, xem mục 10.13).
+create policy "admin sees chat" on chat_messages
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (a.role = 'super' or a.can_manage_users = true)
+    )
+  );
+create policy "admin sends chat" on chat_messages
+  for insert with check (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and sender_role = 'admin'
+    and sender_admin_id = (auth.jwt() ->> 'row_id')
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (a.role = 'super' or a.can_manage_users = true)
+    )
+  );
+create policy "admin marks customer messages read" on chat_messages
+  for update using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a
+      where a.id = (auth.jwt() ->> 'row_id')
+        and (a.role = 'super' or a.can_manage_users = true)
+    )
+  );
+```
+
+**Việc cần bạn làm**:
+1. Chạy SQL trên (SQL Editor) — xong là dùng được ngay, **không cần deploy Edge Function nào** (chỉ sửa
+   file `.js`/`.css` tĩnh, GitHub Pages tự deploy khi push `main`).
+2. Tự test: đăng nhập 1 tài khoản khách hàng ở 1 máy, bấm nút chat nổi gửi thử 1 câu hỏi; đăng nhập quản
+   trị viên toàn quyền (hoặc nhân viên có quyền "Quản lý User") ở máy khác, vào menu "Hỗ trợ" để trả lời.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
