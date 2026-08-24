@@ -1454,6 +1454,33 @@ tới việc dọn dẹp.
 
 ---
 
+### 10.23. Nút "Đăng xuất" cho use (KHÔNG cấp lại mật khẩu) — dùng lại đúng cơ chế của mục 10.22 (BẮT BUỘC chạy SQL + deploy Edge Function)
+
+Thêm nút **"Đăng xuất"** cạnh nút "Cấp lại mật khẩu" (cả ở "Quản lý User" cho quản trị viên/nhân viên
+lẫn ở chi tiết khách hàng) — bấm là buộc tài khoản đó thoát khỏi mọi phiên đang đăng nhập ngay, **KHÔNG**
+đặt mật khẩu tạm/không bắt đổi mật khẩu (khác hẳn "Cấp lại mật khẩu"). Dùng đúng cơ chế tự phát hiện đã
+làm cho mục 10.22 (`refreshSessionData()` so sánh trước/sau mỗi lần tự làm mới dữ liệu) — tự "bung ra"
+đăng xuất y hệt, không cần tải lại trang: thêm cột mới `force_logout_at`, admin bấm "Đăng xuất" chỉ ghi
+lại đúng thời điểm bấm vào cột này, phiên đang mở của use đó phát hiện mốc thời gian vừa đổi khác lần
+trước đã biết thì tự đăng xuất.
+
+Quyền hạn giống hệt "Cấp lại mật khẩu" tương ứng: đăng xuất quản trị viên/nhân viên CHỈ dành cho quản trị
+viên toàn quyền; đăng xuất khách hàng thì quản trị viên toàn quyền HOẶC nhân viên có quyền "Quản lý User"
+đều làm được.
+
+```sql
+alter table admins add column if not exists force_logout_at timestamptz;
+alter table customers add column if not exists force_logout_at timestamptz;
+```
+
+**Việc cần bạn làm**:
+1. Chạy SQL trên (SQL Editor).
+2. Deploy lại **`create-account`** (file duy nhất có sửa lần này).
+3. Tự test lại: đăng nhập 1 tài khoản ở máy B, ở máy A (đủ quyền) mở đúng tài khoản đó bấm "Đăng xuất" —
+   máy B phải tự thoát ra khi chuyển tab/bấm sang trang khác (đúng như cơ chế mục 10.22).
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

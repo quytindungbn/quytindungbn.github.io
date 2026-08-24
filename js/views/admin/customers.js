@@ -454,6 +454,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       ${!readOnly || canManageZalo ? `
       <div class="flex gap-8 mt-16 mb-16" style="flex-wrap:wrap">
         ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>` : ''}
+        ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-force-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>` : ''}
         ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>` : ''}
         ${!readOnly && context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
         ${canManageZalo ? `<span id="oa-action-btn-wrap" style="display:contents">${zaloActionButtonHtml(inZaloList)}</span>` : ''}
@@ -516,6 +517,17 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           onConfirm: async (val) => {
             const temp = await S.adminResetCustomerPassword(customerId, val);
             showCredential(c, temp);
+          },
+        });
+      });
+      sheet.querySelector('#btn-force-logout').addEventListener('click', () => {
+        confirmDialog({
+          title: 'Đăng xuất tài khoản này?',
+          message: `"${c.name}" sẽ bị đăng xuất khỏi mọi nơi đang đăng nhập, không cần đổi mật khẩu.`,
+          confirmLabel: 'Đăng xuất',
+          onConfirm: async () => {
+            try { await S.forceLogoutCustomer(customerId); toast('Đã đăng xuất tài khoản này', 'success'); }
+            catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
           },
         });
       });
