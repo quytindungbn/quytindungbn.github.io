@@ -90,12 +90,6 @@ export async function init() {
   // orgs cho phép SELECT công khai (không nhạy cảm — banner + số tài khoản
   // ngân hàng vốn phải công khai để khách chuyển khoản), chỉ cần anon key.
   await loadOrgPublic();
-  // Phiên đăng nhập cũ khôi phục từ localStorage (tải lại trang/mở lại app)
-  // KHÔNG đi qua setSession() nên phải tự bật lắng nghe thời gian thực ở đây
-  // — để "tự đăng xuất ngay khi bị cấp lại mật khẩu ở nơi khác" cũng hoạt
-  // động đúng cho phiên đã đăng nhập từ trước, không chỉ phiên vừa đăng nhập
-  // mới trong đúng lượt mở app này.
-  if (state.session) subscribeForceLogout(state.session.role, state.session.id, state.session.sbToken);
   persist();
 }
 
@@ -904,12 +898,22 @@ export async function loginAdmin(username, password) {
  * notify() chỉ vẽ lại #app-content, không đụng tới modal — modal luôn gắn
  * thẳng vào <body>) thì vẫn tải dữ liệu mới về nhưng HOÃN vẽ lại màn hình để
  * khỏi xóa mất chữ đang gõ dở, dữ liệu mới sẽ tự hiện ở lần làm mới kế tiếp.
+ *
+ * "Bị cấp lại mật khẩu ở nơi khác thì tự đăng xuất ngay" cũng dựa vào ĐÚNG
+ * lần làm mới này (không cần thêm cơ chế/hẹn giờ riêng nào khác) — so
+ * must_change_password của CHÍNH mình TRƯỚC/SAU khi tải: chuyển từ false
+ * sang true nghĩa là VỪA BỊ NGƯỜI KHÁC cấp lại ngay trong lúc đang dùng
+ * phiên này (mới đăng nhập bằng mật khẩu tạm thì cờ này đã true SẴN từ đầu
+ * phiên rồi, không tính) — đăng xuất ngay, KHÔNG cho hiện màn "nhập mật khẩu
+ * mới" trong phiên cũ nữa (khớp yêu cầu: phải đăng nhập lại từ đầu).
  */
 export async function refreshSessionData() {
   if (!state || !state.session) return;
   const session = state.session;
   const active = document.activeElement;
   const isTypingOutsideModal = active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) && !active.closest('.modal-overlay');
+  const getSelf = () => (session.role === 'admin' ? getAdmin(session.id) : getCustomer(session.id));
+  const wasMustChange = !!getSelf()?.mustChangePassword;
   try {
     if (session.role === 'admin') await loadAdminSessionData(session.sbToken);
     else await loadCustomerSessionData(session.id, session.sbToken);
@@ -917,6 +921,7 @@ export async function refreshSessionData() {
     console.warn('Không tự làm mới được dữ liệu, sẽ thử lại ở lần sau.', e);
     return;
   }
+  if (!wasMustChange && getSelf()?.mustChangePassword) { logout(); return; }
   if (isTypingOutsideModal) persist(); // lưu tạm, chưa vẽ lại ngay
   else notify();
 }
@@ -1188,54 +1193,7 @@ function mapRequestRow(row) {
 // Session (đăng nhập hiện tại)
 // ------------------------------------------------------------
 export function getSession() { return state.session; }
-export function setSession(session) {
-  state.session = session;
-  if (session) subscribeForceLogout(session.role, session.id, session.sbToken);
-  else unsubscribeForceLogout();
-  notify();
-}
-
-// ------------------------------------------------------------
-// "Bị cấp lại mật khẩu ở nơi khác thì tự đăng xuất" — KHÔNG dùng Realtime/
-// WebSocket nữa (đã thử — kênh kết nối được nhưng RLS chặn không nhận được
-// sự kiện nào cả, cần cấu hình thêm "Third-Party Auth" khá phức tạp trên
-// Supabase Dashboard mà chưa chắc giải quyết được). Thay bằng cách CHẮC CHẮN
-// HOẠT ĐỘNG hơn: tự hỏi lại máy chủ ĐỊNH KỲ bằng đúng cách gọi API thường
-// (REST + RLS) đã chạy ổn định trong toàn bộ app từ đầu tới giờ — mỗi
-// FORCE_LOGOUT_CHECK_INTERVAL_MS một lần, VÀ mỗi khi quay lại tab (đang ẩn
-// rồi mở lại, hay gặp nhất khi khách/nhân viên chuyển qua app khác rồi quay
-// lại). Không "tức thì tuyệt đối" như realtime nhưng gần như tức thì trong
-// thực tế sử dụng, không phụ thuộc cấu hình phức tạp nào thêm. Nếu phát hiện
-// đúng dòng CỦA MÌNH có must_change_password=true (đúng lúc BỊ NGƯỜI KHÁC
-// cấp lại — tự đổi mật khẩu của chính mình luôn set cờ này về false ngay nên
-// không đụng nhánh này) thì ĐĂNG XUẤT NGAY, không cần tải lại trang.
-// ------------------------------------------------------------
-const FORCE_LOGOUT_CHECK_INTERVAL_MS = 20000; // 20 giây/lần
-let forceLogoutTimer = null;
-let forceLogoutVisibilityHandler = null;
-function subscribeForceLogout(role, rowId, jwt) {
-  unsubscribeForceLogout();
-  if (!rowId || !jwt) return;
-  const table = role === 'customer' ? 'customers' : 'admins';
-  async function check() {
-    // Phiên đã đổi (đăng xuất/đăng nhập tài khoản khác) từ lúc hẹn giờ này
-    // được lập ra -> bỏ qua, tránh tự đăng xuất nhầm 1 phiên MỚI khác rồi.
-    const cur = state.session;
-    if (!cur || cur.id !== rowId || cur.sbToken !== jwt) return;
-    try {
-      const sb = getSupabaseClient(jwt);
-      const { data } = await sb.from(table).select('must_change_password').eq('id', rowId).maybeSingle();
-      if (data?.must_change_password) logout();
-    } catch (e) { /* lỗi mạng tạm thời — bỏ qua, tự thử lại ở lần kiểm tra kế tiếp */ }
-  }
-  forceLogoutTimer = setInterval(check, FORCE_LOGOUT_CHECK_INTERVAL_MS);
-  forceLogoutVisibilityHandler = () => { if (document.visibilityState === 'visible') check(); };
-  document.addEventListener('visibilitychange', forceLogoutVisibilityHandler);
-}
-function unsubscribeForceLogout() {
-  if (forceLogoutTimer) { clearInterval(forceLogoutTimer); forceLogoutTimer = null; }
-  if (forceLogoutVisibilityHandler) { document.removeEventListener('visibilitychange', forceLogoutVisibilityHandler); forceLogoutVisibilityHandler = null; }
-}
+export function setSession(session) { state.session = session; notify(); }
 
 /**
  * Đăng xuất — với khách hàng, báo luôn cho server biết để tắt cờ is_online
@@ -1249,7 +1207,6 @@ export function logout() {
   if (session && session.role === 'customer') {
     callCreateAccountFunction(session.sbToken, { type: 'customer-logout' }).catch(() => {});
   }
-  unsubscribeForceLogout();
   state.session = null;
   notify();
 }

@@ -1419,17 +1419,25 @@ chặn Realtime nhận diện đúng JWT tùy biến của app (khác REST bình
 hình thêm "Third-Party Auth" khá phức tạp trên Supabase Dashboard mà không chắc giải quyết được (đã bỏ,
 xem mục 10.22b để biết chi tiết SQL nào không còn cần thiết nữa).
 
-**Đã đổi sang cách chắc chắn hoạt động hơn**: tự hỏi lại máy chủ ĐỊNH KỲ (mỗi 20 giây, và mỗi khi quay
-lại tab đang ẩn) bằng đúng cách gọi API REST bình thường (không qua Realtime nữa) — nếu phát hiện đúng
-dòng của mình có `must_change_password=true` (đúng lúc BỊ NGƯỜI KHÁC cấp lại — tự đổi mật khẩu của chính
-mình luôn set cờ này về `false` nên không bị đăng xuất oan) thì **đăng xuất ngay, không cần tải lại
-trang** — về thẳng màn đăng nhập, phải đăng nhập lại bằng mật khẩu mới. Không "tức thì tuyệt đối" như
-Realtime (tối đa trễ ~20 giây, hoặc ngay khi quay lại tab) nhưng gần như tức thì trong thực tế sử dụng.
-Áp dụng cho CẢ quản trị viên/nhân viên lẫn khách hàng.
+**Lần 2 — tự thêm 1 bộ hẹn giờ riêng (setInterval)** — chạy được nhưng RACE với 1 cơ chế CÓ SẴN từ trước
+trong app (`refreshSessionData()`, tự tải lại dữ liệu phiên khi quay lại tab/chuyển trang — xem
+`startAutoRefresh()`/`hashchange` ở `js/app.js`): cơ chế có sẵn đó cũng tự phát hiện
+`must_change_password=true` nhưng lại rẽ vào đúng nhánh cũ (hiện màn "nhập mật khẩu mới" ngay trong phiên
+cũ) TRƯỚC KHI bộ hẹn giờ mới kịp chạy — 2 cơ chế giẫm chân nhau, kết quả không ổn định. Codebase này vốn
+đã CHỦ ĐÍCH bỏ hẳn `setInterval` cho việc tự làm mới dữ liệu từ trước (xem ghi chú trong `js/app.js`) vì
+gây khó chịu (mất bộ lọc/chữ đang gõ dở) — thêm 1 bộ hẹn giờ riêng ở đây là đi ngược lại chủ đích đó.
+
+**Đã sửa lại đúng cách — không thêm cơ chế mới nào cả**: tận dụng LUÔN đúng `refreshSessionData()` có sẵn
+(gọi khi quay lại tab/chuyển trang, không phải hẹn giờ riêng) — so `must_change_password` của CHÍNH mình
+TRƯỚC/SAU mỗi lần hàm này tải dữ liệu mới: chuyển từ `false` sang `true` nghĩa là VỪA BỊ NGƯỜI KHÁC cấp
+lại ngay trong lúc đang dùng phiên này (mới đăng nhập bằng mật khẩu tạm thì cờ này đã `true` SẴN từ đầu
+phiên, không tính) → **đăng xuất ngay, không cần tải lại trang** — về thẳng màn đăng nhập, phải đăng nhập
+lại bằng mật khẩu mới, không còn hiện màn "nhập mật khẩu mới" trong phiên cũ nữa. Áp dụng cho CẢ quản trị
+viên/nhân viên lẫn khách hàng — gọn hơn hẳn (không thêm bảng/hẹn giờ/kết nối nào mới), không còn race.
 
 **Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ là sửa file JS tĩnh,
-GitHub Pages tự deploy khi push `main`. Nhờ bạn test lại theo đúng cách trước (2 trình duyệt/2 máy, cấp
-lại mật khẩu ở máy A, đợi tối đa ~20 giây hoặc chuyển qua lại tab ở máy B) để xác nhận hoạt động đúng.
+GitHub Pages tự deploy khi push `main`. Nhờ bạn test lại (2 trình duyệt/2 máy, cấp lại mật khẩu ở máy A,
+rồi chuyển qua lại tab hoặc bấm sang trang khác ở máy B) để xác nhận hoạt động đúng và ổn định.
 
 ---
 
