@@ -1618,6 +1618,28 @@ cần bấm hay chuyển tab gì cả.
 
 ---
 
+### 10.25b. Sửa lỗi nhân viên tự bị đăng xuất OAN dù không ai đụng gì đến tài khoản (KHÔNG cần chạy SQL)
+
+Sau khi triển khai mục 10.25, ghi nhận tình trạng 1 tài khoản **nhân viên** (không phải toàn quyền) đang
+dùng bình thường thì tự nhiên bị đăng xuất, dù xác nhận KHÔNG ai cấp lại mật khẩu/bấm "Đăng xuất" cho tài
+khoản đó. Nghi ngờ 1 lượt đọc dữ liệu hiếm khi bị "xui" — trùng đúng thời điểm với 1 tick khác
+(`refreshSessionData()`) đang thay hẳn `state.admins` bằng dữ liệu mới — khiến `checkForceLogout()` so
+sánh nhầm ra "khác nhau" dù thực ra không có gì đổi thật trên máy chủ.
+
+**2 lớp phòng hờ đã thêm** (không đổi gì ở phần "Việc cần bạn làm" của mục 10.25, chỉ sửa code JS):
+1. So mốc thời gian `force_logout_at` bằng `Date`/`getTime()` thay vì so chuỗi trực tiếp — tránh báo
+   "khác nhau" giả nếu 2 lần đọc format chuỗi hơi khác nhau dù cùng 1 giá trị thật.
+2. **CHỈ đăng xuất khi thấy dấu hiệu bất thường ở 2 lượt kiểm tra LIÊN TIẾP** (~5 giây/lượt) — 1 lượt đọc
+   lệch thoáng qua rồi tự đúng lại ngay lượt sau sẽ KHÔNG còn bị coi là "bị cấp lại mật khẩu/đăng xuất"
+   nữa. Trường hợp bị cấp lại mật khẩu/"Đăng xuất" THẬT thì dấu hiệu vẫn giữ nguyên qua 2 lượt liền — chỉ
+   chậm thêm tối đa khoảng 5 giây so với trước, không ảnh hưởng gì đến trải nghiệm "gần như tức thì".
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy gì thêm — chỉ sửa file JS tĩnh. Nhờ bạn theo dõi thêm vài
+ngày xem tài khoản nhân viên còn tự bị đăng xuất oan nữa không; nếu vẫn còn thì báo lại kèm càng nhiều chi
+tiết càng tốt (đang làm gì lúc đó, có mở nhiều tab/nhiều thiết bị cùng lúc không) để tìm tiếp.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

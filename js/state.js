@@ -978,9 +978,34 @@ export async function refreshSessionData() {
  * chỉ đụng tới màn hình ĐÚNG lúc thật sự cần đăng xuất ngay (logout() gọi
  * notify() bên trong nó), nên không ảnh hưởng gì tới trang đang xem/đang gõ
  * trong mọi trường hợp khác.
+ *
+ * CHỈ đăng xuất khi thấy dấu hiệu bất thường ở 2 LƯỢT KIỂM TRA LIÊN TIẾP
+ * (~5 giây/lượt, xem pendingForceLogoutSignal) — phòng hờ đăng xuất OAN do 1
+ * lượt đọc dữ liệu hiếm khi bị lệch thoáng qua (VD: đúng lúc trùng thời điểm
+ * refreshSessionData() đang thay hẳn state.admins/state.customers bằng dữ
+ * liệu mới ở 1 tick riêng khác) — lệch thật do bị cấp lại mật khẩu/"Đăng
+ * xuất" thì vẫn giữ nguyên qua 2 lượt liền, chỉ chậm thêm tối đa ~5 giây so
+ * với bản chỉ kiểm tra 1 lượt.
  */
+// Tín hiệu "có vẻ cần đăng xuất" thấy được ở lượt kiểm tra GẦN NHẤT (dạng
+// chuỗi tóm tắt, xem checkForceLogout()) — CHỈ thật sự đăng xuất khi ĐÚNG
+// tín hiệu này lặp lại ở lượt kế tiếp (~5 giây sau). Phòng hờ 1 lượt đọc dữ
+// liệu "xui" thoáng qua (VD: đúng lúc trùng với refreshSessionData() đang
+// tải lại state.admins/state.customers ở 1 tick khác) làm sai lệch 1 lần rồi
+// tự đúng lại ngay sau đó — không nên đăng xuất oan chỉ vì 1 lần đọc lệch.
+let pendingForceLogoutSignal = null;
+
+/** So 2 mốc thời gian force_logout_at CÙNG Ý NGHĨA hay không, dùng Date thay vì so chuỗi trực tiếp — tránh báo "khác nhau" giả do lệch định dạng chuỗi (VD: độ chính xác phần giây/mili-giây) giữa 2 lần đọc khác cột chọn, dù cùng 1 giá trị thật trong CSDL. */
+function sameInstant(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ta = new Date(a).getTime();
+  const tb = new Date(b).getTime();
+  return Number.isFinite(ta) && Number.isFinite(tb) && ta === tb;
+}
+
 export async function checkForceLogout() {
-  if (!state || !state.session) return;
+  if (!state || !state.session) { pendingForceLogoutSignal = null; return; }
   const session = state.session;
   const table = session.role === 'admin' ? 'admins' : 'customers';
   const sb = getSupabaseClient(session.sbToken);
@@ -994,8 +1019,11 @@ export async function checkForceLogout() {
   const wasMustChange = !!getSelf()?.mustChangePassword;
   const wasForceLogoutAt = getSelf()?.forceLogoutAt || null;
   const nowForceLogoutAt = data.force_logout_at || null;
-  if (!wasMustChange && data.must_change_password) { logout(); return; }
-  if (nowForceLogoutAt && nowForceLogoutAt !== wasForceLogoutAt) { logout(); }
+  const suspicious = (!wasMustChange && data.must_change_password) || (nowForceLogoutAt && !sameInstant(nowForceLogoutAt, wasForceLogoutAt));
+  if (!suspicious) { pendingForceLogoutSignal = null; return; }
+  const signal = `${session.id}:${!!data.must_change_password}:${nowForceLogoutAt}`;
+  if (pendingForceLogoutSignal === signal) { pendingForceLogoutSignal = null; logout(); return; }
+  pendingForceLogoutSignal = signal; // thấy lần đầu -> chờ đúng tín hiệu này lặp lại ở lượt kế tiếp mới đăng xuất thật
 }
 
 async function loadAdminSessionData(token) {
