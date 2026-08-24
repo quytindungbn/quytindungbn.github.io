@@ -963,6 +963,41 @@ export async function refreshSessionData() {
   else notify();
 }
 
+/**
+ * Kiểm tra NHẸ (chỉ 2 cột, đúng 1 dòng — KHÁC HẲN refreshSessionData() ở
+ * trên vốn tải lại TOÀN BỘ dữ liệu phiên) xem CHÍNH mình vừa bị cấp lại mật
+ * khẩu hay bị "Đăng xuất" ngay trong lúc đang dùng phiên này hay chưa — gọi
+ * ĐỊNH KỲ mỗi vài giây (xem setInterval ở js/app.js) để 2 việc này TỰ BUNG
+ * RA NGAY, không cần đợi người dùng quay lại tab/chuyển trang mới phát hiện
+ * ra (khác refreshSessionData(), vốn CHỦ Ý chỉ chạy khi có tín hiệu quay lại
+ * tab/chuyển trang, xem ghi chú ở startAutoRefresh() trong js/app.js).
+ *
+ * AN TOÀN để chạy định kỳ (không lặp lại lỗi "setInterval làm mất bộ lọc/
+ * chữ đang gõ dở" đã từng gặp ở mục 10.22 trong docs/supabase-migration.md):
+ * hàm này KHÔNG BAO GIỜ gọi persist()/notify() khi không có gì thay đổi —
+ * chỉ đụng tới màn hình ĐÚNG lúc thật sự cần đăng xuất ngay (logout() gọi
+ * notify() bên trong nó), nên không ảnh hưởng gì tới trang đang xem/đang gõ
+ * trong mọi trường hợp khác.
+ */
+export async function checkForceLogout() {
+  if (!state || !state.session) return;
+  const session = state.session;
+  const table = session.role === 'admin' ? 'admins' : 'customers';
+  const sb = getSupabaseClient(session.sbToken);
+  let data;
+  try {
+    const res = await sb.from(table).select('must_change_password, force_logout_at').eq('id', session.id).maybeSingle();
+    data = res.data;
+  } catch (e) { return; } // mất mạng tạm thời -> im lặng, thử lại ở lượt sau
+  if (!data) return;
+  const getSelf = () => (session.role === 'admin' ? getAdmin(session.id) : getCustomer(session.id));
+  const wasMustChange = !!getSelf()?.mustChangePassword;
+  const wasForceLogoutAt = getSelf()?.forceLogoutAt || null;
+  const nowForceLogoutAt = data.force_logout_at || null;
+  if (!wasMustChange && data.must_change_password) { logout(); return; }
+  if (nowForceLogoutAt && nowForceLogoutAt !== wasForceLogoutAt) { logout(); }
+}
+
 async function loadAdminSessionData(token) {
   const sb = getSupabaseClient(token);
   const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes, zaloCustRes, zaloListRes, zaloLogRes, chatUnreadRes] = await Promise.all([

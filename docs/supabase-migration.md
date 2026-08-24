@@ -1596,6 +1596,28 @@ create policy "admin marks customer messages read" on chat_messages
 
 ---
 
+### 10.25. Cấp lại mật khẩu/"Đăng xuất" cho use → bung ra NGAY, không cần đợi quay lại tab (KHÔNG cần chạy SQL)
+
+Cơ chế ở mục 10.22/10.23 (so `must_change_password`/`force_logout_at` trước/sau mỗi lần `refreshSessionData()`
+chạy) chỉ tự phát hiện được lúc người đó **quay lại tab hoặc chuyển trang** — đứng yên 1 màn hình không
+làm gì thì phải đợi tới lúc đó mới bung. Giờ thêm 1 bộ đếm giờ (`setInterval`) RIÊNG, chạy mỗi **5 giây**,
+gọi 1 hàm kiểm tra CỰC NHẸ (`checkForceLogout()` — chỉ đọc đúng 2 cột `must_change_password`/
+`force_logout_at` của CHÍNH mình, không tải lại cả phiên như `refreshSessionData()`) — phát hiện là đăng
+xuất ngay, không cần chờ tín hiệu quay lại tab/chuyển trang nữa.
+
+**Vì sao trước đây từng bỏ hẳn `setInterval` mà giờ lại thêm lại** (xem ghi chú trong `js/app.js`): lần
+trước (mục 10.22) bộ đếm giờ **tải lại TOÀN BỘ dữ liệu phiên** mỗi vài chục giây — làm mất bộ lọc/chữ
+đang gõ dở khắp nơi trong app, nên đã bỏ. Lần này khác hẳn: `checkForceLogout()` **không bao giờ đụng tới
+màn hình đang xem** (không gọi `persist()`/`notify()`) trừ phi THẬT SỰ cần đăng xuất ngay — nên chạy định
+kỳ hoàn toàn an toàn, không lặp lại vấn đề cũ.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL, KHÔNG cần deploy Edge Function nào — chỉ sửa file JS tĩnh,
+GitHub Pages tự deploy khi push `main`. Nhờ bạn test lại (2 trình duyệt/2 máy, cấp lại mật khẩu hoặc bấm
+"Đăng xuất" ở máy A, để yên máy B không chạm gì) — trong vòng khoảng 5 giây, máy B tự bung đăng xuất, không
+cần bấm hay chuyển tab gì cả.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

@@ -212,11 +212,26 @@ S.subscribe(() => {
 // mới thấy dữ liệu mới (VD: admin vừa sửa hợp đồng/đổi quyền ở máy khác). CHỈ
 // làm mới khi có tín hiệu thật là người dùng có thể cần thấy dữ liệu mới
 // (quay lại tab/app, hoặc chuyển trang — xem thêm listener 'hashchange' ở
-// trên) — KHÔNG dùng bộ đếm thời gian (setInterval) nữa, vì cứ vài chục giây
-// lại tự tải lại 1 lần sẽ làm mất bộ lọc đang chọn (Thôn/Xóm/sắp xếp...) và
-// dữ liệu đang gõ dở, dù đã có cơ chế né ô đang gõ — vẫn gây khó chịu.
+// trên) — KHÔNG dùng bộ đếm thời gian (setInterval) TẢI LẠI TOÀN BỘ DỮ LIỆU
+// nữa, vì cứ vài chục giây lại tự tải lại 1 lần sẽ làm mất bộ lọc đang chọn
+// (Thôn/Xóm/sắp xếp...) và dữ liệu đang gõ dở, dù đã có cơ chế né ô đang gõ
+// — vẫn gây khó chịu. (Có 1 bộ đếm giờ RIÊNG, RẤT NHẸ, chỉ kiểm tra đúng 2
+// cột — xem setInterval(S.checkForceLogout...) ngay bên dưới — đó là ngoại
+// lệ DUY NHẤT, KHÔNG áp dụng nguyên tắc này vì nó không bao giờ đụng tới màn
+// hình đang xem trừ khi thật sự cần đăng xuất ngay.)
 function startAutoRefresh() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') S.refreshSessionData();
   });
 }
+
+// Đăng xuất ngay khi bị cấp lại mật khẩu/bấm "Đăng xuất" (xem
+// S.checkForceLogout()) CẦN xảy ra tức thì, không thể đợi người dùng tự quay
+// lại tab/chuyển trang mới phát hiện ra (đó là đúng nhược điểm của cơ chế
+// startAutoRefresh() ở trên — CHỦ Ý chỉ chạy theo tín hiệu, không phải theo
+// thời gian). checkForceLogout() được thiết kế RIÊNG để an toàn khi chạy định
+// kỳ (chỉ đọc 2 cột của CHÍNH mình, không bao giờ vẽ lại màn hình trừ khi
+// thật sự cần đăng xuất — xem ghi chú đầy đủ trong js/state.js) nên đặt hẳn 1
+// bộ đếm giờ riêng cho việc NÀY, tách biệt hoàn toàn với cơ chế tải lại dữ
+// liệu chung ở trên.
+setInterval(() => S.checkForceLogout(), 5000);
