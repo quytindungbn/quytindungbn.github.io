@@ -1986,8 +1986,11 @@ chạy thêm.
 
 Trang "Nhật ký" giờ chia theo TỪNG NGÀY — ngày ("Hôm nay"/"Hôm qua"/dd-mm-yyyy) đưa lên làm tiêu đề **in
 đậm** riêng ở đầu mỗi ngày (giống vạch chia ngày trong khung chat), các dòng thao tác bên dưới chỉ còn
-ghi GIỜ (không lặp lại ngày ở từng dòng nữa, đỡ rối mắt). Nội dung chính của mỗi thao tác (VD: "Vào trang
-'Khách hàng & Hợp đồng'", "Xóa hợp đồng HD-001"...) cũng được **in đậm** để dễ nhìn lướt qua hơn.
+ghi GIỜ (không lặp lại ngày ở từng dòng nữa, đỡ rối mắt).
+
+Nội dung chính của thao tác được **in đậm** — TRỪ RIÊNG dòng "Vào trang..." (chỉ là chuyển menu, không
+phải thao tác quan trọng cần nổi bật) vẫn để chữ thường như trước, phân biệt rõ với các thao tác thật sự
+đáng chú ý (VD: "**Xóa hợp đồng HD-001**", "**Cấp lại mật khẩu khách hàng "Trần Văn A"**"...).
 
 **Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS/CSS tĩnh, GitHub Pages
 tự deploy khi push `main`.

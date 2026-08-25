@@ -175,7 +175,7 @@ function groupHtml(g) {
         ${g.items.map((r) => `
           <div class="log-group-item">
             <div class="text-sm text-muted">${hhmm(r.createdAt)}</div>
-            <div class="text-sm fw-700" style="margin-top:2px">${escapeHtml(r.description)}</div>
+            <div class="text-sm${r.action === 'nav-page' ? '' : ' fw-700'}" style="margin-top:2px">${escapeHtml(r.description)}</div>
           </div>
         `).join('')}
       </div>
