@@ -66,7 +66,7 @@ function drawList(contentEl) {
   });
 
   const searchHtml = `<div style="margin-bottom:12px">${searchBoxHtml('log-search', 'Tìm theo tên quản trị viên/nội dung...', searchQuery)}</div>`;
-  const listHtml = rows.length ? rows.map(rowHtml).join('') : `<div class="card card-pad">${emptyState({
+  const listHtml = rows.length ? groupConsecutive(rows).map(groupHtml).join('') : `<div class="card card-pad">${emptyState({
     iconName: 'clock',
     title: q ? 'Không tìm thấy' : 'Chưa có nhật ký nào',
     message: q ? 'Không có dòng nào khớp tìm kiếm.' : 'Nhật ký sẽ tự ghi lại khi có thao tác của quản trị viên/nhân viên.',
@@ -96,19 +96,43 @@ function drawList(contentEl) {
   });
 }
 
-function rowHtml(r) {
-  const name = r.adminName || 'Không rõ';
+/**
+ * Gộp các dòng LIÊN TIẾP NHAU (kề nhau trong danh sách đang hiện, sau khi đã
+ * lọc/tìm kiếm) của CÙNG 1 quản trị viên thành 1 nhóm — chỉ hiện avatar/tên
+ * MỘT LẦN ở đầu nhóm, các thao tác bên dưới chỉ còn giờ + nội dung, gọn hơn
+ * hẳn khi 1 người thao tác nhiều lần dồn dập (VD: bấm qua lại nhiều menu).
+ * "Liên tiếp" tính trên rows đã lọc/trang đã tải — 2 dòng của cùng 1 người
+ * nhưng bị CHEN NGANG bởi thao tác của người khác thì KHÔNG gộp (đúng thứ tự
+ * thời gian thật, không gộp nhầm 2 lượt thao tác rời rạc lại với nhau).
+ */
+function groupConsecutive(rows) {
+  const groups = [];
+  for (const r of rows) {
+    const last = groups[groups.length - 1];
+    if (last && last.adminId === r.adminId && last.adminName === r.adminName) {
+      last.items.push(r);
+    } else {
+      groups.push({ adminId: r.adminId, adminName: r.adminName, items: [r] });
+    }
+  }
+  return groups;
+}
+
+function groupHtml(g) {
+  const name = g.adminName || 'Không rõ';
   return `
-    <div class="card order-card">
-      <div class="flex items-center gap-10">
-        <div class="row-thumb" style="width:36px;height:36px;font-size:13px;background:${colorFor(r.adminId || name)};flex:none">${initials(name)}</div>
-        <div style="min-width:0;flex:1">
-          <div class="flex items-center gap-8" style="justify-content:space-between">
-            <span class="fw-700" style="font-size:13.5px">${escapeHtml(name)}</span>
-            <span class="text-sm text-muted" style="white-space:nowrap;flex:none">${formatDateTime(r.createdAt)}</span>
+    <div class="card order-card log-group">
+      <div class="flex items-center gap-10 log-group-head">
+        <div class="row-thumb" style="width:36px;height:36px;font-size:13px;background:${colorFor(g.adminId || name)};flex:none">${initials(name)}</div>
+        <span class="fw-700" style="font-size:13.5px">${escapeHtml(name)}</span>
+      </div>
+      <div class="log-group-items">
+        ${g.items.map((r) => `
+          <div class="log-group-item">
+            <div class="text-sm text-muted">${formatDateTime(r.createdAt)}</div>
+            <div class="text-sm" style="margin-top:2px">${escapeHtml(r.description)}</div>
           </div>
-          <div class="text-sm text-muted" style="margin-top:2px">${escapeHtml(r.description)}</div>
-        </div>
+        `).join('')}
       </div>
     </div>`;
 }

@@ -1953,6 +1953,18 @@ chạy thêm. Sau khi deploy xong, nhớ vào Quản lý User sửa lại tên t
 
 ---
 
+### 10.36. Nhật ký: gộp nhiều thao tác liên tiếp của cùng 1 người (KHÔNG cần chạy SQL/deploy Edge Function)
+
+1 người thao tác liên tục (VD: bấm qua lại nhiều menu) trước đây lặp lại avatar + tên ở MỖI dòng, dài
+dòng khó theo dõi. Giờ các dòng LIÊN TIẾP NHAU của CÙNG 1 người được gộp thành 1 khối — avatar/tên chỉ
+hiện 1 lần ở đầu khối, bên dưới chỉ còn giờ + nội dung từng thao tác, gọn hơn hẳn. 2 dòng của cùng 1
+người nhưng bị CHEN NGANG bởi thao tác của người khác thì KHÔNG gộp (giữ đúng thứ tự thời gian thật).
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS/CSS tĩnh, GitHub Pages
+tự deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

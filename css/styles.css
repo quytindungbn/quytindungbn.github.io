@@ -504,6 +504,13 @@ svg { display: block; }
 .oc-line b { color: var(--text); font-weight: 600; text-align: right; }
 .order-card .oc-foot { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); text-align: right; }
 
+/* Trang "Nhật ký" — gộp nhiều thao tác LIÊN TIẾP của CÙNG 1 người thành 1
+   khối, chỉ hiện avatar/tên 1 lần ở đầu (xem groupConsecutive() trong
+   js/views/admin/logs.js). */
+.log-group-head { margin-bottom: 4px; }
+.log-group-item { padding: 8px 0; border-top: 1px dashed var(--border); }
+.log-group-item:first-child { border-top: none; padding-top: 4px; }
+
 .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
 .empty-state .icon-lg { margin: 0 auto 10px; color: var(--text-faint); width: 44px; height: 44px; }
 .empty-state h3 { font-size: 15px; margin-bottom: 4px; color: var(--text); }
