@@ -308,6 +308,14 @@ function openAdminDetail(admin, tree, contentEl) {
   const close = openModal({
     title: admin.name,
     bodyHtml: `
+      <div class="field">
+        <label>Tên hiển thị</label>
+        <div class="flex gap-8">
+          <input type="text" id="input-admin-name" value="${escapeHtml(admin.name)}" style="flex:1"/>
+          <button class="btn btn-outline btn-sm" id="btn-save-name">Lưu tên</button>
+        </div>
+        <div class="field-hint">Tên này hiện ở khắp nơi (Nhật ký sử dụng, Quản lý User...) — sửa lại nếu tài khoản còn để tên chung chung như "Quản trị viên".</div>
+      </div>
       <div class="oc-line"><span>Tên đăng nhập</span><b>@${admin.username}</b></div>
       ${viewerIsSuper && !isSelf ? `
       <div class="field">
@@ -330,6 +338,24 @@ function openAdminDetail(admin, tree, contentEl) {
     `,
     onMount(sheet, closeFn) {
       bindPermissionTreeChips(sheet);
+
+      const nameInput = sheet.querySelector('#input-admin-name');
+      const saveNameBtn = sheet.querySelector('#btn-save-name');
+      if (saveNameBtn) saveNameBtn.addEventListener('click', async () => {
+        const val = nameInput.value.trim();
+        if (!val) { toast('Tên không được để trống', 'error'); return; }
+        if (val === admin.name) return; // không đổi gì thì thôi, khỏi gọi server vô ích
+        saveNameBtn.disabled = true;
+        try {
+          await S.updateStaffName(admin.id, val);
+          toast('Đã lưu tên', 'success');
+          closeFn();
+          draw(contentEl);
+        } catch (err) {
+          toast(err.message || 'Có lỗi xảy ra', 'error');
+          saveNameBtn.disabled = false;
+        }
+      });
 
       const roleRow = sheet.querySelector('#role-radio-row');
       const permSection = sheet.querySelector('#perm-section');

@@ -187,8 +187,13 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   // với lastRoutePath — path không đổi thì không ghi lại, tránh spam lúc
   // renderApp() gọi lại nhiều lần trên CÙNG 1 trang vì có dữ liệu mới/đổi
   // quyền, xem ghi chú dataOnly ở trên). logAdminAction() tự bỏ qua nếu
-  // không phải phiên quản trị viên.
-  if (path !== lastRoutePath) S.logAdminAction('nav-page', { pageLabel: NAV_LABEL_MAP[path] || path });
+  // không phải phiên quản trị viên. RIÊNG trang "Nhật ký" (#/admin/nhat-ky)
+  // KHÔNG tự ghi log vào chính nó — mỗi lần vào xem nhật ký lại tự thêm 1
+  // dòng "Vào trang Nhật ký" đứng đầu danh sách, che mất đúng thao tác vừa
+  // làm trước đó mà người dùng đang muốn kiểm tra.
+  if (path !== lastRoutePath && path !== '#/admin/nhat-ky') {
+    S.logAdminAction('nav-page', { pageLabel: NAV_LABEL_MAP[path] || path });
+  }
   lastRoutePath = path;
   updateActiveNav(path);
   renderChatFab(session); // clearFabs() ở trên vừa dọn nút cũ (nếu có) — tạo lại (hoặc bỏ qua nếu không phải khách hàng)

@@ -1927,6 +1927,32 @@ grant delete on activity_log to service_role;
 
 ---
 
+### 10.35. Nhật ký hiện "Quản trị viên" thay vì tên thật + tự che mất thao tác vừa làm (BẮT BUỘC deploy lại `create-account`, KHÔNG cần SQL)
+
+Sau khi lọc Thôn/Xóm/Gốc-Lãi hoặc bấm menu rồi vào xem Nhật ký, thấy dòng mới nhất luôn là "Quản trị
+viên — Vào trang 'Nhật ký'" chứ không phải đúng thao tác vừa làm. 2 nguyên nhân khác nhau, đã sửa cả 2:
+
+1. **Tên hiển thị "Quản trị viên" không phải lỗi ghi log** — đây là tên THẬT đang lưu trong hồ sơ của
+   chính tài khoản đang dùng (tài khoản toàn quyền khởi tạo ban đầu thường để tên chung chung như vậy,
+   chưa từng đổi lại). Nhật ký chỉ hiển thị ĐÚNG tên đang lưu — sửa lại tên thật thì Nhật ký tự hiện đúng
+   từ lần ghi tiếp theo (các dòng ĐÃ GHI trước đó vẫn giữ nguyên tên cũ, vì tên ghi vào Nhật ký là "ảnh
+   chụp" tại đúng lúc đó, không tự đổi theo sau này).
+   **Đã thêm chỗ sửa**: vào **Quản lý User** → bấm vào tài khoản cần sửa (bấm vào chính mình cũng được)
+   → ô "Tên hiển thị" ở đầu → sửa rồi bấm "Lưu tên". Chỉ quản trị viên toàn quyền sửa được (sửa tên chính
+   mình hoặc của người khác).
+2. **Vào xem Nhật ký lại tự che mất đúng thao tác vừa muốn kiểm tra** — do bản thân việc BẤM VÀO MENU
+   "Nhật ký" để xem cũng đang được tính là 1 lần chuyển trang, tự ghi thêm dòng "Vào trang 'Nhật ký'" đứng
+   đầu danh sách (mới nhất lên đầu) — che mất đúng dòng ghi thao tác trước đó mà người dùng đang muốn
+   thấy. Đã sửa: KHÔNG tự ghi log khi vào xem chính trang Nhật ký nữa — các trang khác vẫn ghi bình
+   thường.
+
+**Việc cần bạn làm**: deploy lại **`create-account`** (file vừa gửi) — Supabase Dashboard → Edge
+Functions → chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy. Không có SQL nào cần
+chạy thêm. Sau khi deploy xong, nhớ vào Quản lý User sửa lại tên thật cho tài khoản đang thấy hiện
+"Quản trị viên".
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

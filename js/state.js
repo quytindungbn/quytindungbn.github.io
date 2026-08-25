@@ -1176,6 +1176,27 @@ export async function updateStaffRole(id, role) {
   a.role = role;
   notify();
 }
+/**
+ * Sửa tên hiển thị của 1 tài khoản quản trị viên/nhân viên (KỂ CẢ chính
+ * mình đang đăng nhập) — CHỈ quản trị viên toàn quyền gọi được (xem
+ * SUPER_ONLY_TYPES trong create-account/index.ts). Thêm để sửa tên các tài
+ * khoản còn để tên chung chung kiểu "Quản trị viên" (VD: tài khoản khởi tạo
+ * ban đầu) — Nhật ký sử dụng (mục 10.35) hiển thị đúng tên này, sửa lại ở
+ * đây là Nhật ký tự hiện đúng tên thật ngay từ lần ghi tiếp theo (không sửa
+ * lại được các dòng đã ghi TRƯỚC đó, vì admin_name là ảnh chụp tại đúng lúc
+ * ghi, không tự đổi theo).
+ */
+export async function updateStaffName(id, name) {
+  const a = getAdmin(id);
+  if (!a) return;
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw new Error('Tên không được để trống.');
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-staff-name', staffId: id, name: trimmed });
+  if (!res.ok) throw new Error(res.reason || 'Không sửa được tên.');
+  a.name = trimmed;
+  notify();
+}
 /** Cấp lại mật khẩu cho quản trị viên/nhân viên — có thể tự nhập mật khẩu cụ thể, để trống thì tự sinh ngẫu nhiên. */
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
 export async function resetStaffPassword(id, customPassword) {

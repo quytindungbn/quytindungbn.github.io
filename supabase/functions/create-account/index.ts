@@ -1035,6 +1035,7 @@ Deno.serve(async (req) => {
   const SUPER_ONLY_TYPES = [
     'update-customer-profile', 'delete-contract', 'import', 'update-staff-role',
     'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff', 'force-logout-staff',
+    'update-staff-name',
   ];
   if (SUPER_ONLY_TYPES.includes(body.type) && !isSuper) {
     return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
@@ -1061,6 +1062,25 @@ Deno.serve(async (req) => {
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-staff-role',
       `Đổi vai trò tài khoản "${target.name || target.username}" thành ${newRole === 'super' ? 'Toàn quyền' : 'Nhân viên'}`);
+    return json({ ok: true });
+  }
+
+  // Sửa tên hiển thị của 1 tài khoản quản trị viên/nhân viên — KỂ CẢ chính
+  // tài khoản đang gọi (VD: tài khoản khởi tạo ban đầu còn để tên chung
+  // chung "Quản trị viên", cần sửa lại thành tên thật để Nhật ký sử dụng
+  // hiển thị đúng người — xem mục 10.35 docs). CHỈ super (đã chặn ở
+  // SUPER_ONLY_TYPES phía trên).
+  if (body.type === 'update-staff-name') {
+    const staffId = String(body.staffId || '').trim();
+    const name = String(body.name || '').trim();
+    if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
+    if (!name) return json({ ok: false, reason: 'Tên không được để trống.' }, 400);
+    const { data: target } = await admin.from('admins').select('name, username').eq('id', staffId).maybeSingle();
+    if (!target) return json({ ok: false, reason: 'Không tìm thấy tài khoản.' }, 404);
+    const { error } = await admin.from('admins').update({ name }).eq('id', staffId);
+    if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-staff-name',
+      `Đổi tên hiển thị tài khoản "${target.name || target.username}" thành "${name}"`);
     return json({ ok: true });
   }
 
