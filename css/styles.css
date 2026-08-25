@@ -615,6 +615,9 @@ svg { display: block; }
      nếu vẫn để full-width như trên điện thoại. Giữ đúng kích thước vừa mắt,
      không cần trải hết chiều ngang màn hình. */
   .segmented-row { max-width: 420px; }
+  /* Tương tự — 2 nút tab "Hỗ trợ/Tư vấn" bị kéo giãn quá rộng trên máy tính,
+     giữ đúng kích thước vừa mắt như trên điện thoại. */
+  .tabs { max-width: 360px; }
 }
 @media (max-width: 899px) {
   .grid-4 { grid-template-columns: 1fr 1fr; }
