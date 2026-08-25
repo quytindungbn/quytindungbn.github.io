@@ -1965,6 +1965,23 @@ tự deploy khi push `main`.
 
 ---
 
+### 10.37. Tài khoản đăng nhập "admin" không bị ghi vào Nhật ký (BẮT BUỘC deploy lại `create-account`, KHÔNG cần SQL)
+
+Theo yêu cầu: mọi tài khoản quản trị viên toàn quyền/chỉ xem vẫn ghi nhật ký bình thường, RIÊNG tài khoản
+có **tên đăng nhập đúng "admin"** (không phân biệt hoa/thường) thì KHÔNG ghi bất kỳ thao tác nào của tài
+khoản đó vào Nhật ký nữa — kể cả đăng nhập, xem chi tiết, lọc danh sách, chuyển trang, quản lý tài
+khoản/hợp đồng, gửi Zalo OA... Chặn ngay tại nơi ghi log (`logActivity()` trong `create-account`) — chặn
+ở 1 chỗ DUY NHẤT áp dụng cho MỌI loại thao tác, không cần sửa từng chỗ gọi riêng lẻ.
+
+Lưu ý: các dòng nhật ký đã ghi TỪ TRƯỚC của tài khoản "admin" (nếu có) vẫn còn nguyên trong bảng — thay
+đổi này chỉ áp dụng cho thao tác MỚI từ lúc deploy trở đi, không tự xóa lịch sử cũ.
+
+**Việc cần bạn làm**: deploy lại **`create-account`** (file vừa gửi) — Supabase Dashboard → Edge
+Functions → chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy. Không có SQL nào cần
+chạy thêm.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

@@ -170,8 +170,16 @@ function addDaysISO(iso: string, n: number): string {
  * Excel...) vốn đã không phải thao tác cần phản hồi tức thì như gửi tin.
  * KHÔNG chặn luồng chính nếu ghi log lỗi (chỉ log ra console) — 1 lỗi ghi
  * nhật ký không được phép làm hỏng thao tác THẬT của người dùng.
+ *
+ * NGOẠI LỆ: tài khoản có TÊN ĐĂNG NHẬP đúng "admin" (không phân biệt hoa/
+ * thường, khớp cách kiểm tra trùng tên đăng nhập lúc tạo tài khoản — xem
+ * type 'staff') KHÔNG ghi vào nhật ký (theo yêu cầu — tài khoản này dùng để
+ * quản trị/kiểm tra hệ thống, không tính là 1 nhân viên/quản trị viên thật
+ * cần theo dõi). Mọi tài khoản quản trị KHÁC (toàn quyền lẫn chỉ xem) vẫn
+ * ghi bình thường, không phân biệt vai trò.
  */
-async function logActivity(adminId: string, adminName: string, action: string, description: string): Promise<void> {
+async function logActivity(adminId: string, adminName: string, adminUsername: string, action: string, description: string): Promise<void> {
+  if (String(adminUsername || '').trim().toLowerCase() === 'admin') return;
   try {
     await admin.from('activity_log').insert({ id: genId('log'), admin_id: adminId, admin_name: adminName, action, description });
   } catch (e) {
@@ -454,7 +462,7 @@ Deno.serve(async (req) => {
     });
     // Ghi nhật ký CHỈ đăng nhập của quản trị viên/nhân viên — KHÔNG ghi đăng
     // nhập của khách hàng (không thuộc "nhật ký sử dụng của quản trị viên").
-    if (role === 'admin') await logActivity(row.id, row.name || row.username, 'login', `Đăng nhập hệ thống (${row.username})`);
+    if (role === 'admin') await logActivity(row.id, row.name || row.username, row.username, 'login', `Đăng nhập hệ thống (${row.username})`);
     return json({ ok: true, token, id: row.id, mustChangePassword: !!row.must_change_password });
   }
 
@@ -601,7 +609,7 @@ Deno.serve(async (req) => {
       const customerId = String(body.customerId || '').trim();
       if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
       const { data: cust } = await admin.from('customers').select('name').eq('id', customerId).maybeSingle();
-      await logActivity(selfAdmin.id, actorName, 'reply-chat', `Trả lời chat với khách hàng "${cust?.name || customerId}"`);
+      await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'reply-chat', `Trả lời chat với khách hàng "${cust?.name || customerId}"`);
       return json({ ok: true });
     }
 
@@ -611,7 +619,7 @@ Deno.serve(async (req) => {
       const { data: reqRow } = await admin.from('requests').select('status, customer_id').eq('id', requestId).maybeSingle();
       const { data: cust } = reqRow?.customer_id ? await admin.from('customers').select('name').eq('id', reqRow.customer_id).maybeSingle() : { data: null };
       const statusLabel = REQUEST_STATUS_LABELS[reqRow?.status as string] || reqRow?.status || '';
-      await logActivity(selfAdmin.id, actorName, 'update-request-status', `Cập nhật trạng thái yêu cầu của khách hàng "${cust?.name || reqRow?.customer_id || '—'}" thành "${statusLabel}"`);
+      await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'update-request-status', `Cập nhật trạng thái yêu cầu của khách hàng "${cust?.name || reqRow?.customer_id || '—'}" thành "${statusLabel}"`);
       return json({ ok: true });
     }
 
@@ -619,7 +627,7 @@ Deno.serve(async (req) => {
       const customerId = String(body.customerId || '').trim();
       if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
       const { data: cust } = await admin.from('customers').select('name').eq('id', customerId).maybeSingle();
-      await logActivity(selfAdmin.id, actorName, 'view-customer', `Xem chi tiết khách hàng "${cust?.name || customerId}"`);
+      await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'view-customer', `Xem chi tiết khách hàng "${cust?.name || customerId}"`);
       return json({ ok: true });
     }
 
@@ -628,7 +636,7 @@ Deno.serve(async (req) => {
       if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
       const { data: ct } = await admin.from('contracts').select('code, customer_id').eq('id', contractId).maybeSingle();
       const { data: cust } = ct?.customer_id ? await admin.from('customers').select('name').eq('id', ct.customer_id).maybeSingle() : { data: null };
-      await logActivity(selfAdmin.id, actorName, 'view-contract', `Xem chi tiết hợp đồng ${ct?.code || contractId}${cust?.name ? ` (khách hàng "${cust.name}")` : ''}`);
+      await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'view-contract', `Xem chi tiết hợp đồng ${ct?.code || contractId}${cust?.name ? ` (khách hàng "${cust.name}")` : ''}`);
       return json({ ok: true });
     }
 
@@ -641,7 +649,7 @@ Deno.serve(async (req) => {
       // vô hạn vào nhật ký, không phải để lọc nội dung (không nhạy cảm).
       const filterDesc = String(body.filterDesc || '').trim().slice(0, 200);
       if (!filterDesc) return json({ ok: false, reason: 'Thiếu mô tả bộ lọc.' }, 400);
-      await logActivity(selfAdmin.id, actorName, 'filter-customers', `Lọc danh sách khách hàng — ${filterDesc}`);
+      await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'filter-customers', `Lọc danh sách khách hàng — ${filterDesc}`);
       return json({ ok: true });
     }
 
@@ -653,7 +661,7 @@ Deno.serve(async (req) => {
       // tối đa 100 ký tự — chặn spam.
       const pageLabel = String(body.pageLabel || '').trim().slice(0, 100);
       if (!pageLabel) return json({ ok: false, reason: 'Thiếu tên trang.' }, 400);
-      await logActivity(selfAdmin.id, actorName, 'nav-page', `Vào trang "${pageLabel}"`);
+      await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'nav-page', `Vào trang "${pageLabel}"`);
       return json({ ok: true });
     }
 
@@ -717,7 +725,7 @@ Deno.serve(async (req) => {
     }
     if (!sentCount) return json({ ok: false, reason: 'Gửi không thành công — thiết bị của khách có thể đã tắt/gỡ đăng ký nhận thông báo, nhờ khách vào lại app bật lại thông báo.' });
     const { data: notifiedCust } = await admin.from('customers').select('name').eq('id', customerId).maybeSingle();
-    await logActivity(caller.id, caller.name || caller.username, 'send-manual-notification',
+    await logActivity(caller.id, caller.name || caller.username, caller.username, 'send-manual-notification',
       `Gửi thông báo đẩy "${title}" cho khách hàng "${notifiedCust?.name || customerId}" (${sentCount} thiết bị)`);
     return json({ ok: true, sentCount });
   }
@@ -783,7 +791,7 @@ Deno.serve(async (req) => {
       if (existing) return json({ ok: false, reason: 'Khách hàng này đã có trong danh sách OA rồi.' });
       const { error } = await admin.from('zalo_customers').insert({ customer_id: customerId, added_by: caller.id });
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-      await logActivity(caller.id, caller.name || caller.username, 'add-zalo-customer', `Thêm khách hàng "${scope.customer?.name || customerId}" vào Danh sách OA`);
+      await logActivity(caller.id, caller.name || caller.username, caller.username, 'add-zalo-customer', `Thêm khách hàng "${scope.customer?.name || customerId}" vào Danh sách OA`);
       return json({ ok: true });
     }
 
@@ -797,7 +805,7 @@ Deno.serve(async (req) => {
       // này vì đã bỏ hẳn khỏi danh sách OA thì không còn lý do gì để còn gửi tự động cho khách đó nữa.
       const { error } = await admin.from('zalo_customers').delete().eq('customer_id', customerId);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-      await logActivity(caller.id, caller.name || caller.username, 'remove-zalo-customer', `Bỏ khách hàng "${scope.customer?.name || customerId}" khỏi Danh sách OA`);
+      await logActivity(caller.id, caller.name || caller.username, caller.username, 'remove-zalo-customer', `Bỏ khách hàng "${scope.customer?.name || customerId}" khỏi Danh sách OA`);
       return json({ ok: true });
     }
 
@@ -840,7 +848,7 @@ Deno.serve(async (req) => {
         }
         return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       }
-      await logActivity(caller.id, caller.name || caller.username, 'add-zalo-auto-send',
+      await logActivity(caller.id, caller.name || caller.username, caller.username, 'add-zalo-auto-send',
         `Thêm hợp đồng ${scope.contract?.code || contractId} vào gửi tự động (${kind === 'lai_hang_thang_custom_day' ? 'Gửi theo ngày cụ thể' : 'Báo lãi tự động hàng tháng'})`);
       return json({ ok: true });
     }
@@ -859,7 +867,7 @@ Deno.serve(async (req) => {
       const { error } = await admin.from('zalo_auto_send_list').delete().eq('id', id);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       const { data: rowContract } = await admin.from('contracts').select('code').eq('id', row.contract_id).maybeSingle();
-      await logActivity(caller.id, caller.name || caller.username, 'remove-zalo-auto-send', `Bỏ hợp đồng ${rowContract?.code || row.contract_id} khỏi gửi tự động`);
+      await logActivity(caller.id, caller.name || caller.username, caller.username, 'remove-zalo-auto-send', `Bỏ hợp đồng ${rowContract?.code || row.contract_id} khỏi gửi tự động`);
       return json({ ok: true });
     }
 
@@ -889,7 +897,7 @@ Deno.serve(async (req) => {
       const { error } = await admin.from('zalo_auto_send_list').update(patch).eq('id', id);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       const { data: rowContract } = await admin.from('contracts').select('code').eq('id', row.contract_id).maybeSingle();
-      await logActivity(caller.id, caller.name || caller.username, 'update-zalo-auto-send-settings', `Sửa cài đặt gửi tự động của hợp đồng ${rowContract?.code || row.contract_id}`);
+      await logActivity(caller.id, caller.name || caller.username, caller.username, 'update-zalo-auto-send-settings', `Sửa cài đặt gửi tự động của hợp đồng ${rowContract?.code || row.contract_id}`);
       return json({ ok: true });
     }
 
@@ -1000,7 +1008,7 @@ Deno.serve(async (req) => {
       // trả response) — không sao vì zalo_send_log (nguồn THẬT của lượt gửi
       // này) vẫn luôn ghi đủ, không phụ thuộc dòng này.
       if (result.ok) {
-        logActivity(caller.id, caller.name || caller.username, 'send-zalo-manual',
+        logActivity(caller.id, caller.name || caller.username, caller.username, 'send-zalo-manual',
           `Gửi tay Zalo OA (mẫu ${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}) cho khách hàng "${customer.name || contractId}"`)
           .catch((e) => console.error('Lỗi ghi activity_log (send-zalo-manual):', e));
       }
@@ -1060,7 +1068,7 @@ Deno.serve(async (req) => {
     }
     const { error } = await admin.from('admins').update({ role: newRole }).eq('id', staffId);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-staff-role',
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'update-staff-role',
       `Đổi vai trò tài khoản "${target.name || target.username}" thành ${newRole === 'super' ? 'Toàn quyền' : 'Nhân viên'}`);
     return json({ ok: true });
   }
@@ -1079,7 +1087,7 @@ Deno.serve(async (req) => {
     if (!target) return json({ ok: false, reason: 'Không tìm thấy tài khoản.' }, 404);
     const { error } = await admin.from('admins').update({ name }).eq('id', staffId);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-staff-name',
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'update-staff-name',
       `Đổi tên hiển thị tài khoản "${target.name || target.username}" thành "${name}"`);
     return json({ ok: true });
   }
@@ -1120,7 +1128,7 @@ Deno.serve(async (req) => {
     // bằng token của người gọi thì RLS sẽ trả về rỗng — tài khoản coi như
     // "biến mất" khỏi trang Quản lý User dù đã tạo thành công thật trong CSDL.
     const { data: newRow } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'customer',
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'customer',
       `${existing ? 'Cấp lại mật khẩu (qua màn tạo tài khoản)' : 'Tạo tài khoản mới'} cho khách hàng "${newRow?.name || cccd}" (CCCD ${cccd})`);
     return json({ ok: true, id: customerId, tempPassword: finalPassword, customer: newRow });
   }
@@ -1149,7 +1157,7 @@ Deno.serve(async (req) => {
       salt: cred.salt, hash: cred.hash, must_change_password: true,
     });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'staff',
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'staff',
       `Tạo tài khoản ${finalRole === 'super' ? 'quản trị viên toàn quyền' : 'nhân viên'} "${body.name || username}" (đăng nhập: ${username})`);
     return json({ ok: true, id: staffId, tempPassword: finalPassword });
   }
@@ -1163,7 +1171,7 @@ Deno.serve(async (req) => {
     if (body.address) { patch.address = body.address; Object.assign(patch, parseAddress(body.address)); }
     const { error } = await admin.from('customers').update(patch).eq('cccd', cccd);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-customer-profile', `Cập nhật hồ sơ khách hàng (CCCD ${cccd})`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'update-customer-profile', `Cập nhật hồ sơ khách hàng (CCCD ${cccd})`);
     return json({ ok: true });
   }
 
@@ -1179,7 +1187,7 @@ Deno.serve(async (req) => {
       .update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null })
       .eq('id', customerId).select('name').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'reset-customer-password', `Cấp lại mật khẩu khách hàng "${updated?.name || customerId}"`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'reset-customer-password', `Cấp lại mật khẩu khách hàng "${updated?.name || customerId}"`);
     return json({ ok: true, tempPassword: finalPassword });
   }
 
@@ -1197,7 +1205,7 @@ Deno.serve(async (req) => {
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
     const { data: updated, error } = await admin.from('customers').update({ force_logout_at: new Date().toISOString() }).eq('id', customerId).select('name').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'force-logout-customer', `Đăng xuất ngay khách hàng "${updated?.name || customerId}"`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'force-logout-customer', `Đăng xuất ngay khách hàng "${updated?.name || customerId}"`);
     return json({ ok: true });
   }
 
@@ -1206,7 +1214,7 @@ Deno.serve(async (req) => {
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
     const { data: updated, error } = await admin.from('customers').update({ salt: null, hash: null, must_change_password: false, failed_attempts: 0, locked_until: null }).eq('id', customerId).select('name').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'deactivate-customer', `Vô hiệu hóa tài khoản khách hàng "${updated?.name || customerId}"`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'deactivate-customer', `Vô hiệu hóa tài khoản khách hàng "${updated?.name || customerId}"`);
     return json({ ok: true });
   }
 
@@ -1215,7 +1223,7 @@ Deno.serve(async (req) => {
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
     const { data: deleted, error } = await admin.from('customers').delete().eq('id', customerId).select('name, cccd').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'delete-customer', `Xóa tài khoản khách hàng "${deleted?.name || customerId}"${deleted?.cccd ? ` (CCCD ${deleted.cccd})` : ''}`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'delete-customer', `Xóa tài khoản khách hàng "${deleted?.name || customerId}"${deleted?.cccd ? ` (CCCD ${deleted.cccd})` : ''}`);
     return json({ ok: true });
   }
 
@@ -1224,7 +1232,7 @@ Deno.serve(async (req) => {
     if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
     const { data: deleted, error } = await admin.from('contracts').delete().eq('id', contractId).select('code').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'delete-contract', `Xóa hợp đồng ${deleted?.code || contractId}`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'delete-contract', `Xóa hợp đồng ${deleted?.code || contractId}`);
     return json({ ok: true });
   }
 
@@ -1235,7 +1243,7 @@ Deno.serve(async (req) => {
     if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
     const { data: updated, error } = await admin.from('admins').update({ force_logout_at: new Date().toISOString() }).eq('id', staffId).select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'force-logout-staff', `Đăng xuất ngay tài khoản "${updated?.name || updated?.username || staffId}"`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'force-logout-staff', `Đăng xuất ngay tài khoản "${updated?.name || updated?.username || staffId}"`);
     return json({ ok: true });
   }
 
@@ -1250,7 +1258,7 @@ Deno.serve(async (req) => {
     const cred = await makeCredential(finalPassword);
     const { data: updated, error } = await admin.from('admins').update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null }).eq('id', staffId).select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'reset-staff-password', `Cấp lại mật khẩu tài khoản "${updated?.name || updated?.username || staffId}"`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'reset-staff-password', `Cấp lại mật khẩu tài khoản "${updated?.name || updated?.username || staffId}"`);
     return json({ ok: true, tempPassword: finalPassword });
   }
 
@@ -1264,7 +1272,7 @@ Deno.serve(async (req) => {
       can_manage_zalo_oa: !!body.canManageZaloOA,
     }).eq('id', staffId).eq('role', 'staff').select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-staff-permissions', `Sửa quyền tài khoản "${updated?.name || updated?.username || staffId}"`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'update-staff-permissions', `Sửa quyền tài khoản "${updated?.name || updated?.username || staffId}"`);
     return json({ ok: true });
   }
 
@@ -1279,7 +1287,7 @@ Deno.serve(async (req) => {
     }
     const { data: deleted, error } = await admin.from('admins').delete().eq('id', staffId).select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'delete-staff', `Xóa tài khoản "${deleted?.name || deleted?.username || staffId}"`);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'delete-staff', `Xóa tài khoản "${deleted?.name || deleted?.username || staffId}"`);
     return json({ ok: true });
   }
 
@@ -1471,7 +1479,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'import',
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import',
       `Nhập dữ liệu Excel${fullSync ? ' (đồng bộ toàn bộ)' : ''}: ${result.contracts} hợp đồng, ${result.newAccounts.length} tài khoản mới` +
       (result.deletedContracts ? `, xóa ${result.deletedContracts} hợp đồng` : '') +
       (result.deletedCustomers ? `, xóa ${result.deletedCustomers} khách hàng` : '') +
