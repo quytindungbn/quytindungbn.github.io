@@ -639,6 +639,22 @@ function buildSmsLink(customer, contract, accrued) {
 }
 
 /**
+ * Dòng chú thích dưới nút "Gửi tin Zalo OA ngay" — tách riêng thành hàm để
+ * gọi lại được ngay sau khi gửi THÀNH CÔNG (xem onMount trong
+ * openContractView), khỏi phải đóng/mở lại popup mới thấy nút tự chìm
+ * xuống + đúng ngày/số ngày chờ mới.
+ */
+function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
+  if (!inZaloList) {
+    return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} Khách chưa có trong Danh sách OA — vào chi tiết khách hàng (nút "Thêm vào OA") để thêm trước khi gửi được.</div>`;
+  }
+  if (zaloCooldownDaysLeft > 0) {
+    return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — còn ${zaloCooldownDaysLeft} ngày nữa mới gửi lại được (giới hạn 5 ngày/lần).</div>`;
+  }
+  return `<div class="field-hint">${lastZaloSend ? `Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — đã đủ 5 ngày, gửi lại được rồi. ` : ''}Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>`;
+}
+
+/**
  * Xem chi tiết hợp đồng — hiển thị đầy đủ giống hệt trang khách hàng thấy khi
  * họ bấm vào. Dữ liệu lấy từ Excel, quản trị viên KHÔNG chỉnh sửa trực tiếp
  * tại đây (không có ô nhập/nút "Sửa") — muốn cập nhật thì nhập lại file Excel
@@ -706,15 +722,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       ${customer && customer.phone && canPay && canManageZalo ? `
       <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
         <button type="button" class="btn btn-outline btn-sm btn-block" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
-        ${!inZaloList ? `
-        <div class="field-hint text-danger">${icon('alert', 'icon-sm')} Khách chưa có trong Danh sách OA — vào chi tiết khách hàng (nút "Thêm vào OA") để thêm trước khi gửi được.</div>
-        ` : zaloCooldownDaysLeft > 0 ? `
-        <div class="field-hint text-danger">${icon('alert', 'icon-sm')} Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — còn ${zaloCooldownDaysLeft} ngày nữa mới gửi lại được (giới hạn 5 ngày/lần).</div>
-        ` : `
-        <div class="field-hint">
-          ${lastZaloSend ? `Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — đã đủ 5 ngày, gửi lại được rồi. ` : ''}Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.
-        </div>
-        `}
+        <div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>
       </div>
       ` : ''}
       ${canPay ? `
@@ -804,6 +812,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         openSendNotificationModal(customer, buildContractNotificationPreset(contract));
       });
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
+      const zaloHintWrap = sheet.querySelector('#zalo-hint-wrap-ct');
       if (zaloManualBtn) zaloManualBtn.addEventListener('click', async () => {
         // Gửi Zalo phải gọi qua máy chủ Zalo (mạng ngoài, không phải máy chủ
         // của quỹ) nên luôn mất vài giây thật sự, không có cách nào bấm phát
@@ -815,6 +824,18 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         try {
           const res = await S.sendZaloManual(contract.id);
           toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error');
+          if (res.ok) {
+            // Gửi THÀNH CÔNG là bắt đầu tính lại đúng 5 ngày chờ NGAY LẬP TỨC
+            // — tự cập nhật nút (giữ chìm/disabled) + dòng chú thích tại đây
+            // luôn, khỏi phải đóng rồi mở lại popup mới thấy đúng — khớp
+            // đúng với refreshSessionData() đang chạy ngầm phía sau (xem
+            // S.sendZaloManual), mở lại popup sau đó vẫn ra y hệt.
+            // Đổi chữ trên nút thành "Đã gửi" (không để lại "Đang gửi..." —
+            // để lâu dài trông như bị đứng/lag) nhưng vẫn giữ disabled.
+            zaloManualBtn.innerHTML = `${icon('check', 'icon-sm')} Đã gửi`;
+            if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt: new Date().toISOString() });
+            return; // giữ nguyên nút đang chìm — KHÔNG khôi phục lại như nút gốc
+          }
         } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
         zaloManualBtn.disabled = false;
         zaloManualBtn.innerHTML = originalLabel;

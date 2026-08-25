@@ -1780,6 +1780,19 @@ dán đè toàn bộ nội dung file mới → Deploy.
 
 ---
 
+### 10.31. Nút "Gửi tin Zalo OA ngay" tự chìm xuống ngay khi gửi thành công (KHÔNG cần chạy SQL)
+
+Trước đây gửi Zalo tay thành công xong, nút "Gửi tin Zalo OA ngay" vẫn hiện sáng lại (bấm được tiếp) dù
+thật ra đang trong 5 ngày chờ — phải đóng popup rồi mở lại mới thấy nút chìm xuống đúng. Giờ gửi thành
+công là nút tự đổi thành "Đã gửi" (chìm xuống, không bấm tiếp được) NGAY LẬP TỨC, không cần đóng/mở lại
+popup — dòng chú thích ngay dưới nút cũng tự cập nhật theo (hiện đúng ngày vừa gửi + còn bao nhiêu ngày
+nữa mới gửi lại được), khớp với đúng những gì sẽ thấy nếu đóng rồi mở lại popup ngay sau đó.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS tĩnh, GitHub Pages tự
+deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
