@@ -147,6 +147,7 @@ export function render(contentEl, filterEl) {
         onSelect: (vals) => {
           filterThon = vals; filterXom = [];
           renderFilterPills();
+          S.logAdminAction('filter-customers', { filterDesc: `Thôn: ${vals.length ? vals.join(', ') : 'Tất cả'}` });
           draw();
         },
       });
@@ -159,6 +160,7 @@ export function render(contentEl, filterEl) {
         onSelect: (vals) => {
           filterXom = vals;
           renderFilterPills();
+          S.logAdminAction('filter-customers', { filterDesc: `Xóm: ${vals.length ? vals.join(', ') : 'Tất cả'}` });
           draw();
         },
       });
@@ -170,6 +172,7 @@ export function render(contentEl, filterEl) {
         onSelect: (val) => {
           sortMode = val;
           renderFilterPills();
+          S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: ${SORT_LABEL[val]}` });
           draw();
         },
       });

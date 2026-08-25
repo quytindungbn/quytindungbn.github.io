@@ -578,11 +578,12 @@ Deno.serve(async (req) => {
   // dưới — với action gắn với 1 bản ghi thật (khách hàng/hợp đồng/yêu cầu),
   // server LUÔN tự tra cứu dữ liệu thật để tự soạn mô tả (KHÔNG tin mô tả
   // tự do từ client), tránh 1 quản trị viên tự ghi bậy nội dung sai sự thật
-  // về 1 bản ghi/người khác vào nhật ký. Riêng action 'filter-customers'
-  // (chỉ là chọn bộ lọc trên màn hình, không gắn với bản ghi cụ thể nào để
-  // tra cứu, cũng không có gì nhạy cảm nếu mô tả không khớp 100%) CHO PHÉP
-  // client tự mô tả ngắn, có giới hạn độ dài (chặn spam) — xem case đó bên
-  // dưới. admin_id/admin_name LUÔN lấy từ JWT của người gọi (KHÔNG bao giờ
+  // về 1 bản ghi/người khác vào nhật ký. Riêng 2 action 'filter-customers'
+  // và 'nav-page' (chỉ là chọn bộ lọc/chuyển trang trên màn hình, không gắn
+  // với bản ghi cụ thể nào để tra cứu, cũng không có gì nhạy cảm nếu mô tả
+  // không khớp 100%) CHO PHÉP client tự mô tả ngắn, có giới hạn độ dài (chặn
+  // spam) — xem 2 case đó bên dưới. admin_id/admin_name LUÔN lấy từ JWT của
+  // người gọi (KHÔNG bao giờ
   // tin client tự khai), nên không ai giả mạo được thành người khác dù ở
   // action nào. =====
   if (body.type === 'log-admin-action') {
@@ -632,14 +633,27 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === 'filter-customers') {
-      // Ngoại lệ DUY NHẤT trong 'log-admin-action' cho phép mô tả từ client
-      // (xem ghi chú đầu block) — chỉ vì Thôn/Xóm là tên địa danh THẬT của
-      // quỹ, không có danh sách cố định để server tự tra & soạn câu như các
+      // 1 trong 2 ngoại lệ trong 'log-admin-action' cho phép mô tả từ client
+      // (cùng với 'nav-page' bên dưới, xem ghi chú đầu block) — chỉ vì
+      // Thôn/Xóm/kiểu sắp xếp là tên/nhãn THẬT hiện đang chọn trên màn hình,
+      // không có danh sách cố định để server tự tra & soạn câu như các
       // action khác. Cắt ngắn còn tối đa 200 ký tự — chặn spam/ghi rác dài
       // vô hạn vào nhật ký, không phải để lọc nội dung (không nhạy cảm).
       const filterDesc = String(body.filterDesc || '').trim().slice(0, 200);
       if (!filterDesc) return json({ ok: false, reason: 'Thiếu mô tả bộ lọc.' }, 400);
       await logActivity(selfAdmin.id, actorName, 'filter-customers', `Lọc danh sách khách hàng — ${filterDesc}`);
+      return json({ ok: true });
+    }
+
+    if (body.action === 'nav-page') {
+      // Ngoại lệ THỨ 2 cho phép mô tả từ client (xem ghi chú 'filter-customers'
+      // ở trên) — nhãn trang lấy thẳng từ đúng tên đang hiện trên menu
+      // (NAV_LABEL_MAP ở js/app.js), không có gì nhạy cảm nếu không khớp
+      // 100% (chỉ là tên trang, không gắn với dữ liệu của ai). Cắt ngắn còn
+      // tối đa 100 ký tự — chặn spam.
+      const pageLabel = String(body.pageLabel || '').trim().slice(0, 100);
+      if (!pageLabel) return json({ ok: false, reason: 'Thiếu tên trang.' }, 400);
+      await logActivity(selfAdmin.id, actorName, 'nav-page', `Vào trang "${pageLabel}"`);
       return json({ ok: true });
     }
 

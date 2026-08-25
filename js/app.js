@@ -1,5 +1,5 @@
 import * as S from './state.js';
-import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge } from './components/shell.js';
+import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
@@ -45,6 +45,14 @@ const adminRoutes = [
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];
+
+// Nhãn hiển thị đúng theo path — dùng để ghi Nhật ký sử dụng mỗi lần chuyển
+// trang thật sự (xem renderApp() bên dưới), khỏi phải ghi cứng lại 1 danh
+// sách riêng — lấy thẳng từ đúng label đang hiện trên menu.
+const NAV_LABEL_MAP = Object.fromEntries(
+  [...ADMIN_NAV, ...ADMIN_NAV_MANAGE_ZALO_OA, ...ADMIN_NAV_MANAGE_USERS, ...ADMIN_NAV_SUPER_ONLY].map((item) => [item.path, item.label])
+);
+NAV_LABEL_MAP['#/doi-mat-khau'] = 'Đổi mật khẩu'; // có route nhưng không nằm trong menu chính (link riêng ở sidebar)
 
 let root;
 let shellKey = null;
@@ -175,6 +183,12 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
 
   if (match.view.renderHeader) match.view.renderHeader(headerEl, match.params);
   match.view.render(contentEl, filterEl, match.params, query);
+  // Ghi Nhật ký sử dụng mỗi lần THẬT SỰ chuyển sang 1 trang khác (so path
+  // với lastRoutePath — path không đổi thì không ghi lại, tránh spam lúc
+  // renderApp() gọi lại nhiều lần trên CÙNG 1 trang vì có dữ liệu mới/đổi
+  // quyền, xem ghi chú dataOnly ở trên). logAdminAction() tự bỏ qua nếu
+  // không phải phiên quản trị viên.
+  if (path !== lastRoutePath) S.logAdminAction('nav-page', { pageLabel: NAV_LABEL_MAP[path] || path });
   lastRoutePath = path;
   updateActiveNav(path);
   renderChatFab(session); // clearFabs() ở trên vừa dọn nút cũ (nếu có) — tạo lại (hoặc bỏ qua nếu không phải khách hàng)

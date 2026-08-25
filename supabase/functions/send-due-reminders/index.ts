@@ -554,5 +554,18 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Tự dọn Nhật ký sử dụng (bảng activity_log, xem docs mục 10.33) — chỉ giữ
+  // lại 60 ngày gần nhất, xóa hẳn dòng cũ hơn để không phình to mãi theo thời
+  // gian. Tận dụng LUÔN lịch chạy hàng ngày có sẵn của function này (đỡ phải
+  // tạo thêm 1 Scheduled Trigger riêng chỉ để dọn log) — không ảnh hưởng gì
+  // tới việc nhắc nợ/gửi Zalo ở trên, chạy SAU CÙNG, lỗi (nếu có) chỉ ghi log
+  // console chứ không làm hỏng kết quả nhắc nợ đã xong.
+  try {
+    const cutoff = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
+    await admin.from('activity_log').delete().lt('created_at', cutoff);
+  } catch (e) {
+    console.error('Lỗi dọn activity_log cũ:', e);
+  }
+
   return new Response(JSON.stringify({ ok: true, ...result }), { headers: { 'Content-Type': 'application/json' } });
 });

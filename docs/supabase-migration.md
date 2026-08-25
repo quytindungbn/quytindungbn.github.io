@@ -1890,6 +1890,43 @@ biết ghi log).
 
 ---
 
+### 10.34. Nhật ký: thêm lọc Thôn/Xóm/Gốc-Lãi + chuyển trang, tự xóa sau 60 ngày (BẮT BUỘC chạy SQL + deploy lại CẢ 2 Edge Function)
+
+Thêm 3 việc theo yêu cầu:
+
+1. **Ghi thêm khi lọc theo Thôn, theo Xóm, và theo "Gốc/Lãi"** (nút "Sắp xếp theo" ở trang Khách hàng —
+   4 lựa chọn Gốc thấp→cao/cao→thấp, Lãi thấp→cao/cao→thấp) — trước đó mục 10.33/10.33-mở-rộng chỉ ghi
+   log cho bộ lọc "Tất cả/Nợ quá hạn/Gần đến hạn", còn thiếu 3 loại lọc này.
+2. **Ghi log mỗi lần bấm vào 1 mục menu (chuyển trang)** — VD "Vào trang Tổng quan", "Vào trang Khách
+   hàng & Hợp đồng"... Chỉ ghi khi THẬT SỰ chuyển sang trang khác (không ghi lặp lại nếu vẫn đứng nguyên
+   1 trang mà có dữ liệu mới/đổi quyền khiến màn hình vẽ lại).
+3. **Tự động xóa nhật ký cũ hơn 60 ngày** — trước đây (mục 10.33) CHƯA có cơ chế này, nhật ký sẽ phình to
+   dần mãi theo thời gian. Giờ mỗi ngày (tận dụng LUÔN lịch chạy hàng ngày có sẵn của `send-due-reminders`
+   — function nhắc nợ tự động, KHÔNG cần tạo thêm lịch riêng) tự xóa hết dòng nhật ký cũ hơn 60 ngày, chạy
+   sau cùng, không ảnh hưởng gì tới việc nhắc nợ/gửi Zalo tự động ở function đó.
+
+**Lưu ý quan trọng về việc tự xóa**: cơ chế này CHỈ chạy được nếu `send-due-reminders` vẫn đang được lên
+lịch chạy hàng ngày trên Supabase Dashboard (Edge Functions → chọn function đó → tab Schedules/Cron —
+phần này bạn đã cấu hình sẵn từ trước cho việc nhắc nợ). Nếu sau này tắt/xóa lịch chạy của function đó vì
+lý do khác, việc tự xóa nhật ký cũ cũng dừng theo — nhật ký sẽ lại phình to dần, cần nhớ bật lại lịch hoặc
+báo lại để dọn bằng cách khác.
+
+```sql
+-- Cấp thêm quyền XÓA cho service_role trên bảng activity_log — mục 10.33
+-- trước đây chỉ cấp select+insert (đủ cho ghi/đọc nhật ký), giờ cần thêm để
+-- Edge Function tự xóa được dòng cũ.
+grant delete on activity_log to service_role;
+```
+
+**Việc cần bạn làm**:
+1. Chạy đoạn SQL trên (chỉ 1 dòng, KHÔNG cần chạy lại toàn bộ SQL mục 10.33 — bảng đã có sẵn rồi).
+2. Deploy lại **CẢ 2** Edge Function (cả 2 đều có sửa lần này):
+   - `create-account` (file vừa gửi — thêm ghi log lọc Thôn/Xóm/Gốc-Lãi + chuyển trang).
+   - `send-due-reminders` (file vừa gửi — thêm bước tự xóa nhật ký cũ hơn 60 ngày).
+   Supabase Dashboard → Edge Functions → chọn từng function → dán đè toàn bộ nội dung file mới → Deploy.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
