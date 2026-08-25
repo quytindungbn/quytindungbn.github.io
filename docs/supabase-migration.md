@@ -1799,13 +1799,16 @@ deploy khi push `main`.
 server còn tra cứu dữ liệu LẦN LƯỢT từng bước một (tra hợp đồng, rồi tra khách hàng, rồi tra đã có trong
 Danh sách OA chưa, rồi tra lần gửi gần nhất để tính hạn chờ 5 ngày, rồi tra cấu hình mẫu Zalo, rồi lấy
 Access Token...) — mỗi bước là 1 lượt hỏi máy chủ riêng, cộng dồn lại thành thời gian chờ khá dài dù
-từng bước chỉ mất chút ít.
+từng bước chỉ mất chút ít. Đã dồn lại thành 2 "đợt" chạy song song (đợt nào không cần chờ kết quả đợt
+kia thì cho chạy cùng lúc luôn) thay vì 6 bước nối đuôi nhau — xem chi tiết code trong file vừa gửi.
+Không đổi bất kỳ điều kiện/logic nào (vẫn đủ các bước kiểm tra quyền, Danh sách OA, hạn chờ 5 ngày, chọn
+đúng mẫu Zalo... y hệt như cũ) — chỉ đổi CÁCH sắp xếp thứ tự gọi cho nhanh hơn.
 
-Trong 6 bước đó có 4 bước KHÔNG cần chờ nhau (không bước nào cần kết quả của bước kia mới chạy được) —
-giờ cho chạy CÙNG LÚC (song song) thay vì lần lượt, chỉ còn phải đợi đúng 1 lượt (lượt lâu nhất trong 4)
-thay vì cộng dồn cả 4 lượt lại. Không đổi bất kỳ điều kiện/logic nào (vẫn đủ các bước kiểm tra quyền,
-Danh sách OA, hạn chờ 5 ngày, chọn đúng mẫu Zalo... y hệt như cũ) — chỉ đổi CÁCH sắp xếp thứ tự gọi cho
-nhanh hơn.
+**Đến đây gần như đã tối ưu hết phần server có thể tối ưu được** — phần thời gian còn lại (thường là
+phần LỚN NHẤT trong lúc chờ) là lượt gọi thật sự sang máy chủ của Zalo để gửi tin (`business.openapi.
+zalo.me`) — đây là mạng ra NGOÀI hệ thống, tốc độ phụ thuộc vào chính máy chủ Zalo lúc đó, không có
+cách nào rút ngắn thêm được từ phía mình. Nếu sau khi deploy bản này vẫn thấy chậm rõ rệt (nhiều giây),
+nhiều khả năng là do Zalo đang phản hồi chậm hơn bình thường vào thời điểm đó, không phải do code.
 
 **Việc cần bạn làm**: deploy lại **`create-account`** (file vừa gửi) — Supabase Dashboard → Edge
 Functions → chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy. Không có SQL nào cần

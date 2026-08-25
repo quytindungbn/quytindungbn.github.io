@@ -770,35 +770,50 @@ Deno.serve(async (req) => {
       if (!contractId) return json({ ok: false, reason: 'Thiếu thông tin.' }, 400);
       const now = new Date();
 
-      // Trước đây 5 bước tra cứu này CHẠY LẦN LƯỢT (mỗi bước 1 lượt round-trip
-      // riêng, cộng dồn lại là nguyên nhân chính khiến "Gửi tin Zalo OA ngay"
-      // thấy lâu) — thật ra 4 trong 5 bước KHÔNG phụ thuộc lẫn nhau (chỉ cần
-      // contractId đã có sẵn từ đầu, không cần chờ bước nào khác xong trước):
-      // tra hợp đồng+khách hàng (checkContractInScope), tra lần gửi thành
-      // công gần nhất (tính hạn chờ 5 ngày), tra cấu hình mẫu Zalo, và lấy
-      // Access Token. Gộp chạy SONG SONG bằng Promise.all — chỉ còn CHỜ ĐÚNG
-      // 1 lượt (lượt nào lâu nhất) thay vì cộng dồn cả 4 lượt.
-      const [scope, lastLogRes, orgRowRes, accessToken] = await Promise.all([
-        checkContractInScope(contractId),
+      // Trước đây các bước tra cứu này CHẠY LẦN LƯỢT (mỗi bước 1 lượt
+      // round-trip riêng, cộng dồn lại là nguyên nhân chính khiến "Gửi tin
+      // Zalo OA ngay" thấy lâu) — dồn lại còn 2 "đợt" song song thay vì nối
+      // tiếp nhau (đợt sau chỉ chờ đúng những gì THẬT SỰ cần từ đợt trước):
+      //
+      // Đợt 1 — chỉ cần contractId đã có sẵn từ đầu, không phụ thuộc gì
+      // khác: tra hợp đồng, tra lần gửi thành công gần nhất (tính hạn chờ 5
+      // ngày), tra cấu hình mẫu Zalo, và lấy Access Token.
+      const [contractRes, lastLogRes, orgRowRes, accessToken] = await Promise.all([
+        admin.from('contracts').select('*').eq('id', contractId).maybeSingle(),
         admin.from('zalo_send_log').select('sent_at')
           .eq('contract_id', contractId).eq('status', 'success')
           .order('sent_at', { ascending: false }).limit(1).maybeSingle(),
         admin.from('orgs').select('zalo_template_due_id, zalo_template_interest_id').limit(1).maybeSingle(),
         getZaloAccessToken(),
       ]);
-      if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
-      const { customer, contract } = scope;
-      if (!customer.phone) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
+      const contract = contractRes.data;
+      if (!contract) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       if (!accessToken) return json({ ok: false, reason: 'Chưa cấu hình kết nối Zalo OA trên server (thiếu Secret/Refresh Token) — liên hệ để cấu hình trước.' }, 500);
+
+      // Đợt 2 — CẦN biết contract.customer_id trước (chỉ có sau đợt 1) nên
+      // phải đợi đợt 1 xong, nhưng bản thân 2 việc trong đợt này lại KHÔNG
+      // phụ thuộc nhau (tra khách hàng để kiểm tra quyền Thôn/Xóm + lấy SĐT,
+      // và tra đã có trong Tầng 1 "Danh sách OA" chưa) nên vẫn gộp song
+      // song được với nhau.
+      const [customerRes, zaloCustRes] = await Promise.all([
+        admin.from('customers').select('*').eq('id', contract.customer_id).maybeSingle(),
+        admin.from('zalo_customers').select('customer_id').eq('customer_id', contract.customer_id).maybeSingle(),
+      ]);
+      const customer = customerRes.data;
+      if (!customer) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
+      if (caller.role !== 'super') {
+        const allowedThon: string[] = caller.allowed_thon || [];
+        const allowedXom: string[] = caller.allowed_xom || [];
+        const inScope = allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`);
+        if (!inScope) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
+      }
+      if (!customer.phone) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
 
       // PHẢI đã có sẵn trong Tầng 1 "Danh sách OA" mới gửi tay được — KHÔNG
       // còn tự thêm ngầm lúc gửi như trước nữa (đổi theo yêu cầu: admin phải
       // chủ động xác minh đúng chủ SĐT rồi thêm vào OA trước, xem nút "Thêm
-      // vào OA" ở chi tiết khách hàng). Bước này CẦN customer.id (chỉ có sau
-      // khi checkContractInScope xong) nên vẫn phải chờ riêng, không gộp
-      // song song được với nhóm trên.
-      const { data: zaloCustRow } = await admin.from('zalo_customers').select('customer_id').eq('customer_id', customer.id).maybeSingle();
-      if (!zaloCustRow) {
+      // vào OA" ở chi tiết khách hàng).
+      if (!zaloCustRes.data) {
         return json({ ok: false, reason: 'Khách hàng chưa có trong Danh sách OA — vào chi tiết khách hàng (mục Khách hàng & Hợp đồng) để thêm vào OA trước khi gửi.' });
       }
 
