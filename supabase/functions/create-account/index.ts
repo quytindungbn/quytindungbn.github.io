@@ -768,16 +768,35 @@ Deno.serve(async (req) => {
     if (body.type === 'send-zalo-manual') {
       const contractId = String(body.contractId || '').trim();
       if (!contractId) return json({ ok: false, reason: 'Thiếu thông tin.' }, 400);
-      const scope = await checkContractInScope(contractId);
+      const now = new Date();
+
+      // Trước đây 5 bước tra cứu này CHẠY LẦN LƯỢT (mỗi bước 1 lượt round-trip
+      // riêng, cộng dồn lại là nguyên nhân chính khiến "Gửi tin Zalo OA ngay"
+      // thấy lâu) — thật ra 4 trong 5 bước KHÔNG phụ thuộc lẫn nhau (chỉ cần
+      // contractId đã có sẵn từ đầu, không cần chờ bước nào khác xong trước):
+      // tra hợp đồng+khách hàng (checkContractInScope), tra lần gửi thành
+      // công gần nhất (tính hạn chờ 5 ngày), tra cấu hình mẫu Zalo, và lấy
+      // Access Token. Gộp chạy SONG SONG bằng Promise.all — chỉ còn CHỜ ĐÚNG
+      // 1 lượt (lượt nào lâu nhất) thay vì cộng dồn cả 4 lượt.
+      const [scope, lastLogRes, orgRowRes, accessToken] = await Promise.all([
+        checkContractInScope(contractId),
+        admin.from('zalo_send_log').select('sent_at')
+          .eq('contract_id', contractId).eq('status', 'success')
+          .order('sent_at', { ascending: false }).limit(1).maybeSingle(),
+        admin.from('orgs').select('zalo_template_due_id, zalo_template_interest_id').limit(1).maybeSingle(),
+        getZaloAccessToken(),
+      ]);
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       const { customer, contract } = scope;
       if (!customer.phone) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
-      const now = new Date();
+      if (!accessToken) return json({ ok: false, reason: 'Chưa cấu hình kết nối Zalo OA trên server (thiếu Secret/Refresh Token) — liên hệ để cấu hình trước.' }, 500);
 
       // PHẢI đã có sẵn trong Tầng 1 "Danh sách OA" mới gửi tay được — KHÔNG
       // còn tự thêm ngầm lúc gửi như trước nữa (đổi theo yêu cầu: admin phải
       // chủ động xác minh đúng chủ SĐT rồi thêm vào OA trước, xem nút "Thêm
-      // vào OA" ở chi tiết khách hàng).
+      // vào OA" ở chi tiết khách hàng). Bước này CẦN customer.id (chỉ có sau
+      // khi checkContractInScope xong) nên vẫn phải chờ riêng, không gộp
+      // song song được với nhóm trên.
       const { data: zaloCustRow } = await admin.from('zalo_customers').select('customer_id').eq('customer_id', customer.id).maybeSingle();
       if (!zaloCustRow) {
         return json({ ok: false, reason: 'Khách hàng chưa có trong Danh sách OA — vào chi tiết khách hàng (mục Khách hàng & Hợp đồng) để thêm vào OA trước khi gửi.' });
@@ -786,9 +805,7 @@ Deno.serve(async (req) => {
       // Giới hạn gửi tay: 5 ngày mới gửi lại được cho CÙNG 1 hợp đồng (tránh
       // gửi trùng/spam khách) — tính theo lần gửi Zalo THÀNH CÔNG gần nhất
       // của hợp đồng này (bất kể tự động hay gửi tay), báo rõ đã gửi ngày nào.
-      const { data: lastLog } = await admin.from('zalo_send_log').select('sent_at')
-        .eq('contract_id', contractId).eq('status', 'success')
-        .order('sent_at', { ascending: false }).limit(1).maybeSingle();
+      const lastLog = lastLogRes.data;
       if (lastLog?.sent_at) {
         const daysSinceLast = daysBetweenZalo(new Date(lastLog.sent_at), now);
         if (daysSinceLast < 5) {
@@ -800,14 +817,12 @@ Deno.serve(async (req) => {
       // nữa: gần/đã đến hạn (<=15 ngày) dùng mẫu "Đến hạn", còn xa hạn dùng
       // mẫu "Báo lãi" (chỉ báo lãi, gốc chưa thật sự phải trả).
       const usesDueTemplate = isNearOrPastDueZalo(contract, now);
-      const { data: orgRow } = await admin.from('orgs').select('zalo_template_due_id, zalo_template_interest_id').limit(1).maybeSingle();
+      const orgRow = orgRowRes.data;
       const templateId = usesDueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id;
       const kind = usesDueTemplate ? 'den_han' : 'lai_hang_thang';
       if (!templateId) {
         return json({ ok: false, reason: `Chưa cấu hình Template ID cho mẫu "${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}" — vào Quản lý OA > Cấu hình để điền trước.` }, 500);
       }
-      const accessToken = await getZaloAccessToken();
-      if (!accessToken) return json({ ok: false, reason: 'Chưa cấu hình kết nối Zalo OA trên server (thiếu Secret/Refresh Token) — liên hệ để cấu hình trước.' }, 500);
 
       const interest = accruedInterestZalo(contract, now);
       const goc = usesDueTemplate ? Number(contract.balance) : 0; // chưa đến hạn thì gốc chưa thật sự phải trả, chỉ báo lãi

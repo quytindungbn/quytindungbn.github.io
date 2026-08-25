@@ -1793,6 +1793,26 @@ deploy khi push `main`.
 
 ---
 
+### 10.32. Gửi tay Zalo OA nhanh hơn NỮA (BẮT BUỘC deploy lại `create-account`)
+
+Đã bỏ bớt token thừa + đợi tải lại toàn bộ dữ liệu ở mục 10.30 rồi nhưng vẫn còn chậm — do lúc gửi tay,
+server còn tra cứu dữ liệu LẦN LƯỢT từng bước một (tra hợp đồng, rồi tra khách hàng, rồi tra đã có trong
+Danh sách OA chưa, rồi tra lần gửi gần nhất để tính hạn chờ 5 ngày, rồi tra cấu hình mẫu Zalo, rồi lấy
+Access Token...) — mỗi bước là 1 lượt hỏi máy chủ riêng, cộng dồn lại thành thời gian chờ khá dài dù
+từng bước chỉ mất chút ít.
+
+Trong 6 bước đó có 4 bước KHÔNG cần chờ nhau (không bước nào cần kết quả của bước kia mới chạy được) —
+giờ cho chạy CÙNG LÚC (song song) thay vì lần lượt, chỉ còn phải đợi đúng 1 lượt (lượt lâu nhất trong 4)
+thay vì cộng dồn cả 4 lượt lại. Không đổi bất kỳ điều kiện/logic nào (vẫn đủ các bước kiểm tra quyền,
+Danh sách OA, hạn chờ 5 ngày, chọn đúng mẫu Zalo... y hệt như cũ) — chỉ đổi CÁCH sắp xếp thứ tự gọi cho
+nhanh hơn.
+
+**Việc cần bạn làm**: deploy lại **`create-account`** (file vừa gửi) — Supabase Dashboard → Edge
+Functions → chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy. Không có SQL nào cần
+chạy thêm.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
