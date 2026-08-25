@@ -1308,12 +1308,7 @@ export async function updateRequestStatus(id, status) {
   const r = state.requests.find((x) => x.id === id);
   if (r) r.status = status;
   notify();
-  // Ghi Nhật ký sử dụng — CHẠY NGẦM (không await/không chặn UI), vì đây ghi
-  // thẳng qua RLS (không qua Edge Function create-account) nên KHÔNG có chỗ
-  // nào server tự biết để ghi log — xem type 'log-admin-action' trong
-  // create-account/index.ts. Lỗi ghi log (nếu có) không ảnh hưởng gì đến
-  // việc cập nhật trạng thái THẬT đã xong ở trên.
-  callCreateAccountFunction(session?.sbToken, { type: 'log-admin-action', action: 'update-request-status', requestId: id }).catch(() => {});
+  logAdminAction('update-request-status', { requestId: id });
 }
 function mapRequestRow(row) {
   return {
@@ -1404,13 +1399,7 @@ export async function sendChatMessage(customerId, message) {
   };
   const { error } = await sb.from('chat_messages').insert(row);
   if (error) throw new Error('Không gửi được tin nhắn, thử lại sau.');
-  // Ghi Nhật ký sử dụng — CHỈ khi người gửi là quản trị viên/nhân viên (bỏ
-  // qua tin của khách hàng, nhật ký này chỉ theo dõi thao tác của quản trị
-  // viên) — CHẠY NGẦM, lý do y hệt updateRequestStatus() ở trên (ghi thẳng
-  // qua RLS, không qua Edge Function nên cần tự gọi thêm để ghi log).
-  if (session.role === 'admin') {
-    callCreateAccountFunction(session?.sbToken, { type: 'log-admin-action', action: 'reply-chat', customerId }).catch(() => {});
-  }
+  logAdminAction('reply-chat', { customerId }); // tự bỏ qua nếu người gửi là khách hàng (xem logAdminAction())
   return mapChatMessageRow({ ...row, created_at: new Date().toISOString(), read_at: null });
 }
 
@@ -1492,6 +1481,23 @@ export async function listActivityLog({ before, limit = 100 } = {}) {
   const { data, error } = await q;
   if (error) throw new Error('Không tải được nhật ký, thử lại sau.');
   return (data || []).map(mapActivityLogRow);
+}
+
+/**
+ * Ghi 1 dòng vào Nhật ký sử dụng cho thao tác KHÔNG tự có chỗ ghi log qua
+ * Edge Function khác (VD: xem chi tiết khách hàng/hợp đồng, lọc danh sách,
+ * trả lời chat, cập nhật trạng thái yêu cầu — những việc này ghi thẳng qua
+ * RLS hoặc chỉ là đọc dữ liệu, không đi qua "cửa" nào của create-account để
+ * server tự biết mà ghi) — xem type 'log-admin-action' trong
+ * supabase/functions/create-account/index.ts. CHẠY NGẦM, KHÔNG throw/chặn
+ * UI — chỉ để lưu lại nhật ký, không phải thao tác chính người dùng đang chờ
+ * kết quả. Tự bỏ qua nếu không phải phiên quản trị viên (nhật ký chỉ theo
+ * dõi quản trị viên/nhân viên, không theo dõi khách hàng).
+ */
+export function logAdminAction(action, extra = {}) {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return;
+  callCreateAccountFunction(session.sbToken, { type: 'log-admin-action', action, ...extra }).catch(() => {});
 }
 
 // ------------------------------------------------------------

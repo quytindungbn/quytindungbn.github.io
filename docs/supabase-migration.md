@@ -1822,14 +1822,20 @@ Trang **"Nhật ký"** mới (menu riêng, chỉ hiện cho tài khoản **toàn
 **hầu như mọi** thao tác của quản trị viên/nhân viên: đăng nhập, tạo/xóa/sửa tài khoản (cả nhân viên lẫn
 khách hàng), cấp lại mật khẩu, đăng xuất ngay 1 tài khoản, xóa hợp đồng, nhập dữ liệu Excel, gửi thông
 báo đẩy thủ công, thêm/bỏ khách khỏi Danh sách OA, thêm/bỏ/sửa gửi Zalo tự động, gửi tay Zalo OA, trả lời
-chat với khách hàng, cập nhật trạng thái yêu cầu tư vấn... Mỗi dòng nhật ký ghi rõ **ai** đã làm, làm
-**gì**, và **lúc nào**. Có ô tìm theo tên/nội dung và nút "Tải thêm" để xem các dòng cũ hơn.
+chat với khách hàng, cập nhật trạng thái yêu cầu tư vấn, **xem chi tiết khách hàng, xem chi tiết hợp
+đồng, đổi bộ lọc "Tất cả/Nợ quá hạn/Gần đến hạn" ở trang Khách hàng**... Mỗi dòng nhật ký ghi rõ **ai** đã
+làm, làm **gì**, và **lúc nào**. Có ô tìm theo tên/nội dung và nút "Tải thêm" để xem các dòng cũ hơn.
 
-**Lưu ý 2 điều nhỏ**:
+**Lưu ý 3 điều nhỏ**:
 - Gửi tin Zalo OA vẫn có trang riêng "Quản lý gửi tin" trong "Quản lý OA" ghi chi tiết đầy đủ hơn (kể cả
   lượt gửi lỗi) — Nhật ký chỉ ghi thêm 1 dòng NGẮN cho lượt gửi THÀNH CÔNG để không phải qua lại 2 trang.
 - Trả lời chat ghi **MỖI TIN NHẮN 1 dòng** — hội thoại qua lại nhiều lượt sẽ ra nhiều dòng nhật ký tương
-  ứng (đúng nghĩa "bất kể thao tác gì"), không gộp lại thành 1 dòng.
+  ứng (đúng nghĩa "bất kể thao tác gì"), không gộp lại thành 1 dòng. Xem chi tiết khách hàng/hợp đồng
+  cũng vậy — MỖI LẦN bấm vào là 1 dòng, kể cả xem lại đúng khách/hợp đồng vừa xem xong.
+- Với các thao tác gắn với 1 khách hàng/hợp đồng/yêu cầu cụ thể, server LUÔN tự tra cứu tên thật trong
+  database để soạn nội dung (không tin bất kỳ mô tả nào client tự gửi lên) — tránh 1 quản trị viên tự ghi
+  sai sự thật vào nhật ký của chính mình. Riêng dòng "đổi bộ lọc" (không gắn với 1 bản ghi cụ thể nào,
+  cũng không có gì nhạy cảm) mới cho phép mô tả ngắn từ client.
 
 **Chặn 2 lớp — chỉ tài khoản toàn quyền xem được**:
 1. Giao diện: mục menu "Nhật ký" chỉ hiện cho `role='super'`, nhân viên (kể cả có quyền "Quản lý User"
@@ -1873,9 +1879,9 @@ create policy "super sees activity log" on activity_log
 1. Chạy đoạn SQL trên trong Supabase Dashboard → SQL Editor (bảng `activity_log` KHÔNG đổi gì thêm so
    với lần trước — nếu đã chạy rồi thì bỏ qua bước này, `create table if not exists` tự bỏ qua nếu bảng
    đã có sẵn).
-2. Deploy lại **`create-account`** (file MỚI NHẤT vừa gửi — bản này có thêm phần ghi log cho các thao
-   tác Zalo OA/chat/yêu cầu tư vấn so với file gửi lần trước) — Supabase Dashboard → Edge Functions →
-   chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy.
+2. Deploy lại **`create-account`** (file MỚI NHẤT vừa gửi — bản này có thêm phần ghi log cho xem chi
+   tiết khách hàng/hợp đồng + đổi bộ lọc, ngoài phần Zalo OA/chat/yêu cầu tư vấn đã có ở lần gửi trước) —
+   Supabase Dashboard → Edge Functions → chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy.
 
 Thiếu bước 1 (chưa có bảng) là nguyên nhân phổ biến nhất khiến trang "Nhật ký" báo **"Không tải được"** —
 kiểm tra lại đã chạy đúng đoạn SQL trên trong SQL Editor chưa (không phải chỉ đọc qua, phải bấm Run).

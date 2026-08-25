@@ -38,6 +38,9 @@ let filterThon = []; // rỗng = Tất cả — có thể tích chọn nhiều T
 let filterXom = [];  // rỗng = Tất cả — có thể tích chọn nhiều Xóm cùng lúc
 let urgencyFilter = 'all'; // 'all' | 'qua_han' | 'gan_den_han' — CHỈ chọn được 1 trong 3 (không phải nhiều lựa chọn cùng lúc như trước)
 let sortMode = 'default';
+// Nhãn hiển thị dùng chung cho urgencyFilter — dùng lại khi ghi Nhật ký sử
+// dụng (S.logAdminAction('filter-customers', ...)), khỏi lặp lại chuỗi.
+const URGENCY_FILTER_LABELS = { all: 'Tất cả', qua_han: 'Nợ quá hạn', gan_den_han: 'Gần đến hạn' };
 
 /**
  * Reset MỌI bộ lọc/ô tìm kiếm về mặc định — KHÔNG gọi từ render() (cố tình
@@ -103,6 +106,7 @@ export function render(contentEl, filterEl) {
       filterEl.querySelectorAll('[data-urgency]').forEach((c) => {
         c.classList.toggle('active', c.dataset.urgency === urgencyFilter);
       });
+      S.logAdminAction('filter-customers', { filterDesc: `Nhóm: ${URGENCY_FILTER_LABELS[urgencyFilter] || urgencyFilter}` });
       draw();
     });
   });
@@ -466,6 +470,7 @@ function zaloActionButtonHtml(inZaloList) {
 
 export function openCustomerDetail(customerId, { readOnly = false, context = 'customer' } = {}) {
   const c = S.getCustomer(customerId);
+  S.logAdminAction('view-customer', { customerId });
   // Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào danh sách hiển thị nữa.
   const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
   const session = S.getSession();
@@ -662,6 +667,7 @@ function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
  */
 export function openContractView(customerId, contract, { readOnly = false } = {}) {
   const customer = S.getCustomer(customerId);
+  S.logAdminAction('view-contract', { contractId: contract.id });
   const status = S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(contract)];
   const d = daysUntil(contract.dueDate);
   const interestPaidUntil = contract.interestPaidUntil || contract.disbursedDate;

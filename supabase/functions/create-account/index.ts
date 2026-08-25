@@ -571,14 +571,20 @@ Deno.serve(async (req) => {
 
   // ===== type: 'log-admin-action' — ghi 1 dòng vào Nhật ký sử dụng cho các
   // thao tác KHÔNG đi qua Edge Function này (ghi thẳng qua Row Level
-  // Security — chat_messages/requests, xem docs mục 10.24/10.6) nên
+  // Security — chat_messages/requests — hoặc chỉ ĐỌC dữ liệu đã có sẵn ở
+  // trình duyệt — xem chi tiết khách hàng/hợp đồng, đổi bộ lọc) nên
   // logActivity() bình thường (gọi từ TRONG các "type" khác ở Edge Function
   // này) không có chỗ nào để tự chạy. Chỉ nhận 1 tập "action" CỐ ĐỊNH bên
-  // dưới (KHÔNG nhận mô tả tự do từ client) — server tự tra cứu dữ liệu thật
-  // để tự soạn nội dung mô tả, tránh 1 quản trị viên tự ghi bậy nội dung sai
-  // sự thật vào nhật ký của chính mình. admin_id/admin_name LUÔN lấy từ JWT
-  // của người gọi (KHÔNG bao giờ tin client tự khai), nên không ai giả mạo
-  // được thành người khác. =====
+  // dưới — với action gắn với 1 bản ghi thật (khách hàng/hợp đồng/yêu cầu),
+  // server LUÔN tự tra cứu dữ liệu thật để tự soạn mô tả (KHÔNG tin mô tả
+  // tự do từ client), tránh 1 quản trị viên tự ghi bậy nội dung sai sự thật
+  // về 1 bản ghi/người khác vào nhật ký. Riêng action 'filter-customers'
+  // (chỉ là chọn bộ lọc trên màn hình, không gắn với bản ghi cụ thể nào để
+  // tra cứu, cũng không có gì nhạy cảm nếu mô tả không khớp 100%) CHO PHÉP
+  // client tự mô tả ngắn, có giới hạn độ dài (chặn spam) — xem case đó bên
+  // dưới. admin_id/admin_name LUÔN lấy từ JWT của người gọi (KHÔNG bao giờ
+  // tin client tự khai), nên không ai giả mạo được thành người khác dù ở
+  // action nào. =====
   if (body.type === 'log-admin-action') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -605,6 +611,35 @@ Deno.serve(async (req) => {
       const { data: cust } = reqRow?.customer_id ? await admin.from('customers').select('name').eq('id', reqRow.customer_id).maybeSingle() : { data: null };
       const statusLabel = REQUEST_STATUS_LABELS[reqRow?.status as string] || reqRow?.status || '';
       await logActivity(selfAdmin.id, actorName, 'update-request-status', `Cập nhật trạng thái yêu cầu của khách hàng "${cust?.name || reqRow?.customer_id || '—'}" thành "${statusLabel}"`);
+      return json({ ok: true });
+    }
+
+    if (body.action === 'view-customer') {
+      const customerId = String(body.customerId || '').trim();
+      if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+      const { data: cust } = await admin.from('customers').select('name').eq('id', customerId).maybeSingle();
+      await logActivity(selfAdmin.id, actorName, 'view-customer', `Xem chi tiết khách hàng "${cust?.name || customerId}"`);
+      return json({ ok: true });
+    }
+
+    if (body.action === 'view-contract') {
+      const contractId = String(body.contractId || '').trim();
+      if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
+      const { data: ct } = await admin.from('contracts').select('code, customer_id').eq('id', contractId).maybeSingle();
+      const { data: cust } = ct?.customer_id ? await admin.from('customers').select('name').eq('id', ct.customer_id).maybeSingle() : { data: null };
+      await logActivity(selfAdmin.id, actorName, 'view-contract', `Xem chi tiết hợp đồng ${ct?.code || contractId}${cust?.name ? ` (khách hàng "${cust.name}")` : ''}`);
+      return json({ ok: true });
+    }
+
+    if (body.action === 'filter-customers') {
+      // Ngoại lệ DUY NHẤT trong 'log-admin-action' cho phép mô tả từ client
+      // (xem ghi chú đầu block) — chỉ vì Thôn/Xóm là tên địa danh THẬT của
+      // quỹ, không có danh sách cố định để server tự tra & soạn câu như các
+      // action khác. Cắt ngắn còn tối đa 200 ký tự — chặn spam/ghi rác dài
+      // vô hạn vào nhật ký, không phải để lọc nội dung (không nhạy cảm).
+      const filterDesc = String(body.filterDesc || '').trim().slice(0, 200);
+      if (!filterDesc) return json({ ok: false, reason: 'Thiếu mô tả bộ lọc.' }, 400);
+      await logActivity(selfAdmin.id, actorName, 'filter-customers', `Lọc danh sách khách hàng — ${filterDesc}`);
       return json({ ok: true });
     }
 
