@@ -106,7 +106,7 @@ export function render(contentEl, filterEl) {
       filterEl.querySelectorAll('[data-urgency]').forEach((c) => {
         c.classList.toggle('active', c.dataset.urgency === urgencyFilter);
       });
-      S.logAdminAction('filter-customers', { filterDesc: `Nhóm: ${URGENCY_FILTER_LABELS[urgencyFilter] || urgencyFilter}` });
+      S.logAdminAction('filter-customers', { filterDesc: `Nhóm: **${URGENCY_FILTER_LABELS[urgencyFilter] || urgencyFilter}**` });
       draw();
     });
   });
@@ -147,7 +147,7 @@ export function render(contentEl, filterEl) {
         onSelect: (vals) => {
           filterThon = vals; filterXom = [];
           renderFilterPills();
-          S.logAdminAction('filter-customers', { filterDesc: `Thôn: ${vals.length ? vals.join(', ') : 'Tất cả'}` });
+          S.logAdminAction('filter-customers', { filterDesc: `Thôn: **${vals.length ? vals.join(', ') : 'Tất cả'}**` });
           draw();
         },
       });
@@ -160,7 +160,7 @@ export function render(contentEl, filterEl) {
         onSelect: (vals) => {
           filterXom = vals;
           renderFilterPills();
-          S.logAdminAction('filter-customers', { filterDesc: `Xóm: ${vals.length ? vals.join(', ') : 'Tất cả'}` });
+          S.logAdminAction('filter-customers', { filterDesc: `Xóm: **${vals.length ? vals.join(', ') : 'Tất cả'}**` });
           draw();
         },
       });
@@ -172,7 +172,7 @@ export function render(contentEl, filterEl) {
         onSelect: (val) => {
           sortMode = val;
           renderFilterPills();
-          S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: ${SORT_LABEL[val]}` });
+          S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: **${SORT_LABEL[val]}**` });
           draw();
         },
       });

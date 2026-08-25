@@ -204,6 +204,20 @@ function groupConsecutive(rows) {
   return groups;
 }
 
+/**
+ * Server tự đánh dấu đúng ĐOẠN GIÁ TRỊ chính (tên khách hàng, mã hợp đồng,
+ * tên trang, lựa chọn bộ lọc...) trong description bằng **...** (xem
+ * logActivity() trong supabase/functions/create-account/index.ts) — phần
+ * nhãn/chữ nối câu xung quanh giữ chữ thường, chỉ đúng phần giá trị mới in
+ * đậm, đọc lướt dễ nhận ra ngay "cái gì" thay vì phải đọc hết cả câu.
+ * escapeHtml() TOÀN BỘ chuỗi TRƯỚC (chặn HTML/script lạ nếu tên khách hàng
+ * hay nội dung có ký tự đặc biệt) rồi MỚI thay markers thành <b> trên chuỗi
+ * ĐÃ ESCAPE — không bao giờ chèn thẳng HTML thô từ dữ liệu người dùng.
+ */
+function renderLogDescription(description) {
+  return escapeHtml(description || '').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+}
+
 function groupHtml(g) {
   const name = g.adminName || 'Không rõ';
   return `
@@ -216,7 +230,7 @@ function groupHtml(g) {
         ${g.items.map((r) => `
           <div class="log-group-item">
             <div class="text-sm text-muted">${hhmm(r.createdAt)}</div>
-            <div class="text-sm${r.action === 'nav-page' ? '' : ' fw-700'}" style="margin-top:2px">${escapeHtml(r.description)}</div>
+            <div class="text-sm" style="margin-top:2px">${renderLogDescription(r.description)}</div>
           </div>
         `).join('')}
       </div>

@@ -2010,6 +2010,28 @@ deploy khi push `main`.
 
 ---
 
+### 10.40. Nhật ký: chỉ in đậm ĐÚNG phần giá trị chính trong từng dòng, chữ nối câu vẫn thường (BẮT BUỘC deploy lại `create-account`)
+
+Trước đó in đậm CẢ CÂU mô tả (trừ riêng "Vào trang..." để thường) — giờ đổi cách làm chính xác hơn: chỉ
+in đậm ĐÚNG đoạn giá trị/tên riêng trong câu, phần chữ nối câu xung quanh vẫn để thường, áp dụng ĐỒNG LOẠT
+cho MỌI loại thao tác (kể cả "Vào trang..." — "Vào trang" thường, tên trang in đậm). VD:
+
+- `Vào trang "**Tổng quan**"` → "Vào trang" thường, **Tổng quan** đậm.
+- `Lọc danh sách khách hàng — Xóm: **Xóm 01, Xóm 02...**` → phần đầu thường, danh sách Xóm đậm.
+- `Lọc danh sách khách hàng — Sắp xếp: **Lãi: Cao → Thấp**` → phần đầu thường, kiểu sắp xếp đậm.
+- `Xóa hợp đồng **HD-001**`, `Cấp lại mật khẩu khách hàng "**Trần Văn A**"`... — tên/mã đậm, còn lại thường.
+
+Cách làm: server tự đánh dấu đúng đoạn giá trị bằng `**...**` ngay lúc soạn câu mô tả (xem `logActivity()`
+trong `create-account`), trang Nhật ký (client) đọc marker này để in đậm ĐÚNG đoạn đó — **LUÔN chống chèn
+HTML lạ**: toàn bộ câu được `escapeHtml()` (biến an toàn) TRƯỚC, marker `**...**` chỉ được thay thành in
+đậm SAU KHI đã an toàn, không bao giờ chèn thẳng HTML thô từ tên khách hàng/nội dung người dùng nhập.
+
+**Việc cần bạn làm**: deploy lại **`create-account`** (file vừa gửi) — Supabase Dashboard → Edge
+Functions → chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy. Không có SQL nào cần
+chạy thêm.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
