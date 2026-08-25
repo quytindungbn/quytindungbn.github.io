@@ -1997,6 +1997,19 @@ tự deploy khi push `main`.
 
 ---
 
+### 10.39. Nhật ký tự cập nhật dòng mới, không cần bấm tải lại (KHÔNG cần chạy SQL/deploy Edge Function)
+
+Trang "Nhật ký" giờ tự kiểm tra dòng mới mỗi 5 giây, CHỈ khi đang thật sự đứng ở trang này — tự dừng
+ngay khi rời trang. Cùng kiểu polling phạm vi hẹp đã dùng cho khung chat (mục 10.24), KHÁC HẲN kiểu
+`setInterval` chạy khắp toàn app đã bị bỏ trước đây (mục 10.22) — chỉ ảnh hưởng đúng trang Nhật ký,
+không đụng gì tới trang khác. Nếu đang gõ dở trong ô tìm kiếm thì tạm hoãn vẽ lại (tránh mất focus/con
+trỏ đang gõ giữa chừng, đúng lỗi đã từng gặp) — dữ liệu mới vẫn lấy được ở lượt kế tiếp sau khi gõ xong.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS tĩnh, GitHub Pages tự
+deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

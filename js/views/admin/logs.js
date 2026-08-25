@@ -25,6 +25,14 @@ let searchQuery = '';
 let loadingMore = false;
 let noMore = false;
 const PAGE_SIZE = 100;
+// Tự cập nhật dòng mới mỗi 5 giây, CHỈ khi đang thật sự đứng ở trang này —
+// tự dừng ngay khi rời trang (kiểm tra isThisRouteActive() ở mỗi lượt, xem
+// pollTick()) — CÙNG kiểu polling có phạm vi hẹp, tự dừng đúng lúc, đã dùng
+// cho khung chat (POLL_MS trong chatPanel.js), KHÁC HẲN kiểu setInterval
+// chạy khắp toàn app đã bị bỏ trước đây (xem docs mục 10.22) — ở đây chỉ
+// ảnh hưởng đúng trang Nhật ký, không đụng gì tới trang khác.
+const POLL_MS = 5000;
+let pollTimer = null;
 
 function isThisRouteActive() {
   return (location.hash || '#/').split('?')[0] === '#/admin/nhat-ky';
@@ -39,6 +47,7 @@ export function resetFilters() {
   searchQuery = '';
   loadingMore = false;
   noMore = false;
+  stopPolling();
 }
 
 export async function render(contentEl) {
@@ -55,6 +64,38 @@ export async function render(contentEl) {
     }
   }
   drawList(contentEl);
+  startPolling();
+}
+
+function startPolling() {
+  if (pollTimer) return; // đã có sẵn 1 vòng đang chạy (VD: render() gọi lại nhiều lần do dữ liệu khác trong app đổi) — khỏi tạo thêm vòng nữa
+  pollTimer = setInterval(pollTick, POLL_MS);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollTick() {
+  if (!isThisRouteActive()) { stopPolling(); return; }
+  // KHÔNG tự vẽ lại nếu người dùng đang gõ dở trong ô tìm kiếm — vẽ lại là
+  // thay nguyên khối HTML (kể cả input) nên sẽ làm MẤT FOCUS đang gõ giữa
+  // chừng, đúng kiểu lỗi từng gặp (xem docs mục 10.22) — dữ liệu mới vẫn lấy
+  // được ở lượt kế tiếp sau khi người dùng gõ xong/rời khỏi ô tìm.
+  if (document.activeElement && document.activeElement.id === 'log-search') return;
+  const contentEl = document.getElementById('app-content');
+  if (!contentEl) { stopPolling(); return; } // trang đã rời hẳn/DOM không còn — dọn luôn, khỏi tiếp tục chạy vô ích
+  try {
+    const latest = await S.listActivityLog({ limit: 20 }); // chỉ cần ít dòng gần nhất là đủ để phát hiện có gì mới
+    if (!isThisRouteActive()) { stopPolling(); return; }
+    const existingIds = new Set(allRows.map((r) => r.id));
+    const freshOnes = latest.filter((r) => !existingIds.has(r.id));
+    if (!freshOnes.length) return; // không có gì mới, khỏi vẽ lại vô ích
+    allRows = [...freshOnes, ...allRows];
+    drawList(contentEl);
+  } catch (e) {
+    // im lặng, thử lại ở lượt sau — đây là tự cập nhật ngầm, không phải thao
+    // tác người dùng chủ động bấm nên không cần báo lỗi làm phiền.
+  }
 }
 
 function drawList(contentEl) {
