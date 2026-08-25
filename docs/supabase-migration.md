@@ -1982,6 +1982,18 @@ chạy thêm.
 
 ---
 
+### 10.38. Nhật ký: đưa ngày lên đầu mỗi ngày (in đậm), chỉ ghi giờ ở từng dòng, in đậm nội dung chính (KHÔNG cần chạy SQL/deploy Edge Function)
+
+Trang "Nhật ký" giờ chia theo TỪNG NGÀY — ngày ("Hôm nay"/"Hôm qua"/dd-mm-yyyy) đưa lên làm tiêu đề **in
+đậm** riêng ở đầu mỗi ngày (giống vạch chia ngày trong khung chat), các dòng thao tác bên dưới chỉ còn
+ghi GIỜ (không lặp lại ngày ở từng dòng nữa, đỡ rối mắt). Nội dung chính của mỗi thao tác (VD: "Vào trang
+'Khách hàng & Hợp đồng'", "Xóa hợp đồng HD-001"...) cũng được **in đậm** để dễ nhìn lướt qua hơn.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS/CSS tĩnh, GitHub Pages
+tự deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

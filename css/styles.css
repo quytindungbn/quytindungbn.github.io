@@ -510,6 +510,10 @@ svg { display: block; }
 .log-group-head { margin-bottom: 4px; }
 .log-group-item { padding: 8px 0; border-top: 1px dashed var(--border); }
 .log-group-item:first-child { border-top: none; padding-top: 4px; }
+/* Tiêu đề ngày (in đậm) đứng riêng trên đầu mỗi ngày — xem renderDayGroups()
+   trong js/views/admin/logs.js. */
+.log-day-divider { font-weight: 700; font-size: 13px; color: var(--text); margin: 18px 2px 8px; }
+.log-day-divider:first-child { margin-top: 0; }
 
 .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
 .empty-state .icon-lg { margin: 0 auto 10px; color: var(--text-faint); width: 44px; height: 44px; }

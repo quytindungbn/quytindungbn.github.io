@@ -2,7 +2,7 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { emptyState, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { toast } from '../../components/toast.js';
-import { formatDateTime, initials, colorFor, escapeHtml, stripDiacritics } from '../../utils.js';
+import { formatDate, initials, colorFor, escapeHtml, stripDiacritics } from '../../utils.js';
 
 // ------------------------------------------------------------
 // Trang "Nhật ký" — ghi lại các thao tác quan trọng của quản trị viên/nhân
@@ -66,7 +66,7 @@ function drawList(contentEl) {
   });
 
   const searchHtml = `<div style="margin-bottom:12px">${searchBoxHtml('log-search', 'Tìm theo tên quản trị viên/nội dung...', searchQuery)}</div>`;
-  const listHtml = rows.length ? groupConsecutive(rows).map(groupHtml).join('') : `<div class="card card-pad">${emptyState({
+  const listHtml = rows.length ? renderDayGroups(rows) : `<div class="card card-pad">${emptyState({
     iconName: 'clock',
     title: q ? 'Không tìm thấy' : 'Chưa có nhật ký nào',
     message: q ? 'Không có dòng nào khớp tìm kiếm.' : 'Nhật ký sẽ tự ghi lại khi có thao tác của quản trị viên/nhân viên.',
@@ -96,14 +96,59 @@ function drawList(contentEl) {
   });
 }
 
+function hhmm(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+}
+function dayKey(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
+}
+/** "Hôm nay" / "Hôm qua" / dd/mm/yyyy — y hệt cách chia ngày trong khung chat (xem chatPanel.js). */
+function dateDividerLabel(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  const today = new Date();
+  const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOf(today) - startOf(dt)) / 86400000);
+  if (diffDays === 0) return 'Hôm nay';
+  if (diffDays === 1) return 'Hôm qua';
+  return formatDate(dt);
+}
+
+/**
+ * Vẽ danh sách theo TỪNG NGÀY — ngày đưa lên làm tiêu đề in đậm riêng
+ * (giống vạch chia ngày trong khung chat), các dòng bên dưới chỉ còn ghi
+ * GIỜ (không lặp lại ngày ở từng dòng nữa, đỡ rối mắt). rows đã sắp mới nhất
+ * trước (created_at desc) nên chỉ cần gom theo dayKey liên tiếp.
+ */
+function renderDayGroups(rows) {
+  let html = '';
+  let curKey = null;
+  let dayRows = [];
+  const flushDay = () => {
+    if (!dayRows.length) return;
+    html += `<div class="log-day-divider">${escapeHtml(dateDividerLabel(dayRows[0].createdAt))}</div>`;
+    html += groupConsecutive(dayRows).map(groupHtml).join('');
+  };
+  for (const r of rows) {
+    const k = dayKey(r.createdAt);
+    if (curKey !== null && k !== curKey) { flushDay(); dayRows = []; }
+    curKey = k;
+    dayRows.push(r);
+  }
+  flushDay();
+  return html;
+}
+
 /**
  * Gộp các dòng LIÊN TIẾP NHAU (kề nhau trong danh sách đang hiện, sau khi đã
- * lọc/tìm kiếm) của CÙNG 1 quản trị viên thành 1 nhóm — chỉ hiện avatar/tên
- * MỘT LẦN ở đầu nhóm, các thao tác bên dưới chỉ còn giờ + nội dung, gọn hơn
- * hẳn khi 1 người thao tác nhiều lần dồn dập (VD: bấm qua lại nhiều menu).
- * "Liên tiếp" tính trên rows đã lọc/trang đã tải — 2 dòng của cùng 1 người
- * nhưng bị CHEN NGANG bởi thao tác của người khác thì KHÔNG gộp (đúng thứ tự
- * thời gian thật, không gộp nhầm 2 lượt thao tác rời rạc lại với nhau).
+ * lọc/tìm kiếm, CÙNG 1 ngày — xem renderDayGroups() ở trên) của CÙNG 1 quản
+ * trị viên thành 1 nhóm — chỉ hiện avatar/tên MỘT LẦN ở đầu nhóm, các thao
+ * tác bên dưới chỉ còn giờ + nội dung, gọn hơn hẳn khi 1 người thao tác
+ * nhiều lần dồn dập (VD: bấm qua lại nhiều menu). "Liên tiếp" tính trên rows
+ * đã lọc/trang đã tải — 2 dòng của cùng 1 người nhưng bị CHEN NGANG bởi
+ * thao tác của người khác thì KHÔNG gộp (đúng thứ tự thời gian thật, không
+ * gộp nhầm 2 lượt thao tác rời rạc lại với nhau).
  */
 function groupConsecutive(rows) {
   const groups = [];
@@ -129,8 +174,8 @@ function groupHtml(g) {
       <div class="log-group-items">
         ${g.items.map((r) => `
           <div class="log-group-item">
-            <div class="text-sm text-muted">${formatDateTime(r.createdAt)}</div>
-            <div class="text-sm" style="margin-top:2px">${escapeHtml(r.description)}</div>
+            <div class="text-sm text-muted">${hhmm(r.createdAt)}</div>
+            <div class="text-sm fw-700" style="margin-top:2px">${escapeHtml(r.description)}</div>
           </div>
         `).join('')}
       </div>
