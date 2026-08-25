@@ -18,6 +18,7 @@ import * as AdminSettings from './views/admin/settings.js';
 import * as AdminStaff from './views/admin/staff.js';
 import * as AdminZaloOA from './views/admin/zaloOA.js';
 import * as AdminSupport from './views/admin/support.js';
+import * as AdminLogs from './views/admin/logs.js';
 
 const customerRoutes = [
   { re: /^#\/$/, view: Dashboard },
@@ -36,6 +37,10 @@ const adminRoutes = [
   // cấp route.
   { re: /^#\/admin\/ho-tro$/, view: AdminSupport },
   { re: /^#\/admin\/cai-dat$/, view: AdminSettings, superOnly: true },
+  // "Nhật ký" — CHỈ quản trị viên toàn quyền (role='super') mở được, xem
+  // js/views/admin/logs.js. superOnly:true chặn ở route (khớp RLS thật ở
+  // tầng database — mục 10.33 docs).
+  { re: /^#\/admin\/nhat-ky$/, view: AdminLogs, superOnly: true },
   { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, requiresManageZaloOA: true },
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
@@ -93,6 +98,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
     AdminCustomers.resetFilters?.();
     AdminZaloOA.resetFilters?.();
     AdminSupport.resetFilters?.();
+    AdminLogs.resetFilters?.();
     lastSessionKey = curSessionKey;
     dataOnly = false;
   }

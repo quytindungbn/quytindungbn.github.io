@@ -1452,6 +1452,36 @@ export async function listChatConversations() {
 }
 
 // ------------------------------------------------------------
+// Nhật ký sử dụng (activity_log) — CHỈ quản trị viên toàn quyền (role=
+// 'super') xem được, RLS đã chặn hẳn ở tầng database (không chỉ ẩn trên
+// giao diện) — xem docs/supabase-migration.md mục 10.33. KHÔNG tải sẵn vào
+// state lúc đăng nhập (khác requests/chat, vốn ít và cần cho chấm đỏ ngay) —
+// nhật ký có thể dài dần theo thời gian, chỉ tải khi thật sự mở trang, có
+// phân trang "Tải thêm".
+// ------------------------------------------------------------
+function mapActivityLogRow(row) {
+  return {
+    id: row.id, adminId: row.admin_id, adminName: row.admin_name,
+    action: row.action, description: row.description, createdAt: row.created_at,
+  };
+}
+/**
+ * Lấy 1 trang nhật ký, mới nhất trước — truyền `before` (createdAt của dòng
+ * cuối trang đã tải) để tải tiếp trang kế ("Tải thêm"). Ghi bằng Edge
+ * Function (service role) nên chỉ có ĐỌC ở đây — không có hàm ghi phía
+ * client (xem logActivity() trong supabase/functions/create-account/index.ts).
+ */
+export async function listActivityLog({ before, limit = 100 } = {}) {
+  const session = getSession();
+  const sb = getSupabaseClient(session?.sbToken);
+  let q = sb.from('activity_log').select('*').order('created_at', { ascending: false }).limit(limit);
+  if (before) q = q.lt('created_at', before);
+  const { data, error } = await q;
+  if (error) throw new Error('Không tải được nhật ký, thử lại sau.');
+  return (data || []).map(mapActivityLogRow);
+}
+
+// ------------------------------------------------------------
 // Session (đăng nhập hiện tại)
 // ------------------------------------------------------------
 export function getSession() { return state.session; }

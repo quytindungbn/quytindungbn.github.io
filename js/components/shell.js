@@ -35,6 +35,13 @@ export const ADMIN_NAV_MANAGE_ZALO_OA = [
 ];
 export const ADMIN_NAV_SUPER_ONLY = [
   { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings' },
+  // "Nhật ký" ghi lại các thao tác quan trọng của MỌI quản trị viên/nhân
+  // viên (đăng nhập, tạo/xóa/sửa tài khoản, xóa hợp đồng, nhập Excel...) —
+  // CHỈ quản trị viên toàn quyền mới xem được, chặn ở CẢ nav này (ẩn mục)
+  // LẪN RLS thật ở tầng database (xem docs/supabase-migration.md mục
+  // 10.33) — ẩn mục ở đây chỉ là tiện cho giao diện, không phải lớp bảo mật
+  // thật sự.
+  { path: '#/admin/nhat-ky', label: 'Nhật ký', shortLabel: 'Nhật ký', icon: 'clock' },
 ];
 // Số mục tối đa hiện trực tiếp trên thanh menu dưới (mobile) — còn lại gộp vào "Thêm"
 // để không bị lệch/chồng chữ khi có nhiều mục (đặc biệt tài khoản quản trị toàn quyền).

@@ -156,6 +156,27 @@ function addDaysISO(iso: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/**
+ * Ghi 1 dòng vào nhật ký sử dụng (bảng activity_log) — CHỈ quản trị viên
+ * toàn quyền (role='super') xem được (RLS chặn hẳn ở tầng database, không
+ * chỉ ẩn trên giao diện — xem docs/supabase-migration.md mục 10.33). Ghi
+ * bằng service role (client `admin` ở trên, bỏ qua RLS) nên LUÔN ghi được
+ * bất kể người thao tác là ai. CÓ ĐỢI ghi xong (không chạy ngầm kiểu
+ * "fire-and-forget" như zalo_send_log) — vì đây là nhật ký AN TOÀN/ĐỐI
+ * SOÁT, cần chắc chắn ghi được chứ không ưu tiên tốc độ như lúc gửi Zalo;
+ * các hành động được ghi log ở đây (tạo/xóa tài khoản, xóa hợp đồng, nhập
+ * Excel...) vốn đã không phải thao tác cần phản hồi tức thì như gửi tin.
+ * KHÔNG chặn luồng chính nếu ghi log lỗi (chỉ log ra console) — 1 lỗi ghi
+ * nhật ký không được phép làm hỏng thao tác THẬT của người dùng.
+ */
+async function logActivity(adminId: string, adminName: string, action: string, description: string): Promise<void> {
+  try {
+    await admin.from('activity_log').insert({ id: genId('log'), admin_id: adminId, admin_name: adminName, action, description });
+  } catch (e) {
+    console.error('Lỗi ghi activity_log:', e);
+  }
+}
+
 /** Y hệt parseAddress trong js/state.js. */
 function parseAddress(raw: string) {
   const text = String(raw || '').trim();
@@ -429,6 +450,9 @@ Deno.serve(async (req) => {
       sub: row.auth_user_id, role: 'authenticated', app_role: role, row_id: row.id,
       iat: now,
     });
+    // Ghi nhật ký CHỈ đăng nhập của quản trị viên/nhân viên — KHÔNG ghi đăng
+    // nhập của khách hàng (không thuộc "nhật ký sử dụng của quản trị viên").
+    if (role === 'admin') await logActivity(row.id, row.name || row.username, 'login', `Đăng nhập hệ thống (${row.username})`);
     return json({ ok: true, token, id: row.id, mustChangePassword: !!row.must_change_password });
   }
 
@@ -907,7 +931,7 @@ Deno.serve(async (req) => {
     const staffId = String(body.staffId || '').trim();
     const newRole = body.role === 'super' ? 'super' : 'staff';
     if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
-    const { data: target } = await admin.from('admins').select('role').eq('id', staffId).maybeSingle();
+    const { data: target } = await admin.from('admins').select('role, name, username').eq('id', staffId).maybeSingle();
     if (!target) return json({ ok: false, reason: 'Không tìm thấy tài khoản.' }, 404);
     if (target.role === 'super' && newRole === 'staff') {
       const { count } = await admin.from('admins').select('id', { count: 'exact', head: true }).eq('role', 'super');
@@ -915,6 +939,8 @@ Deno.serve(async (req) => {
     }
     const { error } = await admin.from('admins').update({ role: newRole }).eq('id', staffId);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-staff-role',
+      `Đổi vai trò tài khoản "${target.name || target.username}" thành ${newRole === 'super' ? 'Toàn quyền' : 'Nhân viên'}`);
     return json({ ok: true });
   }
 
@@ -954,6 +980,8 @@ Deno.serve(async (req) => {
     // bằng token của người gọi thì RLS sẽ trả về rỗng — tài khoản coi như
     // "biến mất" khỏi trang Quản lý User dù đã tạo thành công thật trong CSDL.
     const { data: newRow } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'customer',
+      `${existing ? 'Cấp lại mật khẩu (qua màn tạo tài khoản)' : 'Tạo tài khoản mới'} cho khách hàng "${newRow?.name || cccd}" (CCCD ${cccd})`);
     return json({ ok: true, id: customerId, tempPassword: finalPassword, customer: newRow });
   }
 
@@ -981,6 +1009,8 @@ Deno.serve(async (req) => {
       salt: cred.salt, hash: cred.hash, must_change_password: true,
     });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'staff',
+      `Tạo tài khoản ${finalRole === 'super' ? 'quản trị viên toàn quyền' : 'nhân viên'} "${body.name || username}" (đăng nhập: ${username})`);
     return json({ ok: true, id: staffId, tempPassword: finalPassword });
   }
 
@@ -993,6 +1023,7 @@ Deno.serve(async (req) => {
     if (body.address) { patch.address = body.address; Object.assign(patch, parseAddress(body.address)); }
     const { error } = await admin.from('customers').update(patch).eq('cccd', cccd);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-customer-profile', `Cập nhật hồ sơ khách hàng (CCCD ${cccd})`);
     return json({ ok: true });
   }
 
@@ -1001,8 +1032,14 @@ Deno.serve(async (req) => {
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
     const finalPassword = body.password && String(body.password).trim() ? String(body.password).trim() : genTempPassword();
     const cred = await makeCredential(finalPassword);
-    const { error } = await admin.from('customers').update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null }).eq('id', customerId);
+    // .select('name') NGAY TRÊN CÙNG lệnh update() — đọc luôn tên khách hàng
+    // vừa cập nhật để ghi nhật ký cho dễ đọc, KHÔNG cần thêm 1 lượt truy vấn
+    // riêng.
+    const { data: updated, error } = await admin.from('customers')
+      .update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null })
+      .eq('id', customerId).select('name').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'reset-customer-password', `Cấp lại mật khẩu khách hàng "${updated?.name || customerId}"`);
     return json({ ok: true, tempPassword: finalPassword });
   }
 
@@ -1018,32 +1055,36 @@ Deno.serve(async (req) => {
   if (body.type === 'force-logout-customer') {
     const customerId = String(body.customerId || '').trim();
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
-    const { error } = await admin.from('customers').update({ force_logout_at: new Date().toISOString() }).eq('id', customerId);
+    const { data: updated, error } = await admin.from('customers').update({ force_logout_at: new Date().toISOString() }).eq('id', customerId).select('name').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'force-logout-customer', `Đăng xuất ngay khách hàng "${updated?.name || customerId}"`);
     return json({ ok: true });
   }
 
   if (body.type === 'deactivate-customer') {
     const customerId = String(body.customerId || '').trim();
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
-    const { error } = await admin.from('customers').update({ salt: null, hash: null, must_change_password: false, failed_attempts: 0, locked_until: null }).eq('id', customerId);
+    const { data: updated, error } = await admin.from('customers').update({ salt: null, hash: null, must_change_password: false, failed_attempts: 0, locked_until: null }).eq('id', customerId).select('name').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'deactivate-customer', `Vô hiệu hóa tài khoản khách hàng "${updated?.name || customerId}"`);
     return json({ ok: true });
   }
 
   if (body.type === 'delete-customer') {
     const customerId = String(body.customerId || '').trim();
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
-    const { error } = await admin.from('customers').delete().eq('id', customerId);
+    const { data: deleted, error } = await admin.from('customers').delete().eq('id', customerId).select('name, cccd').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'delete-customer', `Xóa tài khoản khách hàng "${deleted?.name || customerId}"${deleted?.cccd ? ` (CCCD ${deleted.cccd})` : ''}`);
     return json({ ok: true });
   }
 
   if (body.type === 'delete-contract') {
     const contractId = String(body.contractId || '').trim();
     if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
-    const { error } = await admin.from('contracts').delete().eq('id', contractId);
+    const { data: deleted, error } = await admin.from('contracts').delete().eq('id', contractId).select('code').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'delete-contract', `Xóa hợp đồng ${deleted?.code || contractId}`);
     return json({ ok: true });
   }
 
@@ -1052,8 +1093,9 @@ Deno.serve(async (req) => {
   if (body.type === 'force-logout-staff') {
     const staffId = String(body.staffId || '').trim();
     if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
-    const { error } = await admin.from('admins').update({ force_logout_at: new Date().toISOString() }).eq('id', staffId);
+    const { data: updated, error } = await admin.from('admins').update({ force_logout_at: new Date().toISOString() }).eq('id', staffId).select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'force-logout-staff', `Đăng xuất ngay tài khoản "${updated?.name || updated?.username || staffId}"`);
     return json({ ok: true });
   }
 
@@ -1066,21 +1108,23 @@ Deno.serve(async (req) => {
     }
     const finalPassword = body.password && String(body.password).trim() ? String(body.password).trim() : genTempPassword();
     const cred = await makeCredential(finalPassword);
-    const { error } = await admin.from('admins').update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null }).eq('id', staffId);
+    const { data: updated, error } = await admin.from('admins').update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null }).eq('id', staffId).select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'reset-staff-password', `Cấp lại mật khẩu tài khoản "${updated?.name || updated?.username || staffId}"`);
     return json({ ok: true, tempPassword: finalPassword });
   }
 
   if (body.type === 'update-staff-permissions') {
     const staffId = String(body.staffId || '').trim();
     if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
-    const { error } = await admin.from('admins').update({
+    const { data: updated, error } = await admin.from('admins').update({
       allowed_thon: Array.isArray(body.allowedThon) ? body.allowedThon : [],
       allowed_xom: Array.isArray(body.allowedXom) ? body.allowedXom : [],
       can_manage_users: !!body.canManageUsers,
       can_manage_zalo_oa: !!body.canManageZaloOA,
-    }).eq('id', staffId).eq('role', 'staff');
+    }).eq('id', staffId).eq('role', 'staff').select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'update-staff-permissions', `Sửa quyền tài khoản "${updated?.name || updated?.username || staffId}"`);
     return json({ ok: true });
   }
 
@@ -1093,8 +1137,9 @@ Deno.serve(async (req) => {
       const { count } = await admin.from('admins').select('id', { count: 'exact', head: true }).eq('role', 'super');
       if ((count || 0) <= 1) return json({ ok: false, reason: 'Phải giữ lại ít nhất 1 quản trị viên toàn quyền.' }, 409);
     }
-    const { error } = await admin.from('admins').delete().eq('id', staffId);
+    const { data: deleted, error } = await admin.from('admins').delete().eq('id', staffId).select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'delete-staff', `Xóa tài khoản "${deleted?.name || deleted?.username || staffId}"`);
     return json({ ok: true });
   }
 
@@ -1286,6 +1331,11 @@ Deno.serve(async (req) => {
       }
     }
 
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, 'import',
+      `Nhập dữ liệu Excel${fullSync ? ' (đồng bộ toàn bộ)' : ''}: ${result.contracts} hợp đồng, ${result.newAccounts.length} tài khoản mới` +
+      (result.deletedContracts ? `, xóa ${result.deletedContracts} hợp đồng` : '') +
+      (result.deletedCustomers ? `, xóa ${result.deletedCustomers} khách hàng` : '') +
+      (result.skipped ? `, bỏ qua ${result.skipped} dòng lỗi` : ''));
     return json({ ok: true, ...result });
   }
 

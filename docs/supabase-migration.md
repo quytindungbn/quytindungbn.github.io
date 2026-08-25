@@ -1816,6 +1816,65 @@ chạy thêm.
 
 ---
 
+### 10.33. Nhật ký sử dụng — chỉ quản trị viên toàn quyền xem được (BẮT BUỘC chạy SQL + deploy lại `create-account`)
+
+Trang **"Nhật ký"** mới (menu riêng, chỉ hiện cho tài khoản **toàn quyền** — `role='super'`) ghi lại các
+thao tác quan trọng của quản trị viên/nhân viên: đăng nhập, tạo/xóa/sửa tài khoản (cả nhân viên lẫn
+khách hàng), cấp lại mật khẩu, đăng xuất ngay 1 tài khoản, xóa hợp đồng, nhập dữ liệu Excel... Mỗi dòng
+nhật ký ghi rõ **ai** đã làm, làm **gì**, và **lúc nào**. Có ô tìm theo tên/nội dung và nút "Tải thêm" để
+xem các dòng cũ hơn.
+
+**KHÔNG gồm việc gửi tin Zalo OA** (thủ công lẫn tự động) — mục đó đã có trang riêng "Quản lý gửi tin"
+trong "Quản lý OA" từ trước, tránh ghi trùng 2 nơi.
+
+**Chặn 2 lớp — chỉ tài khoản toàn quyền xem được**:
+1. Giao diện: mục menu "Nhật ký" chỉ hiện cho `role='super'`, nhân viên (kể cả có quyền "Quản lý User"
+   hay "Quản lý OA") không thấy mục này, cố vào thẳng đường link cũng bị tự chuyển hướng ra khỏi trang.
+2. **Database (lớp chặn THẬT SỰ, không chỉ ẩn giao diện)**: Row Level Security trên bảng `activity_log`
+   chỉ cho phép `role='super'` đọc — nhân viên dù có cố tình gọi thẳng API cũng không lấy được dữ liệu.
+   Việc GHI vào bảng này chỉ làm được qua Edge Function `create-account` (bằng service role, bỏ qua RLS)
+   — không ai (kể cả tài khoản toàn quyền) sửa/xóa được nhật ký từ phía trình duyệt, đảm bảo nhật ký
+   không bị chỉnh sửa lại.
+
+```sql
+create table if not exists activity_log (
+  id text primary key,
+  admin_id text references admins(id) on delete set null,
+  admin_name text not null,
+  action text not null,
+  description text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists activity_log_created_idx on activity_log (created_at desc);
+
+alter table activity_log enable row level security;
+-- CHỈ cấp select cho anon/authenticated (không cấp insert/update/delete) —
+-- ghi nhật ký CHỈ làm được qua Edge Function bằng service_role (tự bỏ qua
+-- RLS, không cần cấp quyền insert cho vai trò nào ở đây).
+grant select on activity_log to anon, authenticated;
+grant select, insert on activity_log to service_role;
+
+-- CHỈ quản trị viên toàn quyền (role='super') mới xem được nhật ký — đúng
+-- yêu cầu "chỉ một mình tài khoản admin mới xem được".
+create policy "super sees activity log" on activity_log
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a where a.id = (auth.jwt() ->> 'row_id') and a.role = 'super'
+    )
+  );
+```
+
+**Việc cần bạn làm**:
+1. Chạy đoạn SQL trên trong Supabase Dashboard → SQL Editor.
+2. Deploy lại **`create-account`** (file vừa gửi ở trên) — Supabase Dashboard → Edge Functions → chọn
+   `create-account` → dán đè toàn bộ nội dung file mới → Deploy.
+
+Thiếu 1 trong 2 bước trên đều khiến trang "Nhật ký" báo lỗi không tải được (thiếu bảng) hoặc không ghi
+được gì mới (chưa deploy Edge Function) — cần làm đủ cả 2.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
