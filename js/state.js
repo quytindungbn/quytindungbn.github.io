@@ -1308,6 +1308,12 @@ export async function updateRequestStatus(id, status) {
   const r = state.requests.find((x) => x.id === id);
   if (r) r.status = status;
   notify();
+  // Ghi Nhật ký sử dụng — CHẠY NGẦM (không await/không chặn UI), vì đây ghi
+  // thẳng qua RLS (không qua Edge Function create-account) nên KHÔNG có chỗ
+  // nào server tự biết để ghi log — xem type 'log-admin-action' trong
+  // create-account/index.ts. Lỗi ghi log (nếu có) không ảnh hưởng gì đến
+  // việc cập nhật trạng thái THẬT đã xong ở trên.
+  callCreateAccountFunction(session?.sbToken, { type: 'log-admin-action', action: 'update-request-status', requestId: id }).catch(() => {});
 }
 function mapRequestRow(row) {
   return {
@@ -1398,6 +1404,13 @@ export async function sendChatMessage(customerId, message) {
   };
   const { error } = await sb.from('chat_messages').insert(row);
   if (error) throw new Error('Không gửi được tin nhắn, thử lại sau.');
+  // Ghi Nhật ký sử dụng — CHỈ khi người gửi là quản trị viên/nhân viên (bỏ
+  // qua tin của khách hàng, nhật ký này chỉ theo dõi thao tác của quản trị
+  // viên) — CHẠY NGẦM, lý do y hệt updateRequestStatus() ở trên (ghi thẳng
+  // qua RLS, không qua Edge Function nên cần tự gọi thêm để ghi log).
+  if (session.role === 'admin') {
+    callCreateAccountFunction(session?.sbToken, { type: 'log-admin-action', action: 'reply-chat', customerId }).catch(() => {});
+  }
   return mapChatMessageRow({ ...row, created_at: new Date().toISOString(), read_at: null });
 }
 

@@ -1818,14 +1818,18 @@ chạy thêm.
 
 ### 10.33. Nhật ký sử dụng — chỉ quản trị viên toàn quyền xem được (BẮT BUỘC chạy SQL + deploy lại `create-account`)
 
-Trang **"Nhật ký"** mới (menu riêng, chỉ hiện cho tài khoản **toàn quyền** — `role='super'`) ghi lại các
-thao tác quan trọng của quản trị viên/nhân viên: đăng nhập, tạo/xóa/sửa tài khoản (cả nhân viên lẫn
-khách hàng), cấp lại mật khẩu, đăng xuất ngay 1 tài khoản, xóa hợp đồng, nhập dữ liệu Excel... Mỗi dòng
-nhật ký ghi rõ **ai** đã làm, làm **gì**, và **lúc nào**. Có ô tìm theo tên/nội dung và nút "Tải thêm" để
-xem các dòng cũ hơn.
+Trang **"Nhật ký"** mới (menu riêng, chỉ hiện cho tài khoản **toàn quyền** — `role='super'`) ghi lại
+**hầu như mọi** thao tác của quản trị viên/nhân viên: đăng nhập, tạo/xóa/sửa tài khoản (cả nhân viên lẫn
+khách hàng), cấp lại mật khẩu, đăng xuất ngay 1 tài khoản, xóa hợp đồng, nhập dữ liệu Excel, gửi thông
+báo đẩy thủ công, thêm/bỏ khách khỏi Danh sách OA, thêm/bỏ/sửa gửi Zalo tự động, gửi tay Zalo OA, trả lời
+chat với khách hàng, cập nhật trạng thái yêu cầu tư vấn... Mỗi dòng nhật ký ghi rõ **ai** đã làm, làm
+**gì**, và **lúc nào**. Có ô tìm theo tên/nội dung và nút "Tải thêm" để xem các dòng cũ hơn.
 
-**KHÔNG gồm việc gửi tin Zalo OA** (thủ công lẫn tự động) — mục đó đã có trang riêng "Quản lý gửi tin"
-trong "Quản lý OA" từ trước, tránh ghi trùng 2 nơi.
+**Lưu ý 2 điều nhỏ**:
+- Gửi tin Zalo OA vẫn có trang riêng "Quản lý gửi tin" trong "Quản lý OA" ghi chi tiết đầy đủ hơn (kể cả
+  lượt gửi lỗi) — Nhật ký chỉ ghi thêm 1 dòng NGẮN cho lượt gửi THÀNH CÔNG để không phải qua lại 2 trang.
+- Trả lời chat ghi **MỖI TIN NHẮN 1 dòng** — hội thoại qua lại nhiều lượt sẽ ra nhiều dòng nhật ký tương
+  ứng (đúng nghĩa "bất kể thao tác gì"), không gộp lại thành 1 dòng.
 
 **Chặn 2 lớp — chỉ tài khoản toàn quyền xem được**:
 1. Giao diện: mục menu "Nhật ký" chỉ hiện cho `role='super'`, nhân viên (kể cả có quyền "Quản lý User"
@@ -1866,12 +1870,17 @@ create policy "super sees activity log" on activity_log
 ```
 
 **Việc cần bạn làm**:
-1. Chạy đoạn SQL trên trong Supabase Dashboard → SQL Editor.
-2. Deploy lại **`create-account`** (file vừa gửi ở trên) — Supabase Dashboard → Edge Functions → chọn
-   `create-account` → dán đè toàn bộ nội dung file mới → Deploy.
+1. Chạy đoạn SQL trên trong Supabase Dashboard → SQL Editor (bảng `activity_log` KHÔNG đổi gì thêm so
+   với lần trước — nếu đã chạy rồi thì bỏ qua bước này, `create table if not exists` tự bỏ qua nếu bảng
+   đã có sẵn).
+2. Deploy lại **`create-account`** (file MỚI NHẤT vừa gửi — bản này có thêm phần ghi log cho các thao
+   tác Zalo OA/chat/yêu cầu tư vấn so với file gửi lần trước) — Supabase Dashboard → Edge Functions →
+   chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy.
 
-Thiếu 1 trong 2 bước trên đều khiến trang "Nhật ký" báo lỗi không tải được (thiếu bảng) hoặc không ghi
-được gì mới (chưa deploy Edge Function) — cần làm đủ cả 2.
+Thiếu bước 1 (chưa có bảng) là nguyên nhân phổ biến nhất khiến trang "Nhật ký" báo **"Không tải được"** —
+kiểm tra lại đã chạy đúng đoạn SQL trên trong SQL Editor chưa (không phải chỉ đọc qua, phải bấm Run).
+Thiếu bước 2 thì trang tải được nhưng không có dòng nào mới (thao tác vẫn làm thẳng bằng code cũ, chưa
+biết ghi log).
 
 ---
 

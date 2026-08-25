@@ -146,6 +146,8 @@ async function verifyCredential(password: string, salt: string, hash: string): P
 function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
+/** Y hệt REQUEST_STATUS_MAP trong js/state.js — chỉ dùng để soạn mô tả nhật ký (type 'log-admin-action'/'update-request-status'), không phải nguồn dữ liệu chính. */
+const REQUEST_STATUS_LABELS: Record<string, string> = { moi: 'Mới', dang_xu_ly: 'Đang xử lý', da_lien_he: 'Đã liên hệ' };
 /** Escape ký tự đặc biệt của LIKE/ILIKE ("%", "_", "\\") trước khi đưa vào ilike() — tránh username chứa các ký tự này bị hiểu nhầm thành wildcard. */
 function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => '\\' + c);
@@ -567,6 +569,48 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
+  // ===== type: 'log-admin-action' — ghi 1 dòng vào Nhật ký sử dụng cho các
+  // thao tác KHÔNG đi qua Edge Function này (ghi thẳng qua Row Level
+  // Security — chat_messages/requests, xem docs mục 10.24/10.6) nên
+  // logActivity() bình thường (gọi từ TRONG các "type" khác ở Edge Function
+  // này) không có chỗ nào để tự chạy. Chỉ nhận 1 tập "action" CỐ ĐỊNH bên
+  // dưới (KHÔNG nhận mô tả tự do từ client) — server tự tra cứu dữ liệu thật
+  // để tự soạn nội dung mô tả, tránh 1 quản trị viên tự ghi bậy nội dung sai
+  // sự thật vào nhật ký của chính mình. admin_id/admin_name LUÔN lấy từ JWT
+  // của người gọi (KHÔNG bao giờ tin client tự khai), nên không ai giả mạo
+  // được thành người khác. =====
+  if (body.type === 'log-admin-action') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') {
+      return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
+    const { data: selfAdmin } = await admin.from('admins').select('id, name, username').eq('id', selfClaims.row_id).maybeSingle();
+    if (!selfAdmin) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const actorName = selfAdmin.name || selfAdmin.username;
+
+    if (body.action === 'reply-chat') {
+      const customerId = String(body.customerId || '').trim();
+      if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+      const { data: cust } = await admin.from('customers').select('name').eq('id', customerId).maybeSingle();
+      await logActivity(selfAdmin.id, actorName, 'reply-chat', `Trả lời chat với khách hàng "${cust?.name || customerId}"`);
+      return json({ ok: true });
+    }
+
+    if (body.action === 'update-request-status') {
+      const requestId = String(body.requestId || '').trim();
+      if (!requestId) return json({ ok: false, reason: 'Thiếu mã yêu cầu.' }, 400);
+      const { data: reqRow } = await admin.from('requests').select('status, customer_id').eq('id', requestId).maybeSingle();
+      const { data: cust } = reqRow?.customer_id ? await admin.from('customers').select('name').eq('id', reqRow.customer_id).maybeSingle() : { data: null };
+      const statusLabel = REQUEST_STATUS_LABELS[reqRow?.status as string] || reqRow?.status || '';
+      await logActivity(selfAdmin.id, actorName, 'update-request-status', `Cập nhật trạng thái yêu cầu của khách hàng "${cust?.name || reqRow?.customer_id || '—'}" thành "${statusLabel}"`);
+      return json({ ok: true });
+    }
+
+    return json({ ok: false, reason: 'Thiếu hoặc sai "action".' }, 400);
+  }
+
   // ===== type: 'send-manual-notification' — BẤT KỲ admin/nhân viên nào đã
   // đăng nhập (KHÔNG cần role='super') tự soạn + gửi ngay 1 thông báo đẩy
   // cho 1 khách hàng. Nhân viên (role='staff') CHỈ gửi được cho khách trong
@@ -623,6 +667,9 @@ Deno.serve(async (req) => {
       }
     }
     if (!sentCount) return json({ ok: false, reason: 'Gửi không thành công — thiết bị của khách có thể đã tắt/gỡ đăng ký nhận thông báo, nhờ khách vào lại app bật lại thông báo.' });
+    const { data: notifiedCust } = await admin.from('customers').select('name').eq('id', customerId).maybeSingle();
+    await logActivity(caller.id, caller.name || caller.username, 'send-manual-notification',
+      `Gửi thông báo đẩy "${title}" cho khách hàng "${notifiedCust?.name || customerId}" (${sentCount} thiết bị)`);
     return json({ ok: true, sentCount });
   }
 
@@ -687,6 +734,7 @@ Deno.serve(async (req) => {
       if (existing) return json({ ok: false, reason: 'Khách hàng này đã có trong danh sách OA rồi.' });
       const { error } = await admin.from('zalo_customers').insert({ customer_id: customerId, added_by: caller.id });
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      await logActivity(caller.id, caller.name || caller.username, 'add-zalo-customer', `Thêm khách hàng "${scope.customer?.name || customerId}" vào Danh sách OA`);
       return json({ ok: true });
     }
 
@@ -700,6 +748,7 @@ Deno.serve(async (req) => {
       // này vì đã bỏ hẳn khỏi danh sách OA thì không còn lý do gì để còn gửi tự động cho khách đó nữa.
       const { error } = await admin.from('zalo_customers').delete().eq('customer_id', customerId);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      await logActivity(caller.id, caller.name || caller.username, 'remove-zalo-customer', `Bỏ khách hàng "${scope.customer?.name || customerId}" khỏi Danh sách OA`);
       return json({ ok: true });
     }
 
@@ -742,6 +791,8 @@ Deno.serve(async (req) => {
         }
         return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       }
+      await logActivity(caller.id, caller.name || caller.username, 'add-zalo-auto-send',
+        `Thêm hợp đồng ${scope.contract?.code || contractId} vào gửi tự động (${kind === 'lai_hang_thang_custom_day' ? 'Gửi theo ngày cụ thể' : 'Báo lãi tự động hàng tháng'})`);
       return json({ ok: true });
     }
 
@@ -758,6 +809,8 @@ Deno.serve(async (req) => {
       }
       const { error } = await admin.from('zalo_auto_send_list').delete().eq('id', id);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      const { data: rowContract } = await admin.from('contracts').select('code').eq('id', row.contract_id).maybeSingle();
+      await logActivity(caller.id, caller.name || caller.username, 'remove-zalo-auto-send', `Bỏ hợp đồng ${rowContract?.code || row.contract_id} khỏi gửi tự động`);
       return json({ ok: true });
     }
 
@@ -786,6 +839,8 @@ Deno.serve(async (req) => {
       if (!Object.keys(patch).length) return json({ ok: false, reason: 'Không có gì để sửa.' }, 400);
       const { error } = await admin.from('zalo_auto_send_list').update(patch).eq('id', id);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      const { data: rowContract } = await admin.from('contracts').select('code').eq('id', row.contract_id).maybeSingle();
+      await logActivity(caller.id, caller.name || caller.username, 'update-zalo-auto-send-settings', `Sửa cài đặt gửi tự động của hợp đồng ${rowContract?.code || row.contract_id}`);
       return json({ ok: true });
     }
 
@@ -884,6 +939,22 @@ Deno.serve(async (req) => {
         accessToken, phone: customer.phone, templateId, templateData,
         contractId, customerId: customer.id, kind, triggeredBy: 'manual', triggeredByAdminId: caller.id,
       });
+      // Đã có log riêng "Quản lý gửi tin" (bảng zalo_send_log, GHI ĐỦ + CÓ ĐỢI
+      // cho MỌI lượt gửi kể cả lỗi — xem sendZaloTemplateLogged() ở trên) —
+      // ghi thêm 1 dòng NGẮN vào Nhật ký sử dụng chung khi THÀNH CÔNG, để
+      // trang "Nhật ký" cũng thấy đủ, không cần vào riêng "Quản lý gửi tin"
+      // mới biết. CỐ Ý KHÔNG ĐỢI (khác mọi chỗ gọi logActivity() còn lại) —
+      // đây là đường gửi tay đã tốn nhiều công tối ưu tốc độ (mục 10.30-32),
+      // thêm 1 lượt round-trip nữa vào ĐÚNG lúc chuẩn bị trả kết quả sẽ làm
+      // chậm lại đúng thứ vừa tối ưu. Chấp nhận rủi ro nhỏ dòng này thỉnh
+      // thoảng không kịp ghi (nếu Edge Function tắt tiến trình ngay sau khi
+      // trả response) — không sao vì zalo_send_log (nguồn THẬT của lượt gửi
+      // này) vẫn luôn ghi đủ, không phụ thuộc dòng này.
+      if (result.ok) {
+        logActivity(caller.id, caller.name || caller.username, 'send-zalo-manual',
+          `Gửi tay Zalo OA (mẫu ${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}) cho khách hàng "${customer.name || contractId}"`)
+          .catch((e) => console.error('Lỗi ghi activity_log (send-zalo-manual):', e));
+      }
       return json(result.ok ? { ok: true } : { ok: false, reason: result.reason });
     }
   }
