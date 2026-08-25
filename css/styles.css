@@ -320,7 +320,7 @@ svg { display: block; }
   display: flex; flex-direction: column; align-items: center; gap: 8px;
 }
 .chat-empty .icon-lg { width: 36px; height: 36px; color: var(--text-faint); }
-.chat-empty p { font-size: 13px; max-width: 220px; }
+.chat-empty p { font-size: 14.5px; font-weight: 700; color: var(--text); max-width: 240px; }
 
 .chat-date-divider { text-align: center; margin: 14px 0 8px; }
 .chat-date-divider span {

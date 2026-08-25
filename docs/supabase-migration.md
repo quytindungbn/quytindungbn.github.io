@@ -2032,6 +2032,22 @@ chạy thêm.
 
 ---
 
+### 10.41. Khung chat khách hàng: đổi tiêu đề + chữ trống chưa có tin nhắn, in đậm/nổi hơn (KHÔNG cần chạy SQL/deploy Edge Function)
+
+Khung chat phía khách hàng (nút tròn nổi góc màn hình):
+- Tiêu đề "Hỗ trợ" → **"Hỗ trợ tư vấn"**.
+- Chưa có tin nhắn nào: "Chưa có tin nhắn nào, hãy gửi câu hỏi của bạn." → **"Hãy đặt câu hỏi để gặp
+  trực tiếp nhân viên tư vấn."** — chữ này cũng chỉnh **nổi hơn** (in đậm, cỡ chữ lớn hơn 1 chút, màu đậm
+  hơn thay vì màu xám mờ như trước) để khách vừa mở khung chat trống là thấy ngay, dễ hiểu cần làm gì.
+
+Phía quản trị viên/nhân viên (mở hộ 1 hội thoại của khách trong trang "Hỗ trợ") KHÔNG đổi gì — tiêu đề ở
+đó vẫn luôn là TÊN THẬT của khách hàng, không liên quan tới tiêu đề mặc định này.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS/CSS tĩnh, GitHub Pages
+tự deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

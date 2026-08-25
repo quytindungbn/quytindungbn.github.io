@@ -2,7 +2,7 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { statusBadge, emptyState, openPicker, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { toast } from '../../components/toast.js';
-import { openChatPanel } from '../../components/chatPanel.js';
+import { openChatPanel, DEFAULT_CHAT_TITLE } from '../../components/chatPanel.js';
 import { openCustomerDetail } from './customers.js';
 import { formatVND, formatDateTime, initials, colorFor, escapeHtml, stripDiacritics } from '../../utils.js';
 
@@ -215,7 +215,7 @@ function drawConversationList(contentEl, filterEl) {
     row.addEventListener('click', () => {
       const customerId = row.dataset.id;
       const c = S.getCustomer(customerId);
-      openChatPanel(customerId, c?.name || 'Hỗ trợ', {
+      openChatPanel(customerId, c?.name || DEFAULT_CHAT_TITLE, {
         // Đóng khung chat xong tải lại danh sách THẬT (khác drawConversationList()
         // khi gõ tìm kiếm) — để chấm đỏ "chưa đọc" vừa xem xong tự tắt ngay,
         // không cần rời trang rồi quay lại mới thấy đúng.

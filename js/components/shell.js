@@ -258,14 +258,17 @@ export function renderChatFab(session) {
     btn = document.createElement('button');
     btn.id = 'chat-fab';
     btn.className = 'fab';
-    btn.title = 'Hỗ trợ';
+    btn.title = 'Hỗ trợ tư vấn';
     // Đọc customerId từ dataset (gán lại MỖI lần dưới đây) thay vì đóng kín
     // trong closure lúc tạo nút — nút chỉ tạo 1 LẦN DUY NHẤT rồi tái dùng ở
     // mọi lần gọi sau (xem if (!btn) ở trên), closure session.id lúc tạo sẽ
     // bị "đông cứng" nếu lỡ có 2 khách hàng nối tiếp dùng chung 1 nút (dù
     // thực tế luôn đi qua nhánh !session dọn nút giữa 2 lượt đăng nhập, vẫn
     // phòng hờ cho chắc).
-    btn.addEventListener('click', () => openChatPanel(btn.dataset.customerId, 'Hỗ trợ'));
+    // KHÔNG truyền title cụ thể — để openChatPanel() tự dùng tiêu đề mặc định
+    // của chính nó (DEFAULT_CHAT_TITLE trong chatPanel.js, "Hỗ trợ tư vấn") —
+    // 1 nguồn duy nhất, khỏi phải sửa 2 chỗ mỗi lần đổi chữ.
+    btn.addEventListener('click', () => openChatPanel(btn.dataset.customerId));
     document.body.appendChild(btn);
   }
   btn.dataset.customerId = session.id;

@@ -30,6 +30,13 @@ import { escapeHtml, initials, colorFor, formatDate } from '../utils.js';
 
 const POLL_MS = 3000;
 const COMPOSER_MAX_HEIGHT = 110;
+// Tiêu đề mặc định khi mở khung chat KHÔNG truyền title cụ thể — dùng cho
+// khách hàng tự mở chat của chính mình (xem renderChatFab() trong shell.js,
+// không cần thấy tên mình làm tiêu đề). CŨNG dùng làm "chuỗi nhận biết" để
+// phân biệt "đang xem chat của CHÍNH MÌNH" (customer) với "admin đang xem hộ
+// 1 khách hàng cụ thể" (title lúc đó là TÊN KHÁCH, khác chuỗi này) — xem
+// customerName bên dưới.
+export const DEFAULT_CHAT_TITLE = 'Hỗ trợ tư vấn';
 
 function isNearBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 60;
@@ -102,7 +109,7 @@ export function openChatPanel(customerId, title, opts = {}) {
   let timer = null;
 
   openModal({
-    title: title || 'Hỗ trợ',
+    title: title || DEFAULT_CHAT_TITLE,
     sheetClass: 'chat-modal-sheet',
     bodyHtml: `<div class="chat-log" id="chat-log"></div>`,
     footHtml: `
@@ -116,7 +123,7 @@ export function openChatPanel(customerId, title, opts = {}) {
       const form = sheet.querySelector('#chat-form');
       const input = sheet.querySelector('#chat-input');
       const sendBtn = sheet.querySelector('#chat-send');
-      const customerName = S.getCustomer(customerId)?.name || (title !== 'Hỗ trợ' ? title : '');
+      const customerName = S.getCustomer(customerId)?.name || (title && title !== DEFAULT_CHAT_TITLE ? title : '');
 
       input.addEventListener('input', () => {
         autoResizeComposer(input);
@@ -168,7 +175,7 @@ export function openChatPanel(customerId, title, opts = {}) {
         if (!list.length) {
           if (!renderedIds.size && !emptyShown) {
             emptyShown = true;
-            logEl.innerHTML = `<div class="chat-empty">${icon('message', 'icon-lg')}<p>Chưa có tin nhắn nào, hãy gửi câu hỏi của bạn.</p></div>`;
+            logEl.innerHTML = `<div class="chat-empty">${icon('message', 'icon-lg')}<p>Hãy đặt câu hỏi để gặp trực tiếp nhân viên tư vấn.</p></div>`;
           }
         } else {
           const added = appendNew(list);
