@@ -251,6 +251,7 @@ export function render(contentEl, filterEl) {
             <div class="row-thumb" style="width:34px;height:34px;font-size:13px;background:${colorFor(c.id)}">${initials(c.name)}</div>
             <div class="row-main">
               <div class="row-sub" style="white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${[c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn'}</div>
+              ${contracts.length === 1 ? installmentHintHtml(contracts[0]) : ''}
             </div>
             ${contracts.length === 1 ? `<div data-view-contract="${contracts[0].id}" data-customer-id="${c.id}" style="cursor:pointer">${contractAmountsHtml(contracts[0])}</div>` : ''}
           </div>
@@ -605,6 +606,20 @@ function contractAmountsHtml(ct) {
     </div>`;
 }
 
+/**
+ * Dòng nhỏ "Kỳ trễ hạn/Kỳ gần đến hạn: Kỳ N — số tiền" (nếu hợp đồng đang có
+ * 1 kỳ cần chú ý) — chữ to/đậm hơn field-hint mặc định (13px, đậm, tô màu
+ * theo đúng mức cảnh báo: đỏ = trễ hạn, vàng = gần đến hạn) để dễ nhìn ra
+ * ngay. Dùng CHUNG cho cả dòng hợp đồng gọn (contractRowCompact() — khách có
+ * NHIỀU hợp đồng) LẪN khách chỉ có 1 hợp đồng (dòng gọn bị bỏ qua, chỉ hiện
+ * contractAmountsHtml() — cần gọi riêng hàm này để không bị thiếu cảnh báo).
+ */
+function installmentHintHtml(ct) {
+  const inst = S.nextInstallmentInfo(ct);
+  if (!inst || !inst.urgency) return '';
+  return `<div class="fw-700" style="margin-top:3px;font-size:13px;color:${inst.urgency === 'qua_han' ? 'var(--danger)' : 'var(--warning)'}">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — ${formatVND(inst.next.dueAmount)}</div>`;
+}
+
 /** Dòng hợp đồng gọn — chỉ mã + trạng thái + gốc/lãi, bấm vào mới ra đầy đủ chi tiết (openContractView). */
 function contractRowCompact(ct) {
   // "Trong hạn" thay bằng "Gần đến hạn"/"Quá hạn" khi sắp/đã tới ngày đến hạn
@@ -619,14 +634,7 @@ function contractRowCompact(ct) {
   else if (info.level === 'gan_den_han' && info.days <= S.NEAR_DUE_DAYS) statusHtml = statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${info.days} ngày` });
   else if (info.level === 'gan_den_han') statusHtml = `<span class="text-sm text-muted">Gần đến hạn ${info.days} ngày</span>`;
   else statusHtml = statusBadge(S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(ct)]);
-  // "Kỳ tới" (nếu có VÀ đang gần/quá hạn) — hiện thêm đúng KỲ + SỐ TIỀN của
-  // kỳ đó (VD: "Kỳ 1 — 20.000.000đ") để biết ngay kỳ nào/bao nhiêu tiền,
-  // không cần bấm vào xem chi tiết mới biết — chữ to/đậm hơn field-hint mặc
-  // định (13px, đậm, tô màu theo đúng mức cảnh báo) để dễ nhìn ra ngay.
-  const inst = S.nextInstallmentInfo(ct);
-  const instHint = inst && inst.urgency
-    ? `<div class="fw-700" style="margin-top:3px;font-size:13px;color:${inst.urgency === 'qua_han' ? 'var(--danger)' : 'var(--warning)'}">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — ${formatVND(inst.next.dueAmount)}</div>`
-    : '';
+  const instHint = installmentHintHtml(ct);
   return `
     <div class="list-row" data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" style="cursor:pointer;padding:8px 0">
       <div class="row-main">

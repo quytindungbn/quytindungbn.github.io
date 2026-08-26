@@ -2241,7 +2241,14 @@ hàng.
 5. **Dòng "Kỳ trễ hạn: Kỳ N — số tiền" ở trang Khách hàng rõ hơn** — chữ to hơn (13px), đậm, tô màu đỏ
    (quá hạn) hoặc vàng (gần đến hạn) thay vì chữ nhỏ xám mờ như trước.
 
-Cả 8 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
+**Cập nhật 26/08/2026 (lần 9)**: sửa tiếp — khách hàng CHỈ CÓ 1 hợp đồng trước đó KHÔNG hiện dòng "Kỳ
+trễ hạn:.../Kỳ gần đến hạn:..." dưới dòng địa chỉ (chỉ khách có TỪ 2 hợp đồng trở lên mới hiện, do dùng 2
+đường code khác nhau: `contractRowCompact()` cho nhiều hợp đồng, `contractAmountsHtml()` cho 1 hợp đồng —
+dòng cảnh báo chỉ có ở đường đầu). Tách riêng `installmentHintHtml()` dùng CHUNG cho cả 2 trường hợp — giờ
+khách chỉ có 1 hợp đồng cũng hiện đúng dòng cảnh báo này (to/đậm, đỏ/vàng theo đúng mức, y hệt khách có
+nhiều hợp đồng).
+
+Cả 9 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
 `js/views/contractDetail.js`, `js/views/admin/customers.js`, `js/views/admin/overview.js`,
 `js/views/dashboard.js`, `css/styles.css`) — không cần chạy lại SQL/deploy lại Edge Function nào thêm,
 không đụng dữ liệu. Vẫn CHƯA gắn vào Zalo OA/nhắc nợ tự động.
