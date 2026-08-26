@@ -22,44 +22,10 @@ const SORT_OPTIONS = [
 const SORT_LABEL = Object.fromEntries(SORT_OPTIONS.map((o) => [o.value, o.label]));
 
 // "Gần đến hạn" ở đây rộng hơn hẳn NEAR_DUE_DAYS (15 ngày, dùng cho nhắc nợ/
-// Zalo OA...) — hiển thị TRƯỚC tới 45 ngày, y hệt ngưỡng của popup "Gần đến
-// hạn" ở Tổng quan (xem UPCOMING_LIST_CAP_DAYS trong overview.js), để xem
-// trước lịch sắp tới xa hơn ngay tại trang này thay vì phải qua Tổng quan.
-const WIDE_NEAR_DUE_DAYS = 45;
-/** Hợp đồng còn trong hạn VÀ còn tối đa WIDE_NEAR_DUE_DAYS ngày nữa mới đến hạn (kể cả đã lọt qua ngưỡng 15 ngày "chính thức" của contractUrgency). */
-function isWideNearDue(ct) {
-  if (S.effectiveContractStatus(ct) !== 'dang_vay') return false;
-  const d = daysUntil(ct.dueDate);
-  return d >= 0 && d <= WIDE_NEAR_DUE_DAYS;
-}
-
-/**
- * Mức cần chú ý CAO NHẤT của 1 hợp đồng — xét CẢ ngày đáo hạn hợp đồng gốc
- * (như trước) LẪN "Kỳ tới" của bảng phân kỳ trả nợ (S.nextInstallmentInfo())
- * nếu hợp đồng có phân kỳ — để khách có kỳ đến hạn/quá hạn GIỮA chừng (chưa
- * tới ngày đáo hạn cuối cùng của hợp đồng) vẫn lọt vào đúng bộ lọc "Gần đến
- * hạn"/"Nợ quá hạn" ở trang này, y hệt cảnh báo ngày đáo hạn hợp đồng gốc.
- * Trả về { level: 'qua_han' | 'gan_den_han' | null, days }.
- */
-function contractAttentionInfo(ct) {
-  const d = daysUntil(ct.dueDate);
-  const contractLevel = S.contractUrgency(ct) === 'qua_han' ? 'qua_han' : (d >= 0 && d <= WIDE_NEAR_DUE_DAYS ? 'gan_den_han' : null);
-  const inst = S.nextInstallmentInfo(ct);
-  const instDays = inst ? inst.next.daysLeft : null;
-  const instLevel = inst ? (instDays < 0 ? 'qua_han' : (instDays <= WIDE_NEAR_DUE_DAYS ? 'gan_den_han' : null)) : null;
-
-  const overdue = [];
-  if (contractLevel === 'qua_han') overdue.push(Math.abs(d));
-  if (instLevel === 'qua_han') overdue.push(Math.abs(instDays));
-  if (overdue.length) return { level: 'qua_han', days: Math.max(...overdue) }; // quá hạn: lấy NHIỀU ngày nhất
-
-  const nearDue = [];
-  if (contractLevel === 'gan_den_han') nearDue.push(d);
-  if (instLevel === 'gan_den_han') nearDue.push(instDays);
-  if (nearDue.length) return { level: 'gan_den_han', days: Math.min(...nearDue) }; // gần đến hạn: lấy ÍT ngày nhất (gấp nhất)
-
-  return { level: null, days: 0 };
-}
+// Zalo OA...) — hiển thị TRƯỚC tới S.WIDE_NEAR_DUE_DAYS (45) ngày, y hệt
+// ngưỡng của popup "Gần đến hạn" ở Tổng quan (xem UPCOMING_LIST_CAP_DAYS
+// trong overview.js — dùng CHUNG S.contractAttentionInfo() ở state.js với
+// trang này), để xem trước lịch sắp tới xa hơn ngay tại trang này.
 
 let query = '';
 let filterThon = []; // rỗng = Tất cả — có thể tích chọn nhiều Thôn cùng lúc
@@ -227,10 +193,10 @@ export function render(contentEl, filterEl) {
       const totalBalance = contracts.reduce((s, ct) => s + (ct.balance || 0), 0);
       const totalInterest = contracts.reduce((s, ct) => s + S.accruedInterest(ct), 0);
       // Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
-      // có) — xem contractAttentionInfo() ở trên. Ngưỡng "gần đến hạn" RỘNG
-      // 45 ngày (khớp popup "Gần đến hạn" ở Tổng quan) — không phải đúng 15
+      // có) — xem S.contractAttentionInfo(). Ngưỡng "gần đến hạn" RỘNG 45
+      // ngày (khớp popup "Gần đến hạn" ở Tổng quan) — không phải đúng 15
       // ngày "chính thức" của contractUrgency()/NEAR_DUE_DAYS nữa.
-      const contractInfos = contracts.map((ct) => ({ ct, info: contractAttentionInfo(ct) }));
+      const contractInfos = contracts.map((ct) => ({ ct, info: S.contractAttentionInfo(ct) }));
       const overdueContracts = contractInfos.filter((x) => x.info.level === 'qua_han').map((x) => x.ct);
       const nearDueContracts = contractInfos.filter((x) => x.info.level === 'gan_den_han').map((x) => x.ct);
       const hasOverdue = overdueContracts.length > 0;
@@ -643,11 +609,11 @@ function contractAmountsHtml(ct) {
 function contractRowCompact(ct) {
   // "Trong hạn" thay bằng "Gần đến hạn"/"Quá hạn" khi sắp/đã tới ngày đến hạn
   // — xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
-  // có, xem contractAttentionInfo() ở trên) để hợp đồng có kỳ giữa chừng
-  // đến/quá hạn cũng được báo ngay ở dòng gọn này, không cần bấm vào chi
-  // tiết mới biết. Trong đúng NEAR_DUE_DAYS (15 ngày) tô khung vàng như cũ,
-  // xa hơn (tới WIDE_NEAR_DUE_DAYS = 45 ngày) chỉ hiện chữ nhỏ bình thường.
-  const info = contractAttentionInfo(ct);
+  // có, xem S.contractAttentionInfo()) để hợp đồng có kỳ giữa chừng đến/quá
+  // hạn cũng được báo ngay ở dòng gọn này, không cần bấm vào chi tiết mới
+  // biết. Trong đúng NEAR_DUE_DAYS (15 ngày) tô khung vàng như cũ, xa hơn
+  // (tới S.WIDE_NEAR_DUE_DAYS = 45 ngày) chỉ hiện chữ nhỏ bình thường.
+  const info = S.contractAttentionInfo(ct);
   let statusHtml;
   if (info.level === 'qua_han') statusHtml = statusBadge({ badge: 'badge-red', label: `Quá hạn ${info.days} ngày` });
   else if (info.level === 'gan_den_han' && info.days <= S.NEAR_DUE_DAYS) statusHtml = statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${info.days} ngày` });
@@ -655,10 +621,11 @@ function contractRowCompact(ct) {
   else statusHtml = statusBadge(S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(ct)]);
   // "Kỳ tới" (nếu có VÀ đang gần/quá hạn) — hiện thêm đúng KỲ + SỐ TIỀN của
   // kỳ đó (VD: "Kỳ 1 — 20.000.000đ") để biết ngay kỳ nào/bao nhiêu tiền,
-  // không cần bấm vào xem chi tiết mới biết.
+  // không cần bấm vào xem chi tiết mới biết — chữ to/đậm hơn field-hint mặc
+  // định (13px, đậm, tô màu theo đúng mức cảnh báo) để dễ nhìn ra ngay.
   const inst = S.nextInstallmentInfo(ct);
   const instHint = inst && inst.urgency
-    ? `<div class="field-hint" style="margin-top:2px">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — ${formatVND(inst.next.dueAmount)}</div>`
+    ? `<div class="fw-700" style="margin-top:3px;font-size:13px;color:${inst.urgency === 'qua_han' ? 'var(--danger)' : 'var(--warning)'}">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — ${formatVND(inst.next.dueAmount)}</div>`
     : '';
   return `
     <div class="list-row" data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" style="cursor:pointer;padding:8px 0">
@@ -783,11 +750,12 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         <b style="color:var(--warning)">${formatVND(accrued)}</b>
       </div>
       <div class="field-hint">(${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%/năm ÷ 365)</div>
+      ${info.source !== 'installment' ? `
       <div class="field-hint ${info.status === 'qua_han' ? 'text-danger' : ''}" style="${info.status === 'gan_den_han' ? 'color:var(--warning)' : ''}margin-top:6px">
-        ${info.status === 'qua_han' ? `${icon('alert', 'icon-sm')} ${info.source === 'installment' ? `Kỳ trả nợ đã quá hạn ${info.days} ngày` : `Đã quá hạn ${info.days} ngày`}`
-          : info.status === 'gan_den_han' ? `${icon('alert', 'icon-sm')} ${info.source === 'installment' ? `Còn ${info.days} ngày nữa đến hạn 1 kỳ trả nợ` : `Còn ${info.days} ngày đến hạn thanh toán`}`
+        ${info.status === 'qua_han' ? `${icon('alert', 'icon-sm')} Đã quá hạn ${info.days} ngày`
+          : info.status === 'gan_den_han' ? `${icon('alert', 'icon-sm')} Còn ${info.days} ngày đến hạn thanh toán`
           : `Còn ${info.days} ngày đến hạn thanh toán`}
-      </div>` : ''}
+      </div>` : ''}` : ''}
       ${hasBank ? `
       <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:10px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;font-size:14px">

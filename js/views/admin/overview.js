@@ -2,13 +2,8 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge } from '../../components/ui.js';
-import { formatVND, formatNumber, formatDateTime, daysUntil, initials, colorFor } from '../../utils.js';
+import { formatVND, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
 import { openContractView } from './customers.js';
-
-// Popup "Gần đến hạn" liệt kê xa hơn cả ngưỡng cảnh báo (NEAR_DUE_DAYS) để
-// xem trước lịch sắp tới, nhưng chỉ tới đúng số ngày này — xa hơn nữa chưa
-// cần xem trước, tránh danh sách dài vô ích.
-const UPCOMING_LIST_CAP_DAYS = 45;
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Tổng quan quản trị' });
@@ -32,22 +27,33 @@ export function render(contentEl) {
   for (const ct of contracts) balanceByCustomer.set(ct.customerId, (balanceByCustomer.get(ct.customerId) || 0) + (ct.balance || 0));
   const activeCustomerCount = customers.filter((c) => (balanceByCustomer.get(c.id) || 0) > 0).length;
   const totalOutstanding = contracts.filter((c) => S.effectiveContractStatus(c) !== 'da_tat_toan').reduce((s, c) => s + c.balance, 0);
-  const overdue = contracts.filter((c) => S.contractUrgency(c) === 'qua_han');
-  const nearDue = contracts.filter((c) => S.contractUrgency(c) === 'gan_den_han');
+  // Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
+  // có) — xem S.contractAttentionInfo() — để hợp đồng có 1 kỳ giữa chừng
+  // (chưa tới ngày đáo hạn cuối) đến/quá hạn cũng được tính vào đây, y hệt
+  // trang "Khách hàng & Hợp đồng". Tính 1 lần, dùng lại cho cả tile lẫn
+  // popup danh sách bên dưới, khỏi tính lại nhiều lần.
+  const attention = contracts.map((c) => ({ c, info: S.contractAttentionInfo(c) }));
+  const overdue = attention.filter((x) => x.info.level === 'qua_han').map((x) => x.c);
+  // Ô thống kê + tổng tiền "Gần đến hạn" GIỮ NGUYÊN đúng trong NEAR_DUE_DAYS
+  // (15 ngày chính thức) như cũ, không đổi — không phải ngưỡng RỘNG 45 ngày.
+  const nearDue = attention.filter((x) => x.info.level === 'gan_den_han' && x.info.days <= S.NEAR_DUE_DAYS).map((x) => x.c);
   const overdueTotal = overdue.reduce((s, c) => s + c.balance, 0);
   const nearDueTotal = nearDue.reduce((s, c) => s + c.balance, 0);
   // Danh sách hiện trong popup khi bấm vào ô "Gần đến hạn" — KHÁC với nearDue
   // ở trên (ô thống kê + tổng tiền trên Tổng quan giữ nguyên đúng trong
   // NEAR_DUE_DAYS ngày như cũ, không đổi): popup này liệt kê TIẾP cả những
-  // hợp đồng còn xa hơn nữa (16, 17, 18 ngày...), sắp xếp gần nhất trước, để
-  // xem trước được lịch sắp tới — chỉ hợp đồng trong đúng NEAR_DUE_DAYS ngày
-  // mới tô khung vàng cảnh báo như cũ (xem highlightWithinDays ở
-  // openContractListModal), phần còn lại hiện chữ nhỏ bình thường. Giới hạn
-  // tối đa UPCOMING_LIST_CAP_DAYS ngày — xa hơn nữa chưa cần xem trước, tránh
+  // hợp đồng còn xa hơn nữa (16, 17, 18 ngày...) — kể cả xa hơn do KỲ TỚI của
+  // phân kỳ trả nợ, không chỉ ngày đáo hạn hợp đồng gốc — sắp xếp gần nhất
+  // trước, để xem trước được lịch sắp tới — chỉ hợp đồng trong đúng
+  // NEAR_DUE_DAYS ngày mới tô khung vàng cảnh báo như cũ (xem
+  // highlightWithinDays ở openContractListModal), phần còn lại hiện chữ nhỏ
+  // bình thường. contractAttentionInfo() đã tự giới hạn tối đa
+  // S.WIDE_NEAR_DUE_DAYS (45 ngày) — xa hơn nữa chưa cần xem trước, tránh
   // danh sách dài vô ích.
-  const upcoming = contracts
-    .filter((c) => S.effectiveContractStatus(c) === 'dang_vay' && daysUntil(c.dueDate) <= UPCOMING_LIST_CAP_DAYS)
-    .sort((a, b) => daysUntil(a.dueDate) - daysUntil(b.dueDate));
+  const upcoming = attention
+    .filter((x) => x.info.level === 'gan_den_han')
+    .sort((a, b) => a.info.days - b.info.days)
+    .map((x) => x.c);
 
   contentEl.innerHTML = `
     <div class="grid-4 mb-16">
@@ -113,12 +119,14 @@ function openContractListModal(title, contracts, isStaff, colorVar, opts = {}) {
       <div class="text-sm text-muted mb-12">Tổng cộng: <b style="color:${colorVar}">${formatVND(total)}</b></div>
       ${contracts.length ? contracts.map((ct) => {
         const cust = S.getCustomer(ct.customerId);
-        const d = daysUntil(ct.dueDate);
-        // Cùng cách hiện "Quá hạn/Gần đến hạn X ngày" và địa chỉ (Xóm, Thôn,
-        // Tỉnh) như ở mục Khách hàng & Hợp đồng, để 2 nơi nhất quán với nhau.
-        const dueLabel = d < 0 ? `Quá hạn ${Math.abs(d)} ngày` : `Gần đến hạn ${d} ngày`;
-        const dueBadgeClass = d < 0 ? 'badge-red' : 'badge-yellow';
-        const highlight = highlightWithinDays == null || d <= highlightWithinDays;
+        // Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ
+        // (nếu có) — xem S.contractAttentionInfo() — cùng cách hiện "Quá
+        // hạn/Gần đến hạn X ngày" và địa chỉ (Xóm, Thôn, Tỉnh) như ở mục
+        // Khách hàng & Hợp đồng, để 2 nơi nhất quán với nhau.
+        const info = S.contractAttentionInfo(ct);
+        const dueLabel = info.level === 'qua_han' ? `Quá hạn ${info.days} ngày` : `Gần đến hạn ${info.days} ngày`;
+        const dueBadgeClass = info.level === 'qua_han' ? 'badge-red' : 'badge-yellow';
+        const highlight = highlightWithinDays == null || info.days <= highlightWithinDays;
         const addressLabel = cust ? ([cust.xom, cust.thon, cust.tinh].filter(Boolean).join(', ') || cust.address || 'Chưa có địa bàn') : '—';
         return `
         <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:2px">

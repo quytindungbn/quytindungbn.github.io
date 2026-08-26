@@ -2216,15 +2216,35 @@ cảnh báo hiện **"Kỳ trả nợ đã quá hạn 22 ngày"** — dù ngày 
 Ô "Kỳ tới" (đã có từ lần 4) đã tự động chuyển sang kỳ kế tiếp khi kỳ trước đã trả đủ (dueAmount = 0) —
 không cần sửa gì thêm.
 
-CHỦ Ý: `contractUrgency()`/`effectiveContractStatus()` gốc (dùng cho Tổng quan + mẫu tin Zalo OA/nhắc nợ
-tự động) **giữ NGUYÊN VẸN, KHÔNG đổi** — đúng yêu cầu "chưa gắn phân kỳ vào Tổng quan/Zalo OA". Chỗ mới
+CHỦ Ý: `contractUrgency()`/`effectiveContractStatus()` gốc (dùng cho mẫu tin Zalo OA/nhắc nợ tự động)
+**giữ NGUYÊN VẸN, KHÔNG đổi** — đúng yêu cầu "chưa gắn phân kỳ vào Zalo OA". Chỗ mới
 (`contractStatusInfo()`) là hàm RIÊNG, chỉ dùng cho "Trạng thái" ở chi tiết hợp đồng + trang chủ khách
 hàng.
 
-Cả 7 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
-`js/views/contractDetail.js`, `js/views/admin/customers.js`, `js/views/dashboard.js`, `css/styles.css`)
-— không cần chạy lại SQL/deploy lại Edge Function nào thêm, không đụng dữ liệu. Vẫn CHƯA gắn vào Tổng
-quan/nhắc nợ tự động/Zalo OA.
+**Cập nhật 26/08/2026 (lần 8)**: 5 tinh chỉnh theo đúng yêu cầu:
+
+1. **Bỏ dòng cảnh báo TRÙNG lặp bên khách hàng (và cả bên quản trị)**: trước đó khi 1 KỲ gần/quá hạn, có
+   2 dòng cảnh báo giống nhau (1 ở ô "Kỳ tới", 1 ở cuối khung chi tiết) — giờ chỉ còn ĐÚNG 1 dòng (gắn
+   liền với ô "Kỳ tới"), chữ to hơn (13px, đậm). Dòng cảnh báo cuối khung chỉ còn hiện khi cảnh báo đến từ
+   NGÀY ĐÁO HẠN hợp đồng gốc (không phải từ 1 kỳ cụ thể) — không còn trùng lặp.
+2. **Tự động điền sẵn "Thanh toán" khi có kỳ gần/quá hạn (bên khách hàng)**: nếu hợp đồng đang có 1 kỳ
+   gần đến hạn/quá hạn, bấm nút "Thanh toán" sẽ tự chọn sẵn **"Trả gốc"** + điền sẵn đúng **số tiền của kỳ
+   đó** (không cần tự gõ tay) — hợp đồng thường (không có kỳ, hoặc cảnh báo từ ngày đáo hạn hợp đồng gốc)
+   vẫn mặc định "Trả lãi" như trước giờ.
+3. **Trang chủ khách hàng: hợp đồng gần/quá hạn lên đầu danh sách** — sắp xếp theo mức độ: Quá hạn > Gần
+   đến hạn > Trong hạn > Đã tất toán (xét cả kỳ hạn trả nợ, không chỉ ngày đáo hạn hợp đồng gốc).
+4. **Tổng quan (Tổng quan quản trị) giờ đã gắn phân kỳ trả nợ vào** — ô "Hợp đồng quá hạn"/"Gần đến hạn"
+   (số lượng + tổng tiền) và popup danh sách khi bấm vào 2 ô đó giờ xét CẢ kỳ hạn trả nợ, không chỉ ngày
+   đáo hạn hợp đồng gốc — dùng hàm mới `S.contractAttentionInfo()` (chuyển từ hàm cục bộ trong
+   `admin/customers.js` sang `state.js` để dùng chung cho cả 2 trang). Vẫn CHƯA gắn vào mẫu tin Zalo
+   OA/nhắc nợ tự động (`contractUrgency()` gốc giữ nguyên, xem CHỦ Ý ở trên).
+5. **Dòng "Kỳ trễ hạn: Kỳ N — số tiền" ở trang Khách hàng rõ hơn** — chữ to hơn (13px), đậm, tô màu đỏ
+   (quá hạn) hoặc vàng (gần đến hạn) thay vì chữ nhỏ xám mờ như trước.
+
+Cả 8 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
+`js/views/contractDetail.js`, `js/views/admin/customers.js`, `js/views/admin/overview.js`,
+`js/views/dashboard.js`, `css/styles.css`) — không cần chạy lại SQL/deploy lại Edge Function nào thêm,
+không đụng dữ liệu. Vẫn CHƯA gắn vào Zalo OA/nhắc nợ tự động.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;

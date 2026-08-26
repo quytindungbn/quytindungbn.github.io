@@ -181,10 +181,15 @@ export function installmentNextBoxHtml(contract, elId = 'installment-next-box') 
   if (!info) return '';
   const { idx, next, urgency } = info;
   const cls = urgency === 'qua_han' ? 'is-overdue' : urgency === 'gan_den_han' ? 'is-near-due' : '';
+  // Đây là dòng cảnh báo DUY NHẤT cho "Kỳ tới" — chữ to hơn field-hint mặc
+  // định (13px, đậm) để dễ chú ý hơn. contractStatusInfo()/dòng cảnh báo
+  // cuối khung ở contractDetail.js/admin/customers.js đã tự BỎ QUA, không
+  // hiện lại y hệt dòng này nữa khi nguồn cảnh báo là 1 KỲ (source ===
+  // 'installment') — tránh lặp 2 dòng cùng nội dung.
   const warnLine = urgency === 'qua_han'
-    ? `<div class="field-hint text-danger" style="margin-top:4px">${icon('alert', 'icon-sm')} Kỳ này đã quá hạn ${Math.abs(next.daysLeft)} ngày</div>`
+    ? `<div class="text-danger fw-700" style="margin-top:4px;font-size:13px">${icon('alert', 'icon-sm')} Kỳ này đã quá hạn ${Math.abs(next.daysLeft)} ngày</div>`
     : urgency === 'gan_den_han'
-      ? `<div class="field-hint" style="margin-top:4px;color:var(--warning)">${icon('alert', 'icon-sm')} Còn ${next.daysLeft} ngày nữa đến hạn kỳ này</div>`
+      ? `<div class="fw-700" style="margin-top:4px;font-size:13px;color:var(--warning)">${icon('alert', 'icon-sm')} Còn ${next.daysLeft} ngày nữa đến hạn kỳ này</div>`
       : '';
   return `
     <button type="button" id="${elId}" class="installment-next-btn ${cls}">

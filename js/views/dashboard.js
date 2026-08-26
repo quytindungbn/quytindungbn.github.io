@@ -12,9 +12,18 @@ export function render(contentEl) {
   const session = S.getSession();
   const customer = S.getCustomer(session.id);
   const org = S.getOrg();
-  const contracts = S.listContractsByCustomer(customer.id);
   const total = S.customerOutstandingTotal(customer.id);
-  const active = contracts.filter((c) => S.effectiveContractStatus(c) !== 'da_tat_toan');
+  const active = S.listContractsByCustomer(customer.id).filter((c) => S.effectiveContractStatus(c) !== 'da_tat_toan');
+  // Hợp đồng QUÁ HẠN/GẦN ĐẾN HẠN (xét cả "Kỳ tới" của phân kỳ trả nợ, không
+  // chỉ ngày đáo hạn hợp đồng gốc — xem S.contractStatusInfo()) lên ĐẦU danh
+  // sách, cho dễ chú ý ngay — thứ tự ưu tiên: Quá hạn > Gần đến hạn > Trong
+  // hạn > Đã tất toán; trong cùng 1 mức thì càng ít ngày càng lên trước
+  // (đáng chú ý nhất), y hệt cách sắp xếp đang dùng ở trang Khách hàng bên
+  // quản trị.
+  const RANK = { qua_han: 0, gan_den_han: 1, dang_vay: 2, da_tat_toan: 3 };
+  const contracts = S.listContractsByCustomer(customer.id)
+    .map((c) => ({ c, info: S.contractStatusInfo(c) }))
+    .sort((a, b) => RANK[a.info.status] - RANK[b.info.status] || a.info.days - b.info.days);
 
   contentEl.innerHTML = `
     ${org.bannerEnabled ? `
@@ -38,12 +47,7 @@ export function render(contentEl) {
       <a href="#/yeu-cau-tu-van" class="link-more">${icon('plus', 'icon-sm')} Yêu cầu vay mới</a>
     </div>
 
-    ${contracts.length ? contracts.map((c) => {
-      // Trạng thái + dòng cảnh báo xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ
-      // tới" của phân kỳ trả nợ (nếu có) — xem S.contractStatusInfo(). Hợp
-      // đồng không có phân kỳ (hoặc phân kỳ không ảnh hưởng) thì kết quả y
-      // hệt như trước giờ (chỉ xét ngày đáo hạn hợp đồng gốc).
-      const info = S.contractStatusInfo(c);
+    ${contracts.length ? contracts.map(({ c, info }) => {
       let dueNote = '';
       if (info.status !== 'da_tat_toan') {
         dueNote = info.status === 'qua_han' ? `<span class="text-danger">Quá hạn ${info.days} ngày</span>`

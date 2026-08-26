@@ -44,10 +44,10 @@ export function render(contentEl, filterEl, params) {
       </div>
       <div class="field-hint">(${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%/năm ÷ 365)</div>
       ` : ''}
-      ${canPay ? `
+      ${canPay && info.source !== 'installment' ? `
       <div class="field-hint ${info.status === 'qua_han' ? 'text-danger' : ''}" style="${info.status === 'gan_den_han' ? 'color:var(--warning)' : ''}margin-top:8px;font-size:13px">
-        ${info.status === 'qua_han' ? `${icon('alert', 'icon-sm')} ${info.source === 'installment' ? `Kỳ trả nợ đã quá hạn ${info.days} ngày` : `Hợp đồng đã quá hạn ${info.days} ngày`}`
-          : info.status === 'gan_den_han' ? `${icon('alert', 'icon-sm')} ${info.source === 'installment' ? `Còn ${info.days} ngày nữa đến hạn 1 kỳ trả nợ` : `Còn ${info.days} ngày đến hạn thanh toán`}`
+        ${info.status === 'qua_han' ? `${icon('alert', 'icon-sm')} Hợp đồng đã quá hạn ${info.days} ngày`
+          : info.status === 'gan_den_han' ? `${icon('alert', 'icon-sm')} Còn ${info.days} ngày đến hạn thanh toán`
           : `Còn ${info.days} ngày đến hạn thanh toán`}
       </div>` : ''}
     </div>
@@ -141,8 +141,15 @@ export function bindMoneyInput(inputEl, initial, onChange, max) {
 
 function openPaymentModal(contract, customer, accrued) {
   const org = S.getOrg();
-  let payType = 'lai'; // 'goc' | 'lai' | 'tat_toan'
-  let principalAmount = 0;
+  // Nếu đang có 1 KỲ (phân kỳ trả nợ) gần đến hạn/quá hạn (S.contractStatusInfo()
+  // trả source:'installment') -> tự chọn sẵn "Trả gốc" + điền sẵn đúng số
+  // tiền của kỳ đó, đỡ phải tự gõ tay. Hợp đồng thường (không có phân kỳ,
+  // hoặc cảnh báo đến từ NGÀY ĐÁO HẠN hợp đồng gốc) vẫn mặc định "Trả lãi"
+  // như trước giờ.
+  const statusInfo = S.contractStatusInfo(contract);
+  const prefillGoc = statusInfo.source === 'installment';
+  let payType = prefillGoc ? 'goc' : 'lai'; // 'goc' | 'lai' | 'tat_toan'
+  let principalAmount = prefillGoc ? Math.min(statusInfo.dueAmount, contract.balance) : 0;
   let interestAmount = accrued;
 
   const close = openModal({

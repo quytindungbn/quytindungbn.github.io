@@ -449,9 +449,12 @@ export function nextInstallmentInfo(contract, asOf = new Date()) {
  * 'contract') thì lấy dư nợ hiện tại như trước giờ.
  *
  * CHỦ Ý: KHÔNG đụng vào contractUrgency()/effectiveContractStatus() —
- * 2 hàm gốc đó vẫn giữ NGUYÊN VẸN, đang dùng cho Tổng quan (overview.js) +
- * mẫu tin Zalo OA/nhắc nợ (buildContractNotificationPreset trong
- * admin/customers.js) — CHƯA gắn phân kỳ vào 2 chỗ đó theo đúng yêu cầu.
+ * 2 hàm gốc đó vẫn giữ NGUYÊN VẸN, đang dùng cho mẫu tin Zalo OA/nhắc nợ
+ * (buildContractNotificationPreset trong admin/customers.js) — CHƯA gắn
+ * phân kỳ vào Zalo OA theo đúng yêu cầu. Tổng quan (overview.js) đã gắn
+ * phân kỳ vào rồi nhưng qua contractAttentionInfo() (NGƯỠNG RỘNG 45 ngày,
+ * xem bên dưới), không phải qua hàm này (hàm này chỉ dùng ĐÚNG 15 ngày,
+ * cho "Trạng thái" ở chi tiết hợp đồng).
  */
 export function contractStatusInfo(contract, asOf = new Date()) {
   if ((contract.balance || 0) <= 0) {
@@ -479,6 +482,42 @@ export function contractStatusInfo(contract, asOf = new Date()) {
     return { status: 'gan_den_han', badge: 'badge-yellow', label: `Gần đến hạn ${soonest.days} ngày`, days: soonest.days, dueAmount: soonest.amount, source: soonest.source };
   }
   return { status: 'dang_vay', badge: 'badge-blue', label: 'Trong hạn', days: mainDays, dueAmount: contract.balance, source: 'contract' };
+}
+
+// "Gần đến hạn" ở contractAttentionInfo() bên dưới RỘNG hơn hẳn NEAR_DUE_DAYS
+// (15 ngày, dùng cho contractStatusInfo()/nhắc nợ Zalo OA) — xem trước tới
+// tận 45 ngày, dùng cho trang "Khách hàng & Hợp đồng" + popup "Gần đến hạn"
+// ở Tổng quan (2 nơi CHUNG 1 ngưỡng này để nhất quán).
+export const WIDE_NEAR_DUE_DAYS = 45;
+
+/**
+ * Mức cần chú ý CAO NHẤT của 1 hợp đồng — xét CẢ ngày đáo hạn hợp đồng gốc
+ * LẪN "Kỳ tới" của phân kỳ trả nợ (nextInstallmentInfo()) nếu hợp đồng có
+ * phân kỳ, dùng ngưỡng RỘNG WIDE_NEAR_DUE_DAYS (45 ngày, xem trước xa hơn
+ * hẳn NEAR_DUE_DAYS chính thức) — để hợp đồng có kỳ đến hạn/quá hạn GIỮA
+ * CHỪNG (chưa tới ngày đáo hạn cuối cùng của hợp đồng) vẫn lọt vào đúng bộ
+ * lọc "Gần đến hạn"/"Nợ quá hạn" ở trang Khách hàng & popup "Gần đến hạn" ở
+ * Tổng quan, y hệt cảnh báo ngày đáo hạn hợp đồng gốc. Trả về { level:
+ * 'qua_han' | 'gan_den_han' | null, days }.
+ */
+export function contractAttentionInfo(contract, asOf = new Date()) {
+  const d = daysBetween(asOf, new Date(contract.dueDate));
+  const contractLevel = contractUrgency(contract, asOf) === 'qua_han' ? 'qua_han' : (d >= 0 && d <= WIDE_NEAR_DUE_DAYS ? 'gan_den_han' : null);
+  const inst = nextInstallmentInfo(contract, asOf);
+  const instDays = inst ? inst.next.daysLeft : null;
+  const instLevel = inst ? (instDays < 0 ? 'qua_han' : (instDays <= WIDE_NEAR_DUE_DAYS ? 'gan_den_han' : null)) : null;
+
+  const overdue = [];
+  if (contractLevel === 'qua_han') overdue.push(Math.abs(d));
+  if (instLevel === 'qua_han') overdue.push(Math.abs(instDays));
+  if (overdue.length) return { level: 'qua_han', days: Math.max(...overdue) }; // quá hạn: lấy NHIỀU ngày nhất
+
+  const nearDue = [];
+  if (contractLevel === 'gan_den_han') nearDue.push(d);
+  if (instLevel === 'gan_den_han') nearDue.push(instDays);
+  if (nearDue.length) return { level: 'gan_den_han', days: Math.min(...nearDue) }; // gần đến hạn: lấy ÍT ngày nhất (gấp nhất)
+
+  return { level: null, days: 0 };
 }
 
 /**
