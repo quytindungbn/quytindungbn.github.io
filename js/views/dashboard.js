@@ -2,7 +2,7 @@ import * as S from '../state.js';
 import { icon } from '../icons.js';
 import { pageHeader } from '../components/shell.js';
 import { orderStatusBadge, emptyState } from '../components/ui.js';
-import { formatVND, formatDate, daysUntil } from '../utils.js';
+import { formatVND, formatDate } from '../utils.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Trang chủ' });
@@ -39,17 +39,22 @@ export function render(contentEl) {
     </div>
 
     ${contracts.length ? contracts.map((c) => {
-      const status = S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(c)];
-      const d = daysUntil(c.dueDate);
+      // Trạng thái + dòng cảnh báo xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ
+      // tới" của phân kỳ trả nợ (nếu có) — xem S.contractStatusInfo(). Hợp
+      // đồng không có phân kỳ (hoặc phân kỳ không ảnh hưởng) thì kết quả y
+      // hệt như trước giờ (chỉ xét ngày đáo hạn hợp đồng gốc).
+      const info = S.contractStatusInfo(c);
       let dueNote = '';
-      if (S.effectiveContractStatus(c) !== 'da_tat_toan') {
-        dueNote = d < 0 ? `<span class="text-danger">Quá hạn ${Math.abs(d)} ngày</span>` : `<span class="text-muted">Còn ${d} ngày đến hạn</span>`;
+      if (info.status !== 'da_tat_toan') {
+        dueNote = info.status === 'qua_han' ? `<span class="text-danger">Quá hạn ${info.days} ngày</span>`
+          : info.status === 'gan_den_han' ? `<span style="color:var(--warning)">Gần đến hạn — còn ${info.days} ngày</span>`
+          : `<span class="text-muted">Còn ${info.days} ngày đến hạn</span>`;
       }
       return `
       <a href="#/hop-dong/${c.id}" class="card order-card" style="display:block;cursor:pointer">
         <div class="oc-top">
           <span class="oc-code">Hợp đồng ${c.code}</span>
-          <span class="badge ${status.badge}">${status.label}</span>
+          <span class="badge ${info.badge}">${info.label}</span>
         </div>
         <div class="oc-line"><span>Số tiền vay</span><b>${formatVND(c.principal)}</b></div>
         <div class="oc-line"><span>Dư nợ hiện tại</span><b>${formatVND(c.balance)}</b></div>

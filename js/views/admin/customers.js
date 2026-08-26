@@ -711,8 +711,10 @@ function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
 export function openContractView(customerId, contract, { readOnly = false } = {}) {
   const customer = S.getCustomer(customerId);
   S.logAdminAction('view-contract', { contractId: contract.id });
-  const status = S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(contract)];
-  const d = daysUntil(contract.dueDate);
+  // Trạng thái + dòng cảnh báo xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới"
+  // của phân kỳ trả nợ (nếu có) — xem S.contractStatusInfo(). Hợp đồng
+  // không có phân kỳ thì kết quả y hệt như trước giờ.
+  const info = S.contractStatusInfo(contract);
   const interestPaidUntil = contract.interestPaidUntil || contract.disbursedDate;
   const interestDays = S.interestDaysAccrued(contract);
   const accrued = S.accruedInterest(contract);
@@ -753,7 +755,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     bodyHtml: `
       <div class="flex justify-between items-center mb-10">
         <span class="fw-700">Trạng thái</span>
-        ${statusBadge(status)}
+        ${statusBadge(info)}
       </div>
       <div class="oc-line"><span>Số tiền vay ban đầu</span><b>${formatVND(contract.principal)}</b></div>
       <div class="oc-line"><span>Dư nợ hiện tại</span><b style="color:var(--color-primary)">${formatVND(contract.balance)}</b></div>
@@ -781,8 +783,10 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         <b style="color:var(--warning)">${formatVND(accrued)}</b>
       </div>
       <div class="field-hint">(${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%/năm ÷ 365)</div>
-      <div class="field-hint ${d < 0 ? 'text-danger' : ''}" style="margin-top:6px">
-        ${d < 0 ? `${icon('alert', 'icon-sm')} Đã quá hạn ${Math.abs(d)} ngày` : `Còn ${d} ngày đến hạn thanh toán`}
+      <div class="field-hint ${info.status === 'qua_han' ? 'text-danger' : ''}" style="${info.status === 'gan_den_han' ? 'color:var(--warning)' : ''}margin-top:6px">
+        ${info.status === 'qua_han' ? `${icon('alert', 'icon-sm')} ${info.source === 'installment' ? `Kỳ trả nợ đã quá hạn ${info.days} ngày` : `Đã quá hạn ${info.days} ngày`}`
+          : info.status === 'gan_den_han' ? `${icon('alert', 'icon-sm')} ${info.source === 'installment' ? `Còn ${info.days} ngày nữa đến hạn 1 kỳ trả nợ` : `Còn ${info.days} ngày đến hạn thanh toán`}`
+          : `Còn ${info.days} ngày đến hạn thanh toán`}
       </div>` : ''}
       ${hasBank ? `
       <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:10px">

@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { pageHeader, bindHeaderActions } from '../components/shell.js';
 import { statusBadge, installmentNextBoxHtml, bindInstallmentNextBox } from '../components/ui.js';
 import { openModal } from '../components/modal.js';
-import { formatVND, formatDate, formatNumber, daysUntil, stripDiacritics, debounce } from '../utils.js';
+import { formatVND, formatDate, formatNumber, stripDiacritics, debounce } from '../utils.js';
 import { toast } from '../components/toast.js';
 
 export function renderHeader(headerEl) {
@@ -15,8 +15,10 @@ export function render(contentEl, filterEl, params) {
   const contract = S.getContract(params.id);
   if (!contract) { contentEl.innerHTML = `<div class="card card-pad"><p>Không tìm thấy hợp đồng.</p></div>`; return; }
   const customer = S.getCustomer(contract.customerId);
-  const status = S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(contract)];
-  const d = daysUntil(contract.dueDate);
+  // Trạng thái + dòng cảnh báo xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới"
+  // của phân kỳ trả nợ (nếu có) — xem S.contractStatusInfo(). Hợp đồng
+  // không có phân kỳ thì kết quả y hệt như trước giờ.
+  const info = S.contractStatusInfo(contract);
   const interestPaidUntil = contract.interestPaidUntil || contract.disbursedDate;
   const interestDays = S.interestDaysAccrued(contract);
   const accrued = S.accruedInterest(contract);
@@ -26,7 +28,7 @@ export function render(contentEl, filterEl, params) {
     <div class="card card-pad mb-16">
       <div class="flex justify-between items-center mb-10">
         <span class="fw-700" style="font-size:15px">Hợp đồng ${contract.code}</span>
-        ${statusBadge(status)}
+        ${statusBadge(info)}
       </div>
       <div class="oc-line"><span>Số tiền vay ban đầu</span><b>${formatVND(contract.principal)}</b></div>
       <div class="oc-line"><span>Dư nợ hiện tại</span><b style="color:var(--color-primary)">${formatVND(contract.balance)}</b></div>
@@ -43,8 +45,10 @@ export function render(contentEl, filterEl, params) {
       <div class="field-hint">(${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%/năm ÷ 365)</div>
       ` : ''}
       ${canPay ? `
-      <div class="field-hint ${d < 0 ? 'text-danger' : ''}" style="margin-top:8px;font-size:13px">
-        ${d < 0 ? `${icon('alert', 'icon-sm')} Hợp đồng đã quá hạn ${Math.abs(d)} ngày` : `Còn ${d} ngày đến hạn thanh toán`}
+      <div class="field-hint ${info.status === 'qua_han' ? 'text-danger' : ''}" style="${info.status === 'gan_den_han' ? 'color:var(--warning)' : ''}margin-top:8px;font-size:13px">
+        ${info.status === 'qua_han' ? `${icon('alert', 'icon-sm')} ${info.source === 'installment' ? `Kỳ trả nợ đã quá hạn ${info.days} ngày` : `Hợp đồng đã quá hạn ${info.days} ngày`}`
+          : info.status === 'gan_den_han' ? `${icon('alert', 'icon-sm')} ${info.source === 'installment' ? `Còn ${info.days} ngày nữa đến hạn 1 kỳ trả nợ` : `Còn ${info.days} ngày đến hạn thanh toán`}`
+          : `Còn ${info.days} ngày đến hạn thanh toán`}
       </div>` : ''}
     </div>
 

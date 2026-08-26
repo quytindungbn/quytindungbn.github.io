@@ -2204,10 +2204,27 @@ tính đến kỳ đó theo đúng lũy kế, không phải số tiền cố đ�
 - Trả dư 50tr (dư nợ 150tr) → kỳ 1 và kỳ 2 đều **0đ** (dùng hết 40tr cho cả 2 kỳ); kỳ cuối đổi thành
   đúng **150tr** (= số dư nợ hiện tại, vì 50tr đã vượt tổng 2 kỳ đầu).
 
-Cả 6 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
-`js/views/contractDetail.js`, `js/views/admin/customers.js`, `css/styles.css`) — không cần chạy lại
-SQL/deploy lại Edge Function nào thêm, không đụng dữ liệu. Vẫn CHƯA gắn vào Tổng quan/nhắc nợ tự động/Zalo
-OA — chỉ xem được khi vào đúng trang/popup chi tiết hợp đồng, hoặc trang Khách hàng (bộ lọc).
+**Cập nhật 26/08/2026 (lần 7)**: "Trạng thái" (badge Trong hạn/Gần đến hạn/Quá hạn/Đã tất toán) + dòng
+cảnh báo ở **chi tiết hợp đồng CẢ 2 BÊN** (quản trị VÀ khách hàng) + **trang chủ khách hàng** ("Hợp đồng
+vay của bạn") giờ cũng xét luôn "Kỳ tới" của phân kỳ trả nợ (không chỉ ngày đáo hạn hợp đồng gốc như
+trước) — dùng hàm mới `S.contractStatusInfo()`. Hợp đồng có 1 kỳ GIỮA CHỪNG (không phải kỳ cuối/ngày đáo
+hạn hợp đồng) đến/gần đến/quá hạn thì "Trạng thái" tự chuyển màu + hiện đúng cảnh báo, số tiền cảnh báo
+= đúng số tiền đến hạn của KỲ đó (không phải toàn bộ dư nợ). VD thực tế: hợp đồng đáo hạn 24/07/2029
+(còn rất xa) nhưng kỳ 2027 (20tr) đã trễ 22 ngày → "Trạng thái" tự chuyển đỏ **"Quá hạn 22 ngày"**, dòng
+cảnh báo hiện **"Kỳ trả nợ đã quá hạn 22 ngày"** — dù ngày đáo hạn hợp đồng vẫn còn 2 năm nữa.
+
+Ô "Kỳ tới" (đã có từ lần 4) đã tự động chuyển sang kỳ kế tiếp khi kỳ trước đã trả đủ (dueAmount = 0) —
+không cần sửa gì thêm.
+
+CHỦ Ý: `contractUrgency()`/`effectiveContractStatus()` gốc (dùng cho Tổng quan + mẫu tin Zalo OA/nhắc nợ
+tự động) **giữ NGUYÊN VẸN, KHÔNG đổi** — đúng yêu cầu "chưa gắn phân kỳ vào Tổng quan/Zalo OA". Chỗ mới
+(`contractStatusInfo()`) là hàm RIÊNG, chỉ dùng cho "Trạng thái" ở chi tiết hợp đồng + trang chủ khách
+hàng.
+
+Cả 7 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
+`js/views/contractDetail.js`, `js/views/admin/customers.js`, `js/views/dashboard.js`, `css/styles.css`)
+— không cần chạy lại SQL/deploy lại Edge Function nào thêm, không đụng dữ liệu. Vẫn CHƯA gắn vào Tổng
+quan/nhắc nợ tự động/Zalo OA.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;

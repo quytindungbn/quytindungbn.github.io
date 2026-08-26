@@ -438,6 +438,50 @@ export function nextInstallmentInfo(contract, asOf = new Date()) {
 }
 
 /**
+ * Trạng thái HIỂN THỊ đầy đủ của 1 hợp đồng — xét CẢ ngày đáo hạn hợp đồng
+ * gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nextInstallmentInfo(), nếu có), dùng
+ * ĐÚNG ngưỡng NEAR_DUE_DAYS (15 ngày). Trả về sẵn {status, badge, label,
+ * days, dueAmount, source} — dùng thẳng cho "Trạng thái" + dòng cảnh báo ở
+ * CHI TIẾT hợp đồng (CẢ 2 bên quản trị/khách hàng) + trang chủ khách hàng.
+ * `dueAmount` = SỐ TIỀN GỐC gắn với cảnh báo — nếu nguồn cảnh báo là 1 KỲ cụ
+ * thể (source:'installment') thì lấy đúng số tiền đến hạn của KỲ đó (không
+ * phải toàn bộ dư nợ); nếu nguồn là ngày đáo hạn hợp đồng gốc (source:
+ * 'contract') thì lấy dư nợ hiện tại như trước giờ.
+ *
+ * CHỦ Ý: KHÔNG đụng vào contractUrgency()/effectiveContractStatus() —
+ * 2 hàm gốc đó vẫn giữ NGUYÊN VẸN, đang dùng cho Tổng quan (overview.js) +
+ * mẫu tin Zalo OA/nhắc nợ (buildContractNotificationPreset trong
+ * admin/customers.js) — CHƯA gắn phân kỳ vào 2 chỗ đó theo đúng yêu cầu.
+ */
+export function contractStatusInfo(contract, asOf = new Date()) {
+  if ((contract.balance || 0) <= 0) {
+    return { status: 'da_tat_toan', badge: 'badge-green', label: 'Đã tất toán', days: 0, dueAmount: 0, source: null };
+  }
+  const mainDays = daysBetween(asOf, new Date(contract.dueDate));
+  const mainLevel = mainDays < 0 ? 'qua_han' : mainDays <= NEAR_DUE_DAYS ? 'gan_den_han' : null;
+  const inst = nextInstallmentInfo(contract, asOf);
+  const instLevel = inst ? inst.urgency : null;
+
+  // Ưu tiên QUÁ HẠN trước (lấy nguồn quá hạn NHIỀU ngày nhất); không ai quá
+  // hạn mới xét GẦN ĐẾN HẠN (lấy nguồn gấp nhất — ÍT ngày nhất).
+  const overdue = [];
+  if (mainLevel === 'qua_han') overdue.push({ days: Math.abs(mainDays), source: 'contract', amount: contract.balance });
+  if (instLevel === 'qua_han') overdue.push({ days: Math.abs(inst.next.daysLeft), source: 'installment', amount: inst.next.dueAmount });
+  if (overdue.length) {
+    const worst = overdue.reduce((a, b) => (b.days > a.days ? b : a));
+    return { status: 'qua_han', badge: 'badge-red', label: `Quá hạn ${worst.days} ngày`, days: worst.days, dueAmount: worst.amount, source: worst.source };
+  }
+  const near = [];
+  if (mainLevel === 'gan_den_han') near.push({ days: mainDays, source: 'contract', amount: contract.balance });
+  if (instLevel === 'gan_den_han') near.push({ days: inst.next.daysLeft, source: 'installment', amount: inst.next.dueAmount });
+  if (near.length) {
+    const soonest = near.reduce((a, b) => (b.days < a.days ? b : a));
+    return { status: 'gan_den_han', badge: 'badge-yellow', label: `Gần đến hạn ${soonest.days} ngày`, days: soonest.days, dueAmount: soonest.amount, source: soonest.source };
+  }
+  return { status: 'dang_vay', badge: 'badge-blue', label: 'Trong hạn', days: mainDays, dueAmount: contract.balance, source: 'contract' };
+}
+
+/**
  * Đăng nhập khách hàng bằng CCCD HOẶC số điện thoại + mật khẩu.
  * ĐÃ CHUYỂN SANG SUPABASE THẬT (xem docs/supabase-migration.md) — không còn
  * kiểm tra mật khẩu ở đây nữa, mà gọi Edge Function "login" (chạy phía
