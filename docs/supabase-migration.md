@@ -2178,10 +2178,27 @@ tính đến kỳ đó theo đúng lũy kế, không phải số tiền cố đ�
    10.000.000đ** (20tr của kỳ đó − 10tr đã trả trước) — khi còn ≤ 15 ngày tới 24/07/2027 sẽ tự tô vàng
    cảnh báo, qua ngày đó mà chưa đủ tiền sẽ tự chuyển sang tô đỏ "quá hạn".
 
-Cả 4 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
+**Cập nhật 26/08/2026 (lần 5)**: 3 sửa đổi theo đúng yêu cầu:
+
+1. **Bỏ hiển thị "Mã khế ước"** khỏi chi tiết hợp đồng (bên quản trị) — vẫn LƯU đầy đủ trong DB
+   (`contracts.agreement_code`), chỉ không hiện ra màn hình nữa. Dữ liệu này để dành riêng cho việc gửi
+   Zalo OA sau này (chưa làm, chỉ ghi nhận trước).
+2. **Sửa lại đúng số tiền hiển thị cho từng kỳ** — bug ở "lần 1-2": các kỳ CHƯA đến hạn (kể cả kỳ cuối)
+   trước đó bị tính "dự kiến" theo kiểu cộng dồn/theo dư nợ hiện tại, ra số SAI khi chưa có gì bất thường
+   xảy ra (VD SAI: phân kỳ 20tr/20tr/160tr nhưng hiển thị 20tr/40tr/200tr). Sửa lại: MẶC ĐỊNH mỗi kỳ hiện
+   ĐÚNG số tiền ghi trong kỳ theo Excel (20tr/20tr/160tr) — chỉ kỳ ĐÃ đến/quá hạn mới trừ bớt phần trả dư
+   từ các kỳ TRƯỚC nó; riêng KỲ CUỐI chỉ đổi thành SỐ DƯ NỢ CÒN LẠI khi số tiền đã trả LŨY KẾ đã VƯỢT quá
+   tổng tất cả các kỳ TRƯỚC kỳ cuối (không phải cứ tới kỳ cuối là dùng dư nợ như trước).
+3. **Bộ lọc "Gần đến hạn"/"Nợ quá hạn" ở trang Khách hàng giờ xét CẢ kỳ hạn trả nợ** (trước chỉ xét ngày
+   đáo hạn hợp đồng gốc): hợp đồng có 1 kỳ GIỮA CHỪNG (không phải kỳ cuối/ngày đáo hạn hợp đồng) đã đến
+   hoặc gần đến hạn cũng tự lọt vào đúng bộ lọc, hiện đúng badge "Quá hạn N ngày"/"Gần đến hạn N ngày" +
+   dòng "Kỳ trễ hạn: Kỳ N — số tiền" ngay ở dòng hợp đồng gọn, y hệt cách cảnh báo ngày đáo hạn hợp đồng
+   gốc hiện có (`contractAttentionInfo()`/`S.nextInstallmentInfo()`).
+
+Cả 5 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
 `js/views/contractDetail.js`, `js/views/admin/customers.js`, `css/styles.css`) — không cần chạy lại
 SQL/deploy lại Edge Function nào thêm, không đụng dữ liệu. Vẫn CHƯA gắn vào Tổng quan/nhắc nợ tự động/Zalo
-OA — chỉ xem được khi vào đúng trang/popup chi tiết hợp đồng.
+OA — chỉ xem được khi vào đúng trang/popup chi tiết hợp đồng, hoặc trang Khách hàng (bộ lọc).
 
 ```sql
 alter table contracts add column if not exists agreement_code text;

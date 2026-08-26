@@ -168,35 +168,16 @@ export function openResetPasswordModal({ title = 'Cấp lại mật khẩu', onC
 }
 
 /**
- * "Kỳ hạn trả nợ" (từ S.computeInstallmentPlan()) — dùng CHUNG cho cả trang
- * khách hàng (contractDetail.js) và trang quản trị (admin/customers.js), để
- * 2 bên hiển thị/tính toán giống hệt nhau, không lặp code.
- *
- * - "Kỳ tới" = kỳ ĐẦU TIÊN còn thiếu tiền (dueAmount > 0) — có thể đã quá
- *   hạn (chưa trả) hoặc còn ở tương lai (kỳ tiếp theo cần chuẩn bị trả).
- * - Mức cảnh báo của kỳ tới dùng ĐÚNG ngưỡng NEAR_DUE_DAYS (15 ngày) y hệt
- *   cảnh báo "Gần đến hạn"/"Quá hạn" của NGÀY ĐÁO HẠN gốc hiện có (xem
- *   S.contractUrgency()) — để 2 loại cảnh báo (hạn hợp đồng gốc, hạn từng
- *   kỳ) nhất quán với nhau.
- */
-function nextInstallmentInfo(contract, asOf = new Date()) {
-  const plan = S.computeInstallmentPlan(contract, asOf);
-  if (!plan) return null;
-  const idx = plan.findIndex((p) => p.dueAmount > 0);
-  if (idx < 0) return null; // đã trả đủ hết mọi kỳ theo lịch
-  const next = plan[idx];
-  const urgency = next.daysLeft < 0 ? 'qua_han' : next.daysLeft <= S.NEAR_DUE_DAYS ? 'gan_den_han' : null;
-  return { plan, idx, next, urgency };
-}
-
-/**
  * Ô tóm tắt "Kỳ tới" (Kỳ N — Ngày — Số tiền), bấm vào mở popup xem chi tiết
  * đầy đủ từng kỳ (xem bindInstallmentNextBox() + openInstallmentPlanModal()
  * bên dưới). Trả về chuỗi rỗng nếu hợp đồng không có (hoặc đã trả đủ hết)
  * phân kỳ — nơi gọi chèn thẳng vào bodyHtml, không cần tự kiểm tra trước.
+ * "Kỳ tới" tính bằng S.nextInstallmentInfo() — dùng CHUNG với bộ lọc "Gần
+ * đến hạn"/"Quá hạn" ở trang Khách hàng (admin/customers.js), để mọi nơi
+ * tính nhất quán, không lặp code.
  */
 export function installmentNextBoxHtml(contract, elId = 'installment-next-box') {
-  const info = nextInstallmentInfo(contract);
+  const info = S.nextInstallmentInfo(contract);
   if (!info) return '';
   const { idx, next, urgency } = info;
   const cls = urgency === 'qua_han' ? 'is-overdue' : urgency === 'gan_den_han' ? 'is-near-due' : '';
