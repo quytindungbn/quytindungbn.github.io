@@ -147,3 +147,88 @@ export function rowsToTsv(rows) {
     .filter((line) => line.replace(/\t/g, '').trim() !== '')
     .join('\n');
 }
+
+// ------------------------------------------------------------
+// "Mẫu báo cáo" — file sổ theo dõi vay xuất ra từ phần mềm nghiệp vụ (VD:
+// "IN SAO KÊ HỢP ĐỒNG TÍN DỤNG THEO SẢN PHẨM"), khác hẳn mẫu Excel PHẲNG cũ
+// (đúng 11 cột, dòng đầu là tiêu đề, hết) mà importFromPastedTable() trong
+// js/state.js đang đọc theo THỨ TỰ CỐ ĐỊNH. Mẫu báo cáo này có:
+// - Vài dòng tiêu đề/quốc hiệu ở TRÊN dòng tiêu đề cột thật (không phải
+//   dòng đầu tiên mới là tiêu đề).
+// - Nhiều cột hơn, KHÔNG cùng thứ tự app đang cần, kể cả thừa cột (Sổ thành
+//   viên, Dự thu lũy kế, Phân kỳ theo từng năm...) không dùng tới.
+// - XEN GIỮA các dòng khách hàng thật là các dòng "cộng dồn theo loại vay"
+//   (VD: "Cho vay vốn trong nước ngắn hạn - ...") và dòng "Tổng cộng" +
+//   khối chữ ký cuối file — đều KHÔNG PHẢI là 1 hợp đồng thật, phải loại bỏ,
+//   nếu không sẽ bị hiểu nhầm thành hợp đồng có số tiền khổng lồ (cộng dồn
+//   cả trăm khách) hoặc lỗi khi thiếu CCCD.
+// ------------------------------------------------------------
+
+/** Tên cột mẫu báo cáo (đã chuẩn hóa: cắt khoảng trắng + viết thường) ứng với từng trường app cần — CHỈ cần khớp ĐÚNG tên, không quan tâm thứ tự cột trong file. */
+const REPORT_TEMPLATE_HEADER_MAP = {
+  code: 'số hđ',
+  name: 'tên khách hàng',
+  address: 'địa chỉ',
+  cccd: 'số cmnd',
+  phone: 'điện thoại',
+  disbursedDate: 'ngày vay',
+  dueDate: 'ngày đáo hạn',
+  interestPaidUntil: 'thu lãi đến ngày',
+  principal: 'số tiền vay',
+  balance: 'số dư',
+  interestRate: 'lãi suất',
+};
+const REPORT_TEMPLATE_FIELD_ORDER = ['code', 'name', 'address', 'cccd', 'phone', 'disbursedDate', 'dueDate', 'interestPaidUntil', 'principal', 'balance', 'interestRate'];
+
+function normalizeHeaderCell(v) {
+  return String(v ?? '').trim().toLowerCase();
+}
+
+/**
+ * Nếu `rows` (mảng 2 chiều thô đọc từ file) khớp đúng "mẫu báo cáo" (tìm
+ * thấy 1 dòng có ô "STT" + đủ tên cột cần dùng ở REPORT_TEMPLATE_HEADER_MAP)
+ * thì tự dò đúng cột theo TÊN (không theo vị trí — file đổi thứ tự cột vẫn
+ * nhận đúng), lọc bỏ mọi dòng KHÔNG PHẢI hợp đồng thật (dòng tiêu đề/cộng
+ * dồn/tổng cộng/chữ ký — nhận biết qua việc thiếu đúng 1 CCCD 9-12 số ở cột
+ * "Số CMND"), rồi trả về mảng đã xếp lại ĐÚNG thứ tự 11 cột app cần (khớp
+ * `importFromPastedTable()` trong js/state.js: code, name, address, cccd,
+ * phone, disbursedDate, dueDate, interestPaidUntil, principal, balance,
+ * interestRate) — không kèm dòng tiêu đề (importFromPastedTable không bắt
+ * buộc phải có).
+ *
+ * KHÔNG khớp mẫu báo cáo (VD: đang là mẫu PHẲNG cũ, không có ô "STT" nào) —
+ * trả về NGUYÊN VẸN `rows` như cũ, KHÔNG đổi gì — giữ đúng hành vi cũ cho
+ * ai vẫn đang dùng mẫu cũ, không bắt buộc phải đổi ngay.
+ */
+export function remapReportTemplateRows(rows) {
+  let headerRowIdx = -1;
+  let colMap = null;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const normalized = row.map(normalizeHeaderCell);
+    if (!normalized.includes('stt')) continue;
+    const map = {};
+    let foundAll = true;
+    for (const field of REPORT_TEMPLATE_FIELD_ORDER) {
+      const idx = normalized.indexOf(REPORT_TEMPLATE_HEADER_MAP[field]);
+      if (idx === -1) { foundAll = false; break; }
+      map[field] = idx;
+    }
+    if (foundAll) { headerRowIdx = i; colMap = map; break; }
+  }
+  if (headerRowIdx === -1) return rows; // không phải mẫu báo cáo — giữ nguyên, xử lý như mẫu cũ
+
+  const out = [];
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const cccd = String(row[colMap.cccd] ?? '').trim().replace(/\s/g, '');
+    // Dòng "cộng dồn theo loại vay"/"Tổng cộng"/chữ ký cuối file đều KHÔNG có
+    // CCCD hợp lệ ở đúng cột này — loại thẳng, không phải hợp đồng thật.
+    if (!/^\d{9,12}$/.test(cccd)) continue;
+    out.push(REPORT_TEMPLATE_FIELD_ORDER.map((field) => {
+      const v = row[colMap[field]];
+      return v == null ? '' : String(v).trim();
+    }));
+  }
+  return out;
+}

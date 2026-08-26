@@ -2060,6 +2060,38 @@ deploy khi push `main`.
 
 ---
 
+### 10.43. Hỗ trợ nhập từ mẫu Excel "Sao kê hợp đồng tín dụng" mới (KHÔNG cần chạy SQL/deploy Edge Function)
+
+Trang Khách hàng & Hợp đồng → "Nhập từ Excel" giờ đọc được thêm mẫu file mới (file in ra từ phần mềm
+nghiệp vụ, dạng "IN SAO KÊ HỢP ĐỒNG TÍN DỤNG THEO SẢN PHẨM" — có vài dòng quốc hiệu/tiêu đề ở trên, dòng
+tiêu đề cột thật có ô "STT", xen giữa các dòng khách hàng là các dòng "cộng dồn theo loại vay"/"Tổng
+cộng"/chữ ký cuối file), NGOÀI mẫu phẳng cũ (đúng 11 cột cố định) vẫn dùng được như trước — **tự nhận
+diện đúng loại file, không cần chọn**.
+
+**Cách nhận diện + xử lý mẫu mới**:
+- Tìm dòng có ô "STT" để biết đây là mẫu báo cáo (không có thì coi là mẫu cũ, xử lý y hệt trước giờ).
+- Từ dòng đó, tự dò đúng cột cần dùng theo **TÊN cột** (Tên khách hàng, Địa chỉ, Số CMND, Điện thoại, Số
+  HĐ, Ngày vay, Ngày đáo hạn, Lãi suất, Số tiền vay, Số dư, Thu lãi đến ngày) — **không quan tâm thứ tự
+  cột trong file, có thêm cột khác (Mã KH, Sổ thành viên, Dự thu lũy kế, Phân kỳ theo từng năm...) cũng
+  không ảnh hưởng gì**, những cột đó chỉ đơn giản không được dùng tới.
+- Lọc bỏ mọi dòng KHÔNG PHẢI hợp đồng thật (dòng cộng dồn theo loại vay/"Tổng cộng"/chữ ký cuối file) —
+  nhận biết qua việc dòng đó KHÔNG có đúng 1 số CMND/CCCD hợp lệ (9-12 số) ở cột "Số CMND".
+
+**Đã sửa thêm 1 lỗi số liệu quan trọng** phát hiện trong lúc làm mẫu mới: mẫu mới ghi số tiền kiểu
+"100,000,000" (dấu **phẩy** ngăn cách hàng nghìn) — code đọc số cũ chỉ hiểu đúng kiểu Việt Nam "100.000.000"
+(dấu **chấm**), gặp kiểu có phẩy sẽ hiểu sai nghiêm trọng (chỉ đổi đúng dấu phẩy ĐẦU TIÊN thành dấu chấm
+rồi dừng đọc luôn ở dấu phẩy kế tiếp — "100,000,000" bị đọc thành **100**, sai đến hàng triệu lần). Đã
+sửa để đọc đúng CẢ 2 kiểu (chấm hoặc phẩy ngăn cách hàng nghìn) — không ảnh hưởng gì tới mẫu cũ.
+
+**Đã tự kiểm tra kỹ với đúng file mẫu bạn gửi**: 548 hợp đồng đọc đúng, không dòng nào lỗi, tổng Số tiền
+vay + Số dư của toàn bộ 548 dòng sau khi đọc **khớp chính xác từng đồng** với dòng "Tổng cộng" có sẵn
+trong chính file đó (49.582.825.420đ và 45.539.744.000đ).
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS tĩnh, GitHub Pages tự
+deploy khi push `main`. Thử nhập lại file mẫu mới, kiểm tra kỹ danh sách hợp đồng sau khi nhập cho chắc.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

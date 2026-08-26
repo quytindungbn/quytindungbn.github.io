@@ -5,7 +5,7 @@ import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordM
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
-import { readExcelFirstSheet, rowsToTsv } from '../../lib/excelLite.js';
+import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 
 export function renderHeader(headerEl) {
@@ -866,14 +866,16 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
 }
 
 const REQUIRED_COLUMNS = 'Số HĐTD, Người nhận nợ, Địa chỉ, Số CMND/CCCD, Số di động, Ngày nhận nợ, Ngày đáo hạn, Thu lãi đến ngày, Số tiền giải ngân, Số dư, Lãi suất';
+const REPORT_TEMPLATE_COLUMNS = 'Tên khách hàng, Địa chỉ, Số CMND, Điện thoại, Số HĐ, Ngày vay, Ngày đáo hạn, Lãi suất, Số tiền vay, Số dư, Thu lãi đến ngày';
 
 function openImportModal() {
   const close = openModal({
     title: 'Nhập dữ liệu từ Excel',
     bodyHtml: `
       <p class="text-sm text-muted mb-8">
-        Chọn đúng file Excel sổ theo dõi vay bạn đang dùng (<b>.xls</b> hoặc <b>.xlsx</b>) — có các cột theo đúng thứ tự sau (dòng đầu là tiêu đề sẽ tự bỏ qua):<br/>
-        <b>${REQUIRED_COLUMNS}</b>
+        Chọn file Excel sổ theo dõi vay bạn đang dùng (<b>.xls</b> hoặc <b>.xlsx</b>) — hỗ trợ <b>2 loại mẫu</b>, tự nhận diện đúng loại, không cần chọn:<br/>
+        <b>1. Mẫu sao kê hợp đồng tín dụng</b> (file in ra từ phần mềm nghiệp vụ, có dòng "STT" ở đầu bảng) — tự tìm đúng cột theo TÊN cột, không quan tâm thứ tự/có thêm cột khác cũng được, chỉ cần có đủ các cột: <b>${REPORT_TEMPLATE_COLUMNS}</b>. Các dòng "cộng dồn theo loại vay"/"Tổng cộng"/chữ ký ở cuối file tự động bị bỏ qua, không tính nhầm thành hợp đồng.<br/>
+        <b>2. Mẫu phẳng cũ</b> (đúng thứ tự cột, không có dòng "STT"): <b>${REQUIRED_COLUMNS}</b>.
       </p>
       <p class="text-sm text-muted mb-8">Cột nào thiếu dữ liệu ở 1 dòng vẫn nhập được — hệ thống tự tính/tự sinh (mã hợp đồng, ngày đến hạn...). <b class="text-danger">Tải file lên = danh sách hợp đồng đầy đủ hiện tại</b>: hợp đồng nào đang có trong hệ thống mà không còn trong file này sẽ tự động bị xóa để luôn khớp đúng file mới nhất (khách hết hợp đồng và chưa có tài khoản Use sẽ dọn hồ sơ luôn). Khách hàng <b>hoàn toàn mới</b> (CCCD chưa từng có) sẽ được <b>tự động cấp tài khoản Use</b> (mật khẩu tự sinh, hiện ra sau khi nhập). Khách <b>đã có sẵn</b> hồ sơ/tài khoản thì Excel <b>không đụng gì</b> đến tên/SĐT/địa chỉ/tài khoản của họ — chỉ cập nhật hợp đồng.</p>
       <div class="field">
@@ -932,7 +934,7 @@ function openImportModal() {
         uploadBtn.textContent = 'Đang đọc file...';
         let rows;
         try {
-          rows = await readExcelFirstSheet(file);
+          rows = remapReportTemplateRows(await readExcelFirstSheet(file));
         } catch (err) {
           toast('Không đọc được file: ' + (err.message || ''), 'error');
           uploadBtn.innerHTML = uploadBtnIdleHtml;

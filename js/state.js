@@ -779,6 +779,13 @@ export function parseVNNumber(str) {
   if (!s) return 0;
   // "42.500.000" kiểu VN (chấm ngăn cách hàng nghìn, đúng từng nhóm 3 số) -> bỏ chấm
   if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  // "100,000,000" kiểu Mỹ (PHẨY ngăn cách hàng nghìn, đúng từng nhóm 3 số,
+  // KHÔNG kèm dấu chấm nào khác — mẫu báo cáo dùng định dạng này) -> bỏ
+  // phẩy, coi như số nguyên. PHẢI kiểm tra TRƯỚC nhánh "chỉ có phẩy -> dấu
+  // thập phân" bên dưới — thiếu nhánh này thì "100,000,000" sẽ bị hiểu
+  // nhầm thành 100 (chỉ đổi ĐÚNG 1 dấu phẩy đầu tiên thành dấu chấm, phẩy
+  // còn lại khiến parseFloat() dừng đọc luôn ở đó) — sai đến hàng triệu lần.
+  else if (/^-?\d{1,3}(,\d{3})+$/.test(s)) s = s.replace(/,/g, '');
   else if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.'); // "1.234.567,89"
   else if (s.includes(',')) s = s.replace(',', '.'); // chỉ có phẩy -> coi là dấu thập phân
   // còn lại (vd "9.5" từ ô số của Excel/JS): giữ nguyên dấu chấm làm phần thập phân
