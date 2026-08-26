@@ -338,12 +338,22 @@ function withYear(date, year) {
  * - Từ 2 năm trở lên -> mỗi năm là 1 "kỳ", ngày đến hạn của kỳ đó = ngày
  *   giải ngân (disbursedDate) nhưng đổi sang ĐÚNG NĂM của kỳ, giữ nguyên
  *   tháng/ngày — VD: giải ngân 03/08/2026, kỳ năm 2027 -> đến hạn 03/08/2027.
- * - Mỗi kỳ tự xét có "cảnh báo đến hạn" hay không dựa vào Số dư HIỆN TẠI
- *   (duy nhất dữ liệu sống có, không có lịch sử từng lần trả nợ): kỳ đã
- *   tới/qua ngày đến hạn NHƯNG Số dư hiện tại đã THẤP HƠN đúng số tiền của
- *   kỳ đó -> coi như khách đã trả vượt qua mốc này rồi (trả sớm/trả nhiều
- *   hơn lịch), KHÔNG cảnh báo. Ngược lại (Số dư còn >= số tiền kỳ đó) ->
- *   cảnh báo đúng SỐ TIỀN GHI TRONG KỲ (không phải toàn bộ số dư còn lại).
+ * - Mỗi kỳ tự xét có "cảnh báo đến hạn" hay không dựa vào SỐ TIỀN ĐÃ TRẢ LŨY
+ *   KẾ (= Số tiền vay ban đầu - Số dư hiện tại — duy nhất dữ liệu sống có,
+ *   không có lịch sử từng lần trả nợ), so với TỔNG các kỳ TÍNH ĐẾN kỳ đang
+ *   xét (cộng dồn từ kỳ đầu tiên, không phải chỉ riêng số tiền của kỳ đó):
+ *   kỳ đã tới/qua ngày đến hạn NHƯNG số tiền đã trả lũy kế >= tổng các kỳ
+ *   tính đến kỳ đó -> coi như khách đã trả đủ (hoặc vượt) mốc này rồi (trả
+ *   sớm/trả nhiều hơn lịch cho các kỳ trước) -> KHÔNG cảnh báo kỳ đó nữa,
+ *   và cứ thế xét tiếp các kỳ sau. Ngược lại (đã trả lũy kế < tổng các kỳ
+ *   tính đến kỳ đó) -> cảnh báo, số tiền hiển thị = đúng số tiền ghi trong
+ *   kỳ đó (không phải toàn bộ số dư còn lại).
+ *   VD thực tế: vay 280tr, dư nợ hiện tại 140tr (=> đã trả lũy kế 140tr).
+ *   Phân kỳ 2027: 10tr, 2028: 10tr, 2029: 260tr.
+ *     Kỳ 2027: lũy kế kỳ 1 = 10tr. Đã trả 140tr >= 10tr -> KHÔNG báo.
+ *     Kỳ 2028: lũy kế 2 kỳ = 10+10=20tr. Đã trả 140tr >= 20tr -> KHÔNG báo.
+ *     Kỳ 2029: lũy kế 3 kỳ = 10+10+260=280tr. Đã trả 140tr < 280tr -> SẼ
+ *       báo (khi tới 04/06/2029) đúng 260.000.000đ.
  */
 export function computeInstallmentPlan(contract, asOf = new Date()) {
   const schedule = contract.installmentSchedule;
@@ -355,11 +365,14 @@ export function computeInstallmentPlan(contract, asOf = new Date()) {
   if (entries.length < 2) return null;
 
   const disbursed = new Date(contract.disbursedDate);
+  const amountPaid = (Number(contract.principal) || 0) - (Number(contract.balance) || 0); // đã trả lũy kế tới hiện tại
+  let cumulativeRequired = 0;
   return entries.map((e) => {
+    cumulativeRequired += e.amount; // tổng các kỳ tính đến kỳ này (cộng dồn)
     const dueDate = withYear(disbursed, e.year);
     const daysLeft = daysBetween(asOf, dueDate);
     const isPastOrToday = daysLeft <= 0;
-    const coveredByPayment = contract.balance < e.amount; // dư nợ đã thấp hơn kỳ này -> coi như đã trả vượt, không cảnh báo
+    const coveredByPayment = amountPaid >= cumulativeRequired; // đã trả lũy kế đủ (hoặc hơn) tổng các kỳ tính đến đây -> không cảnh báo
     return {
       year: e.year,
       dueDate: dueDate.toISOString().slice(0, 10),

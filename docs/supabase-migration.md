@@ -2115,10 +2115,17 @@ năm mới.
 - Hợp đồng có **từ 2 năm trở lên** ghi số liệu > 0 → coi là có **nhiều kỳ trả nợ**, mỗi năm là 1 kỳ:
   - Ngày đến hạn của kỳ đó = **Ngày vay, đổi sang đúng năm của kỳ** (giữ nguyên tháng/ngày). VD: vay ngày
     03/08/2026, kỳ năm 2027 → đến hạn 03/08/2027; kỳ năm 2028 → đến hạn 03/08/2028.
-  - Mỗi kỳ tự xét có cảnh báo đến hạn hay không dựa vào **Số dư hiện tại**: kỳ đã tới/qua ngày đến hạn
-    nhưng Số dư hiện tại đã **thấp hơn** đúng số tiền của kỳ đó → coi như khách đã trả vượt qua mốc này
-    rồi (trả sớm/trả nhiều hơn lịch) → **không cảnh báo**. Ngược lại (Số dư còn ≥ số tiền kỳ đó) → cảnh
-    báo đúng **số tiền ghi trong kỳ** đó.
+  - Mỗi kỳ tự xét có cảnh báo đến hạn hay không dựa vào **số tiền đã trả LŨY KẾ tới hiện tại** (= Số
+    tiền vay ban đầu − Số dư hiện tại), so với **TỔNG các kỳ tính đến kỳ đang xét** (cộng dồn từ kỳ đầu
+    tiên, không phải chỉ riêng số tiền của kỳ đó): kỳ đã tới/qua ngày đến hạn nhưng đã trả lũy kế **≥**
+    tổng các kỳ tính đến kỳ đó → coi như đã trả đủ (hoặc vượt) mốc này rồi (trả sớm/trả nhiều hơn lịch
+    cho các kỳ trước) → **không cảnh báo kỳ đó nữa**, và cứ thế xét tiếp các kỳ sau. Ngược lại (đã trả
+    lũy kế < tổng các kỳ tính đến kỳ đó) → cảnh báo đúng **số tiền ghi trong kỳ đó** (không phải toàn bộ
+    số dư còn lại).
+    - VD thực tế (khách NGUYỄN THỊ NHƯ Ý, HĐ 259/26): vay 280tr, dư nợ hiện tại 140tr → đã trả lũy kế
+      140tr. Phân kỳ 2027: 10tr, 2028: 10tr, 2029: 260tr. Kỳ 2027: lũy kế đến kỳ này = 10tr, đã trả
+      140tr ≥ 10tr → **không báo**. Kỳ 2028: lũy kế 2 kỳ = 20tr, đã trả 140tr ≥ 20tr → **không báo**. Kỳ
+      2029: lũy kế 3 kỳ = 280tr, đã trả 140tr < 280tr → **sẽ báo** đúng 260.000.000đ khi tới 04/06/2029.
 - **CHƯA gắn vào bất kỳ chỗ nào khác** (Tổng quan, danh sách "Gần đến hạn", nhắc nợ tự động, Zalo OA...)
   — đúng yêu cầu "bảng này chưa cần thể hiện". Chỉ xem được khi bấm vào **chi tiết 1 hợp đồng cụ thể**
   (chỉ hiện khối này nếu hợp đồng đó thật sự có ≥ 2 kỳ), có ghi rõ "(thử nghiệm)" để biết đây là tính
@@ -2127,6 +2134,12 @@ năm mới.
 **Đã tự kiểm tra với đúng file mẫu bạn gửi**: 547/548 hợp đồng chỉ có 1 năm có số liệu (tính như bình
 thường, không đổi gì) — đúng 11/548 hợp đồng có từ 2 năm trở lên (có phân kỳ trả nợ thật), đã tự tính thử
 ra đúng ngày đến hạn theo từng năm và số tiền từng kỳ.
+
+**Cập nhật 26/08/2026**: sửa lại đúng quy tắc "cộng dồn" ở trên (bản đầu tiên chỉ so từng kỳ riêng lẻ với
+Số dư hiện tại — với hợp đồng có kỳ CUỐI là kỳ LỚN NHẤT như VD trên thì bị suy ra sai, kỳ lớn nhất/quan
+trọng nhất lại không báo). Đã sửa `computeInstallmentPlan()` trong `js/state.js` sang đúng cách so sánh
+LŨY KẾ như VD ở trên — không cần chạy lại SQL/deploy lại Edge Function nào thêm (chỉ sửa code JS tính ở
+trình duyệt, không đụng dữ liệu/Edge Function).
 
 ```sql
 alter table contracts add column if not exists agreement_code text;
