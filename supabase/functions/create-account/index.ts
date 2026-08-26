@@ -1380,6 +1380,12 @@ Deno.serve(async (req) => {
         interest_rate: row.interestRate != null && row.interestRate !== '' ? Number(row.interestRate) || 0 : (ct ? ct.interest_rate : 0),
         balance: bal,
         interest_paid_until: row.interestPaidUntil || disbursed,
+        // 2 cột MỚI — chỉ có giá trị khi nhập từ "mẫu báo cáo" mới (xem
+        // remapReportTemplateRows() ở js/lib/xlsxLite.js), mẫu phẳng/dán tay
+        // cũ luôn null, KHÔNG ảnh hưởng gì tới cách hiển thị/tính toán hiện
+        // có (chỉ ghi nhận, chưa dùng ở đâu khác — đúng yêu cầu).
+        agreement_code: row.agreementCode || null,
+        installment_schedule: row.installmentSchedule && Object.keys(row.installmentSchedule).length ? row.installmentSchedule : null,
       };
       contractByCode.set(code, contractRow);
       contractUpserts.push(contractRow);

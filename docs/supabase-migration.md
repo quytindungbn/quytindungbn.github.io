@@ -2092,6 +2092,57 @@ deploy khi push `main`. Thử nhập lại file mẫu mới, kiểm tra kỹ dan
 
 ---
 
+### 10.44. Ghi nhận thêm "Mã khế ước" + "Phân kỳ trả nợ theo năm" khi nhập Excel (BẮT BUỘC chạy SQL + deploy lại `create-account`)
+
+**1. Dòng "cộng dồn theo loại vay" ở giữa các dòng khách hàng — ĐÃ tự bỏ từ mục 10.43, không cần sửa
+thêm**: bộ lọc dòng thật ở mục 10.43 không dựa vào ĐÚNG CHỮ "ngắn hạn"/"trung hạn" (nên không sợ đổi tên
+loại vay khác đi là bị sót) — mà dựa vào việc dòng đó có ĐÚNG 1 số CMND/CCCD hợp lệ hay không. Dòng
+"cộng dồn theo loại vay" nào cũng đều KHÔNG có CCCD (chỉ có số tiền cộng dồn) nên tự động bị loại bỏ, dù
+sau này có thêm loại vay khác (VD: "Cho vay vốn trong nước dài hạn") cũng tự loại đúng, không cần sửa
+code thêm.
+
+**2. Mã khế ước** — thêm cột mới lưu lại "Mã khế ước" từ file Excel (hiện tại luôn trùng với "Số HĐ",
+nhưng ghi nhận riêng phòng khi sau này khác nhau) — hiện thêm 1 dòng trong chi tiết hợp đồng, KHÔNG thay
+đổi gì cách tính/hiển thị các số liệu hiện có.
+
+**3. Phân kỳ trả nợ theo năm (tính năng ĐANG THỬ NGHIỆM)** — file Excel mẫu mới có thể có các cột "Phân
+kỳ năm 2026", "Phân kỳ năm 2027"... và sẽ có thêm các năm sau này (2031, 2032...) — hệ thống tự dò các
+cột này theo MẪU TÊN CỘT (không liệt kê cứng danh sách năm) nên KHÔNG cần sửa code khi file có thêm cột
+năm mới.
+
+- Hợp đồng nào chỉ có **1 năm** ghi số liệu > 0 (hoặc không có cột nào) → **coi như KHÔNG có phân kỳ trả
+  nợ**, tính và hiển thị Y HỆT hiện tại (dùng "Ngày đáo hạn" như bình thường) — **không đổi gì**.
+- Hợp đồng có **từ 2 năm trở lên** ghi số liệu > 0 → coi là có **nhiều kỳ trả nợ**, mỗi năm là 1 kỳ:
+  - Ngày đến hạn của kỳ đó = **Ngày vay, đổi sang đúng năm của kỳ** (giữ nguyên tháng/ngày). VD: vay ngày
+    03/08/2026, kỳ năm 2027 → đến hạn 03/08/2027; kỳ năm 2028 → đến hạn 03/08/2028.
+  - Mỗi kỳ tự xét có cảnh báo đến hạn hay không dựa vào **Số dư hiện tại**: kỳ đã tới/qua ngày đến hạn
+    nhưng Số dư hiện tại đã **thấp hơn** đúng số tiền của kỳ đó → coi như khách đã trả vượt qua mốc này
+    rồi (trả sớm/trả nhiều hơn lịch) → **không cảnh báo**. Ngược lại (Số dư còn ≥ số tiền kỳ đó) → cảnh
+    báo đúng **số tiền ghi trong kỳ** đó.
+- **CHƯA gắn vào bất kỳ chỗ nào khác** (Tổng quan, danh sách "Gần đến hạn", nhắc nợ tự động, Zalo OA...)
+  — đúng yêu cầu "bảng này chưa cần thể hiện". Chỉ xem được khi bấm vào **chi tiết 1 hợp đồng cụ thể**
+  (chỉ hiện khối này nếu hợp đồng đó thật sự có ≥ 2 kỳ), có ghi rõ "(thử nghiệm)" để biết đây là tính
+  năng đang thử, chưa dùng cho cảnh báo/nhắc nợ thật.
+
+**Đã tự kiểm tra với đúng file mẫu bạn gửi**: 547/548 hợp đồng chỉ có 1 năm có số liệu (tính như bình
+thường, không đổi gì) — đúng 11/548 hợp đồng có từ 2 năm trở lên (có phân kỳ trả nợ thật), đã tự tính thử
+ra đúng ngày đến hạn theo từng năm và số tiền từng kỳ.
+
+```sql
+alter table contracts add column if not exists agreement_code text;
+alter table contracts add column if not exists installment_schedule jsonb;
+```
+
+**Việc cần bạn làm**:
+1. Chạy đoạn SQL trên (2 dòng, chỉ thêm cột mới, không đụng dữ liệu đã có).
+2. Deploy lại **`create-account`** (file vừa gửi) — Supabase Dashboard → Edge Functions → chọn
+   `create-account` → dán đè toàn bộ nội dung file mới → Deploy.
+3. Nhập lại file Excel mẫu mới — bấm vào 1-2 hợp đồng có nhiều kỳ trả nợ (VD: các hợp đồng vay lớn, chia
+   trả nhiều năm) để xem thử khối "Phân kỳ trả nợ (thử nghiệm)" trong chi tiết hợp đồng, kiểm tra đúng ý
+   trước khi quyết định có gắn vào các cảnh báo/nhắc nợ chính thức hay không.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

@@ -705,6 +705,12 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   }
   const qrUrl = hasBank ? buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: accrued, content: buildQrContent(0, accrued), accountName: org.bankAccountName }) : '';
 
+  // "Phân kỳ trả nợ" — TÍNH NĂNG THỬ NGHIỆM, chỉ xem ở đây, chưa gắn vào bất
+  // kỳ chỗ nào khác (Tổng quan/nhắc nợ/Zalo OA) theo đúng yêu cầu. null nếu
+  // hợp đồng không có (hoặc có dưới 2 năm) dữ liệu phân kỳ — coi như hợp
+  // đồng thường, không hiện khối này.
+  const installmentPlan = S.computeInstallmentPlan(contract);
+
   const close = openModal({
     // Kèm thêm tên khách hàng vào tiêu đề để đỡ nhầm giữa nhiều hợp đồng đang
     // mở/xem liên tiếp (VD: khách có nhiều hợp đồng, hoặc mở hợp đồng từ danh
@@ -721,7 +727,20 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       <div class="oc-line"><span>Ngày giải ngân (ngày vay)</span><b>${formatDate(contract.disbursedDate)}</b></div>
       <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
       <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
+      ${contract.agreementCode ? `<div class="oc-line"><span>Mã khế ước</span><b>${escapeHtml(contract.agreementCode)}</b></div>` : ''}
       <div class="oc-line"><span>SĐT</span><b>${customer && customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${customer.phone}</a>` : '—'}</b></div>
+      ${installmentPlan ? `
+      <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
+        <div class="fw-700 text-sm mb-6">${icon('clock', 'icon-sm')} Phân kỳ trả nợ (thử nghiệm)</div>
+        ${installmentPlan.map((p) => `
+          <div class="oc-line">
+            <span>Kỳ năm ${p.year} — đến hạn ${formatDate(p.dueDate)}</span>
+            <b style="color:${p.shouldWarn ? 'var(--danger)' : 'var(--text)'}">${formatVND(p.amount)}${p.shouldWarn ? ` ${icon('alert', 'icon-sm')}` : ''}</b>
+          </div>
+        `).join('')}
+        <div class="field-hint">Tính năng đang thử nghiệm — chưa gắn vào Tổng quan/nhắc nợ tự động/Zalo OA, chỉ xem thử ở đây.</div>
+      </div>
+      ` : ''}
       ${customer && customer.phone && canPay ? `
       <a href="${buildSmsLink(customer, contract, accrued)}" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS báo lãi cho khách</a>
       ` : ''}

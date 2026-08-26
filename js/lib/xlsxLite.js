@@ -177,8 +177,17 @@ const REPORT_TEMPLATE_HEADER_MAP = {
   principal: 'số tiền vay',
   balance: 'số dư',
   interestRate: 'lãi suất',
+  agreementCode: 'mã khế ước',
 };
-const REPORT_TEMPLATE_FIELD_ORDER = ['code', 'name', 'address', 'cccd', 'phone', 'disbursedDate', 'dueDate', 'interestPaidUntil', 'principal', 'balance', 'interestRate'];
+// Thứ tự CỐ ĐỊNH khi xuất ra — PHẢI khớp đúng thứ tự destructuring trong
+// importFromPastedTable() ở js/state.js (agreementCode đứng SAU CÙNG các
+// trường cố định, installmentSchedule — nếu có cột "Phân kỳ năm..." — luôn
+// là cột cuối, xem bên dưới).
+const REPORT_TEMPLATE_FIELD_ORDER = ['code', 'name', 'address', 'cccd', 'phone', 'disbursedDate', 'dueDate', 'interestPaidUntil', 'principal', 'balance', 'interestRate', 'agreementCode'];
+// "Phân kỳ năm 2026", "Phân kỳ năm 2027"... — dò theo MẪU tên cột (không
+// liệt kê cứng danh sách năm), vì file các năm sau có thể thêm cột mới
+// (2031, 2032... "và miết tới", theo đúng yêu cầu) mà không cần sửa code.
+const INSTALLMENT_COLUMN_RE = /^phân kỳ năm (\d{4})$/;
 
 function normalizeHeaderCell(v) {
   return String(v ?? '').trim().toLowerCase();
@@ -190,11 +199,23 @@ function normalizeHeaderCell(v) {
  * thì tự dò đúng cột theo TÊN (không theo vị trí — file đổi thứ tự cột vẫn
  * nhận đúng), lọc bỏ mọi dòng KHÔNG PHẢI hợp đồng thật (dòng tiêu đề/cộng
  * dồn/tổng cộng/chữ ký — nhận biết qua việc thiếu đúng 1 CCCD 9-12 số ở cột
- * "Số CMND"), rồi trả về mảng đã xếp lại ĐÚNG thứ tự 11 cột app cần (khớp
+ * "Số CMND"), rồi trả về mảng đã xếp lại ĐÚNG thứ tự app cần (khớp
  * `importFromPastedTable()` trong js/state.js: code, name, address, cccd,
  * phone, disbursedDate, dueDate, interestPaidUntil, principal, balance,
- * interestRate) — không kèm dòng tiêu đề (importFromPastedTable không bắt
- * buộc phải có).
+ * interestRate, agreementCode, [installmentScheduleJson nếu có cột "Phân kỳ
+ * năm..."]) — không kèm dòng tiêu đề (importFromPastedTable không bắt buộc
+ * phải có).
+ *
+ * Các cột "Phân kỳ năm YYYY" (nếu có) được GỘP LẠI thành 1 cột DUY NHẤT ở
+ * CUỐI mỗi dòng, dạng chuỗi JSON (VD: {"2027":"50,000,000","2028":"50,000,000"})
+ * — giữ NGUYÊN VĂN chữ số trong file (chưa đổi kiểu số ở đây), việc đổi
+ * kiểu số + quyết định "có phân kỳ trả nợ hay không" (từ 2 năm có số liệu
+ * > 0 trở lên) làm ở importFromPastedTable() bên state.js, cùng chỗ với các
+ * trường số khác cho nhất quán. Chỉ ĐÓNG GÓI qua 1 cột chuỗi vì toàn bộ
+ * đường truyền giữa "đọc file" và "nhập thật" đang đi qua dạng văn bản
+ * TSV — nhét thẳng qua đây là cách ít xáo trộn code nhất, không cần sửa lại
+ * cả luồng "dán dữ liệu từ Excel" đang dùng chung TSV cho cả nhập file lẫn
+ * dán tay.
  *
  * KHÔNG khớp mẫu báo cáo (VD: đang là mẫu PHẲNG cũ, không có ô "STT" nào) —
  * trả về NGUYÊN VẸN `rows` như cũ, KHÔNG đổi gì — giữ đúng hành vi cũ cho
@@ -203,6 +224,7 @@ function normalizeHeaderCell(v) {
 export function remapReportTemplateRows(rows) {
   let headerRowIdx = -1;
   let colMap = null;
+  let installmentCols = null; // { '2026': colIdx, '2027': colIdx, ... } hoặc null nếu file không có cột nào
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i] || [];
     const normalized = row.map(normalizeHeaderCell);
@@ -214,7 +236,16 @@ export function remapReportTemplateRows(rows) {
       if (idx === -1) { foundAll = false; break; }
       map[field] = idx;
     }
-    if (foundAll) { headerRowIdx = i; colMap = map; break; }
+    if (!foundAll) continue;
+    headerRowIdx = i;
+    colMap = map;
+    const ik = {};
+    normalized.forEach((cell, idx) => {
+      const m = cell.match(INSTALLMENT_COLUMN_RE);
+      if (m) ik[m[1]] = idx;
+    });
+    if (Object.keys(ik).length) installmentCols = ik;
+    break;
   }
   if (headerRowIdx === -1) return rows; // không phải mẫu báo cáo — giữ nguyên, xử lý như mẫu cũ
 
@@ -225,10 +256,19 @@ export function remapReportTemplateRows(rows) {
     // Dòng "cộng dồn theo loại vay"/"Tổng cộng"/chữ ký cuối file đều KHÔNG có
     // CCCD hợp lệ ở đúng cột này — loại thẳng, không phải hợp đồng thật.
     if (!/^\d{9,12}$/.test(cccd)) continue;
-    out.push(REPORT_TEMPLATE_FIELD_ORDER.map((field) => {
+    const line = REPORT_TEMPLATE_FIELD_ORDER.map((field) => {
       const v = row[colMap[field]];
       return v == null ? '' : String(v).trim();
-    }));
+    });
+    if (installmentCols) {
+      const schedule = {};
+      for (const [year, idx] of Object.entries(installmentCols)) {
+        const v = row[idx];
+        if (v != null && String(v).trim() !== '') schedule[year] = String(v).trim();
+      }
+      line.push(JSON.stringify(schedule));
+    }
+    out.push(line);
   }
   return out;
 }

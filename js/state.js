@@ -315,6 +315,61 @@ export function accruedInterest(contract, asOf = new Date()) {
   return Math.round(raw / 1000) * 1000;
 }
 
+/** Đổi NĂM của 1 ngày, giữ nguyên tháng/ngày — dùng cho computeInstallmentPlan() bên dưới. Tự lùi về ngày cuối tháng trước nếu ngày gốc là 29/02 mà năm mới không phải năm nhuận (JS Date mặc định sẽ tự "tràn" sang 01/03, phải tự chặn lại). */
+function withYear(date, year) {
+  const month = date.getMonth();
+  const day = date.getDate();
+  const d = new Date(year, month, day);
+  if (d.getMonth() !== month) d.setDate(0);
+  return d;
+}
+
+/**
+ * "Phân kỳ trả nợ" (tính năng ĐANG THỬ NGHIỆM — chỉ xem được khi bấm vào chi
+ * tiết hợp đồng, CHƯA gắn vào Tổng quan/danh sách "Gần đến hạn"/nhắc nợ tự
+ * động/Zalo ở bất kỳ đâu khác — theo đúng yêu cầu) — dựng từ
+ * contract.installmentSchedule (map năm -> số tiền, đọc từ các cột "Phân kỳ
+ * năm..." lúc nhập Excel mẫu báo cáo, xem mục 10.44 docs).
+ *
+ * QUY TẮC (theo đúng yêu cầu):
+ * - Hợp đồng có DƯỚI 2 năm có số liệu > 0 -> KHÔNG coi là có phân kỳ trả nợ,
+ *   trả về null — nơi gọi tự hiểu là tính/hiển thị Y HỆT hợp đồng thường
+ *   (dùng thẳng dueDate/balance như mọi khi), KHÔNG đổi gì cả.
+ * - Từ 2 năm trở lên -> mỗi năm là 1 "kỳ", ngày đến hạn của kỳ đó = ngày
+ *   giải ngân (disbursedDate) nhưng đổi sang ĐÚNG NĂM của kỳ, giữ nguyên
+ *   tháng/ngày — VD: giải ngân 03/08/2026, kỳ năm 2027 -> đến hạn 03/08/2027.
+ * - Mỗi kỳ tự xét có "cảnh báo đến hạn" hay không dựa vào Số dư HIỆN TẠI
+ *   (duy nhất dữ liệu sống có, không có lịch sử từng lần trả nợ): kỳ đã
+ *   tới/qua ngày đến hạn NHƯNG Số dư hiện tại đã THẤP HƠN đúng số tiền của
+ *   kỳ đó -> coi như khách đã trả vượt qua mốc này rồi (trả sớm/trả nhiều
+ *   hơn lịch), KHÔNG cảnh báo. Ngược lại (Số dư còn >= số tiền kỳ đó) ->
+ *   cảnh báo đúng SỐ TIỀN GHI TRONG KỲ (không phải toàn bộ số dư còn lại).
+ */
+export function computeInstallmentPlan(contract, asOf = new Date()) {
+  const schedule = contract.installmentSchedule;
+  if (!schedule) return null;
+  const entries = Object.entries(schedule)
+    .map(([year, amount]) => ({ year: Number(year), amount: Number(amount) }))
+    .filter((e) => Number.isFinite(e.year) && e.amount > 0)
+    .sort((a, b) => a.year - b.year);
+  if (entries.length < 2) return null;
+
+  const disbursed = new Date(contract.disbursedDate);
+  return entries.map((e) => {
+    const dueDate = withYear(disbursed, e.year);
+    const daysLeft = daysBetween(asOf, dueDate);
+    const isPastOrToday = daysLeft <= 0;
+    const coveredByPayment = contract.balance < e.amount; // dư nợ đã thấp hơn kỳ này -> coi như đã trả vượt, không cảnh báo
+    return {
+      year: e.year,
+      dueDate: dueDate.toISOString().slice(0, 10),
+      amount: e.amount,
+      daysLeft,
+      shouldWarn: isPastOrToday && !coveredByPayment,
+    };
+  });
+}
+
 /**
  * Đăng nhập khách hàng bằng CCCD HOẶC số điện thoại + mật khẩu.
  * ĐÃ CHUYỂN SANG SUPABASE THẬT (xem docs/supabase-migration.md) — không còn
@@ -396,6 +451,11 @@ function mapContractRow(row) {
     disbursedDate: row.disbursed_date, dueDate: row.due_date,
     interestRate: Number(row.interest_rate),
     interestPaidUntil: row.interest_paid_until,
+    // 2 cột MỚI (chỉ có khi nhập từ "mẫu báo cáo" — xem mục 10.44 docs) —
+    // agreementCode chỉ để hiển thị tham khảo; installmentSchedule dùng cho
+    // computeInstallmentPlan() (xem hàm đó bên dưới).
+    agreementCode: row.agreement_code || null,
+    installmentSchedule: row.installment_schedule || null,
   };
 }
 
@@ -773,6 +833,10 @@ export async function deleteContract(id) {
 // Ngày nhận nợ | Ngày đáo hạn | Thu lãi đến ngày | Số tiền giải ngân |
 // Số dư | Lãi suất
 // (địa chỉ tự tách Xóm/Thôn/Tỉnh; cột nào thiếu dữ liệu sẽ tự tính/tự sinh)
+//
+// 2 cột TÙY CHỌN thêm ở CUỐI (chỉ có khi đọc file "mẫu báo cáo" mới — xem
+// remapReportTemplateRows() trong js/lib/xlsxLite.js, KHÔNG bắt buộc với
+// mẫu phẳng/dán tay): Mã khế ước | Phân kỳ trả nợ theo năm (đóng gói JSON).
 // ------------------------------------------------------------
 export function parseVNNumber(str) {
   let s = String(str ?? '').trim().replace(/[^\d.,-]/g, '');
@@ -867,13 +931,38 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
     const headerCheck = cells.slice(0, 2).join(' ').toLowerCase();
     if (HEADER_HINTS.some((h) => headerCheck.includes(h))) continue; // bỏ qua dòng tiêu đề
 
-    const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate] = cells.map((c) => c.trim());
+    // 2 cột cuối (agreementCode, installmentScheduleRaw) CHỈ có khi đọc từ
+    // "mẫu báo cáo" mới (xem remapReportTemplateRows() trong js/lib/xlsxLite.js)
+    // — dán tay/mẫu phẳng cũ không có 2 cột này, tự ra undefined, không ảnh
+    // hưởng gì (2 trường tương ứng dưới đây tự thành null).
+    const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate, agreementCode, installmentScheduleRaw] = cells.map((c) => c.trim());
     const cccd = (cccdRaw || '').replace(/\s/g, '');
     if (!cccd || !/^\d{9,12}$/.test(cccd)) { parseErrors.push(`Bỏ qua dòng (CCCD không hợp lệ): ${line.slice(0, 40)}...`); continue; }
+
+    // Phân kỳ trả nợ theo từng năm (nếu file có cột "Phân kỳ năm..."), ĐÓNG
+    // GÓI qua 1 cột chuỗi JSON — chỉ giữ lại năm có SỐ TIỀN THẬT > 0 (năm
+    // ghi 0/rỗng không phải 1 kỳ trả nợ thật). Quyết định "có phân kỳ trả nợ
+    // hẳn hoi hay không" (từ 2 năm có số liệu trở lên) để dành cho chỗ TÍNH
+    // TOÁN hiển thị (xem computeInstallmentPlan()), ở đây chỉ ghi nhận đúng
+    // dữ liệu thô đã có, không tự quyết định trước.
+    let installmentSchedule = null;
+    if (installmentScheduleRaw) {
+      try {
+        const raw = JSON.parse(installmentScheduleRaw);
+        const parsed = {};
+        for (const [year, amtRaw] of Object.entries(raw)) {
+          const amt = parseVNNumber(amtRaw);
+          if (amt > 0) parsed[year] = amt;
+        }
+        if (Object.keys(parsed).length) installmentSchedule = parsed;
+      } catch (e) { /* dữ liệu phân kỳ lỗi/đọc không được — bỏ qua, không chặn nhập cả dòng vì lỗi ở đúng phần không bắt buộc này */ }
+    }
 
     const disbursed = parseVNDate(disbursedDate) || new Date().toISOString().slice(0, 10);
     rows.push({
       cccd, name, address, phone, code: code || null,
+      agreementCode: agreementCode || null,
+      installmentSchedule,
       principal: principal ? parseVNNumber(principal) : null,
       disbursedDate: disbursed,
       dueDate: dueDate ? parseVNDate(dueDate) : null,
