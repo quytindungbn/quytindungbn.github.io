@@ -269,10 +269,13 @@ function effectiveStatusZalo(contract: any, asOf: Date): 'da_tat_toan' | 'qua_ha
   if (daysBetweenZalo(new Date(contract.due_date), asOf) > 0) return 'qua_han';
   return 'dang_vay';
 }
-// Y HỆT NEAR_DUE_DAYS trong js/state.js — dùng để quyết định gửi tay (mục
-// 'send-zalo-manual') nên dùng mẫu "Đến hạn" hay mẫu "Báo lãi": còn xa hạn
-// (> 15 ngày) thì dùng mẫu Báo lãi, gần/đã đến hạn thì dùng mẫu Đến hạn.
-const NEAR_DUE_DAYS_ZALO = 15;
+// Ngưỡng "gần đến hạn" cho gửi tay (mục 'send-zalo-manual') — còn xa hạn thì
+// dùng mẫu Báo lãi, gần/đã đến hạn thì dùng mẫu Đến hạn. Admin tự nhập số
+// ngày này trong "Quản lý OA" > "Cấu hình" (cột orgs.zalo_near_due_days) —
+// hằng số dưới đây chỉ còn là giá trị MẶC ĐỊNH khi admin chưa từng lưu gì
+// (cột null), KHỚP ĐÚNG với DEFAULT_NEAR_DUE_DAYS_ZALO trong
+// send-due-reminders/index.ts (đồng nhất gửi tay/gửi tự động).
+const DEFAULT_NEAR_DUE_DAYS_ZALO = 15;
 /**
  * Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu có,
  * xem nextInstallmentInfoZalo() bên dưới) — hợp đồng có 1 kỳ giữa chừng
@@ -281,11 +284,11 @@ const NEAR_DUE_DAYS_ZALO = 15;
  * trong send-due-reminders/index.ts (theo đúng yêu cầu mở rộng, đồng nhất
  * gửi tay/gửi tự động).
  */
-function isNearOrPastDueZalo(contract: any, asOf: Date): boolean {
+function isNearOrPastDueZalo(contract: any, asOf: Date, nearDueDays: number): boolean {
   const d = daysBetweenZalo(asOf, new Date(contract.due_date));
-  if (d <= NEAR_DUE_DAYS_ZALO) return true; // <=0 nghĩa là đã đến/quá hạn, 1..15 là gần đến hạn
+  if (d <= nearDueDays) return true; // <=0 nghĩa là đã đến/quá hạn, 1..nearDueDays là gần đến hạn
   const inst = nextInstallmentInfoZalo(contract, asOf);
-  return inst != null && inst.next.daysLeft <= NEAR_DUE_DAYS_ZALO;
+  return inst != null && inst.next.daysLeft <= nearDueDays;
 }
 
 function withYearZalo(date: Date, year: number): Date {
@@ -995,7 +998,7 @@ Deno.serve(async (req) => {
         admin.from('zalo_send_log').select('sent_at')
           .eq('contract_id', contractId).eq('status', 'success')
           .order('sent_at', { ascending: false }).limit(1).maybeSingle(),
-        admin.from('orgs').select('zalo_template_due_id, zalo_template_interest_id').limit(1).maybeSingle(),
+        admin.from('orgs').select('zalo_template_due_id, zalo_template_interest_id, zalo_near_due_days').limit(1).maybeSingle(),
         getZaloAccessToken(),
       ]);
       const contract = contractRes.data;
@@ -1043,8 +1046,8 @@ Deno.serve(async (req) => {
       // Tự chọn mẫu theo tình huống hợp đồng — KHÔNG cần người gọi tự chọn
       // nữa: gần/đã đến hạn (<=15 ngày) dùng mẫu "Đến hạn", còn xa hạn dùng
       // mẫu "Báo lãi" (chỉ báo lãi, gốc chưa thật sự phải trả).
-      const usesDueTemplate = isNearOrPastDueZalo(contract, now);
       const orgRow = orgRowRes.data;
+      const usesDueTemplate = isNearOrPastDueZalo(contract, now, orgRow?.zalo_near_due_days || DEFAULT_NEAR_DUE_DAYS_ZALO);
       const templateId = usesDueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id;
       const kind = usesDueTemplate ? 'den_han' : 'lai_hang_thang';
       if (!templateId) {

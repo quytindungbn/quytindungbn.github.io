@@ -120,6 +120,13 @@ function mapOrgRow(row) {
     // Mã mẫu tin "Báo lãi" — dùng khi hợp đồng CHƯA đến hạn (gửi tay/tự
     // động 2 mục "Báo lãi tự động hàng tháng"/"Gửi theo ngày cụ thể").
     zaloTemplateInterestId: row.zalo_template_interest_id || '',
+    // Số ngày "gần đến hạn" để tự chuyển mẫu Zalo OA "Đến hạn" (gửi tay LẪN
+    // tự động đều dùng chung số này) — admin tự nhập ở "Quản lý OA" > "Cấu
+    // hình", để trống thì dùng mặc định 15 ngày như trước giờ.
+    zaloNearDueDays: row.zalo_near_due_days || 15,
+    // Mẫu thông báo đẩy (App) admin tự soạn — xem DEFAULT_PUSH_TEMPLATES ở
+    // trên. null nếu admin chưa tự tùy chỉnh (dùng mẫu mặc định).
+    pushTemplates: row.push_templates || null,
   };
 }
 
@@ -151,6 +158,47 @@ async function verifyCredential(plainPassword, salt, hash) {
 }
 
 // ------------------------------------------------------------
+// Mẫu THÔNG BÁO ĐẨY (App) tự soạn được — admin gõ tay tiêu đề/nội dung có
+// gắn TOKEN (VD: <Ma_HD>) trong "Quản lý OA" > tab "Cấu hình" (xem
+// js/views/admin/zaloOA.js), lưu ở org.pushTemplates (cột orgs.push_templates,
+// jsonb) — đổi chữ không cần sửa code/deploy lại gì. Dùng CHUNG cho cả gửi
+// tay (buildContractNotificationPreset() trong admin/customers.js) LẪN gửi
+// tự động (send-due-reminders/index.ts, port lại y hệt bằng TypeScript) —
+// đúng yêu cầu "gửi tay hay tự động đều đồng bộ".
+//
+// 3 mẫu (theo tình huống hợp đồng, y hệt phân loại contractStatusInfo()):
+// 'interest' (chưa đến hạn, chỉ báo lãi), 'nearDue' (gần đến hạn), 'overdue'
+// (đã trễ hạn) — mỗi mẫu chỉ có "body" (nội dung); "title" (tiêu đề) dùng
+// CHUNG 1 mẫu cho cả 3 (đúng như hành vi cũ — LUÔN đồng nhất "<tên quỹ>
+// thông báo:"), lưu riêng ở pushTemplates.title.
+export const DEFAULT_PUSH_TEMPLATES = {
+  title: '<Ten_quy> thông báo:',
+  interest: 'Số tiền lãi hợp đồng <Ma_HD> của quý khách đến hôm nay là: <So_tien_lai>. Quý khách vui lòng thanh toán đúng hạn.',
+  nearDue: 'Hợp đồng <Ma_HD> của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là <So_tien_goc> và lãi đến nay là: <So_tien_lai>. Quý khách vui lòng thanh toán trước ngày <Ngay_dao_han>.',
+  overdue: 'Hợp đồng <Ma_HD> ĐÃ TRỄ HẠN. Số tiền gốc là <So_tien_goc>, lãi đến nay là: <So_tien_lai>. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.',
+};
+
+/** Danh sách TOKEN dùng được trong mẫu thông báo đẩy — hiện làm chú thích ở màn "Cấu hình" (zaloOA.js) VÀ dùng để build đúng tên khóa cho renderNotificationTemplate(). */
+export const PUSH_TEMPLATE_TOKENS = [
+  { token: '<Ten_KH>', desc: 'Tên khách hàng' },
+  { token: '<Ma_HD>', desc: 'Mã hợp đồng' },
+  { token: '<So_tien_goc>', desc: 'Số tiền gốc phải trả (đúng theo kỳ đang cần chú ý nếu hợp đồng có phân kỳ trả nợ, không thì là dư nợ hiện tại)' },
+  { token: '<So_tien_lai>', desc: 'Tiền lãi tính đến hôm nay' },
+  { token: '<So_du>', desc: 'Dư nợ hiện tại (không đổi theo kỳ)' },
+  { token: '<Ngay_dao_han>', desc: 'Ngày đến hạn (đúng theo kỳ đang cần chú ý nếu có, không thì là ngày đáo hạn hợp đồng)' },
+  { token: '<Ten_quy>', desc: 'Tên viết tắt quỹ tín dụng' },
+];
+
+/**
+ * Thay TOKEN (VD: "<Ma_HD>") trong 1 chuỗi mẫu bằng giá trị thật — token nào
+ * không có trong `tokens` thì GIỮ NGUYÊN chữ gốc (không xóa mất, để admin dễ
+ * nhận ra gõ sai tên token). Dùng cho cả tiêu đề lẫn nội dung thông báo đẩy.
+ */
+export function renderNotificationTemplate(str, tokens) {
+  return String(str || '').replace(/<([A-Za-z0-9_]+)>/g, (m, key) => (key in tokens ? String(tokens[key]) : m));
+}
+
+// ------------------------------------------------------------
 // Tổ chức (thông tin quỹ tín dụng, banner) — admin chỉnh trực tiếp trong app
 // ------------------------------------------------------------
 export function getOrg() { return state.org; }
@@ -169,6 +217,7 @@ export async function updateOrg(patch) {
     name: 'name', shortName: 'short_name', hotline: 'hotline', address: 'address',
     bannerEnabled: 'banner_enabled', bannerTitle: 'banner_title', bannerText: 'banner_text',
     zaloTemplateDueId: 'zalo_template_due_id', zaloTemplateInterestId: 'zalo_template_interest_id',
+    zaloNearDueDays: 'zalo_near_due_days', pushTemplates: 'push_templates',
   };
   for (const [k, col] of Object.entries(map)) if (patch[k] !== undefined) dbPatch[col] = patch[k];
   const { error } = await sb.from('orgs').update(dbPatch).eq('id', state.org.id);

@@ -380,33 +380,29 @@ function showCredential(customer, tempPassword) {
  * chuyển sang đúng mẫu này, "Số tiền gốc" lấy ĐÚNG số tiền của KỲ đó (không
  * phải toàn bộ dư nợ), "hạn chót" cũng lấy đúng ngày đến hạn của KỲ đó.
  */
-function buildContractNotificationPreset(contract) {
+function buildContractNotificationPreset(contract, customer) {
   const accrued = S.accruedInterest(contract);
   const info = S.contractStatusInfo(contract);
-  const title = `${S.getOrg().shortName} thông báo:`;
+  const org = S.getOrg();
+  const tpl = org.pushTemplates || S.DEFAULT_PUSH_TEMPLATES;
   // Ngày "hạn chót" hiện trong mẫu Gần đến hạn — lấy đúng ngày của KỲ đang
   // cảnh báo (nếu có), không phải luôn luôn Ngày đến hạn hợp đồng gốc.
   const dueDate = info.source === 'installment' ? S.nextInstallmentInfo(contract).next.dueDate : contract.dueDate;
-  // Số tiền/ngày tháng in đậm (Unicode, xem ghi chú boldDigits() trong utils.js) để nổi bật hơn phần chữ xung quanh.
-  const gocB = boldDigits(formatVND(info.dueAmount));
-  const accruedB = boldDigits(formatVND(accrued));
-  const dueDateB = boldDigits(formatDate(dueDate));
-  if (info.status === 'qua_han') {
-    return {
-      title,
-      body: `Hợp đồng ${contract.code} ĐÃ TRỄ HẠN. Số tiền gốc là ${gocB}, lãi đến nay là: ${accruedB}. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.`,
-    };
-  }
-  if (info.status === 'gan_den_han') {
-    return {
-      title,
-      body: `Hợp đồng ${contract.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${gocB} và lãi đến nay là: ${accruedB}. Quý khách vui lòng thanh toán trước ngày ${dueDateB}.`,
-    };
-  }
-  return {
-    title,
-    body: `Số tiền lãi hợp đồng ${contract.code} của quý khách đến hôm nay là: ${accruedB}. Quý khách vui lòng thanh toán đúng hạn.`,
+  // Số tiền/ngày tháng in đậm (Unicode, xem ghi chú boldDigits() trong utils.js) để nổi bật hơn phần chữ xung quanh — chỉ áp cho GIÁ TRỊ, không áp cho nhãn chữ xung quanh.
+  const tokens = {
+    Ten_KH: customer ? customer.name : '',
+    Ma_HD: contract.code,
+    So_tien_goc: boldDigits(formatVND(info.dueAmount)),
+    So_tien_lai: boldDigits(formatVND(accrued)),
+    So_du: boldDigits(formatVND(contract.balance)),
+    Ngay_dao_han: boldDigits(formatDate(dueDate)),
+    Ten_quy: org.shortName,
   };
+  const title = S.renderNotificationTemplate(tpl.title, tokens);
+  let bodyTpl = tpl.interest;
+  if (info.status === 'qua_han') bodyTpl = tpl.overdue;
+  else if (info.status === 'gan_den_han') bodyTpl = tpl.nearDue;
+  return { title, body: S.renderNotificationTemplate(bodyTpl, tokens) };
 }
 
 /**
@@ -834,7 +830,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const notiBtn = sheet.querySelector('#btn-noti-app-ct');
       if (notiBtn) notiBtn.addEventListener('click', () => {
         if (!customer) return;
-        openSendNotificationModal(customer, buildContractNotificationPreset(contract));
+        openSendNotificationModal(customer, buildContractNotificationPreset(contract, customer));
       });
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       const zaloHintWrap = sheet.querySelector('#zalo-hint-wrap-ct');

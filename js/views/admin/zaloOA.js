@@ -686,13 +686,13 @@ function drawConfigTab(slot) {
       </p>
     </div>
 
-    <div class="card card-pad mb-16">
-      <div class="section-head"><h2>Mẫu tin theo tình huống</h2></div>
-      <p class="text-sm text-muted mb-8">
-        Template ID lấy từ trang quản lý mẫu ZBS Template Message (mục "Quản lý Template" trên Zalo) —
-        mẫu phải ở trạng thái <b>"Đã duyệt"</b> mới dùng được.
-      </p>
-      <form id="zalo-form">
+    <form id="zalo-form">
+      <div class="card card-pad mb-16">
+        <div class="section-head"><h2>Mẫu tin theo tình huống (Zalo OA)</h2></div>
+        <p class="text-sm text-muted mb-8">
+          Template ID lấy từ trang quản lý mẫu ZBS Template Message (mục "Quản lý Template" trên Zalo) —
+          mẫu phải ở trạng thái <b>"Đã duyệt"</b> mới dùng được.
+        </p>
         <div class="field">
           <label>Mẫu "Đến hạn/Quá hạn" (Template ID)</label>
           <input name="zaloTemplateDueId" value="${esc(org.zaloTemplateDueId)}" placeholder="VD: 519351"/>
@@ -701,11 +701,29 @@ function drawConfigTab(slot) {
           <label>Mẫu "Báo lãi" (Template ID)</label>
           <input name="zaloTemplateInterestId" value="${esc(org.zaloTemplateInterestId)}" placeholder="Dán Template ID khi đã tạo xong mẫu này bên Zalo"/>
         </div>
-        <button class="btn btn-primary btn-block" type="submit">Lưu cấu hình</button>
-      </form>
-    </div>
+      </div>
 
-    <div class="card card-pad mb-16">
+      <div class="card card-pad mb-16">
+        <div class="section-head"><h2>Ngưỡng "Gần đến hạn"</h2></div>
+        <p class="text-sm text-muted mb-8">
+          Còn đúng số ngày này (hoặc đã quá hạn) — GỬI TAY hay GỬI TỰ ĐỘNG đều tự chuyển sang mẫu "Đến
+          hạn/Quá hạn" ở trên thay vì mẫu "Báo lãi" — xét cả ngày đáo hạn hợp đồng gốc lẫn kỳ hạn trả nợ
+          (nếu có), 1 số dùng chung cho tất cả.
+        </p>
+        <div class="field">
+          <label>Số ngày</label>
+          <input type="number" name="zaloNearDueDays" min="1" max="90" value="${org.zaloNearDueDays}"/>
+        </div>
+        <p class="text-sm text-muted">
+          Nội dung soạn sẵn cho thông báo qua ứng dụng (App) chuyển sang sửa ở mục "Cài đặt" &gt; "Nội
+          dung thông báo qua ứng dụng".
+        </p>
+      </div>
+
+      <button class="btn btn-primary btn-block" type="submit">Lưu cấu hình</button>
+    </form>
+
+    <div class="card card-pad mb-16 mt-16">
       <div class="section-head"><h2>Kết nối kỹ thuật (App ID/Secret Key/Token)</h2></div>
       <p class="text-sm text-muted">
         Vì lý do an toàn, 4 thông tin này (App ID, Secret Key, Access Token, Refresh Token) KHÔNG cấu
@@ -719,11 +737,22 @@ function drawConfigTab(slot) {
   slot.querySelector('#zalo-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const days = Math.max(1, Math.min(90, Number(fd.get('zaloNearDueDays')) || 15));
     try {
-      await S.updateOrg({ zaloTemplateDueId: fd.get('zaloTemplateDueId').trim(), zaloTemplateInterestId: fd.get('zaloTemplateInterestId').trim() });
+      await S.updateOrg({
+        zaloTemplateDueId: fd.get('zaloTemplateDueId').trim(),
+        zaloTemplateInterestId: fd.get('zaloTemplateInterestId').trim(),
+        zaloNearDueDays: days,
+      });
       toast('Đã lưu cấu hình Zalo OA', 'success');
       drawConfigTab(slot);
     } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
   });
 }
-function esc(s) { return String(s || '').replace(/"/g, '&quot;'); }
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}

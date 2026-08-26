@@ -2343,21 +2343,52 @@ tiền ngay khi hợp đồng vừa lọt vào diện "Gần đến hạn" (dù 
 đỡ khó nhìn/khó phân biệt hợp đồng nào đang có kỳ sắp tới. Áp dụng CẢ trang "Khách hàng & Hợp đồng" LẪN
 Tổng quan (dùng chung 1 hàm `installmentHintHtml()` trong `js/components/ui.js`).
 
-Cả 17 lần cập nhật (11 lần đầu + lần 14, 16, 17 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13 và 15 BẮT BUỘC
-deploy lại 2 Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
+**Cập nhật 26/08/2026 (lần 18) — BẮT BUỘC chạy SQL + deploy lại CẢ 2 Edge Function**: theo yêu cầu tự cấu
+hình mà không cần sửa code, thêm 2 mục mới trong **"Quản lý OA" > "Cấu hình"** và **"Cài đặt"**:
+
+1. **Ngưỡng "Gần đến hạn" của Zalo OA tự nhập được** (trước đó cố định cứng 15 ngày trong code) — 1 ô "Số
+   ngày" mới trong "Quản lý OA" > "Cấu hình", dùng CHUNG cho cả gửi tay LẪN gửi tự động (đúng yêu cầu "Gửi
+   tay hay gửi tự động đều đồng bộ thành 1 ngày để nhập") — còn đúng số ngày này (hoặc đã quá hạn) thì tự
+   chuyển từ mẫu "Báo lãi" sang mẫu "Đến hạn/Quá hạn", xét cả ngày đáo hạn hợp đồng gốc lẫn kỳ hạn trả nợ
+   như trước, chỉ riêng SỐ NGÀY giờ admin tự đổi được (1-90 ngày), lưu ở cột `orgs.zalo_near_due_days`
+   (null = mặc định 15 ngày như trước giờ, không cần đụng gì nếu không muốn đổi).
+2. **Nội dung thông báo qua ứng dụng (App) tự soạn được** — chuyển sang mục **"Cài đặt"** (không để
+   chung "Quản lý OA" nữa, vì đây là nội dung Push App, không phải riêng Zalo): 1 ô "Tiêu đề" (dùng chung
+   cho cả 3 tình huống) + 3 ô nội dung riêng (Báo lãi/Gần đến hạn/Đã trễ hạn), gõ đúng các TOKEN có sẵn
+   (liệt kê ngay trên form) như `<Ten_KH>`, `<Ma_HD>`, `<So_tien_goc>`, `<So_tien_lai>`, `<So_du>`,
+   `<Ngay_dao_han>`, `<Ten_quy>` — hệ thống tự thay bằng thông tin thật của từng khách/hợp đồng khi gửi,
+   token nào gõ sai tên thì GIỮ NGUYÊN chữ gốc (không mất chữ, dễ nhận ra gõ sai). Áp dụng cho CẢ gửi tay
+   (nút "Thông báo cho khách hàng qua ứng dụng" ở chi tiết hợp đồng) LẪN gửi tự động hàng tháng/gần-quá
+   hạn (`send-due-reminders`) — đổi chữ trong "Cài đặt" có hiệu lực NGAY, không cần sửa code/deploy lại gì
+   thêm cho riêng việc đổi CHỮ (chỉ lần đầu thêm tính năng này mới cần deploy Edge Function 1 lần, như bên
+   dưới). Có nút "Khôi phục về mẫu mặc định" nếu sửa hỏng muốn quay lại. Lưu ở cột `orgs.push_templates`
+   (jsonb, null = dùng đúng 4 mẫu mặc định như hành vi cũ, không cần đụng gì nếu không muốn tự soạn).
+   `<Ho_ten>` bạn hỏi ví dụ trong yêu cầu — đã gộp chung vào đúng token `<Ten_KH>` có sẵn (tên khách hàng),
+   không cần thêm token trùng ý nghĩa.
+
+Cả 18 lần cập nhật (11 lần đầu + lần 14, 16, 17 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13, 15 và 18 BẮT
+BUỘC deploy lại 2 Edge Function; riêng lần 18 còn BẮT BUỘC chạy thêm SQL bên dưới) — không đụng dữ liệu cũ.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;
 alter table contracts add column if not exists installment_schedule jsonb;
+alter table orgs add column if not exists zalo_near_due_days integer;
+alter table orgs add column if not exists push_templates jsonb;
 ```
 
 **Việc cần bạn làm**:
-1. Chạy đoạn SQL trên (2 dòng, chỉ thêm cột mới, không đụng dữ liệu đã có).
-2. Deploy lại **`create-account`** (file vừa gửi) — Supabase Dashboard → Edge Functions → chọn
-   `create-account` → dán đè toàn bộ nội dung file mới → Deploy.
-3. Nhập lại file Excel mẫu mới — bấm vào 1-2 hợp đồng có nhiều kỳ trả nợ (VD: các hợp đồng vay lớn, chia
-   trả nhiều năm) để xem thử khối "Phân kỳ trả nợ (thử nghiệm)" trong chi tiết hợp đồng, kiểm tra đúng ý
-   trước khi quyết định có gắn vào các cảnh báo/nhắc nợ chính thức hay không.
+1. Chạy đoạn SQL trên (4 dòng, chỉ thêm cột mới, không đụng dữ liệu đã có) — vào thẳng SQL Editor:
+   https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
+2. Deploy lại **CẢ 2 Edge Function** (2 file vừa gửi lần này) — Supabase Dashboard → Edge Functions →
+   chọn từng function → dán đè toàn bộ nội dung file mới → Deploy:
+   - `create-account`
+   - `send-due-reminders`
+3. Vào **"Quản lý OA" > "Cấu hình"** kiểm tra/đổi lại "Số ngày" ngưỡng "Gần đến hạn" nếu muốn khác 15.
+4. Vào **"Cài đặt"** kiểm tra/tự soạn lại nội dung thông báo App nếu muốn khác 4 mẫu mặc định hiện có
+   (không bắt buộc — không đụng gì thì vẫn dùng đúng chữ như trước giờ).
+5. (Việc cũ, còn hiệu lực) Nhập lại file Excel mẫu mới — bấm vào 1-2 hợp đồng có nhiều kỳ trả nợ (VD: các
+   hợp đồng vay lớn, chia trả nhiều năm) để xem thử khối "Phân kỳ trả nợ (thử nghiệm)" trong chi tiết hợp
+   đồng, kiểm tra đúng ý trước khi quyết định có gắn vào các cảnh báo/nhắc nợ chính thức hay không.
 
 ---
 

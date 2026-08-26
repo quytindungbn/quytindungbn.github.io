@@ -77,9 +77,12 @@ const MONTHLY_REMINDER_OFFSETS = [0, 2]; // Lãi (nợ trong hạn): mỗi thán
 // Ngưỡng để 2 mục Tầng 2 (báo lãi hàng tháng/theo ngày) tự CHUYỂN sang mẫu
 // "Đến hạn/Quá hạn" thay vì tiếp tục báo lãi — GIỐNG HỆT NEAR_DUE_DAYS_ZALO
 // trong create-account/index.ts (ngưỡng của nút gửi tay tự chọn mẫu), theo
-// yêu cầu đổi cho đồng nhất giữa gửi tay và gửi tự động (trước đây 2 ngưỡng
-// này cố tình để khác nhau — 10 ở đây, 15 ở create-account — giờ gộp về 1).
-const NEAR_DUE_DAYS_ZALO = 15;
+// yêu cầu đổi cho đồng nhất giữa gửi tay và gửi tự động. Giờ admin tự nhập
+// số ngày này trong "Quản lý OA" > "Cấu hình" (cột orgs.zalo_near_due_days)
+// — hằng số dưới đây chỉ còn là giá trị MẶC ĐỊNH khi admin chưa từng lưu gì
+// (cột null). Truyền qua tham số `nearDueDays` cho các hàm cần dùng, KHÔNG
+// đọc biến module-level nữa để tránh lẫn lộn giữa các lượt chạy.
+const DEFAULT_NEAR_DUE_DAYS_ZALO = 15;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -217,6 +220,21 @@ function boldDigits(s: string): string {
 }
 function formatVNDBold(n: number): string { return boldDigits(formatVND(n)); }
 function formatDateVNBold(iso: string): string { return boldDigits(formatDateVN(iso)); }
+
+// Y HỆT DEFAULT_PUSH_TEMPLATES/renderNotificationTemplate() trong js/state.js
+// — admin tự soạn lại 4 ô này ở "Cài đặt" > "Nội dung thông báo qua ứng
+// dụng" (cột orgs.push_templates, jsonb, null = dùng đúng mẫu mặc định dưới
+// đây). Đổi chữ ở đó có hiệu lực NGAY cho cả gửi tay lẫn gửi tự động, không
+// cần sửa code/deploy lại function này.
+const DEFAULT_PUSH_TEMPLATES = {
+  title: '<Ten_quy> thông báo:',
+  interest: 'Số tiền lãi hợp đồng <Ma_HD> của quý khách đến hôm nay là: <So_tien_lai>. Quý khách vui lòng thanh toán đúng hạn.',
+  nearDue: 'Hợp đồng <Ma_HD> của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là <So_tien_goc> và lãi đến nay là: <So_tien_lai>. Quý khách vui lòng thanh toán trước ngày <Ngay_dao_han>.',
+  overdue: 'Hợp đồng <Ma_HD> ĐÃ TRỄ HẠN. Số tiền gốc là <So_tien_goc>, lãi đến nay là: <So_tien_lai>. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.',
+};
+function renderNotificationTemplate(str: string, tokens: Record<string, string>): string {
+  return String(str || '').replace(/<([A-Za-z0-9_]+)>/g, (m, key) => (key in tokens ? String(tokens[key]) : m));
+}
 
 /**
  * Mốc "ngày trong tháng" để nhắc lãi hàng tháng — xem ghi chú lịch nhắc #1
@@ -452,11 +470,11 @@ function formatVNDZaloTemplate(n: number): string {
  * ngày đáo hạn cuối) gần/quá hạn cũng tự chuyển sang mẫu "Đến hạn" y hệt
  * ngày đáo hạn hợp đồng gốc (theo đúng yêu cầu mở rộng).
  */
-function isNearOrPastDueZalo(contract: any, asOf: Date): boolean {
+function isNearOrPastDueZalo(contract: any, asOf: Date, nearDueDays: number): boolean {
   const d = daysBetween(asOf, new Date(contract.due_date));
-  if (d <= NEAR_DUE_DAYS_ZALO) return true;
+  if (d <= nearDueDays) return true;
   const inst = nextInstallmentInfo(contract, asOf);
-  return inst != null && inst.next.daysLeft <= NEAR_DUE_DAYS_ZALO;
+  return inst != null && inst.next.daysLeft <= nearDueDays;
 }
 
 /**
@@ -465,8 +483,9 @@ function isNearOrPastDueZalo(contract: any, asOf: Date): boolean {
  * (y hệt cách gửi tay tự chọn mẫu). Trả về null nếu mẫu tương ứng chưa cấu
  * hình Template ID — nơi gọi phải tự bỏ qua lần gửi đó, không báo lỗi.
  */
-function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: string | null; zalo_template_interest_id?: string | null } | null): { templateId: string; dueTemplate: boolean } | null {
-  const dueTemplate = isNearOrPastDueZalo(ct, now);
+function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: string | null; zalo_template_interest_id?: string | null; zalo_near_due_days?: number | null } | null): { templateId: string; dueTemplate: boolean } | null {
+  const nearDueDays = orgRow?.zalo_near_due_days || DEFAULT_NEAR_DUE_DAYS_ZALO;
+  const dueTemplate = isNearOrPastDueZalo(ct, now, nearDueDays);
   const templateId = dueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id;
   if (!templateId) return null;
   return { templateId, dueTemplate };
@@ -521,8 +540,10 @@ Deno.serve(async (req) => {
   // (không còn tiêu đề riêng theo từng loại như trước) — khớp với tiêu đề
   // mặc định ở popup admin tự gửi tay (xem buildContractNotificationPreset()
   // trong js/views/admin/customers.js).
-  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_interest_id, zalo_template_due_id').limit(1).maybeSingle();
-  const NOTI_TITLE = `${orgRow?.short_name || 'Quỹ tín dụng'} thông báo:`;
+  const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_interest_id, zalo_template_due_id, zalo_near_due_days, push_templates').limit(1).maybeSingle();
+  const pushTpl = (orgRow?.push_templates as typeof DEFAULT_PUSH_TEMPLATES | null) || DEFAULT_PUSH_TEMPLATES;
+  const shortName = orgRow?.short_name || 'Quỹ tín dụng';
+  const NOTI_TITLE = renderNotificationTemplate(pushTpl.title, { Ten_quy: shortName });
 
   const { data: contracts, error: ctErr } = await admin.from('contracts').select('*');
   if (ctErr) return new Response(JSON.stringify({ ok: false, reason: ctErr.message }), { status: 500 });
@@ -569,9 +590,18 @@ Deno.serve(async (req) => {
     // chưa đóng thì lặp lại y hệt vào đợt tháng sau, không nhắc liên tục.
     if (isMonthlyReminderDay(interestAnchorDate(ct), now)) {
       if (await shouldSend(ct.id, 'lai_hang_thang')) {
+        const custName = customerMap.get(ct.customer_id)?.name || '';
+        const tokens = {
+          Ten_KH: custName, Ma_HD: ct.code,
+          So_tien_goc: formatVNDBold(Number(ct.balance)),
+          So_tien_lai: formatVNDBold(accruedInterest(ct, now)),
+          So_du: formatVNDBold(Number(ct.balance)),
+          Ngay_dao_han: formatDateVNBold(ct.due_date),
+          Ten_quy: shortName,
+        };
         const ok = await pushToCustomer(
           ct.customer_id, NOTI_TITLE,
-          `Hợp đồng ${ct.code} của quý khách số tiền lãi đến nay là: ${formatVND(accruedInterest(ct, now))}. Vui lòng thanh toán lãi hàng tháng đúng hạn.`,
+          renderNotificationTemplate(pushTpl.interest, tokens),
           'lai-hang-thang'
         );
         if (ok) { await logSent(ct.customer_id, ct.id, 'lai_hang_thang'); result.laiHangThang++; }
@@ -652,12 +682,16 @@ Deno.serve(async (req) => {
     const dueDateForMsg = useInstallment ? inst!.next.dueDate : ct.due_date;
     if (daysToDue <= NEAR_DUE_START_DAYS && (NEAR_DUE_START_DAYS - daysToDue) % NEAR_DUE_REPEAT_DAYS === 0) {
       if (await shouldSend(ct.id, 'gan_den_han')) {
-        let body: string;
-        if (daysToDue > 0) {
-          body = `Hợp đồng ${ct.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${formatVNDBold(goc)} và lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Vui lòng thanh toán trước ngày ${formatDateVNBold(dueDateForMsg)}.`;
-        } else {
-          body = `Hợp đồng ${ct.code} ĐÃ TRỄ HẠN. Số tiền gốc là ${formatVNDBold(goc)}, lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.`;
-        }
+        const custName = customerMap.get(ct.customer_id)?.name || '';
+        const tokens = {
+          Ten_KH: custName, Ma_HD: ct.code,
+          So_tien_goc: formatVNDBold(goc),
+          So_tien_lai: formatVNDBold(accruedInterest(ct, now)),
+          So_du: formatVNDBold(Number(ct.balance)),
+          Ngay_dao_han: formatDateVNBold(dueDateForMsg),
+          Ten_quy: shortName,
+        };
+        const body = renderNotificationTemplate(daysToDue > 0 ? pushTpl.nearDue : pushTpl.overdue, tokens);
         const ok = await pushToCustomer(ct.customer_id, NOTI_TITLE, body, 'gan-den-han');
         if (ok) { await logSent(ct.customer_id, ct.id, 'gan_den_han'); result.ganDenHanQuaHan++; }
         // Zalo OA KHÔNG còn tự động gửi cho "gần đến hạn/đến hạn" nữa (theo
