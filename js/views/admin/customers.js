@@ -732,12 +732,23 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       ${installmentPlan ? `
       <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
         <div class="fw-700 text-sm mb-6">${icon('clock', 'icon-sm')} Phân kỳ trả nợ (thử nghiệm)</div>
-        ${installmentPlan.map((p) => `
+        ${installmentPlan.map((p) => {
+          // Khi cảnh báo: báo đúng số tiền THỰC SỰ còn phải trả cho kỳ này
+          // (p.dueAmount — đã trừ phần trả dư từ kỳ trước, hoặc = số dư nợ
+          // còn lại nếu là kỳ cuối), không phải nguyên số tiền ghi trong kỳ
+          // theo Excel (p.amount).
+          const amountToShow = p.shouldWarn ? p.dueAmount : p.amount;
+          const diffNote = p.shouldWarn && p.dueAmount !== p.amount
+            ? `<div class="field-hint" style="text-align:right;margin-top:-4px">(kỳ ghi ${formatVND(p.amount)}, đã trừ phần trả dư từ trước)</div>`
+            : '';
+          return `
           <div class="oc-line">
             <span>Kỳ năm ${p.year} — đến hạn ${formatDate(p.dueDate)}</span>
-            <b style="color:${p.shouldWarn ? 'var(--danger)' : 'var(--text)'}">${formatVND(p.amount)}${p.shouldWarn ? ` ${icon('alert', 'icon-sm')}` : ''}</b>
+            <b style="color:${p.shouldWarn ? 'var(--danger)' : 'var(--text)'}">${formatVND(amountToShow)}${p.shouldWarn ? ` ${icon('alert', 'icon-sm')}` : ''}</b>
           </div>
-        `).join('')}
+          ${diffNote}
+        `;
+        }).join('')}
         <div class="field-hint">Tính năng đang thử nghiệm — chưa gắn vào Tổng quan/nhắc nợ tự động/Zalo OA, chỉ xem thử ở đây.</div>
       </div>
       ` : ''}

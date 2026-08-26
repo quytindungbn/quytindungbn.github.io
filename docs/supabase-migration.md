@@ -2120,12 +2120,20 @@ năm mới.
     tiên, không phải chỉ riêng số tiền của kỳ đó): kỳ đã tới/qua ngày đến hạn nhưng đã trả lũy kế **≥**
     tổng các kỳ tính đến kỳ đó → coi như đã trả đủ (hoặc vượt) mốc này rồi (trả sớm/trả nhiều hơn lịch
     cho các kỳ trước) → **không cảnh báo kỳ đó nữa**, và cứ thế xét tiếp các kỳ sau. Ngược lại (đã trả
-    lũy kế < tổng các kỳ tính đến kỳ đó) → cảnh báo đúng **số tiền ghi trong kỳ đó** (không phải toàn bộ
-    số dư còn lại).
+    lũy kế < tổng các kỳ tính đến kỳ đó) → cảnh báo, số tiền báo = **phần còn thiếu** để đủ tổng các kỳ
+    tính đến đó (= tổng lũy kế − đã trả lũy kế), KHÔNG phải nguyên số tiền ghi trong kỳ — nếu kỳ trước đã
+    trả thiếu (VD kỳ cần 10tr nhưng mới trả 5tr) thì kỳ đó chỉ báo thêm đúng phần còn thiếu (5tr) cho đủ.
+  - **Riêng KỲ CUỐI CÙNG** (trùng "Ngày đáo hạn" hợp đồng): nếu còn số dư nợ → chắc chắn sẽ báo, và số
+    tiền báo luôn **đúng bằng số dư nợ hiện tại còn lại** (không dùng số tính lũy kế nữa, để không lệ
+    thuộc việc tổng các kỳ khai báo trong Excel có khớp tuyệt đối với Số tiền vay hay không).
     - VD thực tế (khách NGUYỄN THỊ NHƯ Ý, HĐ 259/26): vay 280tr, dư nợ hiện tại 140tr → đã trả lũy kế
-      140tr. Phân kỳ 2027: 10tr, 2028: 10tr, 2029: 260tr. Kỳ 2027: lũy kế đến kỳ này = 10tr, đã trả
-      140tr ≥ 10tr → **không báo**. Kỳ 2028: lũy kế 2 kỳ = 20tr, đã trả 140tr ≥ 20tr → **không báo**. Kỳ
-      2029: lũy kế 3 kỳ = 280tr, đã trả 140tr < 280tr → **sẽ báo** đúng 260.000.000đ khi tới 04/06/2029.
+      140tr. Phân kỳ 2027: 10tr, 2028: 10tr, 2029: 260tr (kỳ cuối). Kỳ 2027: lũy kế đến kỳ này = 10tr, đã
+      trả 140tr ≥ 10tr → **không báo**. Kỳ 2028: lũy kế 2 kỳ = 20tr, đã trả 140tr ≥ 20tr → **không báo**.
+      Kỳ 2029 (kỳ cuối): đã trả 140tr < lũy kế 280tr → **sẽ báo**, đúng bằng **số dư nợ còn lại** lúc đó
+      (không cố định 260.000.000đ theo Excel) khi tới 04/06/2029.
+    - VD trả thiếu: vay 100tr 01/01/2026, phân kỳ 2027: 10tr, 2028: 10tr — nhưng trong năm chỉ trả được
+      5tr (dư nợ còn 95tr) → đến 01/01/2027 hệ thống sẽ báo **thêm đúng 5.000.000đ** (phần còn thiếu cho
+      đủ 10tr của kỳ 2027), không báo lại nguyên 10 triệu.
 - **CHƯA gắn vào bất kỳ chỗ nào khác** (Tổng quan, danh sách "Gần đến hạn", nhắc nợ tự động, Zalo OA...)
   — đúng yêu cầu "bảng này chưa cần thể hiện". Chỉ xem được khi bấm vào **chi tiết 1 hợp đồng cụ thể**
   (chỉ hiện khối này nếu hợp đồng đó thật sự có ≥ 2 kỳ), có ghi rõ "(thử nghiệm)" để biết đây là tính
@@ -2135,11 +2143,16 @@ năm mới.
 thường, không đổi gì) — đúng 11/548 hợp đồng có từ 2 năm trở lên (có phân kỳ trả nợ thật), đã tự tính thử
 ra đúng ngày đến hạn theo từng năm và số tiền từng kỳ.
 
-**Cập nhật 26/08/2026**: sửa lại đúng quy tắc "cộng dồn" ở trên (bản đầu tiên chỉ so từng kỳ riêng lẻ với
-Số dư hiện tại — với hợp đồng có kỳ CUỐI là kỳ LỚN NHẤT như VD trên thì bị suy ra sai, kỳ lớn nhất/quan
-trọng nhất lại không báo). Đã sửa `computeInstallmentPlan()` trong `js/state.js` sang đúng cách so sánh
-LŨY KẾ như VD ở trên — không cần chạy lại SQL/deploy lại Edge Function nào thêm (chỉ sửa code JS tính ở
-trình duyệt, không đụng dữ liệu/Edge Function).
+**Cập nhật 26/08/2026 (lần 1)**: sửa lại đúng quy tắc "cộng dồn" ở trên (bản đầu tiên chỉ so từng kỳ riêng
+lẻ với Số dư hiện tại — với hợp đồng có kỳ CUỐI là kỳ LỚN NHẤT như VD trên thì bị suy ra sai, kỳ lớn
+nhất/quan trọng nhất lại không báo).
+
+**Cập nhật 26/08/2026 (lần 2)**: sửa thêm số tiền BÁO khi cảnh báo — trước đó báo nguyên số tiền ghi
+trong kỳ theo Excel, giờ báo đúng **phần còn thiếu thực tế** (đã trừ phần trả dư từ kỳ trước), và riêng
+KỲ CUỐI CÙNG luôn báo đúng **số dư nợ hiện tại còn lại** thay vì con số cố định theo Excel — xem 2 VD ở
+trên. Cả 2 lần cập nhật đều chỉ sửa `computeInstallmentPlan()` trong `js/state.js` — không cần chạy lại
+SQL/deploy lại Edge Function nào thêm (chỉ sửa code JS tính ở trình duyệt, không đụng dữ liệu/Edge
+Function).
 
 ```sql
 alter table contracts add column if not exists agreement_code text;

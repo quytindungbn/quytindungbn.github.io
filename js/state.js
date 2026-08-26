@@ -346,14 +346,21 @@ function withYear(date, year) {
  *   tính đến kỳ đó -> coi như khách đã trả đủ (hoặc vượt) mốc này rồi (trả
  *   sớm/trả nhiều hơn lịch cho các kỳ trước) -> KHÔNG cảnh báo kỳ đó nữa,
  *   và cứ thế xét tiếp các kỳ sau. Ngược lại (đã trả lũy kế < tổng các kỳ
- *   tính đến kỳ đó) -> cảnh báo, số tiền hiển thị = đúng số tiền ghi trong
- *   kỳ đó (không phải toàn bộ số dư còn lại).
+ *   tính đến kỳ đó) -> cảnh báo, số tiền báo = PHẦN CÒN THIẾU để đủ tổng
+ *   các kỳ tính đến đó (= tổng lũy kế - đã trả lũy kế), KHÔNG phải nguyên
+ *   số tiền ghi trong kỳ — nếu kỳ trước đã trả thiếu (VD kỳ cần 10tr nhưng
+ *   mới trả 5tr) thì kỳ đó chỉ báo thêm đúng phần còn thiếu (5tr) cho đủ.
+ *   Riêng KỲ CUỐI CÙNG (trùng "Ngày đáo hạn" hợp đồng) luôn báo ĐÚNG BẰNG
+ *   số dư nợ hiện tại còn lại (contract.balance) — không dùng số tính lũy
+ *   kế nữa, đảm bảo luôn khớp chính xác với số dư nợ còn (đề phòng tổng
+ *   các kỳ khai báo trong Excel không khớp tuyệt đối với Số tiền vay).
  *   VD thực tế: vay 280tr, dư nợ hiện tại 140tr (=> đã trả lũy kế 140tr).
- *   Phân kỳ 2027: 10tr, 2028: 10tr, 2029: 260tr.
+ *   Phân kỳ 2027: 10tr, 2028: 10tr, 2029: 260tr (kỳ cuối).
  *     Kỳ 2027: lũy kế kỳ 1 = 10tr. Đã trả 140tr >= 10tr -> KHÔNG báo.
  *     Kỳ 2028: lũy kế 2 kỳ = 10+10=20tr. Đã trả 140tr >= 20tr -> KHÔNG báo.
- *     Kỳ 2029: lũy kế 3 kỳ = 10+10+260=280tr. Đã trả 140tr < 280tr -> SẼ
- *       báo (khi tới 04/06/2029) đúng 260.000.000đ.
+ *     Kỳ 2029 (kỳ cuối): Đã trả 140tr < lũy kế 280tr -> SẼ báo (khi tới
+ *       04/06/2029) đúng bằng SỐ DƯ NỢ CÒN LẠI lúc đó (không cố định
+ *       260.000.000đ theo Excel).
  */
 export function computeInstallmentPlan(contract, asOf = new Date()) {
   const schedule = contract.installmentSchedule;
@@ -365,20 +372,26 @@ export function computeInstallmentPlan(contract, asOf = new Date()) {
   if (entries.length < 2) return null;
 
   const disbursed = new Date(contract.disbursedDate);
-  const amountPaid = (Number(contract.principal) || 0) - (Number(contract.balance) || 0); // đã trả lũy kế tới hiện tại
+  const balance = Number(contract.balance) || 0;
+  const amountPaid = (Number(contract.principal) || 0) - balance; // đã trả lũy kế tới hiện tại
   let cumulativeRequired = 0;
-  return entries.map((e) => {
+  return entries.map((e, idx) => {
     cumulativeRequired += e.amount; // tổng các kỳ tính đến kỳ này (cộng dồn)
+    const isLast = idx === entries.length - 1;
     const dueDate = withYear(disbursed, e.year);
     const daysLeft = daysBetween(asOf, dueDate);
     const isPastOrToday = daysLeft <= 0;
-    const coveredByPayment = amountPaid >= cumulativeRequired; // đã trả lũy kế đủ (hoặc hơn) tổng các kỳ tính đến đây -> không cảnh báo
+    // Phần còn thiếu để đủ mốc lũy kế tính đến kỳ này; riêng kỳ cuối luôn
+    // dùng thẳng số dư nợ hiện tại (chính xác tuyệt đối, không lệ thuộc
+    // Excel cộng có khớp Số tiền vay hay không).
+    const dueAmount = isLast ? balance : Math.max(0, cumulativeRequired - amountPaid);
     return {
       year: e.year,
       dueDate: dueDate.toISOString().slice(0, 10),
-      amount: e.amount,
+      amount: e.amount, // số tiền GHI TRONG kỳ theo file Excel (tham khảo, không đổi theo thực trả)
+      dueAmount, // số tiền THỰC SỰ cần báo nếu kỳ này đến hạn (đã trừ phần trả trước/dư từ kỳ trước)
       daysLeft,
-      shouldWarn: isPastOrToday && !coveredByPayment,
+      shouldWarn: isPastOrToday && dueAmount > 0,
     };
   });
 }
