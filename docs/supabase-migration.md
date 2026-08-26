@@ -2264,10 +2264,36 @@ thể chỉ 1 KỲ giữa chừng đang cảnh báo, ngày đáo hạn hợp đ�
 đồng ("Trong hạn"/"Gần đến hạn N ngày"/"Quá hạn N ngày") đã đủ để cảnh báo rồi, "Ngày đến hạn" giờ chỉ
 hiện đúng ngày, không kèm chữ trạng thái nữa.
 
-Cả 11 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
-`js/views/contractDetail.js`, `js/views/admin/customers.js`, `js/views/admin/overview.js`,
-`js/views/dashboard.js`, `css/styles.css`) — không cần chạy lại SQL/deploy lại Edge Function nào thêm,
-không đụng dữ liệu. Vẫn CHƯA gắn vào Zalo OA/nhắc nợ tự động.
+**Cập nhật 26/08/2026 (lần 12) — BẮT BUỘC deploy lại 2 Edge Function**: đây là lần đầu tiên phân kỳ trả
+nợ được gắn vào Zalo OA/thông báo đẩy tự động (trước đó CHỦ Ý chưa gắn, theo đúng yêu cầu ban đầu — giờ
+người dùng yêu cầu gắn vào).
+
+1. **App (thông báo đẩy) + Zalo OA**: khi khách có 1 KỲ (không nhất thiết phải là kỳ cuối) gần đến
+   hạn/quá hạn, hệ thống tự chuyển sang mẫu "Gần đến hạn"/"Quá hạn" y hệt cách đang làm với ngày đáo hạn
+   hợp đồng gốc — nhưng **"Số tiền gốc"/"GỐC_PHẢI_TRA" giờ là ĐÚNG số tiền của KỲ đó**, không phải toàn bộ
+   dư nợ hợp đồng nữa (`SO_DU`/dư nợ trong mẫu Zalo vẫn luôn là dư nợ thật, không đổi — chỉ riêng
+   `GOC_PHAI_TRA` đổi).
+2. **Lịch gửi TỰ ĐỘNG (App + Zalo OA "báo lãi tự động") được MỞ RỘNG** để xét luôn kỳ hạn trả nợ — trước
+   đó CHỈ tính theo ngày đáo hạn hợp đồng gốc (bắt đầu nhắc 10 ngày trước hạn, lặp mỗi 3 ngày). Giờ nếu 1
+   kỳ giữa chừng (VD: kỳ 2027, trong khi hợp đồng đáo hạn 2029) gần/quá hạn TRƯỚC ngày đáo hạn hợp đồng
+   gốc, lịch nhắc sẽ tự bắt đầu SỚM HƠN, đúng theo kỳ đó — công thức "10 ngày trước + lặp mỗi 3 ngày" và
+   toàn bộ cơ chế chống gửi trùng/giới hạn 5 ngày/lần Zalo **giữ nguyên không đổi**, chỉ đổi MỐC để tính.
+3. **Gửi tay Zalo OA** (nút "Gửi tin Zalo OA ngay") cũng tự chọn đúng mẫu + đúng số tiền gốc theo kỳ y
+   hệt gửi tự động (đồng nhất giữa gửi tay/gửi tự động như quy ước sẵn có của hệ thống).
+4. **SMS KHÔNG đổi gì** — tin nhắn SMS hiện tại CHỈ báo số tiền lãi (không có trường "gốc"/không có mẫu
+   "gần đến hạn"/"quá hạn" riêng nào cả, luôn 1 mẫu cố định) nên không có gì để sửa theo yêu cầu này —
+   nếu muốn SMS cũng có mẫu gần/quá hạn kèm số tiền gốc thì đây là việc MỚI, báo lại để làm riêng.
+5. VD thực tế (Nguyễn Tưởng, HĐTĐ 329/26): hợp đồng đáo hạn 24/07/2029 (còn rất xa), nhưng phân kỳ 2027:
+   20tr, 2028: 20tr, 2029: 160tr — kỳ 2027 gần/quá hạn thì App + Zalo OA tự động nhắc SỚM (từ 14/07/2027
+   trở đi, lặp mỗi 3 ngày), báo đúng **20.000.000đ** (số tiền của kỳ 2027), KHÔNG đợi tới gần 2029 và
+   KHÔNG báo nguyên dư nợ 200 triệu.
+
+Việc cần bạn làm: **deploy lại CẢ 2 Edge Function `send-due-reminders` và `create-account`** (2 file vừa
+gửi) — vào Supabase Dashboard → Edge Functions → chọn từng function → dán đè toàn bộ nội dung file mới →
+Deploy. Không cần chạy SQL gì thêm (chỉ dùng cột `installment_schedule` đã có sẵn từ mục 10.44).
+
+Cả 12 lần cập nhật (11 lần đầu chỉ sửa JS/CSS phía trình duyệt, riêng lần 12 này BẮT BUỘC deploy lại 2
+Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;

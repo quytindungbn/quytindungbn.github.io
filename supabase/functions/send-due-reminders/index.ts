@@ -113,6 +113,73 @@ function accruedInterest(contract: any, asOf: Date): number {
   return Math.round(raw / 1000) * 1000;
 }
 
+/** Y HỆT withYear() trong js/state.js. */
+function withYear(date: Date, year: number): Date {
+  const month = date.getMonth();
+  const day = date.getDate();
+  const d = new Date(year, month, day);
+  if (d.getMonth() !== month) d.setDate(0);
+  return d;
+}
+
+type InstallmentEntry = { year: number; dueDate: string; amount: number; dueAmount: number; daysLeft: number; shouldWarn: boolean };
+
+/**
+ * Y HỆT computeInstallmentPlan() trong js/state.js (xem ghi chú đầy đủ ở đó)
+ * — dùng để tính đúng số tiền GỐC của "Kỳ tới" cho thông báo đẩy + Zalo OA
+ * (mục 10.44+ docs). `contract.installment_schedule` là cột jsonb (map năm
+ * -> số tiền) đọc thẳng từ Supabase, không cần parse JSON tay.
+ */
+function computeInstallmentPlan(contract: any, asOf: Date): InstallmentEntry[] | null {
+  const schedule = contract.installment_schedule;
+  if (!schedule) return null;
+  const entries = Object.entries(schedule as Record<string, any>)
+    .map(([year, amount]) => ({ year: Number(year), amount: Number(amount) }))
+    .filter((e) => Number.isFinite(e.year) && e.amount > 0)
+    .sort((a, b) => a.year - b.year);
+  if (entries.length < 2) return null;
+
+  const disbursed = new Date(contract.disbursed_date);
+  const balance = Number(contract.balance) || 0;
+  const amountPaid = (Number(contract.principal) || 0) - balance;
+  const sumBeforeLast = entries.slice(0, -1).reduce((s, e) => s + e.amount, 0);
+  let cumulativeRequired = 0;
+  return entries.map((e, idx) => {
+    cumulativeRequired += e.amount;
+    const isLast = idx === entries.length - 1;
+    const dueDate = withYear(disbursed, e.year);
+    const daysLeft = daysBetween(asOf, dueDate);
+    const isPastOrToday = daysLeft <= 0;
+
+    let dueAmount: number;
+    if (isLast) {
+      dueAmount = amountPaid > sumBeforeLast ? balance : e.amount;
+    } else {
+      const requiredBeforeThis = cumulativeRequired - e.amount;
+      const coveredForThis = Math.max(0, amountPaid - requiredBeforeThis);
+      dueAmount = Math.max(0, e.amount - coveredForThis);
+    }
+
+    return {
+      year: e.year,
+      dueDate: dueDate.toISOString().slice(0, 10),
+      amount: e.amount,
+      dueAmount,
+      daysLeft,
+      shouldWarn: isPastOrToday && dueAmount > 0,
+    };
+  });
+}
+
+/** Y HỆT nextInstallmentInfo() trong js/state.js — kỳ ĐẦU TIÊN còn thiếu tiền (có thể đã quá hạn hoặc còn ở tương lai). null nếu không có phân kỳ, hoặc đã trả đủ hết mọi kỳ. */
+function nextInstallmentInfo(contract: any, asOf: Date): { idx: number; next: InstallmentEntry } | null {
+  const plan = computeInstallmentPlan(contract, asOf);
+  if (!plan) return null;
+  const idx = plan.findIndex((p) => p.dueAmount > 0);
+  if (idx < 0) return null;
+  return { idx, next: plan[idx] };
+}
+
 function formatVND(n: number): string {
   return Math.round(n).toLocaleString('vi-VN') + 'đ';
 }
@@ -361,10 +428,19 @@ function formatVNDZaloTemplate(n: number): string {
   return String(Math.round(n));
 }
 
-/** Cùng DẠNG và CÙNG NGƯỠNG với isNearOrPastDueZalo() trong create-account/index.ts (15 ngày, xem NEAR_DUE_DAYS_ZALO ở trên) — true khi hợp đồng đã gần/tới/qua hạn. */
+/**
+ * Cùng DẠNG và CÙNG NGƯỠNG với isNearOrPastDueZalo() trong create-account/index.ts
+ * (15 ngày, xem NEAR_DUE_DAYS_ZALO ở trên) — true khi hợp đồng đã gần/tới/qua
+ * hạn. Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
+ * có, xem nextInstallmentInfo()) — hợp đồng có 1 kỳ giữa chừng (chưa tới
+ * ngày đáo hạn cuối) gần/quá hạn cũng tự chuyển sang mẫu "Đến hạn" y hệt
+ * ngày đáo hạn hợp đồng gốc (theo đúng yêu cầu mở rộng).
+ */
 function isNearOrPastDueZalo(contract: any, asOf: Date): boolean {
   const d = daysBetween(asOf, new Date(contract.due_date));
-  return d <= NEAR_DUE_DAYS_ZALO;
+  if (d <= NEAR_DUE_DAYS_ZALO) return true;
+  const inst = nextInstallmentInfo(contract, asOf);
+  return inst != null && inst.next.daysLeft <= NEAR_DUE_DAYS_ZALO;
 }
 
 /**
@@ -386,10 +462,17 @@ function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: s
  * chưa thật sự phải trả). Tên tham số y hệt mẫu 519351 (xem docs mục 10).
  * NGAY_KE_HOACH = ngày gửi tin (hôm nay), KHÔNG phải ngày đến hạn thật của
  * hợp đồng (đã có NGAY_DAO_HAN riêng) — theo đúng yêu cầu.
+ *
+ * GOC_PHAI_TRA (khi dueTemplate = true): nếu hợp đồng có "Kỳ tới" đang cần
+ * chú ý (nextInstallmentInfo()) thì lấy ĐÚNG số tiền của KỲ đó, KHÔNG phải
+ * toàn bộ dư nợ hợp đồng (SO_DU vẫn luôn là dư nợ thật, không đổi) — theo
+ * đúng yêu cầu "Gốc phải trả là số tiền phải trả trong kỳ". Hợp đồng không
+ * có phân kỳ (hoặc đã trả đủ hết mọi kỳ) thì vẫn dùng dư nợ như trước giờ.
  */
 function buildZaloTemplateData(ct: any, customer: { name: string; phone: string }, now: Date, dueTemplate: boolean): Record<string, string> {
   const interest = accruedInterest(ct, now);
-  const goc = dueTemplate ? Number(ct.balance) : 0;
+  const inst = dueTemplate ? nextInstallmentInfo(ct, now) : null;
+  const goc = dueTemplate ? (inst ? inst.next.dueAmount : Number(ct.balance)) : 0;
   const total = goc + interest;
   const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
   return {
@@ -533,15 +616,28 @@ Deno.serve(async (req) => {
 
     // 2) Gần đến hạn/quá hạn — mỗi 3 ngày kể từ 10 ngày trước hạn, liên tục
     // tới khi tất toán. Nội dung + giọng điệu đổi khác nhau tùy còn trước
-    // hạn hay đã tới/qua hạn.
-    const daysToDue = daysBetween(now, new Date(ct.due_date));
+    // hạn hay đã tới/qua hạn. Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới"
+    // của phân kỳ trả nợ (nếu có) — hợp đồng có 1 kỳ giữa chừng (chưa tới
+    // ngày đáo hạn cuối) gần/quá hạn cũng tự kích hoạt lịch nhắc này SỚM
+    // HƠN, y hệt cảnh báo đã hiện trên web/app (S.contractStatusInfo()) —
+    // theo đúng yêu cầu mở rộng lịch gửi. LUÔN lấy mốc ĐÁNG CHÚ Ý NHẤT
+    // (Math.min — số ngày âm/nhỏ hơn = gấp hơn) trong 2 nguồn để quyết định
+    // có gửi hôm nay không VÀ để lấy đúng số tiền gốc/ngày hạn hiện trong
+    // nội dung tin — cơ chế gửi (mỗi 3 ngày kể từ 10 ngày trước, chống gửi
+    // trùng...) hoàn toàn KHÔNG đổi.
+    const inst = nextInstallmentInfo(ct, now);
+    const mainDaysToDue = daysBetween(now, new Date(ct.due_date));
+    const useInstallment = inst != null && inst.next.daysLeft < mainDaysToDue;
+    const daysToDue = useInstallment ? inst!.next.daysLeft : mainDaysToDue;
+    const goc = useInstallment ? inst!.next.dueAmount : Number(ct.balance);
+    const dueDateForMsg = useInstallment ? inst!.next.dueDate : ct.due_date;
     if (daysToDue <= NEAR_DUE_START_DAYS && (NEAR_DUE_START_DAYS - daysToDue) % NEAR_DUE_REPEAT_DAYS === 0) {
       if (await shouldSend(ct.id, 'gan_den_han')) {
         let body: string;
         if (daysToDue > 0) {
-          body = `Hợp đồng ${ct.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${formatVNDBold(ct.balance)} và lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Vui lòng thanh toán trước ngày ${formatDateVNBold(ct.due_date)}.`;
+          body = `Hợp đồng ${ct.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${formatVNDBold(goc)} và lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Vui lòng thanh toán trước ngày ${formatDateVNBold(dueDateForMsg)}.`;
         } else {
-          body = `Hợp đồng ${ct.code} ĐÃ TRỄ HẠN. Số tiền gốc là ${formatVNDBold(ct.balance)}, lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.`;
+          body = `Hợp đồng ${ct.code} ĐÃ TRỄ HẠN. Số tiền gốc là ${formatVNDBold(goc)}, lãi đến nay là: ${formatVNDBold(accruedInterest(ct, now))}. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.`;
         }
         const ok = await pushToCustomer(ct.customer_id, NOTI_TITLE, body, 'gan-den-han');
         if (ok) { await logSent(ct.customer_id, ct.id, 'gan_den_han'); result.ganDenHanQuaHan++; }

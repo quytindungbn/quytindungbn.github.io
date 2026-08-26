@@ -369,30 +369,38 @@ function showCredential(customer, tempPassword) {
  * hợp đồng — admin vẫn sửa lại thoải mái trước khi gửi (openSendNotificationModal).
  * 3 mẫu theo đúng yêu cầu:
  *   - Chưa đến hạn (còn xa, chưa vào diện "gần đến hạn"): chỉ nhắc lãi.
- *   - Gần đến hạn (S.contractUrgency === 'gan_den_han'): nhắc gốc + lãi + hạn chót.
- *   - Trễ hạn (S.contractUrgency === 'qua_han'): nhắc gốc + lãi, giọng mạnh hơn.
+ *   - Gần đến hạn (S.contractStatusInfo().status === 'gan_den_han'): nhắc gốc + lãi + hạn chót.
+ *   - Trễ hạn (S.contractStatusInfo().status === 'qua_han'): nhắc gốc + lãi, giọng mạnh hơn.
  * Tiêu đề mặc định LUÔN là "<tên quỹ> thông báo:" cho cả 3 mẫu (giống hệt
  * thông báo tự động ở send-due-reminders) — không còn tiêu đề riêng theo
  * từng loại nữa, cho đồng nhất.
+ *
+ * S.contractStatusInfo() xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của
+ * phân kỳ trả nợ (nếu có) — hợp đồng có 1 kỳ giữa chừng gần/quá hạn cũng tự
+ * chuyển sang đúng mẫu này, "Số tiền gốc" lấy ĐÚNG số tiền của KỲ đó (không
+ * phải toàn bộ dư nợ), "hạn chót" cũng lấy đúng ngày đến hạn của KỲ đó.
  */
 function buildContractNotificationPreset(contract) {
   const accrued = S.accruedInterest(contract);
-  const urgency = S.contractUrgency(contract);
+  const info = S.contractStatusInfo(contract);
   const title = `${S.getOrg().shortName} thông báo:`;
+  // Ngày "hạn chót" hiện trong mẫu Gần đến hạn — lấy đúng ngày của KỲ đang
+  // cảnh báo (nếu có), không phải luôn luôn Ngày đến hạn hợp đồng gốc.
+  const dueDate = info.source === 'installment' ? S.nextInstallmentInfo(contract).next.dueDate : contract.dueDate;
   // Số tiền/ngày tháng in đậm (Unicode, xem ghi chú boldDigits() trong utils.js) để nổi bật hơn phần chữ xung quanh.
-  const balanceB = boldDigits(formatVND(contract.balance));
+  const gocB = boldDigits(formatVND(info.dueAmount));
   const accruedB = boldDigits(formatVND(accrued));
-  const dueDateB = boldDigits(formatDate(contract.dueDate));
-  if (urgency === 'qua_han') {
+  const dueDateB = boldDigits(formatDate(dueDate));
+  if (info.status === 'qua_han') {
     return {
       title,
-      body: `Hợp đồng ${contract.code} ĐÃ TRỄ HẠN. Số tiền gốc là ${balanceB}, lãi đến nay là: ${accruedB}. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.`,
+      body: `Hợp đồng ${contract.code} ĐÃ TRỄ HẠN. Số tiền gốc là ${gocB}, lãi đến nay là: ${accruedB}. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.`,
     };
   }
-  if (urgency === 'gan_den_han') {
+  if (info.status === 'gan_den_han') {
     return {
       title,
-      body: `Hợp đồng ${contract.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${balanceB} và lãi đến nay là: ${accruedB}. Quý khách vui lòng thanh toán trước ngày ${dueDateB}.`,
+      body: `Hợp đồng ${contract.code} của quý khách đã GẦN ĐẾN HẠN. Số tiền gốc là ${gocB} và lãi đến nay là: ${accruedB}. Quý khách vui lòng thanh toán trước ngày ${dueDateB}.`,
     };
   }
   return {

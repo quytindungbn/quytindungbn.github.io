@@ -273,9 +273,72 @@ function effectiveStatusZalo(contract: any, asOf: Date): 'da_tat_toan' | 'qua_ha
 // 'send-zalo-manual') nên dùng mẫu "Đến hạn" hay mẫu "Báo lãi": còn xa hạn
 // (> 15 ngày) thì dùng mẫu Báo lãi, gần/đã đến hạn thì dùng mẫu Đến hạn.
 const NEAR_DUE_DAYS_ZALO = 15;
+/**
+ * Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu có,
+ * xem nextInstallmentInfoZalo() bên dưới) — hợp đồng có 1 kỳ giữa chừng
+ * (chưa tới ngày đáo hạn cuối) gần/quá hạn cũng tự chuyển sang mẫu "Đến
+ * hạn" y hệt ngày đáo hạn hợp đồng gốc, KHỚP ĐÚNG với isNearOrPastDueZalo()
+ * trong send-due-reminders/index.ts (theo đúng yêu cầu mở rộng, đồng nhất
+ * gửi tay/gửi tự động).
+ */
 function isNearOrPastDueZalo(contract: any, asOf: Date): boolean {
   const d = daysBetweenZalo(asOf, new Date(contract.due_date));
-  return d <= NEAR_DUE_DAYS_ZALO; // <=0 nghĩa là đã đến/quá hạn, 1..15 là gần đến hạn
+  if (d <= NEAR_DUE_DAYS_ZALO) return true; // <=0 nghĩa là đã đến/quá hạn, 1..15 là gần đến hạn
+  const inst = nextInstallmentInfoZalo(contract, asOf);
+  return inst != null && inst.next.daysLeft <= NEAR_DUE_DAYS_ZALO;
+}
+
+function withYearZalo(date: Date, year: number): Date {
+  const month = date.getMonth();
+  const day = date.getDate();
+  const d = new Date(year, month, day);
+  if (d.getMonth() !== month) d.setDate(0);
+  return d;
+}
+
+type InstallmentEntryZalo = { year: number; dueDate: string; amount: number; dueAmount: number; daysLeft: number };
+
+/** Y HỆT computeInstallmentPlan() trong js/state.js / send-due-reminders/index.ts (xem ghi chú đầy đủ ở 2 nơi đó) — dùng để tính đúng số tiền GỐC của "Kỳ tới" cho Zalo OA gửi tay. */
+function computeInstallmentPlanZalo(contract: any, asOf: Date): InstallmentEntryZalo[] | null {
+  const schedule = contract.installment_schedule;
+  if (!schedule) return null;
+  const entries = Object.entries(schedule as Record<string, any>)
+    .map(([year, amount]) => ({ year: Number(year), amount: Number(amount) }))
+    .filter((e) => Number.isFinite(e.year) && e.amount > 0)
+    .sort((a, b) => a.year - b.year);
+  if (entries.length < 2) return null;
+
+  const disbursed = new Date(contract.disbursed_date);
+  const balance = Number(contract.balance) || 0;
+  const amountPaid = (Number(contract.principal) || 0) - balance;
+  const sumBeforeLast = entries.slice(0, -1).reduce((s, e) => s + e.amount, 0);
+  let cumulativeRequired = 0;
+  return entries.map((e, idx) => {
+    cumulativeRequired += e.amount;
+    const isLast = idx === entries.length - 1;
+    const dueDate = withYearZalo(disbursed, e.year);
+    const daysLeft = daysBetweenZalo(asOf, dueDate);
+
+    let dueAmount: number;
+    if (isLast) {
+      dueAmount = amountPaid > sumBeforeLast ? balance : e.amount;
+    } else {
+      const requiredBeforeThis = cumulativeRequired - e.amount;
+      const coveredForThis = Math.max(0, amountPaid - requiredBeforeThis);
+      dueAmount = Math.max(0, e.amount - coveredForThis);
+    }
+
+    return { year: e.year, dueDate: dueDate.toISOString().slice(0, 10), amount: e.amount, dueAmount, daysLeft };
+  });
+}
+
+/** Y HỆT nextInstallmentInfo() trong js/state.js — kỳ ĐẦU TIÊN còn thiếu tiền. null nếu không có phân kỳ, hoặc đã trả đủ hết mọi kỳ. */
+function nextInstallmentInfoZalo(contract: any, asOf: Date): { idx: number; next: InstallmentEntryZalo } | null {
+  const plan = computeInstallmentPlanZalo(contract, asOf);
+  if (!plan) return null;
+  const idx = plan.findIndex((p) => p.dueAmount > 0);
+  if (idx < 0) return null;
+  return { idx, next: plan[idx] };
 }
 function interestDaysAccruedZalo(contract: any, asOf: Date): number {
   const paidUntil = contract.interest_paid_until || contract.disbursed_date;
@@ -976,7 +1039,11 @@ Deno.serve(async (req) => {
       }
 
       const interest = accruedInterestZalo(contract, now);
-      const goc = usesDueTemplate ? Number(contract.balance) : 0; // chưa đến hạn thì gốc chưa thật sự phải trả, chỉ báo lãi
+      // Gốc phải trả = ĐÚNG số tiền của "Kỳ tới" (nếu hợp đồng có phân kỳ
+      // trả nợ đang cần chú ý) — không phải toàn bộ dư nợ hợp đồng (SO_DU
+      // vẫn luôn là dư nợ thật, không đổi) — theo đúng yêu cầu.
+      const instForGoc = usesDueTemplate ? nextInstallmentInfoZalo(contract, now) : null;
+      const goc = usesDueTemplate ? (instForGoc ? instForGoc.next.dueAmount : Number(contract.balance)) : 0; // chưa đến hạn thì gốc chưa thật sự phải trả, chỉ báo lãi
       const total = goc + interest;
       const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
       const templateData = {
