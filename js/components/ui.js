@@ -175,12 +175,23 @@ export function openResetPasswordModal({ title = 'Cấp lại mật khẩu', onC
  * khách nhiều hợp đồng), khách chỉ có 1 hợp đồng, VÀ popup "Hợp đồng quá
  * hạn"/"Gần đến hạn" ở Tổng quan (admin/overview.js) — cùng 1 định dạng ở cả
  * 3 nơi. Trả về chuỗi rỗng nếu hợp đồng không có kỳ nào đang cần chú ý.
+ *
+ * QUAN TRỌNG: dùng ĐÚNG S.contractAttentionInfo(ct) — chính là kết quả đang
+ * quyết định badge/tên có in đậm hay không ở cả 3 nơi trên — để dòng này
+ * KHÔNG BAO GIỜ lệch với badge (VD: hợp đồng "gần đến hạn" nhưng còn NGOÀI
+ * đúng NEAR_DUE_DAYS (15 ngày) — tức đang ở khoảng xem trước RỘNG 16-45 ngày,
+ * badge hiện chữ nhỏ KHÔNG in đậm — thì dòng "Kỳ gần/trễ hạn" này CŨNG phải
+ * ẩn đi, không hiện, đúng như badge). KHÔNG tự tính lại theo ngưỡng riêng
+ * (NEAR_DUE_DAYS) qua nextInstallmentInfo().urgency nữa như bản cũ.
  */
 export function installmentHintHtml(ct) {
+  const info = S.contractAttentionInfo(ct);
+  if (info.source !== 'installment') return ''; // cảnh báo không đến từ 1 kỳ cụ thể -> không có gì để báo ở đây
+  if (info.level === 'gan_den_han' && info.days > S.NEAR_DUE_DAYS) return ''; // đang ở khoảng xem trước RỘNG (16-45 ngày), chưa tới ngưỡng chính thức -> ẩn, y hệt badge không in đậm
   const inst = S.nextInstallmentInfo(ct);
-  if (!inst || !inst.urgency) return '';
-  const color = inst.urgency === 'qua_han' ? 'var(--danger)' : 'var(--warning)';
-  return `<div class="field-hint" style="margin-top:3px">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — <b style="color:${color}">${formatVND(inst.next.dueAmount)}</b></div>`;
+  if (!inst) return '';
+  const color = info.level === 'qua_han' ? 'var(--danger)' : 'var(--warning)';
+  return `<div class="field-hint" style="margin-top:3px">${info.level === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — <b style="color:${color}">${formatVND(info.dueAmount)}</b></div>`;
 }
 
 /**

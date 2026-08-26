@@ -2331,8 +2331,18 @@ Việc cần bạn làm: **deploy lại CẢ 2 Edge Function `send-due-reminders
 gửi lại lần này, sửa lỗi lệch ngày) — vào Supabase Dashboard → Edge Functions → chọn từng function → dán
 đè toàn bộ nội dung file mới → Deploy. Không cần chạy SQL gì thêm.
 
-Cả 15 lần cập nhật (11 lần đầu + lần 14 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13 và 15 BẮT BUỘC deploy
-lại 2 Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
+**Cập nhật 26/08/2026 (lần 16)**: sửa lệch giữa dòng "Kỳ gần/trễ hạn: Kỳ N — số tiền" và trạng thái in
+đậm ở tên/badge — hợp đồng đang ở khoảng xem trước RỘNG (16-45 ngày, chưa tới đúng ngưỡng chính thức 15
+ngày, badge hiện chữ nhỏ KHÔNG in đậm) vẫn còn hiện dòng "Kỳ gần/trễ hạn" do dòng này TỰ TÍNH LẠI riêng
+qua `nextInstallmentInfo().urgency` (ngưỡng 15 ngày) thay vì dùng chung `contractAttentionInfo()` (ngưỡng
+RỘNG 45 ngày) đang quyết định badge — 2 ngưỡng khác nhau khiến có trường hợp lệch nhau. Sửa lại
+`installmentHintHtml()` (`js/components/ui.js`) dùng ĐÚNG `S.contractAttentionInfo(ct)` — CHÍNH kết quả
+đang quyết định badge có in đậm hay không ở cả 3 nơi (dòng hợp đồng gọn, khách 1 hợp đồng, popup Tổng
+quan) — để dòng "Kỳ gần/trễ hạn" và trạng thái in đậm LUÔN khớp nhau tuyệt đối, không còn tính riêng theo
+2 ngưỡng khác nhau nữa.
+
+Cả 16 lần cập nhật (11 lần đầu + lần 14, 16 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13 và 15 BẮT BUỘC
+deploy lại 2 Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;
