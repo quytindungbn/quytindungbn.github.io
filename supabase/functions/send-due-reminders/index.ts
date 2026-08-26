@@ -122,6 +122,22 @@ function withYear(date: Date, year: number): Date {
   return d;
 }
 
+/**
+ * Y HỆT toLocalISODate() trong js/state.js. TUYỆT ĐỐI KHÔNG dùng
+ * date.toISOString().slice(0,10) ở đây — toISOString() luôn quy đổi ra GIỜ
+ * UTC trước, ở múi giờ Việt Nam (UTC+7) sẽ làm ngày bị lùi lại 1 ngày (VD:
+ * 23/08/2026 hiện thành 22/08/2026). Deno Deploy chạy theo giờ UTC (khác múi
+ * giờ trình duyệt khách/admin) nên lỗi này CÀNG DỄ xảy ra ở đây nếu dùng
+ * toISOString() — phải luôn dùng getFullYear()/getMonth()/getDate() (giờ mà
+ * Date đã được DỰNG theo, không phải giờ UTC).
+ */
+function toLocalISODate(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 type InstallmentEntry = { year: number; dueDate: string; amount: number; dueAmount: number; daysLeft: number; shouldWarn: boolean };
 
 /**
@@ -162,7 +178,7 @@ function computeInstallmentPlan(contract: any, asOf: Date): InstallmentEntry[] |
 
     return {
       year: e.year,
-      dueDate: dueDate.toISOString().slice(0, 10),
+      dueDate: toLocalISODate(dueDate),
       amount: e.amount,
       dueAmount,
       daysLeft,

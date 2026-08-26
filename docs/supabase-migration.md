@@ -2311,8 +2311,28 @@ KHÔNG cần deploy lại Edge Function:
    đã LỖI THỜI từ mục 10.44 lần 12-13 (đã thật sự gắn vào Zalo OA/thông báo đẩy tự động rồi, không còn
    đúng nữa).
 
-Cả 14 lần cập nhật (11 lần đầu + lần 14 chỉ sửa JS/CSS phía trình duyệt; lần 12 và 13 BẮT BUỘC deploy lại
-2 Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
+**Cập nhật 26/08/2026 (lần 15) — BẮT BUỘC deploy lại 2 Edge Function lần nữa**: 2 sửa đổi:
+
+1. **SỬA LỖI QUAN TRỌNG — lệch ngày các kỳ do múi giờ**: `computeInstallmentPlan()` (cả `js/state.js` LẪN
+   2 Edge Function) trước đó dùng `date.toISOString().slice(0,10)` để đổi ngày của kỳ ra chuỗi — SAI, vì
+   `toISOString()` luôn quy đổi sang GIỜ UTC trước khi lấy chuỗi, mà ở múi giờ Việt Nam (UTC+7, sớm hơn
+   UTC) thì 00:00 giờ VN sẽ lùi về 17:00 NGÀY HÔM TRƯỚC theo UTC — làm NGÀY CÁC KỲ BỊ LÙI LẠI ĐÚNG 1 NGÀY
+   (VD thực tế: vay 23/08/2025 → đáng lẽ kỳ năm 2026 là 23/08/2026 nhưng lại hiện 22/08/2026). Sửa bằng
+   hàm mới `toLocalISODate()` — lấy thẳng năm/tháng/ngày ĐỊA PHƯƠNG của chính Date đã dựng, không quy đổi
+   qua UTC nữa. Ảnh hưởng TẤT CẢ chỗ hiện ngày đến hạn từng kỳ (ô "Kỳ tới", bảng "Kế hoạch trả nợ", Trạng
+   thái/cảnh báo ở chi tiết hợp đồng, Tổng quan, thông báo đẩy/Zalo OA) — SỬA XONG là tự đúng lại hết,
+   không cần sửa thêm chỗ nào khác.
+2. **Thêm dòng "Kỳ trễ hạn/Kỳ gần đến hạn: Kỳ N — số tiền" vào popup "Hợp đồng quá hạn"/"Gần đến hạn" ở
+   Tổng quan** — đúng định dạng y hệt trang "Khách hàng & Hợp đồng" (tách `installmentHintHtml()` từ
+   `admin/customers.js` sang `js/components/ui.js` để dùng CHUNG cho cả 3 nơi: dòng hợp đồng gọn, khách
+   chỉ có 1 hợp đồng, VÀ popup Tổng quan — sửa 1 chỗ, cả 3 nơi tự đồng bộ).
+
+Việc cần bạn làm: **deploy lại CẢ 2 Edge Function `send-due-reminders` và `create-account`** (2 file vừa
+gửi lại lần này, sửa lỗi lệch ngày) — vào Supabase Dashboard → Edge Functions → chọn từng function → dán
+đè toàn bộ nội dung file mới → Deploy. Không cần chạy SQL gì thêm.
+
+Cả 15 lần cập nhật (11 lần đầu + lần 14 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13 và 15 BẮT BUỘC deploy
+lại 2 Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;

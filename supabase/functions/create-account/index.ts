@@ -296,6 +296,19 @@ function withYearZalo(date: Date, year: number): Date {
   return d;
 }
 
+/**
+ * Y HỆT toLocalISODate() trong js/state.js / send-due-reminders/index.ts.
+ * TUYỆT ĐỐI KHÔNG dùng date.toISOString().slice(0,10) ở đây — toISOString()
+ * luôn quy đổi ra GIỜ UTC trước, ở múi giờ Việt Nam (UTC+7) sẽ làm ngày bị
+ * lùi lại 1 ngày (VD: 23/08/2026 hiện thành 22/08/2026).
+ */
+function toLocalISODateZalo(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 type InstallmentEntryZalo = { year: number; dueDate: string; amount: number; dueAmount: number; daysLeft: number };
 
 /** Y HỆT computeInstallmentPlan() trong js/state.js / send-due-reminders/index.ts (xem ghi chú đầy đủ ở 2 nơi đó) — dùng để tính đúng số tiền GỐC của "Kỳ tới" cho Zalo OA gửi tay. */
@@ -328,7 +341,7 @@ function computeInstallmentPlanZalo(contract: any, asOf: Date): InstallmentEntry
       dueAmount = Math.max(0, e.amount - coveredForThis);
     }
 
-    return { year: e.year, dueDate: dueDate.toISOString().slice(0, 10), amount: e.amount, dueAmount, daysLeft };
+    return { year: e.year, dueDate: toLocalISODateZalo(dueDate), amount: e.amount, dueAmount, daysLeft };
   });
 }
 

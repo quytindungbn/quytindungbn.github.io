@@ -1,7 +1,7 @@
 import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
-import { emptyState, statusBadge } from '../../components/ui.js';
+import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
 import { formatVND, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
 import { openContractView } from './customers.js';
 
@@ -147,6 +147,7 @@ function openContractListModal(title, contracts, isStaff, colorVar, opts = {}) {
             <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${addressLabel}</span>
             <b style="color:${colorVar};font-size:13px;flex-shrink:0">${formatVND(info.dueAmount)}</b>
           </div>
+          ${installmentHintHtml(ct)}
         </div>`;
       }).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Danh sách hiện đang trống.' })}
     `,

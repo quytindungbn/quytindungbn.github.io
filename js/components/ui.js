@@ -168,6 +168,22 @@ export function openResetPasswordModal({ title = 'Cấp lại mật khẩu', onC
 }
 
 /**
+ * Dòng nhỏ "Kỳ trễ hạn/Kỳ gần đến hạn: Kỳ N — số tiền" (nếu hợp đồng đang có
+ * 1 kỳ cần chú ý) — chữ nhãn bình thường (field-hint), CHỈ riêng số tiền in
+ * đậm + tô màu theo đúng mức cảnh báo (đỏ = trễ hạn, vàng = gần đến hạn) để
+ * dễ nhìn ra ngay. Dùng CHUNG cho dòng hợp đồng gọn (contractRowCompact() —
+ * khách nhiều hợp đồng), khách chỉ có 1 hợp đồng, VÀ popup "Hợp đồng quá
+ * hạn"/"Gần đến hạn" ở Tổng quan (admin/overview.js) — cùng 1 định dạng ở cả
+ * 3 nơi. Trả về chuỗi rỗng nếu hợp đồng không có kỳ nào đang cần chú ý.
+ */
+export function installmentHintHtml(ct) {
+  const inst = S.nextInstallmentInfo(ct);
+  if (!inst || !inst.urgency) return '';
+  const color = inst.urgency === 'qua_han' ? 'var(--danger)' : 'var(--warning)';
+  return `<div class="field-hint" style="margin-top:3px">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — <b style="color:${color}">${formatVND(inst.next.dueAmount)}</b></div>`;
+}
+
+/**
  * Ô tóm tắt "Kỳ tới" (Kỳ N — Ngày — Số tiền trả nợ gốc), bấm vào mở popup xem chi tiết
  * đầy đủ từng kỳ (xem bindInstallmentNextBox() + openInstallmentPlanModal()
  * bên dưới). Trả về chuỗi rỗng nếu hợp đồng không có (hoặc đã trả đủ hết)

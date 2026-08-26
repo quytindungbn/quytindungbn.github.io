@@ -325,6 +325,23 @@ function withYear(date, year) {
 }
 
 /**
+ * Đổi 1 Date (dựng bằng new Date(năm, tháng, ngày) — tức LUÔN theo giờ ĐỊA
+ * PHƯƠNG của trình duyệt) thành chuỗi "YYYY-MM-DD" — dùng cho
+ * computeInstallmentPlan() bên dưới. TUYỆT ĐỐI KHÔNG dùng
+ * date.toISOString().slice(0,10) ở đây — toISOString() luôn quy đổi ra GIỜ
+ * UTC trước, nên ở múi giờ Việt Nam (UTC+7, sớm hơn UTC) thì 00:00 giờ VN sẽ
+ * lùi về 17:00 NGÀY HÔM TRƯỚC theo UTC, làm SAI LỆCH ngày hiển thị (VD:
+ * 23/08/2026 bị hiện thành 22/08/2026) — dùng luôn getFullYear()/getMonth()/
+ * getDate() (giờ địa phương) để không bị lệch múi giờ.
+ */
+function toLocalISODate(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
  * "Phân kỳ trả nợ" (xem lúc bấm vào chi tiết hợp đồng — hiện ở "Kỳ tới";
  * chưa gắn vào Tổng quan/nhắc nợ tự động/Zalo OA) — dựng từ
  * contract.installmentSchedule (map năm -> số tiền, đọc từ các cột "Phân kỳ
@@ -406,7 +423,7 @@ export function computeInstallmentPlan(contract, asOf = new Date()) {
 
     return {
       year: e.year,
-      dueDate: dueDate.toISOString().slice(0, 10),
+      dueDate: toLocalISODate(dueDate),
       amount: e.amount, // số tiền GHI TRONG kỳ theo file Excel (tham khảo)
       dueAmount, // số tiền THỰC SỰ cần báo/hiển thị cho kỳ này (xem quy tắc ở trên)
       daysLeft,

@@ -1,7 +1,7 @@
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox } from '../../components/ui.js';
+import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox, installmentHintHtml } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
@@ -612,21 +612,6 @@ function contractAmountsHtml(ct) {
       <div class="amount">Gốc: ${formatVND(ct.balance)}</div>
       <div class="amount-sub" style="color:var(--warning)">Lãi: ${formatVND(interest)}</div>
     </div>`;
-}
-
-/**
- * Dòng nhỏ "Kỳ trễ hạn/Kỳ gần đến hạn: Kỳ N — số tiền" (nếu hợp đồng đang có
- * 1 kỳ cần chú ý) — chữ to/đậm hơn field-hint mặc định (13px, đậm, tô màu
- * theo đúng mức cảnh báo: đỏ = trễ hạn, vàng = gần đến hạn) để dễ nhìn ra
- * ngay. Dùng CHUNG cho cả dòng hợp đồng gọn (contractRowCompact() — khách có
- * NHIỀU hợp đồng) LẪN khách chỉ có 1 hợp đồng (dòng gọn bị bỏ qua, chỉ hiện
- * contractAmountsHtml() — cần gọi riêng hàm này để không bị thiếu cảnh báo).
- */
-function installmentHintHtml(ct) {
-  const inst = S.nextInstallmentInfo(ct);
-  if (!inst || !inst.urgency) return '';
-  const color = inst.urgency === 'qua_han' ? 'var(--danger)' : 'var(--warning)';
-  return `<div class="field-hint" style="margin-top:3px">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — <b style="color:${color}">${formatVND(inst.next.dueAmount)}</b></div>`;
 }
 
 /** Dòng hợp đồng gọn — chỉ mã + trạng thái + gốc/lãi, bấm vào mới ra đầy đủ chi tiết (openContractView). */
