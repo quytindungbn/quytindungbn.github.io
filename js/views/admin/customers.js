@@ -1,7 +1,7 @@
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
+import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
@@ -705,12 +705,6 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   }
   const qrUrl = hasBank ? buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: accrued, content: buildQrContent(0, accrued), accountName: org.bankAccountName }) : '';
 
-  // "Phân kỳ trả nợ" — TÍNH NĂNG THỬ NGHIỆM, chỉ xem ở đây, chưa gắn vào bất
-  // kỳ chỗ nào khác (Tổng quan/nhắc nợ/Zalo OA) theo đúng yêu cầu. null nếu
-  // hợp đồng không có (hoặc có dưới 2 năm) dữ liệu phân kỳ — coi như hợp
-  // đồng thường, không hiện khối này.
-  const installmentPlan = S.computeInstallmentPlan(contract);
-
   const close = openModal({
     // Kèm thêm tên khách hàng vào tiêu đề để đỡ nhầm giữa nhiều hợp đồng đang
     // mở/xem liên tiếp (VD: khách có nhiều hợp đồng, hoặc mở hợp đồng từ danh
@@ -729,42 +723,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
       ${contract.agreementCode ? `<div class="oc-line"><span>Mã khế ước</span><b>${escapeHtml(contract.agreementCode)}</b></div>` : ''}
       <div class="oc-line"><span>SĐT</span><b>${customer && customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${customer.phone}</a>` : '—'}</b></div>
-      ${installmentPlan ? `
-      <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
-        <div class="fw-700 text-sm mb-6">${icon('clock', 'icon-sm')} Kỳ hạn trả nợ (thử nghiệm)</div>
-        <table class="installment-table">
-          <thead><tr><th>Kỳ hạn trả nợ</th><th>Ngày</th><th>Số tiền</th></tr></thead>
-          <tbody>
-            ${(() => {
-              // "Kỳ tới" = kỳ GẦN NHẤT chưa tới ngày đến hạn (daysLeft > 0),
-              // đánh dấu riêng (nền xám) để dễ nhìn ra ngay kỳ sắp tới là kỳ
-              // nào — không đổi gì cách tính, chỉ để hiển thị.
-              const nextIdx = installmentPlan.findIndex((p) => p.daysLeft > 0);
-              return installmentPlan.map((p, i) => {
-                // Khi cảnh báo (đã tới/qua hạn): báo đúng số tiền THỰC SỰ còn
-                // phải trả cho kỳ này (p.dueAmount — đã trừ phần trả dư từ kỳ
-                // trước, hoặc = số dư nợ còn lại nếu là kỳ cuối), không phải
-                // nguyên số tiền ghi trong kỳ theo Excel (p.amount). Kỳ CHƯA
-                // tới hạn (kể cả "kỳ tới") vẫn hiển thị số tiền dự kiến p.dueAmount
-                // để biết trước sẽ phải trả bao nhiêu.
-                const amountToShow = p.shouldWarn || p.daysLeft > 0 ? p.dueAmount : p.amount;
-                const isNext = i === nextIdx;
-                const rowLabel = isNext ? ` <span class="field-hint" style="display:inline">(kỳ tới)</span>` : '';
-                return `
-                <tr class="${isNext ? 'is-next-due' : ''}">
-                  <td>Kỳ năm ${p.year}${rowLabel}</td>
-                  <td>${formatDate(p.dueDate)}</td>
-                  <td style="color:${p.shouldWarn ? 'var(--danger)' : 'var(--text)'};font-weight:600">${formatVND(amountToShow)}${p.shouldWarn ? ` ${icon('alert', 'icon-sm')}` : ''}</td>
-                </tr>
-                ${p.shouldWarn && p.dueAmount !== p.amount ? `<tr class="${isNext ? 'is-next-due' : ''}"><td colspan="3" class="field-hint" style="text-align:right;padding-top:0">(kỳ ghi ${formatVND(p.amount)}, đã trừ phần trả dư từ trước)</td></tr>` : ''}
-              `;
-              }).join('');
-            })()}
-          </tbody>
-        </table>
-        <div class="field-hint">Tính năng đang thử nghiệm — chưa gắn vào Tổng quan/nhắc nợ tự động/Zalo OA, chỉ xem thử ở đây.</div>
-      </div>
-      ` : ''}
+      ${installmentNextBoxHtml(contract, 'installment-next-box-ct')}
       ${customer && customer.phone && canPay ? `
       <a href="${buildSmsLink(customer, contract, accrued)}" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS báo lãi cho khách</a>
       ` : ''}
@@ -809,6 +768,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     `,
     footHtml: readOnly ? '' : `<button class="btn btn-danger-outline btn-block" id="del-contract">${icon('trash', 'icon-sm')} Xóa hợp đồng</button>`,
     onMount(sheet, closeFn) {
+      bindInstallmentNextBox(sheet, contract, 'installment-next-box-ct');
       const qrImgEl = sheet.querySelector('#qr-img-ct');
       let gocAmount = 0;
       let laiAmount = accrued;

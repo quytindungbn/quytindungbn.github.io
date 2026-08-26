@@ -504,8 +504,10 @@ svg { display: block; }
 .oc-line b { color: var(--text); font-weight: 600; text-align: right; }
 .order-card .oc-foot { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); text-align: right; }
 
-/* Bảng "Kỳ hạn trả nợ" trong chi tiết hợp đồng — xem computeInstallmentPlan()
-   trong js/state.js + openContractView() trong js/views/admin/customers.js. */
+/* Bảng "Kế hoạch trả nợ" (popup) + ô tóm tắt "Kỳ tới" — dùng chung cho trang
+   khách hàng (contractDetail.js) và trang quản trị (admin/customers.js), xem
+   installmentNextBoxHtml()/openInstallmentPlanModal() trong
+   js/components/ui.js + computeInstallmentPlan() trong js/state.js. */
 .installment-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 2px; }
 .installment-table th {
   text-align: left; font-weight: 600; color: var(--text-faint); font-size: 11px;
@@ -515,6 +517,18 @@ svg { display: block; }
 .installment-table td { padding: 7px 6px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
 .installment-table tr:last-child td { border-bottom: none; }
 .installment-table tr.is-next-due td { background: var(--surface-alt); }
+
+.installment-next-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-alt);
+  padding: 10px 12px; cursor: pointer; margin-top: 8px; color: var(--text);
+}
+.installment-next-btn:hover { background: var(--surface); border-color: var(--border-strong); }
+.installment-next-btn.is-overdue { border-color: #f3c6c4; background: #fdf1f0; }
+.installment-next-btn.is-near-due { border-color: #f6e2b8; background: #fdf7ea; }
+.installment-next-col { display: flex; flex-direction: column; font-size: 13px; font-weight: 600; }
+.installment-next-col .field-hint { margin: 0 0 2px; }
+.installment-next-amount { margin-left: auto; text-align: right; }
 
 /* Trang "Nhật ký" — gộp nhiều thao tác LIÊN TIẾP của CÙNG 1 người thành 1
    khối, chỉ hiện avatar/tên 1 lần ở đầu (xem groupConsecutive() trong

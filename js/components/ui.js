@@ -1,6 +1,7 @@
 import { icon } from '../icons.js';
 import { openModal } from './modal.js';
-import { debounce } from '../utils.js';
+import { debounce, formatVND, formatDate } from '../utils.js';
+import * as S from '../state.js';
 
 /**
  * Ô tìm kiếm chuẩn (icon kính lúp + input + nút "x" xóa nhanh ở cuối ô) —
@@ -163,5 +164,103 @@ export function openResetPasswordModal({ title = 'Cấp lại mật khẩu', onC
         onConfirm(val);
       });
     },
+  });
+}
+
+/**
+ * "Kỳ hạn trả nợ" (từ S.computeInstallmentPlan()) — dùng CHUNG cho cả trang
+ * khách hàng (contractDetail.js) và trang quản trị (admin/customers.js), để
+ * 2 bên hiển thị/tính toán giống hệt nhau, không lặp code.
+ *
+ * - "Kỳ tới" = kỳ ĐẦU TIÊN còn thiếu tiền (dueAmount > 0) — có thể đã quá
+ *   hạn (chưa trả) hoặc còn ở tương lai (kỳ tiếp theo cần chuẩn bị trả).
+ * - Mức cảnh báo của kỳ tới dùng ĐÚNG ngưỡng NEAR_DUE_DAYS (15 ngày) y hệt
+ *   cảnh báo "Gần đến hạn"/"Quá hạn" của NGÀY ĐÁO HẠN gốc hiện có (xem
+ *   S.contractUrgency()) — để 2 loại cảnh báo (hạn hợp đồng gốc, hạn từng
+ *   kỳ) nhất quán với nhau.
+ */
+function nextInstallmentInfo(contract, asOf = new Date()) {
+  const plan = S.computeInstallmentPlan(contract, asOf);
+  if (!plan) return null;
+  const idx = plan.findIndex((p) => p.dueAmount > 0);
+  if (idx < 0) return null; // đã trả đủ hết mọi kỳ theo lịch
+  const next = plan[idx];
+  const urgency = next.daysLeft < 0 ? 'qua_han' : next.daysLeft <= S.NEAR_DUE_DAYS ? 'gan_den_han' : null;
+  return { plan, idx, next, urgency };
+}
+
+/**
+ * Ô tóm tắt "Kỳ tới" (Kỳ N — Ngày — Số tiền), bấm vào mở popup xem chi tiết
+ * đầy đủ từng kỳ (xem bindInstallmentNextBox() + openInstallmentPlanModal()
+ * bên dưới). Trả về chuỗi rỗng nếu hợp đồng không có (hoặc đã trả đủ hết)
+ * phân kỳ — nơi gọi chèn thẳng vào bodyHtml, không cần tự kiểm tra trước.
+ */
+export function installmentNextBoxHtml(contract, elId = 'installment-next-box') {
+  const info = nextInstallmentInfo(contract);
+  if (!info) return '';
+  const { idx, next, urgency } = info;
+  const cls = urgency === 'qua_han' ? 'is-overdue' : urgency === 'gan_den_han' ? 'is-near-due' : '';
+  const warnLine = urgency === 'qua_han'
+    ? `<div class="field-hint text-danger" style="margin-top:4px">${icon('alert', 'icon-sm')} Kỳ này đã quá hạn ${Math.abs(next.daysLeft)} ngày</div>`
+    : urgency === 'gan_den_han'
+      ? `<div class="field-hint" style="margin-top:4px;color:var(--warning)">${icon('alert', 'icon-sm')} Còn ${next.daysLeft} ngày nữa đến hạn kỳ này</div>`
+      : '';
+  return `
+    <button type="button" id="${elId}" class="installment-next-btn ${cls}">
+      <span class="installment-next-col"><span class="field-hint">Kỳ</span>Kỳ ${idx + 1}</span>
+      <span class="installment-next-col"><span class="field-hint">Ngày</span>${formatDate(next.dueDate)}</span>
+      <span class="installment-next-col installment-next-amount"><span class="field-hint">Số tiền trả</span>${formatVND(next.dueAmount)}</span>
+      ${icon('chevronRight', 'icon-sm')}
+    </button>
+    ${warnLine}
+  `;
+}
+
+/** Gắn sự kiện bấm cho installmentNextBoxHtml() — mở popup bảng đầy đủ từng kỳ. Gọi trong onMount() sau khi đã chèn bodyHtml vào DOM. */
+export function bindInstallmentNextBox(root, contract, elId = 'installment-next-box') {
+  const btn = root.querySelector('#' + elId);
+  if (btn) btn.addEventListener('click', () => openInstallmentPlanModal(contract));
+}
+
+/** Popup "Kế hoạch trả nợ" — bảng đầy đủ TỪNG kỳ (Kỳ hạn trả nợ | Ngày | Số tiền), mở từ installmentNextBoxHtml(). */
+export function openInstallmentPlanModal(contract) {
+  const plan = S.computeInstallmentPlan(contract);
+  if (!plan) return;
+  const nextIdx = plan.findIndex((p) => p.dueAmount > 0);
+  openModal({
+    title: `Kế hoạch trả nợ — HĐ ${contract.code}`,
+    bodyHtml: `
+      <table class="installment-table">
+        <thead><tr><th>Kỳ hạn trả nợ</th><th>Ngày</th><th>Số tiền</th></tr></thead>
+        <tbody>
+          ${plan.map((p, i) => {
+            // Kỳ đã trả đủ (dueAmount = 0) -> hiện số ghi trong Excel để tham
+            // khảo, không cần tô màu cảnh báo. Kỳ còn thiếu tiền (dueAmount >
+            // 0) -> LUÔN hiện đúng dueAmount (số thực còn phải trả), tô màu
+            // theo đúng mức cảnh báo y hệt hạn hợp đồng gốc (NEAR_DUE_DAYS).
+            const amountToShow = p.dueAmount > 0 ? p.dueAmount : p.amount;
+            const urgency = p.dueAmount > 0 ? (p.daysLeft < 0 ? 'qua_han' : p.daysLeft <= S.NEAR_DUE_DAYS ? 'gan_den_han' : null) : null;
+            const color = urgency === 'qua_han' ? 'var(--danger)' : urgency === 'gan_den_han' ? 'var(--warning)' : 'var(--text)';
+            const badge = urgency === 'qua_han'
+              ? `<span class="badge badge-red" style="margin-left:6px">Quá hạn ${Math.abs(p.daysLeft)} ngày</span>`
+              : urgency === 'gan_den_han'
+                ? `<span class="badge badge-yellow" style="margin-left:6px">Còn ${p.daysLeft} ngày</span>`
+                : '';
+            const diffNote = urgency && p.dueAmount !== p.amount
+              ? `<tr class="${i === nextIdx ? 'is-next-due' : ''}"><td colspan="3" class="field-hint" style="text-align:right;padding-top:0">(kỳ ghi ${formatVND(p.amount)}, đã trừ phần trả dư từ trước)</td></tr>`
+              : '';
+            return `
+            <tr class="${i === nextIdx ? 'is-next-due' : ''}">
+              <td>Kỳ ${i + 1}${i === nextIdx ? ` <span class="field-hint" style="display:inline">(kỳ tới)</span>` : ''}</td>
+              <td>${formatDate(p.dueDate)}</td>
+              <td style="color:${color};font-weight:600">${formatVND(amountToShow)}${badge}</td>
+            </tr>
+            ${diffNote}
+          `;
+          }).join('')}
+        </tbody>
+      </table>
+      <div class="field-hint mt-8">Chưa gửi nhắc nợ tự động qua Zalo/nhắc nợ cho từng kỳ — mới chỉ xem được tại đây.</div>
+    `,
   });
 }

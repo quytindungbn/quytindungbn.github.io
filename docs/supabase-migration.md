@@ -2159,8 +2159,29 @@ tiền dự kiến bao nhiêu — kể cả những kỳ CHƯA đến hạn cũn
 tính đến kỳ đó theo đúng lũy kế, không phải số tiền cố định ghi trong Excel). Vẫn giữ nguyên vị trí xem
 (bấm vào chi tiết 1 hợp đồng, chưa gắn vào Tổng quan/nhắc nợ/Zalo OA).
 
-Cả 3 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/views/admin/customers.js`,
-`css/styles.css`) — không cần chạy lại SQL/deploy lại Edge Function nào thêm, không đụng dữ liệu.
+**Cập nhật 26/08/2026 (lần 4)**: 2 thay đổi lớn theo đúng yêu cầu:
+
+1. **Hiện cả bên khách hàng** (trước đó chỉ có bên quản trị): trang "Chi tiết hợp đồng" của khách hàng
+   (`js/views/contractDetail.js`) giờ cũng có ô "Kỳ tới" y hệt bên quản trị.
+2. **Đổi cách hiển thị**: thay vì hiện LUÔN cả bảng đầy đủ trong chi tiết hợp đồng, giờ chỉ hiện 1 Ô TÓM
+   TẮT đúng **kỳ đến hạn TIẾP THEO** (kỳ đầu tiên còn thiếu tiền — có thể đã quá hạn hoặc còn ở tương
+   lai): "Kỳ N — Ngày — Số tiền trả". Bấm vào ô này mới mở popup xem bảng đầy đủ TỪNG kỳ (dùng chung 1
+   component `installmentNextBoxHtml()` / `openInstallmentPlanModal()` trong `js/components/ui.js` cho
+   cả 2 bên, tránh lặp code, đảm bảo tính toán/hiển thị giống hệt nhau).
+3. **Cảnh báo "gần đến hạn"/"quá hạn" cho TỪNG KỲ** — dùng ĐÚNG ngưỡng `NEAR_DUE_DAYS` (15 ngày) sẵn có
+   (y hệt cảnh báo "Gần đến hạn"/"Quá hạn" của ngày đáo hạn HỢP ĐỒNG GỐC hiện tại): còn ≤ 15 ngày nữa đến
+   kỳ đó → tô vàng cảnh báo "Còn N ngày nữa đến hạn kỳ này"; đã qua ngày mà kỳ đó vẫn còn thiếu tiền → tô
+   đỏ cảnh báo "Kỳ này đã quá hạn N ngày". Số tiền cảnh báo luôn là **số tiền THỰC SỰ còn thiếu của kỳ đó**
+   (đã trừ phần trả dư từ kỳ trước — xem 2 lần cập nhật trước), không phải số cố định ghi trong Excel.
+4. VD thực tế (khách Nguyễn Tưởng, HĐTĐ 329/26): vay 200tr 24/07/2026, phân kỳ 2027: 20tr, 2028: 20tr,
+   2029: 160tr. Nếu trong năm 2026 đã trả 10tr (dư nợ còn 190tr) → kỳ tới là **24/07/2027, còn thiếu
+   10.000.000đ** (20tr của kỳ đó − 10tr đã trả trước) — khi còn ≤ 15 ngày tới 24/07/2027 sẽ tự tô vàng
+   cảnh báo, qua ngày đó mà chưa đủ tiền sẽ tự chuyển sang tô đỏ "quá hạn".
+
+Cả 4 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
+`js/views/contractDetail.js`, `js/views/admin/customers.js`, `css/styles.css`) — không cần chạy lại
+SQL/deploy lại Edge Function nào thêm, không đụng dữ liệu. Vẫn CHƯA gắn vào Tổng quan/nhắc nợ tự động/Zalo
+OA — chỉ xem được khi vào đúng trang/popup chi tiết hợp đồng.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;

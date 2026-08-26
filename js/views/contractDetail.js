@@ -1,7 +1,7 @@
 import * as S from '../state.js';
 import { icon } from '../icons.js';
 import { pageHeader, bindHeaderActions } from '../components/shell.js';
-import { statusBadge } from '../components/ui.js';
+import { statusBadge, installmentNextBoxHtml, bindInstallmentNextBox } from '../components/ui.js';
 import { openModal } from '../components/modal.js';
 import { formatVND, formatDate, formatNumber, daysUntil, stripDiacritics, debounce } from '../utils.js';
 import { toast } from '../components/toast.js';
@@ -34,6 +34,7 @@ export function render(contentEl, filterEl, params) {
       <div class="oc-line"><span>Ngày giải ngân</span><b>${formatDate(contract.disbursedDate)}</b></div>
       <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
       <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
+      ${installmentNextBoxHtml(contract)}
       ${canPay ? `
       <div class="oc-line" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
         <span class="fw-700">Lãi đến nay</span>
@@ -61,6 +62,7 @@ export function render(contentEl, filterEl, params) {
 
   const btnPay = contentEl.querySelector('#btn-thanh-toan');
   if (btnPay) btnPay.addEventListener('click', () => openPaymentModal(contract, customer, accrued));
+  bindInstallmentNextBox(contentEl, contract);
 }
 
 export function buildVietQrUrl({ bin, accountNo, amount, content, accountName }) {
