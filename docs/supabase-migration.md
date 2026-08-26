@@ -2195,7 +2195,16 @@ tính đến kỳ đó theo đúng lũy kế, không phải số tiền cố đ�
    dòng "Kỳ trễ hạn: Kỳ N — số tiền" ngay ở dòng hợp đồng gọn, y hệt cách cảnh báo ngày đáo hạn hợp đồng
    gốc hiện có (`contractAttentionInfo()`/`S.nextInstallmentInfo()`).
 
-Cả 5 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
+**Cập nhật 26/08/2026 (lần 6)**: sửa tiếp — số tiền đã trả dư ra phải PHÂN BỔ NGAY cho kỳ sau (kỳ trước
+"no" đủ mới tới lượt kỳ sau), áp dụng cho MỌI kỳ, kể cả kỳ CHƯA tới hạn (bản "lần 5" chỉ trừ bớt khi kỳ đã
+đến/quá hạn, kỳ chưa tới hạn luôn hiện nguyên số ghi Excel dù đã trả dư — chưa đúng). VD: phân kỳ
+20tr/20tr/160tr (kỳ cuối):
+- Trả dư 30tr (dư nợ 170tr) → kỳ 1 dùng hết 20tr (dư 10tr) → hiển thị **0đ**; kỳ 2 chỉ còn thiếu
+  20tr − 10tr = **10tr**; kỳ cuối vẫn 160tr (30tr chưa vượt tổng 2 kỳ đầu 40tr).
+- Trả dư 50tr (dư nợ 150tr) → kỳ 1 và kỳ 2 đều **0đ** (dùng hết 40tr cho cả 2 kỳ); kỳ cuối đổi thành
+  đúng **150tr** (= số dư nợ hiện tại, vì 50tr đã vượt tổng 2 kỳ đầu).
+
+Cả 6 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
 `js/views/contractDetail.js`, `js/views/admin/customers.js`, `css/styles.css`) — không cần chạy lại
 SQL/deploy lại Edge Function nào thêm, không đụng dữ liệu. Vẫn CHƯA gắn vào Tổng quan/nhắc nợ tự động/Zalo
 OA — chỉ xem được khi vào đúng trang/popup chi tiết hợp đồng, hoặc trang Khách hàng (bộ lọc).
