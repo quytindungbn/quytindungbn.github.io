@@ -463,17 +463,20 @@ function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: s
  * NGAY_KE_HOACH = ngày gửi tin (hôm nay), KHÔNG phải ngày đến hạn thật của
  * hợp đồng (đã có NGAY_DAO_HAN riêng) — theo đúng yêu cầu.
  *
- * GOC_PHAI_TRA (khi dueTemplate = true): nếu hợp đồng có "Kỳ tới" đang cần
- * chú ý (nextInstallmentInfo()) thì lấy ĐÚNG số tiền của KỲ đó, KHÔNG phải
- * toàn bộ dư nợ hợp đồng (SO_DU vẫn luôn là dư nợ thật, không đổi) — theo
- * đúng yêu cầu "Gốc phải trả là số tiền phải trả trong kỳ". Hợp đồng không
- * có phân kỳ (hoặc đã trả đủ hết mọi kỳ) thì vẫn dùng dư nợ như trước giờ.
+ * GOC_PHAI_TRA + NGAY_DAO_HAN (khi dueTemplate = true): nếu hợp đồng có "Kỳ
+ * tới" đang cần chú ý (nextInstallmentInfo()) thì lấy ĐÚNG số tiền VÀ ngày
+ * đến hạn của KỲ đó, KHÔNG phải toàn bộ dư nợ/ngày đáo hạn hợp đồng gốc
+ * (SO_DU vẫn luôn là dư nợ thật, không đổi) — theo đúng yêu cầu "Gốc phải
+ * trả là số tiền phải trả trong kỳ" + "tất cả ngày đáo hạn đều lấy theo
+ * ngày của kỳ trả nợ". Hợp đồng không có phân kỳ (hoặc đã trả đủ hết mọi
+ * kỳ) thì vẫn dùng dư nợ/ngày đáo hạn hợp đồng như trước giờ.
  */
 function buildZaloTemplateData(ct: any, customer: { name: string; phone: string }, now: Date, dueTemplate: boolean): Record<string, string> {
   const interest = accruedInterest(ct, now);
   const inst = dueTemplate ? nextInstallmentInfo(ct, now) : null;
   const goc = dueTemplate ? (inst ? inst.next.dueAmount : Number(ct.balance)) : 0;
   const total = goc + interest;
+  const dueDate = inst ? inst.next.dueDate : ct.due_date;
   const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
   return {
     TEN_KHACH_HANG: customer.name || '',
@@ -485,7 +488,7 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
     SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
     NGAY_KE_HOACH: formatDateVN(now.toISOString()),
     NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${dueTemplate ? '' : 'LAI '}HDTD ${ct.code} ${nameNoDiacritics}`),
-    NGAY_DAO_HAN: formatDateVN(ct.due_date),
+    NGAY_DAO_HAN: formatDateVN(dueDate),
   };
 }
 

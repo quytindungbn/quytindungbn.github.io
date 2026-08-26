@@ -1039,12 +1039,15 @@ Deno.serve(async (req) => {
       }
 
       const interest = accruedInterestZalo(contract, now);
-      // Gốc phải trả = ĐÚNG số tiền của "Kỳ tới" (nếu hợp đồng có phân kỳ
-      // trả nợ đang cần chú ý) — không phải toàn bộ dư nợ hợp đồng (SO_DU
-      // vẫn luôn là dư nợ thật, không đổi) — theo đúng yêu cầu.
+      // Gốc phải trả + ngày đáo hạn = ĐÚNG số tiền/ngày của "Kỳ tới" (nếu
+      // hợp đồng có phân kỳ trả nợ đang cần chú ý) — không phải toàn bộ dư
+      // nợ/ngày đáo hạn hợp đồng gốc (SO_DU vẫn luôn là dư nợ thật, không
+      // đổi) — theo đúng yêu cầu "tất cả ngày đáo hạn đều lấy theo ngày của
+      // kỳ trả nợ".
       const instForGoc = usesDueTemplate ? nextInstallmentInfoZalo(contract, now) : null;
       const goc = usesDueTemplate ? (instForGoc ? instForGoc.next.dueAmount : Number(contract.balance)) : 0; // chưa đến hạn thì gốc chưa thật sự phải trả, chỉ báo lãi
       const total = goc + interest;
+      const dueDateForZalo = instForGoc ? instForGoc.next.dueDate : contract.due_date;
       const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
       const templateData = {
         TEN_KHACH_HANG: customer.name || '',
@@ -1055,8 +1058,8 @@ Deno.serve(async (req) => {
         LAI_PHAI_TRA: formatVNDZaloTemplate(interest),
         SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
         NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`THANH TOAN ${usesDueTemplate ? '' : 'LAI '}HDTD ${contract.code} ${nameNoDiacritics}`),
-        NGAY_DAO_HAN: formatDateVNZalo(contract.due_date),
-        // Ngày gửi tin (hôm nay) — KHÁC với NGAY_DAO_HAN (ngày đến hạn thật của hợp đồng).
+        NGAY_DAO_HAN: formatDateVNZalo(dueDateForZalo),
+        // Ngày gửi tin (hôm nay) — KHÁC với NGAY_DAO_HAN (ngày đến hạn thật của hợp đồng/kỳ).
         NGAY_KE_HOACH: formatDateVNZalo(now.toISOString()),
       };
       const result = await sendZaloTemplateLogged({

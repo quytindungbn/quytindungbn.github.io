@@ -2288,12 +2288,21 @@ người dùng yêu cầu gắn vào).
    trở đi, lặp mỗi 3 ngày), báo đúng **20.000.000đ** (số tiền của kỳ 2027), KHÔNG đợi tới gần 2029 và
    KHÔNG báo nguyên dư nợ 200 triệu.
 
-Việc cần bạn làm: **deploy lại CẢ 2 Edge Function `send-due-reminders` và `create-account`** (2 file vừa
-gửi) — vào Supabase Dashboard → Edge Functions → chọn từng function → dán đè toàn bộ nội dung file mới →
-Deploy. Không cần chạy SQL gì thêm (chỉ dùng cột `installment_schedule` đã có sẵn từ mục 10.44).
+**Cập nhật 26/08/2026 (lần 13) — BẮT BUỘC deploy lại 2 Edge Function lần nữa**: sửa thêm — trường
+`NGAY_DAO_HAN` trong mẫu Zalo OA (lần 12 CHỦ Ý để nguyên = ngày đáo hạn hợp đồng gốc, coi là tên tham số
+cố định của mẫu ZNS đã đăng ký) giờ ĐỔI theo đúng yêu cầu "tất cả ngày đáo hạn đều lấy theo ngày của kỳ
+trả nợ": khi mẫu "Đến hạn" được gửi vì 1 KỲ đang cần chú ý, `NGAY_DAO_HAN` lấy ĐÚNG ngày đến hạn của KỲ
+đó (không phải ngày đáo hạn hợp đồng gốc nữa). Áp dụng cho cả gửi tự động (`send-due-reminders`) lẫn gửi
+tay (`create-account`). Dòng "Vui lòng thanh toán trước ngày..." trong thông báo đẩy (App) và "Số tiền
+gốc"/"hạn chót" trong popup admin tự gửi tay (`buildContractNotificationPreset`) đã ĐÚNG đúng theo kỳ từ
+lần 12, không cần sửa thêm.
 
-Cả 12 lần cập nhật (11 lần đầu chỉ sửa JS/CSS phía trình duyệt, riêng lần 12 này BẮT BUỘC deploy lại 2
-Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
+Việc cần bạn làm: **deploy lại CẢ 2 Edge Function `send-due-reminders` và `create-account`** (2 file vừa
+gửi lại lần này) — vào Supabase Dashboard → Edge Functions → chọn từng function → dán đè toàn bộ nội dung
+file mới → Deploy. Không cần chạy SQL gì thêm (chỉ dùng cột `installment_schedule` đã có sẵn từ mục 10.44).
+
+Cả 13 lần cập nhật (11 lần đầu chỉ sửa JS/CSS phía trình duyệt; lần 12 và 13 BẮT BUỘC deploy lại 2 Edge
+Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;
