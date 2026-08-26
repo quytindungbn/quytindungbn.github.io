@@ -380,7 +380,13 @@ function showCredential(customer, tempPassword) {
  * chuyển sang đúng mẫu này, "Số tiền gốc" lấy ĐÚNG số tiền của KỲ đó (không
  * phải toàn bộ dư nợ), "hạn chót" cũng lấy đúng ngày đến hạn của KỲ đó.
  */
-function buildContractNotificationPreset(contract, customer) {
+/**
+ * Tính sẵn phần DÙNG CHUNG cho cả thông báo App (buildContractNotificationPreset)
+ * LẪN SMS (buildSmsLink) — accrued/info/org/mẫu (org.pushTemplates)/dueDate
+ * đúng của KỲ đang cảnh báo (nếu có phân kỳ) — mỗi nơi gọi tự ghép token +
+ * định dạng riêng (App in đậm số/ngày, SMS bỏ dấu cả chuỗi), tránh lặp code.
+ */
+function contractNotificationContext(contract) {
   const accrued = S.accruedInterest(contract);
   const info = S.contractStatusInfo(contract);
   const org = S.getOrg();
@@ -388,6 +394,18 @@ function buildContractNotificationPreset(contract, customer) {
   // Ngày "hạn chót" hiện trong mẫu Gần đến hạn — lấy đúng ngày của KỲ đang
   // cảnh báo (nếu có), không phải luôn luôn Ngày đến hạn hợp đồng gốc.
   const dueDate = info.source === 'installment' ? S.nextInstallmentInfo(contract).next.dueDate : contract.dueDate;
+  return { accrued, info, org, tpl, dueDate };
+}
+
+/** Chọn đúng mẫu BODY (chưa thay token) theo tình trạng hợp đồng — dùng chung cho cả App lẫn SMS. */
+function pickNotificationBodyTemplate(tpl, info) {
+  if (info.status === 'qua_han') return tpl.overdue;
+  if (info.status === 'gan_den_han') return tpl.nearDue;
+  return tpl.interest;
+}
+
+function buildContractNotificationPreset(contract, customer) {
+  const { accrued, info, org, tpl, dueDate } = contractNotificationContext(contract);
   // Số tiền/ngày tháng in đậm (Unicode, xem ghi chú boldDigits() trong utils.js) để nổi bật hơn phần chữ xung quanh — chỉ áp cho GIÁ TRỊ, không áp cho nhãn chữ xung quanh.
   const tokens = {
     Ten_KH: customer ? customer.name : '',
@@ -399,10 +417,8 @@ function buildContractNotificationPreset(contract, customer) {
     Ten_quy: org.shortName,
   };
   const title = S.renderNotificationTemplate(tpl.title, tokens);
-  let bodyTpl = tpl.interest;
-  if (info.status === 'qua_han') bodyTpl = tpl.overdue;
-  else if (info.status === 'gan_den_han') bodyTpl = tpl.nearDue;
-  return { title, body: S.renderNotificationTemplate(bodyTpl, tokens) };
+  const body = S.renderNotificationTemplate(pickNotificationBodyTemplate(tpl, info), tokens);
+  return { title, body };
 }
 
 /**
@@ -637,17 +653,34 @@ function contractRowCompact(ct) {
 }
 
 /**
- * Soạn sẵn tin nhắn SMS báo lãi cho khách hàng — mở app nhắn tin sẵn có trên
- * điện thoại quản trị viên, không cần dịch vụ SMS ngoài. Nội dung CHỈ tiếng
- * Việt không dấu — máy điện thoại đời cũ/mạng SMS truyền thống không hiển
- * thị đúng được tiếng Việt có dấu (dễ vỡ chữ, mất chữ). Câu chữ tĩnh trong
- * message đã tự gõ sẵn không dấu, nhưng bọc thêm stripDiacriticsKeepCase()
- * ra ngoài CẢ CHUỖI để chắc chắn luôn — vì tên quỹ (org.shortName), hotline,
- * số tiền (có chữ "đ") đều là dữ liệu ĐỘNG, có thể chứa dấu tiếng Việt.
+ * Soạn sẵn tin nhắn SMS cho khách hàng — mở app nhắn tin sẵn có trên điện
+ * thoại quản trị viên, không cần dịch vụ SMS ngoài. DÙNG CHUNG ĐÚNG 1 NỘI
+ * DUNG với thông báo App (org.pushTemplates, tự chuyển đúng mẫu Báo
+ * lãi/Gần đến hạn/Đã trễ hạn theo S.contractStatusInfo() — xem
+ * buildContractNotificationPreset() ở trên) — đổi mẫu trong "Cài đặt" thì
+ * SMS cũng tự đổi theo, không cần sửa gì riêng ở đây. CHỈ khác 2 điểm:
+ *   1. Không in đậm (boldDigits chỉ có ý nghĩa trên thông báo đẩy — ký tự
+ *      Unicode "Mathematical Bold" không phải chữ số thường, SMS/điện thoại
+ *      cũ không hiểu, dễ vỡ chữ/tốn thêm tin nhắn).
+ *   2. Bỏ dấu tiếng Việt CẢ CHUỖI (title + body, stripDiacriticsKeepCase) —
+ *      máy điện thoại đời cũ/mạng SMS truyền thống không hiển thị đúng được
+ *      tiếng Việt có dấu (dễ vỡ chữ, mất chữ, tốn nhiều tin nhắn hơn do phải
+ *      mã hoá UCS-2).
  */
-function buildSmsLink(customer, contract, accrued) {
-  const org = S.getOrg();
-  const msg = stripDiacriticsKeepCase(`${org.shortName}: Hop dong ${contract.code}, lai tinh den ngay ${formatDate(new Date())} la ${formatVND(accrued)}. Quy khach vui long thanh toan dung han. Hotline: ${org.hotline}`);
+function buildSmsLink(customer, contract) {
+  const { accrued, info, org, tpl, dueDate } = contractNotificationContext(contract);
+  const tokens = {
+    Ten_KH: customer ? customer.name : '',
+    Ma_HD: contract.code,
+    So_tien_goc: formatVND(info.dueAmount),
+    So_tien_lai: formatVND(accrued),
+    So_du: formatVND(contract.balance),
+    Ngay_dao_han: formatDate(dueDate),
+    Ten_quy: org.shortName,
+  };
+  const title = S.renderNotificationTemplate(tpl.title, tokens);
+  const body = S.renderNotificationTemplate(pickNotificationBodyTemplate(tpl, info), tokens);
+  const msg = stripDiacriticsKeepCase(`${title} ${body}`);
   return `sms:${customer.phone.replace(/\s/g, '')}?body=${encodeURIComponent(msg)}`;
 }
 
@@ -696,9 +729,9 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const zaloCooldownDaysLeft = daysSinceZaloSend !== null ? Math.max(0, 5 - daysSinceZaloSend) : 0;
 
   // Mã QR VietQR cho quản trị viên/nhân viên — 2 ô Gốc/Lãi riêng, cộng lại ra
-  // số tiền trên QR. Mặc định chỉ có sẵn Lãi (= "Lãi đến nay", giống nội dung
-  // nút "Nhắn SMS báo lãi" ở trên), ô Gốc để trống, cần thì tự gõ vào (VD:
-  // khách trả gộp cả gốc lẫn lãi, hoặc trả 1 phần gốc).
+  // số tiền trên QR. Mặc định chỉ có sẵn Lãi (= "Lãi đến nay"), ô Gốc để
+  // trống, cần thì tự gõ vào (VD: khách trả gộp cả gốc lẫn lãi, hoặc trả 1
+  // phần gốc).
   const org = S.getOrg();
   const hasBank = canPay && org.bankBin && org.bankAccountNo;
   // "THANH TOAN..." đứng trước, Tên khách ghép sau. stripDiacritics() áp dụng
@@ -731,7 +764,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       <div class="oc-line"><span>SĐT</span><b>${customer && customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${customer.phone}</a>` : '—'}</b></div>
       ${installmentNextBoxHtml(contract, 'installment-next-box-ct')}
       ${customer && customer.phone && canPay ? `
-      <a href="${buildSmsLink(customer, contract, accrued)}" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS báo lãi cho khách</a>
+      <a href="${buildSmsLink(customer, contract)}" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS cho khách</a>
       ` : ''}
       ${customer && canPay ? `
       <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-noti-app-ct">${icon('bell', 'icon-sm')} Thông báo cho khách hàng qua ứng dụng</button>

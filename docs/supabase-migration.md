@@ -2366,8 +2366,19 @@ hình mà không cần sửa code, thêm 2 mục mới trong **"Quản lý OA" >
    `<Ho_ten>` bạn hỏi ví dụ trong yêu cầu — đã gộp chung vào đúng token `<Ten_KH>` có sẵn (tên khách hàng),
    không cần thêm token trùng ý nghĩa.
 
-Cả 18 lần cập nhật (11 lần đầu + lần 14, 16, 17 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13, 15 và 18 BẮT
-BUỘC deploy lại 2 Edge Function; riêng lần 18 còn BẮT BUỘC chạy thêm SQL bên dưới) — không đụng dữ liệu cũ.
+**Cập nhật 26/08/2026 (lần 19) — KHÔNG cần chạy SQL/deploy Edge Function**: nút "Nhắn SMS cho khách" (chi
+tiết hợp đồng, bên quản trị) giờ **dùng chung ĐÚNG 1 nội dung** với thông báo App ở trên (mục "Cài đặt" —
+tự chuyển đúng mẫu Báo lãi/Gần đến hạn/Đã trễ hạn theo tình trạng hợp đồng, đổi chữ trong "Cài đặt" thì
+SMS cũng tự đổi theo) — trước đó SMS có câu chữ RIÊNG, cứng, chỉ có đúng 1 mẫu "báo lãi". Nội dung SMS chỉ
+khác App ở 2 điểm: (1) KHÔNG in đậm (chữ số Unicode đậm không phải chữ số thường, điện thoại/mạng SMS cũ
+không hiểu, dễ vỡ chữ), (2) **tự bỏ hết dấu tiếng Việt** cả tiêu đề lẫn nội dung trước khi đưa vào tin
+nhắn (giữ nguyên hoa/thường) — máy điện thoại đời cũ/mạng SMS truyền thống không hiển thị đúng được tiếng
+Việt có dấu, dễ vỡ chữ/mất chữ/tốn nhiều tin nhắn hơn. Cơ chế gửi vẫn như cũ — mở app nhắn tin sẵn có trên
+điện thoại quản trị viên (liên kết `sms:`), không qua dịch vụ SMS ngoài nào.
+
+Cả 19 lần cập nhật (11 lần đầu + lần 14, 16, 17, 19 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13, 15 và 18
+BẮT BUỘC deploy lại 2 Edge Function; riêng lần 18 còn BẮT BUỘC chạy thêm SQL bên dưới) — không đụng dữ
+liệu cũ.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;
