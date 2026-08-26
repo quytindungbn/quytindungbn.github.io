@@ -47,14 +47,7 @@ export function render(contentEl) {
       <a href="#/yeu-cau-tu-van" class="link-more">${icon('plus', 'icon-sm')} Yêu cầu vay mới</a>
     </div>
 
-    ${contracts.length ? contracts.map(({ c, info }) => {
-      let dueNote = '';
-      if (info.status !== 'da_tat_toan') {
-        dueNote = info.status === 'qua_han' ? `<span class="text-danger">Quá hạn ${info.days} ngày</span>`
-          : info.status === 'gan_den_han' ? `<span style="color:var(--warning)">Gần đến hạn — còn ${info.days} ngày</span>`
-          : `<span class="text-muted">Còn ${info.days} ngày đến hạn</span>`;
-      }
-      return `
+    ${contracts.length ? contracts.map(({ c, info }) => `
       <a href="#/hop-dong/${c.id}" class="card order-card" style="display:block;cursor:pointer">
         <div class="oc-top">
           <span class="oc-code">Hợp đồng ${c.code}</span>
@@ -63,10 +56,10 @@ export function render(contentEl) {
         <div class="oc-line"><span>Số tiền vay</span><b>${formatVND(c.principal)}</b></div>
         <div class="oc-line"><span>Dư nợ hiện tại</span><b>${formatVND(c.balance)}</b></div>
         <div class="oc-line"><span>Ngày vay</span><b>${formatDate(c.disbursedDate)}</b></div>
-        <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(c.dueDate)} ${dueNote}</b></div>
+        <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(c.dueDate)}</b></div>
         <div class="oc-foot"><span class="link-more">Xem chi tiết →</span></div>
-      </a>`;
-    }).join('') : `<div class="card card-pad">${emptyState({ iconName: 'landmark', title: 'Chưa có hợp đồng vay', message: 'Bạn hiện chưa có hợp đồng vay nào tại quỹ tín dụng.' })}</div>`}
+      </a>`
+    ).join('') : `<div class="card card-pad">${emptyState({ iconName: 'landmark', title: 'Chưa có hợp đồng vay', message: 'Bạn hiện chưa có hợp đồng vay nào tại quỹ tín dụng.' })}</div>`}
 
     <div class="card card-pad mt-16">
       <div class="section-head"><h2>Liên hệ hỗ trợ</h2></div>

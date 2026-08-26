@@ -2258,7 +2258,13 @@ nhiều hợp đồng).
    "lần 8/9"), giờ chữ nhãn bình thường như field-hint, CHỈ riêng SỐ TIỀN mới in đậm + tô màu (đỏ = trễ
    hạn, vàng = gần đến hạn).
 
-Cả 10 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
+**Cập nhật 26/08/2026 (lần 11)**: trang chủ khách hàng — bỏ chữ "Quá hạn N ngày"/"Gần đến hạn — còn N
+ngày" ngay cạnh dòng "Ngày đến hạn" (dễ gây hiểu lầm là NGÀY ĐÁO HẠN HỢP ĐỒNG quá/gần hạn, trong khi có
+thể chỉ 1 KỲ giữa chừng đang cảnh báo, ngày đáo hạn hợp đồng thật ra còn xa) — badge ở đầu mỗi thẻ hợp
+đồng ("Trong hạn"/"Gần đến hạn N ngày"/"Quá hạn N ngày") đã đủ để cảnh báo rồi, "Ngày đến hạn" giờ chỉ
+hiện đúng ngày, không kèm chữ trạng thái nữa.
+
+Cả 11 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
 `js/views/contractDetail.js`, `js/views/admin/customers.js`, `js/views/admin/overview.js`,
 `js/views/dashboard.js`, `css/styles.css`) — không cần chạy lại SQL/deploy lại Edge Function nào thêm,
 không đụng dữ liệu. Vẫn CHƯA gắn vào Zalo OA/nhắc nợ tự động.
