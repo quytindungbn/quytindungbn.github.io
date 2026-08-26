@@ -338,15 +338,17 @@ function withYear(date, year) {
  *   giải ngân (disbursedDate) nhưng đổi sang ĐÚNG NĂM của kỳ, giữ nguyên
  *   tháng/ngày — VD: giải ngân 03/08/2026, kỳ năm 2027 -> đến hạn 03/08/2027.
  * - MẶC ĐỊNH mỗi kỳ hiển thị ĐÚNG số tiền ghi trong kỳ đó theo Excel (VD:
- *   kỳ 20tr, kỳ sau 20tr, kỳ sau 160tr -> hiển thị đúng y vậy) — KHÔNG cộng
- *   dồn/không suy ra từ dư nợ hiện tại cho các kỳ CHƯA tới hạn (dư nợ hiện
- *   tại chỉ phản ánh ĐÚNG lúc kỳ đó thực sự đến/qua hạn, dùng cho kỳ chưa
- *   tới sẽ SAI — VD SAI: kỳ đầu 20, kỳ sau 40 (cộng dồn), kỳ cuối 200 (theo
- *   dư nợ) trong khi chưa ai trả trễ gì cả).
- * - Kỳ đã tới/qua ngày đến hạn (KHÔNG phải kỳ cuối cùng): trừ bớt đúng phần
- *   đã trả dư ra từ các kỳ TRƯỚC kỳ này (không tính các kỳ sau) — nếu kỳ
- *   trước đã trả thiếu (VD kỳ cần 10tr nhưng mới trả 5tr) thì kỳ này chỉ báo
- *   thêm đúng phần còn thiếu (5tr) cho đủ, không báo lại nguyên số ghi.
+ *   kỳ 20tr, kỳ sau 20tr, kỳ sau 160tr -> hiển thị đúng y vậy). KHÔNG phải
+ *   kiểu cộng dồn tổng (SAI: kỳ đầu 20, kỳ sau 40, kỳ cuối 200 theo dư nợ).
+ * - Kỳ (KHÔNG phải kỳ cuối cùng): số tiền đã trả lũy kế (= Số tiền vay ban
+ *   đầu - Số dư hiện tại) được PHÂN BỔ THEO ĐÚNG THỨ TỰ từng kỳ một — kỳ
+ *   trước "no" đủ mới tới lượt kỳ sau — ÁP DỤNG NGAY CHO MỌI KỲ, kể cả kỳ
+ *   CHƯA tới hạn (trả dư ra thì kỳ sau phải giảm ngay, không đợi tới đúng
+ *   ngày mới trừ). VD: phân kỳ 20tr/20tr/160tr (kỳ cuối), đã trả dư 30tr ->
+ *   kỳ 1 dùng hết 20tr (còn dư 10tr) -> kỳ 2 chỉ còn thiếu 20-10=10tr, kỳ 1
+ *   hiển thị 0đ. Trả dư 50tr -> kỳ 1 VÀ kỳ 2 đều = 0đ (dùng hết 40tr cho cả
+ *   2 kỳ). Ngược lại nếu kỳ trước đã trả thiếu (VD kỳ cần 10tr mới trả 5tr)
+ *   thì kỳ này chỉ báo thêm đúng phần còn thiếu (5tr) cho đủ.
  * - Riêng KỲ CUỐI CÙNG (trùng "Ngày đáo hạn" hợp đồng): mặc định vẫn hiển
  *   thị ĐÚNG số tiền ghi trong kỳ — CHỈ đổi thành SỐ DƯ NỢ HIỆN TẠI CÒN LẠI
  *   khi số tiền đã trả lũy kế (= Số tiền vay ban đầu - Số dư hiện tại) đã
@@ -384,16 +386,22 @@ export function computeInstallmentPlan(contract, asOf = new Date()) {
       // Chỉ đổi thành số dư nợ còn lại khi đã trả lũy kế VƯỢT quá tổng các
       // kỳ trước kỳ cuối — ngược lại vẫn hiển thị đúng số ghi trong kỳ.
       dueAmount = amountPaid > sumBeforeLast ? balance : e.amount;
-    } else if (isPastOrToday) {
-      // Kỳ (không phải kỳ cuối) đã tới/qua hạn: trừ bớt phần đã trả dư ra từ
-      // các kỳ TRƯỚC kỳ này (không tính kỳ này/kỳ sau).
-      const requiredBeforeThis = cumulativeRequired - e.amount;
+    } else {
+      // Kỳ (không phải kỳ cuối) — PHÂN BỔ tiền đã trả lũy kế theo ĐÚNG THỨ
+      // TỰ từng kỳ một (kỳ trước no đủ mới tới kỳ sau), ÁP DỤNG CHO MỌI KỲ
+      // (kể cả kỳ CHƯA tới hạn, không chỉ kỳ đã đến/quá hạn — trả dư ra thì
+      // kỳ sau phải giảm ngay, không đợi tới đúng ngày mới trừ):
+      // - Phần đã trả CHO RIÊNG kỳ này = đã trả lũy kế - tổng các kỳ TRƯỚC
+      //   kỳ này (chặn dưới 0 nếu chưa trả đủ tới lượt kỳ này).
+      // - Số còn thiếu của kỳ này = số ghi trong kỳ - phần đã trả cho kỳ này
+      //   (chặn dưới 0 nếu đã trả dư/đủ).
+      // VD: phân kỳ 20tr/20tr/160tr, đã trả dư 30tr -> kỳ 1 dùng hết 20tr
+      // (còn dư 10tr) -> kỳ 2 chỉ còn thiếu 20-10=10tr. Trả dư 50tr -> kỳ 1
+      // VÀ kỳ 2 đều = 0 (dùng hết 40tr cho cả 2 kỳ, dư 10tr chuyển qua kỳ
+      // cuối nhưng kỳ cuối tính riêng ở nhánh isLast bên trên).
+      const requiredBeforeThis = cumulativeRequired - e.amount; // tổng các kỳ TRƯỚC kỳ này
       const coveredForThis = Math.max(0, amountPaid - requiredBeforeThis);
       dueAmount = Math.max(0, e.amount - coveredForThis);
-    } else {
-      // Kỳ (không phải kỳ cuối) CHƯA tới hạn: hiển thị đúng số ghi trong kỳ,
-      // không suy đoán/cộng dồn theo dư nợ hiện tại.
-      dueAmount = e.amount;
     }
 
     return {
