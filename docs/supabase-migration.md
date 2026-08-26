@@ -2331,17 +2331,19 @@ Việc cần bạn làm: **deploy lại CẢ 2 Edge Function `send-due-reminders
 gửi lại lần này, sửa lỗi lệch ngày) — vào Supabase Dashboard → Edge Functions → chọn từng function → dán
 đè toàn bộ nội dung file mới → Deploy. Không cần chạy SQL gì thêm.
 
-**Cập nhật 26/08/2026 (lần 16)**: sửa lệch giữa dòng "Kỳ gần/trễ hạn: Kỳ N — số tiền" và trạng thái in
-đậm ở tên/badge — hợp đồng đang ở khoảng xem trước RỘNG (16-45 ngày, chưa tới đúng ngưỡng chính thức 15
-ngày, badge hiện chữ nhỏ KHÔNG in đậm) vẫn còn hiện dòng "Kỳ gần/trễ hạn" do dòng này TỰ TÍNH LẠI riêng
-qua `nextInstallmentInfo().urgency` (ngưỡng 15 ngày) thay vì dùng chung `contractAttentionInfo()` (ngưỡng
-RỘNG 45 ngày) đang quyết định badge — 2 ngưỡng khác nhau khiến có trường hợp lệch nhau. Sửa lại
-`installmentHintHtml()` (`js/components/ui.js`) dùng ĐÚNG `S.contractAttentionInfo(ct)` — CHÍNH kết quả
-đang quyết định badge có in đậm hay không ở cả 3 nơi (dòng hợp đồng gọn, khách 1 hợp đồng, popup Tổng
-quan) — để dòng "Kỳ gần/trễ hạn" và trạng thái in đậm LUÔN khớp nhau tuyệt đối, không còn tính riêng theo
-2 ngưỡng khác nhau nữa.
+**Cập nhật 26/08/2026 (lần 16, ĐÃ SỬA LẠI Ở LẦN 17 BÊN DƯỚI)**: bản đầu tiên đổi `installmentHintHtml()`
+sang chỉ hiện dòng "Kỳ gần/trễ hạn" trong đúng ngưỡng chính thức 15 ngày (khớp badge in đậm) — SAU ĐÓ xác
+nhận lại đây là HIỂU SAI yêu cầu, xem lần 17.
 
-Cả 16 lần cập nhật (11 lần đầu + lần 14, 16 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13 và 15 BẮT BUỘC
+**Cập nhật 26/08/2026 (lần 17) — QUYẾT ĐỊNH CUỐI CÙNG**: dòng "Kỳ gần/trễ hạn: Kỳ N — số tiền" LUÔN hiện
+bất kể còn bao nhiêu ngày, MIỄN LÀ cảnh báo đến từ 1 kỳ cụ thể (`S.contractAttentionInfo(ct).source ===
+'installment'`) — kể cả khi còn NGOÀI đúng NEAR_DUE_DAYS (15 ngày, tức đang ở khoảng xem trước RỘNG 16-45
+ngày, badge/tên vẫn hiện chữ nhỏ KHÔNG in đậm như cũ, KHÔNG đổi). Mục đích: biết TRƯỚC kỳ nào/bao nhiêu
+tiền ngay khi hợp đồng vừa lọt vào diện "Gần đến hạn" (dù còn xa), không phải đợi đúng 15 ngày mới thấy —
+đỡ khó nhìn/khó phân biệt hợp đồng nào đang có kỳ sắp tới. Áp dụng CẢ trang "Khách hàng & Hợp đồng" LẪN
+Tổng quan (dùng chung 1 hàm `installmentHintHtml()` trong `js/components/ui.js`).
+
+Cả 17 lần cập nhật (11 lần đầu + lần 14, 16, 17 chỉ sửa JS/CSS phía trình duyệt; lần 12, 13 và 15 BẮT BUỘC
 deploy lại 2 Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
 
 ```sql
