@@ -504,6 +504,18 @@ svg { display: block; }
 .oc-line b { color: var(--text); font-weight: 600; text-align: right; }
 .order-card .oc-foot { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); text-align: right; }
 
+/* Bảng "Kỳ hạn trả nợ" trong chi tiết hợp đồng — xem computeInstallmentPlan()
+   trong js/state.js + openContractView() trong js/views/admin/customers.js. */
+.installment-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 2px; }
+.installment-table th {
+  text-align: left; font-weight: 600; color: var(--text-faint); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .02em; padding: 4px 6px; border-bottom: 1px solid var(--border);
+}
+.installment-table th:last-child, .installment-table td:last-child { text-align: right; }
+.installment-table td { padding: 7px 6px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+.installment-table tr:last-child td { border-bottom: none; }
+.installment-table tr.is-next-due td { background: var(--surface-alt); }
+
 /* Trang "Nhật ký" — gộp nhiều thao tác LIÊN TIẾP của CÙNG 1 người thành 1
    khối, chỉ hiện avatar/tên 1 lần ở đầu (xem groupConsecutive() trong
    js/views/admin/logs.js). */

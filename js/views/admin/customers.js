@@ -731,24 +731,37 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       <div class="oc-line"><span>SĐT</span><b>${customer && customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${customer.phone}</a>` : '—'}</b></div>
       ${installmentPlan ? `
       <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
-        <div class="fw-700 text-sm mb-6">${icon('clock', 'icon-sm')} Phân kỳ trả nợ (thử nghiệm)</div>
-        ${installmentPlan.map((p) => {
-          // Khi cảnh báo: báo đúng số tiền THỰC SỰ còn phải trả cho kỳ này
-          // (p.dueAmount — đã trừ phần trả dư từ kỳ trước, hoặc = số dư nợ
-          // còn lại nếu là kỳ cuối), không phải nguyên số tiền ghi trong kỳ
-          // theo Excel (p.amount).
-          const amountToShow = p.shouldWarn ? p.dueAmount : p.amount;
-          const diffNote = p.shouldWarn && p.dueAmount !== p.amount
-            ? `<div class="field-hint" style="text-align:right;margin-top:-4px">(kỳ ghi ${formatVND(p.amount)}, đã trừ phần trả dư từ trước)</div>`
-            : '';
-          return `
-          <div class="oc-line">
-            <span>Kỳ năm ${p.year} — đến hạn ${formatDate(p.dueDate)}</span>
-            <b style="color:${p.shouldWarn ? 'var(--danger)' : 'var(--text)'}">${formatVND(amountToShow)}${p.shouldWarn ? ` ${icon('alert', 'icon-sm')}` : ''}</b>
-          </div>
-          ${diffNote}
-        `;
-        }).join('')}
+        <div class="fw-700 text-sm mb-6">${icon('clock', 'icon-sm')} Kỳ hạn trả nợ (thử nghiệm)</div>
+        <table class="installment-table">
+          <thead><tr><th>Kỳ hạn trả nợ</th><th>Ngày</th><th>Số tiền</th></tr></thead>
+          <tbody>
+            ${(() => {
+              // "Kỳ tới" = kỳ GẦN NHẤT chưa tới ngày đến hạn (daysLeft > 0),
+              // đánh dấu riêng (nền xám) để dễ nhìn ra ngay kỳ sắp tới là kỳ
+              // nào — không đổi gì cách tính, chỉ để hiển thị.
+              const nextIdx = installmentPlan.findIndex((p) => p.daysLeft > 0);
+              return installmentPlan.map((p, i) => {
+                // Khi cảnh báo (đã tới/qua hạn): báo đúng số tiền THỰC SỰ còn
+                // phải trả cho kỳ này (p.dueAmount — đã trừ phần trả dư từ kỳ
+                // trước, hoặc = số dư nợ còn lại nếu là kỳ cuối), không phải
+                // nguyên số tiền ghi trong kỳ theo Excel (p.amount). Kỳ CHƯA
+                // tới hạn (kể cả "kỳ tới") vẫn hiển thị số tiền dự kiến p.dueAmount
+                // để biết trước sẽ phải trả bao nhiêu.
+                const amountToShow = p.shouldWarn || p.daysLeft > 0 ? p.dueAmount : p.amount;
+                const isNext = i === nextIdx;
+                const rowLabel = isNext ? ` <span class="field-hint" style="display:inline">(kỳ tới)</span>` : '';
+                return `
+                <tr class="${isNext ? 'is-next-due' : ''}">
+                  <td>Kỳ năm ${p.year}${rowLabel}</td>
+                  <td>${formatDate(p.dueDate)}</td>
+                  <td style="color:${p.shouldWarn ? 'var(--danger)' : 'var(--text)'};font-weight:600">${formatVND(amountToShow)}${p.shouldWarn ? ` ${icon('alert', 'icon-sm')}` : ''}</td>
+                </tr>
+                ${p.shouldWarn && p.dueAmount !== p.amount ? `<tr class="${isNext ? 'is-next-due' : ''}"><td colspan="3" class="field-hint" style="text-align:right;padding-top:0">(kỳ ghi ${formatVND(p.amount)}, đã trừ phần trả dư từ trước)</td></tr>` : ''}
+              `;
+              }).join('');
+            })()}
+          </tbody>
+        </table>
         <div class="field-hint">Tính năng đang thử nghiệm — chưa gắn vào Tổng quan/nhắc nợ tự động/Zalo OA, chỉ xem thử ở đây.</div>
       </div>
       ` : ''}

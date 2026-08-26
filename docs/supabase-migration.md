@@ -2150,9 +2150,17 @@ nhất/quan trọng nhất lại không báo).
 **Cập nhật 26/08/2026 (lần 2)**: sửa thêm số tiền BÁO khi cảnh báo — trước đó báo nguyên số tiền ghi
 trong kỳ theo Excel, giờ báo đúng **phần còn thiếu thực tế** (đã trừ phần trả dư từ kỳ trước), và riêng
 KỲ CUỐI CÙNG luôn báo đúng **số dư nợ hiện tại còn lại** thay vì con số cố định theo Excel — xem 2 VD ở
-trên. Cả 2 lần cập nhật đều chỉ sửa `computeInstallmentPlan()` trong `js/state.js` — không cần chạy lại
-SQL/deploy lại Edge Function nào thêm (chỉ sửa code JS tính ở trình duyệt, không đụng dữ liệu/Edge
-Function).
+trên.
+
+**Cập nhật 26/08/2026 (lần 3)**: đổi khối hiển thị trong chi tiết hợp đồng thành **bảng đúng 3 cột "Kỳ hạn
+trả nợ | Ngày | Số tiền"** (trước đó là danh sách dòng) — để dễ theo dõi hơn. Kỳ GẦN NHẤT chưa tới hạn
+(kỳ tới) được tô nền xám riêng + ghi chú "(kỳ tới)" để nhìn ra ngay kỳ sắp tới là kỳ nào, ngày nào, số
+tiền dự kiến bao nhiêu — kể cả những kỳ CHƯA đến hạn cũng hiện số tiền dự kiến (số tiền THỰC SỰ còn thiếu
+tính đến kỳ đó theo đúng lũy kế, không phải số tiền cố định ghi trong Excel). Vẫn giữ nguyên vị trí xem
+(bấm vào chi tiết 1 hợp đồng, chưa gắn vào Tổng quan/nhắc nợ/Zalo OA).
+
+Cả 3 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/views/admin/customers.js`,
+`css/styles.css`) — không cần chạy lại SQL/deploy lại Edge Function nào thêm, không đụng dữ liệu.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;
