@@ -2048,6 +2048,18 @@ tự deploy khi push `main`.
 
 ---
 
+### 10.42. Nhấn phím Esc để đóng nhanh popup trên máy tính (KHÔNG cần chạy SQL/deploy Edge Function)
+
+Trên máy tính, trước đây phải bấm đúng nút "x" (hoặc bấm ra vùng nền mờ xung quanh) mới đóng được popup —
+giờ nhấn phím **Esc** cũng đóng được, y hệt bấm "x". Nếu đang mở NHIỀU popup chồng nhau (VD: đang chọn
+Thôn/Xóm bên trong popup chi tiết khách hàng), Esc chỉ đóng ĐÚNG popup trên cùng trước, giống cách nút
+"quay lại" của điện thoại/trình duyệt vẫn hoạt động — nhấn Esc thêm lần nữa mới đóng tiếp popup bên dưới.
+
+**Việc cần bạn làm**: KHÔNG cần chạy SQL/deploy Edge Function gì — chỉ sửa file JS tĩnh, GitHub Pages tự
+deploy khi push `main`.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

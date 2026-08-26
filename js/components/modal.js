@@ -23,6 +23,22 @@ window.addEventListener('popstate', () => {
   if (top) top.fromBackButton();
 });
 
+// Phím Esc đóng NHANH modal đang mở TRÊN CÙNG — chủ yếu cho máy tính (không
+// có nút "quay lại" vật lý như điện thoại, trước đây phải bấm đúng nút "x"
+// mới đóng được). Gọi ĐÚNG close() thật của modal đó (giống hệt bấm "x"/bấm
+// ra ngoài nền mờ) — KHÔNG dùng fromBackButton() (dành riêng cho lúc trình
+// duyệt đã tự lùi lịch sử sẵn rồi, xem popstate ở trên) vì Esc không đụng gì
+// tới lịch sử trình duyệt cả, vẫn cần close() tự lùi lại đúng 1 mục lịch sử
+// đã chiếm lúc mở. Chỉ đóng ĐÚNG 1 modal trên cùng nếu đang chồng nhiều modal
+// (VD: đang mở picker Thôn/Xóm bên trong popup khách hàng) — khớp đúng thứ
+// tự "đóng lớp trên trước" như nút "quay lại".
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const entries = [...openOverlays];
+  const top = entries[entries.length - 1];
+  if (top) top.close();
+});
+
 // Đóng 1 modal rồi MỞ NGAY modal khác (rất hay gặp trong code: pattern
 // `closeFn(); openXyz();` — "thay" modal chứ không phải đóng hẳn) tạo ra 1
 // cuộc đua: history.back() của modal cũ là BẤT ĐỒNG BỘ (chỉ thật sự lùi ở 1
@@ -114,7 +130,7 @@ export function openModal(opts) {
     cleanupDom();
     scheduleHistoryBack();
   }
-  entry = { cleanupDom, fromBackButton: cleanupDom };
+  entry = { cleanupDom, fromBackButton: cleanupDom, close };
   openOverlays.add(entry);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
