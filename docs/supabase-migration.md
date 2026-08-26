@@ -2301,8 +2301,18 @@ Việc cần bạn làm: **deploy lại CẢ 2 Edge Function `send-due-reminders
 gửi lại lần này) — vào Supabase Dashboard → Edge Functions → chọn từng function → dán đè toàn bộ nội dung
 file mới → Deploy. Không cần chạy SQL gì thêm (chỉ dùng cột `installment_schedule` đã có sẵn từ mục 10.44).
 
-Cả 13 lần cập nhật (11 lần đầu chỉ sửa JS/CSS phía trình duyệt; lần 12 và 13 BẮT BUỘC deploy lại 2 Edge
-Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
+**Cập nhật 26/08/2026 (lần 14)**: 2 tinh chỉnh cuối, CHỈ sửa code JS phía trình duyệt (`js/components/ui.js`),
+KHÔNG cần deploy lại Edge Function:
+
+1. **Đổi nhãn cột "Số tiền" → "Số tiền trả nợ gốc"** ở cả ô tóm tắt "Kỳ tới" LẪN bảng "Kế hoạch trả nợ"
+   (popup chi tiết từng kỳ) — dùng chung 1 component (`installmentNextBoxHtml()`/`openInstallmentPlanModal()`
+   trong `js/components/ui.js`) nên đổi 1 chỗ là cả bên khách hàng lẫn bên quản trị đều tự cập nhật.
+2. **Bỏ dòng chú thích "Chưa gửi nhắc nợ tự động qua Zalo..."** ở cuối popup "Kế hoạch trả nợ" — dòng này
+   đã LỖI THỜI từ mục 10.44 lần 12-13 (đã thật sự gắn vào Zalo OA/thông báo đẩy tự động rồi, không còn
+   đúng nữa).
+
+Cả 14 lần cập nhật (11 lần đầu + lần 14 chỉ sửa JS/CSS phía trình duyệt; lần 12 và 13 BẮT BUỘC deploy lại
+2 Edge Function ở trên) — không đụng dữ liệu, không cần chạy SQL thêm nào khác.
 
 ```sql
 alter table contracts add column if not exists agreement_code text;

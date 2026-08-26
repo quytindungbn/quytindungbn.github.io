@@ -168,7 +168,7 @@ export function openResetPasswordModal({ title = 'Cấp lại mật khẩu', onC
 }
 
 /**
- * Ô tóm tắt "Kỳ tới" (Kỳ N — Ngày — Số tiền), bấm vào mở popup xem chi tiết
+ * Ô tóm tắt "Kỳ tới" (Kỳ N — Ngày — Số tiền trả nợ gốc), bấm vào mở popup xem chi tiết
  * đầy đủ từng kỳ (xem bindInstallmentNextBox() + openInstallmentPlanModal()
  * bên dưới). Trả về chuỗi rỗng nếu hợp đồng không có (hoặc đã trả đủ hết)
  * phân kỳ — nơi gọi chèn thẳng vào bodyHtml, không cần tự kiểm tra trước.
@@ -195,7 +195,7 @@ export function installmentNextBoxHtml(contract, elId = 'installment-next-box') 
     <button type="button" id="${elId}" class="installment-next-btn ${cls}">
       <span class="installment-next-col"><span class="field-hint">Kỳ</span>Kỳ ${idx + 1}</span>
       <span class="installment-next-col"><span class="field-hint">Ngày</span>${formatDate(next.dueDate)}</span>
-      <span class="installment-next-col installment-next-amount"><span class="field-hint">Số tiền trả</span>${formatVND(next.dueAmount)}</span>
+      <span class="installment-next-col installment-next-amount"><span class="field-hint">Số tiền trả nợ gốc</span>${formatVND(next.dueAmount)}</span>
       ${icon('chevronRight', 'icon-sm')}
     </button>
     ${warnLine}
@@ -208,7 +208,7 @@ export function bindInstallmentNextBox(root, contract, elId = 'installment-next-
   if (btn) btn.addEventListener('click', () => openInstallmentPlanModal(contract));
 }
 
-/** Popup "Kế hoạch trả nợ" — bảng đầy đủ TỪNG kỳ (Kỳ hạn trả nợ | Ngày | Số tiền), mở từ installmentNextBoxHtml(). */
+/** Popup "Kế hoạch trả nợ" — bảng đầy đủ TỪNG kỳ (Kỳ hạn trả nợ | Ngày | Số tiền trả nợ gốc), mở từ installmentNextBoxHtml(). */
 export function openInstallmentPlanModal(contract) {
   const plan = S.computeInstallmentPlan(contract);
   if (!plan) return;
@@ -217,7 +217,7 @@ export function openInstallmentPlanModal(contract) {
     title: `Kế hoạch trả nợ — HĐ ${contract.code}`,
     bodyHtml: `
       <table class="installment-table">
-        <thead><tr><th>Kỳ hạn trả nợ</th><th>Ngày</th><th>Số tiền</th></tr></thead>
+        <thead><tr><th>Kỳ hạn trả nợ</th><th>Ngày</th><th>Số tiền trả nợ gốc</th></tr></thead>
         <tbody>
           ${plan.map((p, i) => {
             // Kỳ đã trả đủ (dueAmount = 0) -> hiện số ghi trong Excel để tham
@@ -246,7 +246,6 @@ export function openInstallmentPlanModal(contract) {
           }).join('')}
         </tbody>
       </table>
-      <div class="field-hint mt-8">Chưa gửi nhắc nợ tự động qua Zalo/nhắc nợ cho từng kỳ — mới chỉ xem được tại đây.</div>
     `,
   });
 }
