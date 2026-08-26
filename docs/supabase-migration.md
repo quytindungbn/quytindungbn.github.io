@@ -2248,7 +2248,17 @@ dòng cảnh báo chỉ có ở đường đầu). Tách riêng `installmentHint
 khách chỉ có 1 hợp đồng cũng hiện đúng dòng cảnh báo này (to/đậm, đỏ/vàng theo đúng mức, y hệt khách có
 nhiều hợp đồng).
 
-Cả 9 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
+**Cập nhật 26/08/2026 (lần 10)**: 2 tinh chỉnh theo đúng yêu cầu:
+
+1. **Số tiền ở Tổng quan (ô "Hợp đồng quá hạn"/"Gần đến hạn" + popup danh sách khi bấm vào)** giờ là ĐÚNG
+   số tiền của KỲ đến hạn (nếu cảnh báo đến từ 1 kỳ cụ thể trong phân kỳ trả nợ), KHÔNG phải toàn bộ dư nợ
+   hợp đồng như trước — mở rộng `S.contractAttentionInfo()` trả thêm `dueAmount`/`source` (y hệt cách
+   `contractStatusInfo()` đã làm), áp dụng cho cả tổng cộng của cả nhóm LẪN từng dòng trong popup.
+2. **Dòng "Kỳ trễ hạn:.../Kỳ gần đến hạn:..." ở trang Khách hàng** — bỏ in đậm + tô màu cho CẢ DÒNG (bản
+   "lần 8/9"), giờ chữ nhãn bình thường như field-hint, CHỈ riêng SỐ TIỀN mới in đậm + tô màu (đỏ = trễ
+   hạn, vàng = gần đến hạn).
+
+Cả 10 lần cập nhật đều chỉ sửa code JS/CSS phía trình duyệt (`js/state.js`, `js/components/ui.js`,
 `js/views/contractDetail.js`, `js/views/admin/customers.js`, `js/views/admin/overview.js`,
 `js/views/dashboard.js`, `css/styles.css`) — không cần chạy lại SQL/deploy lại Edge Function nào thêm,
 không đụng dữ liệu. Vẫn CHƯA gắn vào Zalo OA/nhắc nợ tự động.

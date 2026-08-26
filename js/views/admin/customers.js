@@ -617,7 +617,8 @@ function contractAmountsHtml(ct) {
 function installmentHintHtml(ct) {
   const inst = S.nextInstallmentInfo(ct);
   if (!inst || !inst.urgency) return '';
-  return `<div class="fw-700" style="margin-top:3px;font-size:13px;color:${inst.urgency === 'qua_han' ? 'var(--danger)' : 'var(--warning)'}">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — ${formatVND(inst.next.dueAmount)}</div>`;
+  const color = inst.urgency === 'qua_han' ? 'var(--danger)' : 'var(--warning)';
+  return `<div class="field-hint" style="margin-top:3px">${inst.urgency === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — <b style="color:${color}">${formatVND(inst.next.dueAmount)}</b></div>`;
 }
 
 /** Dòng hợp đồng gọn — chỉ mã + trạng thái + gốc/lãi, bấm vào mới ra đầy đủ chi tiết (openContractView). */

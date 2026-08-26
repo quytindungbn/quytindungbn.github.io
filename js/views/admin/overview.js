@@ -37,8 +37,11 @@ export function render(contentEl) {
   // Ô thống kê + tổng tiền "Gần đến hạn" GIỮ NGUYÊN đúng trong NEAR_DUE_DAYS
   // (15 ngày chính thức) như cũ, không đổi — không phải ngưỡng RỘNG 45 ngày.
   const nearDue = attention.filter((x) => x.info.level === 'gan_den_han' && x.info.days <= S.NEAR_DUE_DAYS).map((x) => x.c);
-  const overdueTotal = overdue.reduce((s, c) => s + c.balance, 0);
-  const nearDueTotal = nearDue.reduce((s, c) => s + c.balance, 0);
+  // Tổng cộng CỦA NHÓM = cộng ĐÚNG số tiền của KỲ đến hạn (info.dueAmount)
+  // khi cảnh báo đến từ 1 kỳ cụ thể, không phải toàn bộ dư nợ hợp đồng — xem
+  // S.contractAttentionInfo().
+  const overdueTotal = attention.filter((x) => x.info.level === 'qua_han').reduce((s, x) => s + x.info.dueAmount, 0);
+  const nearDueTotal = attention.filter((x) => x.info.level === 'gan_den_han' && x.info.days <= S.NEAR_DUE_DAYS).reduce((s, x) => s + x.info.dueAmount, 0);
   // Danh sách hiện trong popup khi bấm vào ô "Gần đến hạn" — KHÁC với nearDue
   // ở trên (ô thống kê + tổng tiền trên Tổng quan giữ nguyên đúng trong
   // NEAR_DUE_DAYS ngày như cũ, không đổi): popup này liệt kê TIẾP cả những
@@ -101,7 +104,9 @@ export function render(contentEl) {
  * Danh sách gọn chỉ gồm các hợp đồng thuộc đúng nhóm (quá hạn / gần đến hạn)
  * — bấm vào 1 dòng để mở thẳng chi tiết hợp đồng. Bên phải hiện thẳng số
  * tiền (tô màu theo nhóm) thay vì nhãn trạng thái, kèm tổng cộng cả nhóm ở
- * đầu danh sách để dễ theo dõi.
+ * đầu danh sách để dễ theo dõi. Số tiền = ĐÚNG số tiền của KỲ đến hạn (nếu
+ * cảnh báo đến từ 1 kỳ cụ thể trong phân kỳ trả nợ), KHÔNG phải toàn bộ dư
+ * nợ hợp đồng — xem S.contractAttentionInfo().dueAmount.
  *
  * `opts.highlightWithinDays` (tùy chọn, chỉ dùng cho danh sách "Gần đến
  * hạn"): nếu có, CHỈ những hợp đồng còn trong đúng số ngày này mới tô khung
@@ -112,7 +117,9 @@ export function render(contentEl) {
  */
 function openContractListModal(title, contracts, isStaff, colorVar, opts = {}) {
   const { highlightWithinDays } = opts;
-  const total = contracts.reduce((s, ct) => s + ct.balance, 0);
+  // Tổng cộng = cộng ĐÚNG số tiền của KỲ đến hạn (S.contractAttentionInfo().dueAmount)
+  // khi cảnh báo đến từ 1 kỳ cụ thể, không phải toàn bộ dư nợ hợp đồng.
+  const total = contracts.reduce((s, ct) => s + S.contractAttentionInfo(ct).dueAmount, 0);
   openModal({
     title: `${title} (${contracts.length})`,
     bodyHtml: `
@@ -138,7 +145,7 @@ function openContractListModal(title, contracts, isStaff, colorVar, opts = {}) {
           </div>
           <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
             <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${addressLabel}</span>
-            <b style="color:${colorVar};font-size:13px;flex-shrink:0">${formatVND(ct.balance)}</b>
+            <b style="color:${colorVar};font-size:13px;flex-shrink:0">${formatVND(info.dueAmount)}</b>
           </div>
         </div>`;
       }).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Danh sách hiện đang trống.' })}

@@ -498,7 +498,12 @@ export const WIDE_NEAR_DUE_DAYS = 45;
  * CHỪNG (chưa tới ngày đáo hạn cuối cùng của hợp đồng) vẫn lọt vào đúng bộ
  * lọc "Gần đến hạn"/"Nợ quá hạn" ở trang Khách hàng & popup "Gần đến hạn" ở
  * Tổng quan, y hệt cảnh báo ngày đáo hạn hợp đồng gốc. Trả về { level:
- * 'qua_han' | 'gan_den_han' | null, days }.
+ * 'qua_han' | 'gan_den_han' | null, days, dueAmount, source }. `dueAmount` =
+ * SỐ TIỀN GỐC gắn với cảnh báo — nếu nguồn là 1 KỲ cụ thể (source:
+ * 'installment') thì lấy đúng số tiền đến hạn của KỲ đó (không phải toàn bộ
+ * dư nợ); nếu nguồn là ngày đáo hạn hợp đồng gốc (source:'contract') thì lấy
+ * dư nợ hiện tại như trước giờ — y hệt cách contractStatusInfo() ở trên tính
+ * dueAmount, chỉ khác ngưỡng "gần đến hạn" (RỘNG 45 ngày thay vì 15 ngày).
  */
 export function contractAttentionInfo(contract, asOf = new Date()) {
   const d = daysBetween(asOf, new Date(contract.dueDate));
@@ -508,16 +513,22 @@ export function contractAttentionInfo(contract, asOf = new Date()) {
   const instLevel = inst ? (instDays < 0 ? 'qua_han' : (instDays <= WIDE_NEAR_DUE_DAYS ? 'gan_den_han' : null)) : null;
 
   const overdue = [];
-  if (contractLevel === 'qua_han') overdue.push(Math.abs(d));
-  if (instLevel === 'qua_han') overdue.push(Math.abs(instDays));
-  if (overdue.length) return { level: 'qua_han', days: Math.max(...overdue) }; // quá hạn: lấy NHIỀU ngày nhất
+  if (contractLevel === 'qua_han') overdue.push({ days: Math.abs(d), source: 'contract', amount: contract.balance });
+  if (instLevel === 'qua_han') overdue.push({ days: Math.abs(instDays), source: 'installment', amount: inst.next.dueAmount });
+  if (overdue.length) {
+    const worst = overdue.reduce((a, b) => (b.days > a.days ? b : a)); // quá hạn: lấy NHIỀU ngày nhất
+    return { level: 'qua_han', days: worst.days, dueAmount: worst.amount, source: worst.source };
+  }
 
   const nearDue = [];
-  if (contractLevel === 'gan_den_han') nearDue.push(d);
-  if (instLevel === 'gan_den_han') nearDue.push(instDays);
-  if (nearDue.length) return { level: 'gan_den_han', days: Math.min(...nearDue) }; // gần đến hạn: lấy ÍT ngày nhất (gấp nhất)
+  if (contractLevel === 'gan_den_han') nearDue.push({ days: d, source: 'contract', amount: contract.balance });
+  if (instLevel === 'gan_den_han') nearDue.push({ days: instDays, source: 'installment', amount: inst.next.dueAmount });
+  if (nearDue.length) {
+    const soonest = nearDue.reduce((a, b) => (b.days < a.days ? b : a)); // gần đến hạn: lấy ÍT ngày nhất (gấp nhất)
+    return { level: 'gan_den_han', days: soonest.days, dueAmount: soonest.amount, source: soonest.source };
+  }
 
-  return { level: null, days: 0 };
+  return { level: null, days: 0, dueAmount: contract.balance, source: null };
 }
 
 /**
