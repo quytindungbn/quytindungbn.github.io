@@ -85,13 +85,27 @@ export async function init() {
   } else {
     await seedDemoData();
   }
-  // Thông tin quỹ tín dụng (org) là DUY NHẤT thứ cần hiện ra TRƯỚC khi đăng
-  // nhập (màn đăng nhập hiện tên quỹ) — nên tải thẳng từ Supabase ngay lúc
-  // khởi động app, không đợi tới lúc đăng nhập như customers/contracts. Bảng
-  // orgs cho phép SELECT công khai (không nhạy cảm — banner + số tài khoản
-  // ngân hàng vốn phải công khai để khách chuyển khoản), chỉ cần anon key.
+  // KHÔNG await loadOrgPublic() ở đây nữa — trước đây làm vậy khiến màn hình
+  // ĐẦU TIÊN (đăng nhập) phải đợi xong 1 lượt gọi mạng tới Supabase mới chịu
+  // vẽ ra, dù đã có sẵn tên quỹ hợp lý để hiện ngay (dữ liệu demo ở lần đầu
+  // mở app — seedDemoData() ở trên, hoặc đúng tên quỹ THẬT lưu từ lần trước
+  // ở localStorage — trường hợp phổ biến nhất, "app hiện ra chậm" chủ yếu là
+  // do lần này). Giờ init() trả về NGAY (không cần mạng) để app.js vẽ màn
+  // hình đầu tiên tức khắc bằng dữ liệu đã có sẵn — refreshOrgPublic() gọi
+  // RIÊNG ngay sau đó (không đợi), cập nhật ngầm tên quỹ/banner thật khi tải
+  // xong (notify() tự kích hoạt vẽ lại đúng phần header, xem app.js).
+  persist(); // lưu lại dữ liệu mẫu vừa tạo (nếu lần đầu mở app) — không cần đợi mạng cho việc này
+}
+
+/**
+ * Tải lại thông tin quỹ tín dụng (org) từ Supabase — tách RIÊNG khỏi init()
+ * (xem ghi chú ở trên) để không chặn màn hình đầu tiên. Gọi ngay sau
+ * renderApp() lần đầu ở app.js, KHÔNG await — chạy ngầm, notify() khi xong
+ * để tự vẽ lại đúng tên quỹ/banner thật (S.subscribe ở app.js).
+ */
+export async function refreshOrgPublic() {
   await loadOrgPublic();
-  persist();
+  notify();
 }
 
 async function loadOrgPublic() {

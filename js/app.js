@@ -216,8 +216,9 @@ window.addEventListener('qtd:logout', () => { closeAllModals(); S.logout(); loca
 window.addEventListener('DOMContentLoaded', async () => {
   root = document.getElementById('root');
   registerServiceWorker(); // Đăng ký nhận thông báo đẩy — không đợi xong, không chặn tải app.
-  await S.init();
-  renderApp();
+  await S.init(); // KHÔNG còn chờ mạng nữa (xem ghi chú trong state.js) — trả về gần như ngay lập tức.
+  renderApp(); // Vẽ màn hình đầu tiên NGAY bằng dữ liệu đã có sẵn (demo hoặc cache lần trước), không đợi Supabase.
+  S.refreshOrgPublic(); // Tải tên quỹ/banner THẬT ngầm phía sau — không await, xong tự cập nhật lại đúng chỗ (S.subscribe bên dưới).
   startAutoRefresh();
   // Phiên đăng nhập cũ còn lưu sẵn (mở lại app không cần đăng nhập lại) cũng
   // tự xin quyền thông báo luôn — không đợi xong, không chặn tải app.

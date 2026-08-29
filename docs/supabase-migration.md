@@ -2401,6 +2401,23 @@ alter table orgs add column if not exists push_templates jsonb;
    hợp đồng vay lớn, chia trả nhiều năm) để xem thử khối "Phân kỳ trả nợ (thử nghiệm)" trong chi tiết hợp
    đồng, kiểm tra đúng ý trước khi quyết định có gắn vào các cảnh báo/nhắc nợ chính thức hay không.
 
+### 10.45. Sửa app mở chậm — màn đăng nhập không còn phải chờ mạng mới hiện ra (KHÔNG cần chạy SQL/deploy Edge Function)
+
+**Nguyên nhân**: `S.init()` (js/state.js) trước đó `await` xong 1 lượt gọi mạng tới Supabase (tải tên
+quỹ/banner, bảng `orgs`) rồi mới cho `renderApp()` vẽ màn hình ĐẦU TIÊN (đăng nhập) — nghĩa là dù dữ liệu
+để hiện màn đăng nhập đã có sẵn (tên quỹ demo lúc mở app lần đầu, hoặc tên quỹ THẬT lưu từ lần trước ở
+localStorage), app vẫn cứ đứng im chờ xong lượt gọi mạng đó (PostgREST/Supabase có thể mất thêm vài trăm
+mili-giây đến vài giây, nhất là sau lúc project "nghỉ" một lúc rồi mới có request đầu tiên — gọi là "cold
+start") mới chịu hiện ra — dù mạng wifi/4G tại chỗ có nhanh cỡ nào cũng không giúp được, vì đây là độ trễ
+phía server Supabase, không phải đường truyền của bạn.
+
+**Sửa**: tách việc tải tên quỹ/banner thật ra khỏi `init()` — giờ `init()` trả về NGAY (không đợi mạng),
+`renderApp()` vẽ màn hình đầu tiên bằng dữ liệu ĐÃ CÓ SẴN (không cần đợi gì), rồi mới âm thầm gọi
+`S.refreshOrgPublic()` chạy NGẦM phía sau — tải xong tự cập nhật lại đúng tên quỹ/banner thật (nếu khác
+với dữ liệu đã hiện tạm), người dùng không nhận ra có sự thay đổi này trừ khi để ý kỹ tên quỹ đổi trong
+tích tắc lúc mới mở (trường hợp hiếm — chỉ xảy ra ở LẦN ĐẦU TIÊN mở app trên 1 máy, chưa từng lưu gì).
+Chỉ sửa code JS phía trình duyệt (`js/state.js`, `js/app.js`), không đụng dữ liệu/schema/Edge Function.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
