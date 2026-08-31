@@ -2,7 +2,7 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
-import { formatVND, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
+import { formatVND, formatNumber, formatDateTime, formatCompact, initials, colorFor } from '../../utils.js';
 import { barChartSvg, monthlyComboChartSvg } from '../../components/charts.js';
 import { openContractView } from './customers.js';
 
@@ -152,10 +152,29 @@ function debtDashboardHtml() {
 
   const ratioClass = summary.badDebtRatio >= 5 ? { bg: 'var(--danger-bg)', fg: 'var(--danger)' } : summary.badDebtRatio >= 2 ? { bg: 'var(--warning-bg)', fg: 'var(--warning)' } : { bg: 'var(--success-bg)', fg: '#0d6b34' };
 
-  const months = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), balance: s.totalBalance, interest: s.interestReceivable, badDebtRatio: s.badDebtRatio }));
+  const months = snapshots.map((s) => ({
+    yearMonth: s.yearMonth, label: monthLabel(s.yearMonth),
+    balance: s.totalBalance, interest: s.interestReceivable, badDebt: s.badDebtBalance, badDebtRatio: s.badDebtRatio,
+  }));
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   if (!lastSnapshot || lastSnapshot.yearMonth !== currentYearMonth) {
-    months.push({ label: monthLabel(currentYearMonth), balance: summary.totalBalance, interest: summary.interestReceivable, badDebtRatio: summary.badDebtRatio, live: true });
+    months.push({
+      yearMonth: currentYearMonth, label: monthLabel(currentYearMonth),
+      balance: summary.totalBalance, interest: summary.interestReceivable, badDebt: summary.badDebtBalance, badDebtRatio: summary.badDebtRatio,
+      live: true,
+    });
+  }
+  const byYearMonth = new Map(months.map((m) => [m.yearMonth, m]));
+  /** Tháng liền trước NĂM NAY (so sánh hàng tháng) và đúng tháng này NĂM TRƯỚC (so sánh hàng năm) — tra trực tiếp theo year_month, không giả định mảng liền mạch (có thể thiếu tháng nếu app mới dùng tính năng giữa chừng). */
+  function prevMonthOf(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    const py = m === 1 ? y - 1 : y;
+    const pm = m === 1 ? 12 : m - 1;
+    return byYearMonth.get(`${py}-${String(pm).padStart(2, '0')}`) || null;
+  }
+  function yearAgoOf(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return byYearMonth.get(`${y - 1}-${String(m).padStart(2, '0')}`) || null;
   }
 
   return `
@@ -175,8 +194,77 @@ function debtDashboardHtml() {
 
       <h3 style="font-size:13.5px;margin-bottom:10px">Biến động hàng tháng</h3>
       ${monthlyComboChartSvg({ months })}
+
+      ${monthlyTableHtml(months, prevMonthOf, yearAgoOf)}
     </div>
   `;
+}
+
+/** % thay đổi so với 1 giá trị trước đó — null nếu chưa có gì để so (chưa đủ lịch sử, hoặc giá trị trước = 0). */
+function pct(curr, prevVal) {
+  if (prevVal === null || prevVal === undefined || prevVal === 0) return null;
+  return ((curr - prevVal) / Math.abs(prevVal)) * 100;
+}
+/** `worse` = chiều tăng bị coi là XẤU (chỉ dùng cho Nợ xấu — tăng tô đỏ, giảm tô xanh). Mặc định trung tính (chỉ hiện mũi tên + %, không phán xét tốt/xấu). */
+function deltaChip(p, { worse = false } = {}) {
+  if (p === null) return `<span style="font-size:10.5px;color:var(--text-faint)">—</span>`;
+  const flat = Math.abs(p) < 0.05;
+  const up = p > 0;
+  const color = flat ? 'var(--text-faint)' : worse ? (up ? 'var(--danger)' : 'var(--success)') : 'var(--text-muted)';
+  const arrow = flat ? '·' : up ? '▲' : '▼';
+  return `<span style="font-size:10.5px;font-weight:700;color:${color}">${arrow} ${Math.abs(p).toFixed(1).replace('.', ',')}%</span>`;
+}
+
+/**
+ * Bảng số liệu từng tháng — đúng số tiền (Dư nợ/Nợ xấu/Lãi phải thu) KÈM
+ * tỷ lệ tăng/giảm so với tháng trước (dưới mỗi số) VÀ so với cùng kỳ năm
+ * trước (dòng riêng ngay trên bảng, chỉ hiện khi đã có đủ 12 tháng lịch sử
+ * để so — chưa đủ thì tự ẩn, không giả vờ có số liệu không tồn tại). Mới
+ * nhất lên đầu bảng cho dễ xem ngay việc gần đây nhất.
+ */
+function monthlyTableHtml(months, prevMonthOf, yearAgoOf) {
+  if (!months.length) return '';
+  const rows = [...months].reverse();
+  const latest = months[months.length - 1];
+  const yearAgoLatest = yearAgoOf(latest.yearMonth);
+
+  const yoyStrip = yearAgoLatest ? `
+    <div class="flex items-center" style="gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--text-muted);margin-bottom:10px">
+      <span>So với cùng kỳ năm trước (${yearAgoLatest.label} → ${latest.label}):</span>
+      <span>Dư nợ ${deltaChip(pct(latest.balance, yearAgoLatest.balance))}</span>
+      <span>Nợ xấu ${deltaChip(pct(latest.badDebt, yearAgoLatest.badDebt), { worse: true })}</span>
+      <span>Lãi phải thu ${deltaChip(pct(latest.interest, yearAgoLatest.interest))}</span>
+    </div>` : '';
+
+  const td = 'padding:8px 10px 8px 0;border-bottom:1px solid var(--border);white-space:nowrap';
+  const bodyRows = rows.map((m) => {
+    const prev = prevMonthOf(m.yearMonth);
+    return `
+      <tr>
+        <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}</td>
+        <td style="${td}">${formatCompact(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
+        <td style="${td}">${formatCompact(m.badDebt)}<br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
+        <td style="${td}">${formatCompact(m.interest)}<br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="mt-16">
+      ${yoyStrip}
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead>
+            <tr style="color:var(--text-muted);font-size:11px;text-align:left">
+              <th style="padding:0 10px 6px 0">Tháng</th>
+              <th style="padding:0 10px 6px 0">Dư nợ</th>
+              <th style="padding:0 10px 6px 0">Nợ xấu</th>
+              <th style="padding:0 10px 6px 0">Lãi phải thu</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 /**
