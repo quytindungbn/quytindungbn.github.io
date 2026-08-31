@@ -250,8 +250,8 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
   const yearStart = yearStartOf(m.yearMonth);
   const rows = [
     { label: 'Dư nợ', color: 'var(--color-primary)', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, worse: false },
-    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, worse: false },
     { label: 'Nợ xấu', color: 'var(--danger)', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, worse: true },
+    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, worse: false },
   ];
   const th = 'padding:0 8px 8px 0;text-align:left;font-size:10.5px;color:var(--text-muted);font-weight:600;white-space:nowrap';
   const td = 'padding:10px 8px 10px 0;border-top:1px solid var(--border);white-space:nowrap';
@@ -281,24 +281,38 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
  * đầu), mỗi cột 1 chỉ tiêu (Dư nợ/Nợ xấu/Lãi phải thu) kèm % so với tháng
  * trước ngay dưới số — khác bảng "Tổng hợp tăng giảm" ở ngoài (CHỈ hiện 1
  * tháng đang chọn): ở đây xem được NHIỀU tháng cùng lúc để so sánh xu hướng.
+ * Bấm vào 1 dòng tháng (chỉ những tháng ĐÃ có đủ dữ liệu để so — 31/12 năm
+ * liền trước) để MỞ RỘNG thêm 1 dòng phụ ngay dưới, hiện "So sánh năm" của
+ * đúng tháng đó — không hiện sẵn hết để bảng gọn, chỉ mở khi cần xem.
  */
 function openMonthlyDetailModal() {
-  const { months, prevMonthOf } = buildDebtDashboardData();
+  const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const rows = [...months].reverse();
   const td = 'padding:8px 10px 8px 0;border-bottom:1px solid var(--border);white-space:nowrap';
   const bodyRows = rows.map((m) => {
     const prev = prevMonthOf(m.yearMonth);
+    const yearStart = yearStartOf(m.yearMonth);
+    const yoyRow = yearStart ? `
+      <tr data-yoy-row="${m.yearMonth}" hidden>
+        <td colspan="4" style="padding:2px 10px 10px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)">
+          So với đầu năm (${yearStart.label} → ${m.label}):
+          Dư nợ ${deltaChip(pct(m.balance, yearStart.balance))} ·
+          Nợ xấu ${deltaChip(pct(m.badDebt, yearStart.badDebt), { worse: true })} ·
+          Lãi phải thu ${deltaChip(pct(m.interest, yearStart.interest))}
+        </td>
+      </tr>` : '';
     return `
-      <tr>
-        <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}</td>
+      <tr data-toggle-yoy="${m.yearMonth}" style="${yearStart ? 'cursor:pointer' : ''}">
+        <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}${yearStart ? ' <span style="font-size:9px;color:var(--text-faint)">▾</span>' : ''}</td>
         <td style="${td}">${formatCompact(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
         <td style="${td}">${formatCompact(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
         <td style="${td}">${formatCompact(m.interest)}<br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
-      </tr>`;
+      </tr>${yoyRow}`;
   }).join('');
   openModal({
     title: 'Chi tiết theo từng tháng',
     bodyHtml: `
+      <p class="text-sm text-muted mb-8">Bấm vào 1 tháng để xem thêm so với đầu năm.</p>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12.5px">
           <thead>
@@ -312,6 +326,13 @@ function openMonthlyDetailModal() {
           <tbody>${bodyRows}</tbody>
         </table>
       </div>`,
+    onMount(sheet) {
+      sheet.querySelectorAll('[data-toggle-yoy]').forEach((row) => {
+        const detail = sheet.querySelector(`[data-yoy-row="${row.dataset.toggleYoy}"]`);
+        if (!detail) return;
+        row.addEventListener('click', () => { detail.hidden = !detail.hidden; });
+      });
+    },
   });
 }
 

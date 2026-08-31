@@ -67,8 +67,9 @@ export function barChartSvg({ items, aspect = 2.1 }) {
  * thu (nhỏ hơn, ngay bên phải) — CẢ 2 cột phụ (nợ xấu lồng trong + lãi phải
  * thu) co theo ĐÚNG tỷ lệ % so với chính cột Dư nợ của tháng đó, NHƯNG được
  * "khuếch đại" thêm hệ số BOOST + chiều cao tối thiểu để luôn nhìn rõ trên
- * màn hình nhỏ — tỷ lệ % CHÍNH XÁC vẫn ghi ngay trong ngoặc bên cạnh số tiền
- * (VD "2 (4,5%)") nên không gây hiểu nhầm dù cột được phóng to hơn thực tế.
+ * màn hình nhỏ — tỷ lệ % CHÍNH XÁC vẫn ghi ngay DƯỚI số tiền (2 dòng riêng —
+ * VD dòng 1 "2", dòng 2 "(4,5%)" — để gọn trong bề ngang hẹp của cột) nên
+ * không gây hiểu nhầm dù cột được phóng to hơn thực tế.
  * Đơn vị TIỀN của cả biểu đồ là TỶ ĐỒNG, ghi 1 lần duy nhất ở đầu (không lặp
  * lại chữ "tỷ" sau từng số). Quá 7 tháng thì bề rộng mỗi ô tháng GIỮ NGUYÊN
  * (không co thêm) và cả khối biểu đồ cho VUỐT/CUỘN NGANG để xem tiếp tháng cũ
@@ -122,12 +123,12 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
     // BOOST + chiều cao tối thiểu để luôn nhìn rõ trên điện thoại (tỷ lệ %
     // thật thường rất nhỏ, co đúng tỷ lệ sẽ gần như biến mất) — tỷ lệ % chính
     // xác vẫn ghi rõ bằng số ngay trong nhãn nên không gây hiểu nhầm.
-    const BOOST = 6.5;
+    const BOOST = 7.5;
     const badRatio = m.balance > 0 ? Math.min(1, m.badDebt / m.balance) : 0;
     const interestRatio = m.balance > 0 ? (m.interest / m.balance) * 100 : 0;
-    const badH = badRatio > 0 ? Math.min(balH * 0.65, Math.max(20, badRatio * balH * BOOST)) : 0;
+    const badH = badRatio > 0 ? Math.min(balH * 0.7, Math.max(24, badRatio * balH * BOOST)) : 0;
     const badY = baseY - badH; // ĐÁY cột (không phải đỉnh) — đè lên phần dưới của cột dư nợ.
-    const intH = balH > 0 ? Math.min(balH * 0.6, Math.max(18, (m.interest / m.balance) * balH * BOOST)) : 18;
+    const intH = balH > 0 ? Math.min(balH * 0.65, Math.max(22, (m.interest / m.balance) * balH * BOOST)) : 22;
     const intY = baseY - intH;
     const intX = slotX + balW + innerW * 0.12;
     // Tháng "sống" (chưa chốt) vẫn tô ĐẬM gần như màu thật (0.85, không phải
@@ -140,11 +141,13 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
       <g>
         <rect x="${slotX.toFixed(1)}" y="${balY.toFixed(1)}" width="${balW.toFixed(1)}" height="${balH.toFixed(1)}" rx="4" fill="${balanceColor}" fill-opacity="${liveOpacity}" ${isLive ? `stroke="${balanceColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Dư nợ ${formatVND(m.balance)}</title></rect>
         ${badH > 0 ? `<rect x="${slotX.toFixed(1)}" y="${badY.toFixed(1)}" width="${balW.toFixed(1)}" height="${badH.toFixed(1)}" rx="4" fill="${badDebtColor}" fill-opacity="${liveOpacity}"><title>${m.label}: Nợ xấu ${formatVND(m.badDebt)} (${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</title></rect>
-        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(badY + Math.min(badH, 11) - 2).toFixed(1)}" text-anchor="middle" font-size="7" font-weight="700" fill="#fff">${formatTyDong(m.badDebt)} (${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</text>` : ''}
+        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(badY + 9).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#fff">${formatTyDong(m.badDebt)}</text>
+        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(badY + 17).toFixed(1)}" text-anchor="middle" font-size="6.5" font-weight="700" fill="#fff">(${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</text>` : ''}
         <text x="${(slotX + balW / 2).toFixed(1)}" y="${(balY - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${balanceColor}">${formatTyDong(m.balance)}</text>
 
         <rect x="${intX.toFixed(1)}" y="${intY.toFixed(1)}" width="${intW.toFixed(1)}" height="${intH.toFixed(1)}" rx="3" fill="${interestColor}" fill-opacity="${liveOpacity}" ${isLive ? `stroke="${interestColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Lãi phải thu ${formatVND(m.interest)}</title></rect>
-        <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 4).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="700" fill="${interestColor}">${formatTyDong(m.interest)} (${interestRatio.toFixed(1).replace('.', ',')}%)</text>
+        <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 13).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${interestColor}">${formatTyDong(m.interest)}</text>
+        <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 4).toFixed(1)}" text-anchor="middle" font-size="6.5" font-weight="700" fill="${interestColor}">(${interestRatio.toFixed(1).replace('.', ',')}%)</text>
 
         <text x="${(slotX + innerW / 2).toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10" font-weight="${isLive ? 700 : 400}" fill="${isLive ? balanceColor : 'var(--text-faint)'}">${m.label}</text>
       </g>`;
