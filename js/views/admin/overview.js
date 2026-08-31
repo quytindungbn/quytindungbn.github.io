@@ -176,6 +176,10 @@ function debtDashboardHtml() {
     const [y, m] = ym.split('-').map(Number);
     return byYearMonth.get(`${y - 1}-${String(m).padStart(2, '0')}`) || null;
   }
+  // Gắn sẵn % tăng/giảm lãi phải thu so với tháng trước vào TỪNG tháng — để
+  // monthlyComboChartSvg() ghi thẳng lên biểu đồ (cột), không phải chỉ có
+  // trong bảng bên dưới nữa.
+  months.forEach((m) => { m.interestMomPct = pct(m.interest, prevMonthOf(m.yearMonth)?.interest ?? null); });
 
   return `
     <div class="card card-pad mb-16">
