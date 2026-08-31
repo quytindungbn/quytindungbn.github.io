@@ -338,7 +338,9 @@ function openMonthlyDetailModal() {
 
 /** Dãy chip chọn tháng (gộp theo năm) đặt dưới biểu đồ "Biến động hàng tháng" — bấm vào 1 tháng để cập nhật 3 cột + biểu đồ nhóm nợ phía trên, không tải lại trang. */
 function monthPickerHtml(months, activeYm) {
-  if (!months.length) return '';
+  // Chỉ có ĐÚNG 1 tháng thì KHÔNG có gì để "chọn" (dư thừa, chỉ 1 chip) — ẩn
+  // hẳn dãy chip, tự hiện lại khi có từ tháng thứ 2 trở lên.
+  if (months.length <= 1) return '';
   const byYear = new Map();
   for (const m of months) {
     const y = m.yearMonth.slice(0, 4);
