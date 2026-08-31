@@ -47,73 +47,89 @@ export function barChartSvg({ items, aspect = 2.1 }) {
 }
 
 /**
- * Biểu đồ đường theo THỜI GIAN (1 chuỗi số liệu, VD: tổng dư nợ/lãi phải
- * thu/tỷ lệ nợ xấu theo từng tháng) — đường nét mảnh (2px) + vùng tô nhạt
- * bên dưới, chấm tròn từng điểm (di chuột vào xem đúng số tháng đó — dùng
- * <title> có sẵn của trình duyệt, không cần tự dựng tooltip), LUÔN ghi rõ
- * số ở điểm CUỐI (mới nhất — quan trọng nhất) ngay trên biểu đồ. Chỉ 1
- * chuỗi số liệu -> không cần chú giải (legend) riêng, tên biểu đồ đã đủ để
- * biết đây là số liệu gì.
+ * Biểu đồ GỘP theo tháng — dư nợ (vùng/đường, làn trên) + lãi phải thu (cột,
+ * làn dưới) trong CÙNG 1 khối, chia sẻ 1 trục ngang (tháng) nhưng MỖI chuỗi
+ * tự co giãn theo đúng thang riêng của nó (không dùng chung 1 trục tung —
+ * dư nợ và lãi phải thu chênh lệch quá lớn, dùng chung trục sẽ làm cột lãi
+ * biến mất). Không in số lên biểu đồ (tổng dư nợ/lãi phải thu hiện tại đã
+ * có sẵn ở 3 ô số liệu phía trên rồi, không lặp lại) — chỉ vẽ HÌNH DẠNG xu
+ * hướng cho dễ nhìn, xem số chi tiết từng tháng bằng cách di/giữ vào đúng
+ * điểm đó (title có sẵn của trình duyệt). Tháng hiện tại (chưa chốt chính
+ * thức, tự tính theo ngày) tô nhạt hơn + nét đứt để phân biệt trực quan với
+ * các tháng đã chốt, không cần chú thích chữ.
  */
-export function lineChartSvg({ points, aspect = 2.4, color = 'var(--color-primary)', formatValue = formatCompact, formatTooltip = formatVND }) {
-  if (!points.length) {
-    return `<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu — xem ghi chú bên dưới.</div>`;
+export function monthlyComboChartSvg({ months, aspect = 1.85, balanceColor = 'var(--color-primary)', interestColor = 'var(--purple)' }) {
+  if (!months.length) {
+    return `<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu.</div>`;
   }
   const vbH = Math.round(VB_W / aspect);
-  const padTop = 34; // chừa chỗ nhãn điểm cuối
-  const padBottom = 22; // chừa chỗ nhãn tháng
-  const chartH = vbH - padTop - padBottom;
-  const max = Math.max(...points.map((p) => p.value));
-  const min = Math.min(0, ...points.map((p) => p.value));
-  const range = max - min || 1;
-  const n = points.length;
+  const padBottom = 20; // nhãn tháng
+  const chartH = vbH - padBottom;
+  const areaH = chartH * 0.6;
+  const barsH = chartH * 0.34;
+  const barsBase = chartH; // đáy cột lãi phải thu = đáy toàn khối
+  const barsTop = chartH - barsH;
+
+  const n = months.length;
   const stepX = n > 1 ? VB_W / (n - 1) : 0;
-  const coords = points.map((p, i) => {
-    const x = n > 1 ? i * stepX : VB_W / 2;
-    const y = padTop + chartH - ((p.value - min) / range) * chartH;
-    return { x, y, p };
-  });
-  // Điểm CUỐI có thể là số liệu "sống" của tháng hiện tại (chưa chốt chính
-  // thức, tự tính từ dữ liệu hợp đồng lúc đang xem — xem `live: true` ở nơi
-  // gọi) — đoạn nối tới điểm này vẽ NÉT ĐỨT + chấm rỗng để phân biệt rõ với
-  // các tháng ĐÃ CHỐT (nét liền + chấm đặc), tự chuyển thành nét liền/chấm
-  // đặc như bình thường ngay khi tháng đó được chốt chính thức.
-  const liveIdx = coords[n - 1].p.live ? n - 1 : -1;
-  const solidCoords = liveIdx >= 0 ? coords.slice(0, liveIdx) : coords;
-  const solidPath = solidCoords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
-  const dashSegment = liveIdx > 0 ? `M ${coords[liveIdx - 1].x.toFixed(1)} ${coords[liveIdx - 1].y.toFixed(1)} L ${coords[liveIdx].x.toFixed(1)} ${coords[liveIdx].y.toFixed(1)}` : '';
-  const areaEndCoords = liveIdx >= 0 ? coords : solidCoords; // vùng tô nhạt phủ luôn cả đoạn "sống" cho liền mạch
-  const areaPath = areaEndCoords.length > 1
-    ? `${areaEndCoords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ')} L ${areaEndCoords[areaEndCoords.length - 1].x.toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${areaEndCoords[0].x.toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`
-    : '';
-  const last = coords[coords.length - 1];
-  // Thưa bớt nhãn tháng nếu quá nhiều điểm (>8) — chỉ hiện đầu/cuối/giữa, đỡ chữ đè lên nhau.
-  const showLabelEvery = n > 8 ? Math.ceil(n / 6) : 1;
-  const gradId = `lc-grad-${Math.random().toString(36).slice(2, 8)}`;
-  const dots = coords.map((c, i) => {
+  const xs = months.map((m, i) => (n > 1 ? i * stepX : VB_W / 2));
+  const liveIdx = months[n - 1].live ? n - 1 : -1;
+
+  const balMax = Math.max(1, ...months.map((m) => m.balance));
+  const balMin = Math.min(0, ...months.map((m) => m.balance));
+  const balRange = balMax - balMin || 1;
+  const ys = months.map((m) => areaH - ((m.balance - balMin) / balRange) * areaH);
+
+  const intMax = Math.max(1, ...months.map((m) => m.interest));
+
+  const gradId = `mc-grad-${Math.random().toString(36).slice(2, 8)}`;
+  const solidEnd = liveIdx >= 0 ? liveIdx : n - 1;
+  const areaPath = xs.slice(0, solidEnd + 1).map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
+    + ` L ${xs[solidEnd].toFixed(1)} ${areaH.toFixed(1)} L ${xs[0].toFixed(1)} ${areaH.toFixed(1)} Z`;
+  const linePath = xs.slice(0, solidEnd + 1).map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ');
+  const dashSegment = liveIdx > 0 ? `M ${xs[liveIdx - 1].toFixed(1)} ${ys[liveIdx - 1].toFixed(1)} L ${xs[liveIdx].toFixed(1)} ${ys[liveIdx].toFixed(1)}` : '';
+
+  const dots = months.map((m, i) => {
     const isLive = i === liveIdx;
-    const tooltipSuffix = isLive ? ' (hôm nay, chưa chốt chính thức)' : '';
+    const title = `${m.label}: Dư nợ ${formatVND(m.balance)} · Lãi phải thu ${formatVND(m.interest)} · Nợ xấu ${m.badDebtRatio.toFixed(1).replace('.', ',')}%`;
     return isLive
-      ? `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4.5" fill="var(--surface)" stroke="${color}" stroke-width="2.5" stroke-dasharray="2.5 2"><title>${c.p.label}${tooltipSuffix}: ${formatTooltip(c.p.value)}</title></circle>`
-      : `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4" fill="${color}"><title>${c.p.label}${tooltipSuffix}: ${formatTooltip(c.p.value)}</title></circle>`;
+      ? `<circle cx="${xs[i].toFixed(1)}" cy="${ys[i].toFixed(1)}" r="4.5" fill="var(--surface)" stroke="${balanceColor}" stroke-width="2.5"><title>${title}</title></circle>`
+      : `<circle cx="${xs[i].toFixed(1)}" cy="${ys[i].toFixed(1)}" r="3.5" fill="${balanceColor}"><title>${title}</title></circle>`;
   }).join('');
-  const xLabels = coords.map((c, i) => (i % showLabelEvery === 0 || i === n - 1) ? `<text x="${c.x.toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10.5" fill="${i === liveIdx ? color : 'var(--text-faint)'}" font-weight="${i === liveIdx ? '700' : '400'}">${c.p.label}</text>` : '').join('');
-  const lastAnchor = last.x > VB_W * 0.82 ? 'end' : last.x < VB_W * 0.18 ? 'start' : 'middle';
+
+  const barW = (n > 1 ? stepX : VB_W) * 0.42;
+  const bars = months.map((m, i) => {
+    const h = Math.max(2, (m.interest / intMax) * barsH);
+    const y = barsBase - h;
+    const isLive = i === liveIdx;
+    const title = `${m.label}: Lãi phải thu ${formatVND(m.interest)}`;
+    return `<rect x="${(xs[i] - barW / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${interestColor}" fill-opacity="${isLive ? 0.45 : 1}" ${isLive ? `stroke="${interestColor}" stroke-width="1" stroke-dasharray="3 2"` : ''}><title>${title}</title></rect>`;
+  }).join('');
+
+  const showLabelEvery = n > 8 ? Math.ceil(n / 6) : 1;
+  const xLabels = months.map((m, i) => (i % showLabelEvery === 0 || i === n - 1)
+    ? `<text x="${xs[i].toFixed(1)}" y="${vbH - 4}" text-anchor="middle" font-size="10.5" fill="${i === liveIdx ? balanceColor : 'var(--text-faint)'}" font-weight="${i === liveIdx ? '700' : '400'}">${m.label}</text>`
+    : '').join('');
+
   return `
+    <div class="flex items-center" style="gap:14px;margin-bottom:4px;font-size:11px;color:var(--text-muted)">
+      <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:50%;background:${balanceColor};display:inline-block"></span>Dư nợ</span>
+      <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${interestColor};display:inline-block"></span>Lãi phải thu</span>
+    </div>
     <svg viewBox="0 0 ${VB_W} ${vbH}" style="width:100%;height:auto;display:block;overflow:visible">
       <defs>
         <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="${color}" stop-opacity="0.22"></stop>
-          <stop offset="100%" stop-color="${color}" stop-opacity="0"></stop>
+          <stop offset="0%" stop-color="${balanceColor}" stop-opacity="0.22"></stop>
+          <stop offset="100%" stop-color="${balanceColor}" stop-opacity="0"></stop>
         </linearGradient>
       </defs>
-      <line x1="0" y1="${(padTop + chartH).toFixed(1)}" x2="${VB_W}" y2="${(padTop + chartH).toFixed(1)}" stroke="var(--border)" stroke-width="1"></line>
-      ${areaPath ? `<path d="${areaPath}" fill="url(#${gradId})" stroke="none"></path>` : ''}
-      ${solidPath ? `<path d="${solidPath}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>` : ''}
-      ${dashSegment ? `<path d="${dashSegment}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 5"></path>` : ''}
+      <line x1="0" y1="${barsTop.toFixed(1)}" x2="${VB_W}" y2="${barsTop.toFixed(1)}" stroke="var(--border)" stroke-width="1"></line>
+      <line x1="0" y1="${chartH - 0.5}" x2="${VB_W}" y2="${chartH - 0.5}" stroke="var(--border)" stroke-width="1"></line>
+      <path d="${areaPath}" fill="url(#${gradId})" stroke="none"></path>
+      ${linePath ? `<path d="${linePath}" fill="none" stroke="${balanceColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>` : ''}
+      ${dashSegment ? `<path d="${dashSegment}" fill="none" stroke="${balanceColor}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 5"></path>` : ''}
       ${dots}
-      <text x="${last.x.toFixed(1)}" y="${Math.max(14, last.y - 12).toFixed(1)}" text-anchor="${lastAnchor}" font-size="14" font-weight="700" fill="${color}">${formatValue(last.p.value)}${liveIdx === n - 1 ? '*' : ''}</text>
+      ${bars}
       ${xLabels}
-    </svg>
-    ${liveIdx >= 0 ? `<div class="text-sm text-muted" style="text-align:center;margin-top:2px">* Số liệu tháng này đang cập nhật theo ngày, chưa chốt chính thức</div>` : ''}`;
+    </svg>`;
 }

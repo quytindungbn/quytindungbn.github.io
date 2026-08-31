@@ -2,8 +2,8 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
-import { formatVND, formatNumber, formatDateTime, formatCompact, initials, colorFor } from '../../utils.js';
-import { barChartSvg, lineChartSvg } from '../../components/charts.js';
+import { formatVND, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
+import { barChartSvg, monthlyComboChartSvg } from '../../components/charts.js';
 import { openContractView } from './customers.js';
 
 /** "2026-08" -> "Th8/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
@@ -127,15 +127,15 @@ export function render(contentEl) {
  * tính Nhóm 2, dù Nhóm 2 đã là "nợ cần chú ý"). "Lãi phải thu" chỉ tính
  * Nhóm 1-4 (Nhóm 5 coi như khó thu, không tính lãi phải thu nữa).
  *
- * 3 biểu đồ ĐƯỜNG theo tháng (dư nợ/lãi phải thu/tỷ lệ nợ xấu) đọc dữ liệu
- * từ bảng monthly_snapshots — bảng này KHÔNG có sẵn số liệu quá khứ (app
- * trước giờ không lưu lại lịch sử biến động, mỗi lần nhập Excel mới đè lên
- * số liệu cũ) nên lịch sử CHỈ bắt đầu tính từ lúc tính năng này ra đời — có
- * ghi chú rõ bên dưới biểu đồ, không giả vờ có sẵn số liệu quá khứ không hề
- * tồn tại. Số liệu tự chốt vào ĐÚNG ngày cuối cùng mỗi tháng (xem
- * send-due-reminders/index.ts) — nút "Chốt số liệu tháng này" chỉ để chốt
- * ngay bây giờ (không cần đợi tới cuối tháng), bấm nhiều lần trong cùng 1
- * tháng chỉ cập nhật đúng 1 dòng của tháng đó (upsert theo year_month).
+ * Biểu đồ "Biến động hàng tháng" GỘP dư nợ + lãi phải thu vào CHUNG 1 khối
+ * (monthlyComboChartSvg — xem js/components/charts.js) thay vì 3 biểu đồ
+ * đường riêng như bản đầu — không lặp lại số liệu đã có ở 3 ô thống kê phía
+ * trên, chỉ vẽ hình dạng xu hướng cho gọn. Đọc dữ liệu từ bảng
+ * monthly_snapshots — bảng này KHÔNG có sẵn số liệu quá khứ (mỗi lần nhập
+ * Excel mới đè lên số liệu cũ, không lưu lịch sử) nên lịch sử chỉ bắt đầu từ
+ * lúc tính năng này ra đời. Số liệu tự chốt vào ĐÚNG ngày cuối cùng mỗi
+ * tháng (xem send-due-reminders/index.ts); tháng hiện tại (chưa chốt) tự
+ * tính "sống" theo dữ liệu hợp đồng đang có, không cần thao tác gì.
  */
 function debtDashboardHtml() {
   const now = new Date();
@@ -150,34 +150,17 @@ function debtDashboardHtml() {
   };
   const barItems = [1, 2, 3, 4, 5].map((g) => ({ label: `Nhóm ${g}`, value: summary.groupBalances[g], color: groupColors[g] }));
 
-  // Tô màu tỷ lệ nợ xấu theo mức nghiêm trọng — chỉ mang tính tham khảo trực
-  // quan (không phải ngưỡng quy định chính thức nào): dưới 2% xanh (tốt),
-  // 2-5% vàng (cần chú ý), trên 5% đỏ (đáng lo).
   const ratioClass = summary.badDebtRatio >= 5 ? { bg: 'var(--danger-bg)', fg: 'var(--danger)' } : summary.badDebtRatio >= 2 ? { bg: 'var(--warning-bg)', fg: 'var(--warning)' } : { bg: 'var(--success-bg)', fg: '#0d6b34' };
 
-  const balancePoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.totalBalance }));
-  const interestPoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.interestReceivable }));
-  const ratioPoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.badDebtRatio }));
-
-  // Thêm điểm "SỐNG" của THÁNG HIỆN TẠI vào cuối mỗi biểu đồ — tự tính ngay
-  // từ dữ liệu hợp đồng đang có (đúng số dư nợ/lãi/nợ xấu tính đến HÔM NAY),
-  // KHÔNG cần bấm nút gì cả — biến động theo từng ngày trong tháng tự hiện
-  // lên ngay (nét đứt + chấm rỗng, xem lineChartSvg()). Chỉ thêm khi tháng
-  // này CHƯA được chốt chính thức (đã chốt rồi thì dùng đúng số đã chốt,
-  // không thêm trùng) — việc chốt chính thức vẫn hoàn toàn tự động vào đúng
-  // ngày cuối tháng (send-due-reminders), không cần thao tác gì thêm.
+  const months = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), balance: s.totalBalance, interest: s.interestReceivable, badDebtRatio: s.badDebtRatio }));
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   if (!lastSnapshot || lastSnapshot.yearMonth !== currentYearMonth) {
-    const liveLabel = monthLabel(currentYearMonth);
-    balancePoints.push({ label: liveLabel, value: summary.totalBalance, live: true });
-    interestPoints.push({ label: liveLabel, value: summary.interestReceivable, live: true });
-    ratioPoints.push({ label: liveLabel, value: summary.badDebtRatio, live: true });
+    months.push({ label: monthLabel(currentYearMonth), balance: summary.totalBalance, interest: summary.interestReceivable, badDebtRatio: summary.badDebtRatio, live: true });
   }
 
   return `
     <div class="card card-pad mb-16">
       <div class="section-head"><h2>Dư nợ · Lãi phải thu · Nợ xấu (toàn quỹ)</h2></div>
-      <p class="text-sm text-muted mb-12">Chỉ quản trị viên toàn quyền xem được mục này. Nhóm nợ 1-5 theo đúng quy định phân loại nợ (quá hạn 0-10/11-90/91-180/181-360/trên 360 ngày) — "Nợ xấu" = Nhóm 3+4+5, "Lãi phải thu" chỉ tính Nhóm 1-4.</p>
 
       <div class="grid-3 mb-16">
         <div class="stat-tile c-blue"><div class="stat-label">Tổng dư nợ hiện tại</div><div class="stat-value" style="font-size:16px">${formatVND(summary.totalBalance)}</div></div>
@@ -186,35 +169,12 @@ function debtDashboardHtml() {
       </div>
 
       <div class="mb-20">
-        <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ (hiện tại)</h3>
+        <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
         ${barChartSvg({ items: barItems })}
       </div>
 
-      <h3 style="font-size:13.5px;margin-bottom:2px">Biến động hàng tháng (tính số liệu đến cuối mỗi tháng)</h3>
-      <div class="grid-3">
-        <div>
-          <div class="text-sm text-muted mb-6" style="text-align:center">Tổng dư nợ</div>
-          ${lineChartSvg({ points: balancePoints, color: 'var(--color-primary)' })}
-        </div>
-        <div>
-          <div class="text-sm text-muted mb-6" style="text-align:center">Lãi phải thu</div>
-          ${lineChartSvg({ points: interestPoints, color: 'var(--purple)' })}
-        </div>
-        <div>
-          <div class="text-sm text-muted mb-6" style="text-align:center">Tỷ lệ nợ xấu</div>
-          ${lineChartSvg({ points: ratioPoints, color: 'var(--danger)', formatValue: formatPercent, formatTooltip: formatPercent })}
-        </div>
-      </div>
-
-      <p class="text-sm text-muted mt-16" style="margin-bottom:0">
-        ${lastSnapshot
-          ? `Đã chốt chính thức gần nhất: <b>Th${Number(lastSnapshot.yearMonth.split('-')[1])}/${lastSnapshot.yearMonth.split('-')[0]}</b> (ngày ${new Date(lastSnapshot.snapshotDate).toLocaleDateString('vi-VN')}).`
-          : `Chưa có tháng nào được chốt chính thức.`}
-        Điểm nét đứt cuối mỗi biểu đồ là số liệu THÁNG NÀY, tự cập nhật theo từng ngày — hệ thống tự động
-        chốt lại thành chính thức (nét liền) đúng vào ngày cuối cùng mỗi tháng, không cần bấm gì cả.
-        3 biểu đồ chỉ có dữ liệu từ tháng bắt đầu dùng tính năng này trở đi, không có số liệu các tháng
-        trước đó (xem docs mục 10.46).
-      </p>
+      <h3 style="font-size:13.5px;margin-bottom:10px">Biến động hàng tháng</h3>
+      ${monthlyComboChartSvg({ months })}
     </div>
   `;
 }
