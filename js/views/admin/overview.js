@@ -194,11 +194,12 @@ function refreshProvisionSlot() {
  * gọn lại — xem selectMonth()/bindMonthClicks() bên dưới.
  *
  * Biểu đồ "Biến động hàng tháng" (monthlyComboChartSvg — xem
- * js/components/charts.js) mỗi tháng vẽ 1 cặp cột liền nhau, đơn vị TỶ ĐỒNG
- * ghi 1 lần ở đầu: cột Dư nợ (to) LỒNG sẵn đoạn màu cam đè lên ở đáy thể
- * hiện Nợ xấu (số tiền ghi ngay trong cột), cột Lãi phải thu (nhỏ hơn) ngay
- * bên cạnh — cả 2 cột phụ co theo ĐÚNG tỷ lệ % của cột Dư nợ tháng đó. Đọc
- * dữ liệu từ bảng monthly_snapshots (RLS cho MỌI admin SELECT — xem mục
+ * js/components/charts.js) mỗi tháng vẽ 1 cột Dư nợ, đơn vị TỶ ĐỒNG ghi 1
+ * lần ở đầu, LỒNG sẵn đoạn màu cam đè lên ở đáy thể hiện Nợ xấu (số tiền +
+ * % ghi ngay trong cột) — co theo ĐÚNG tỷ lệ % của cột Dư nợ tháng đó.
+ * KHÔNG còn cột Lãi phải thu riêng ở biểu đồ này (đã có đủ, kèm %, ở bảng
+ * "Tổng hợp tăng giảm"/modal "Xem chi tiết" bên dưới). Đọc dữ liệu từ bảng
+ * monthly_snapshots (RLS cho MỌI admin SELECT — xem mục
  * 10.48 docs/supabase-migration.md) — bảng này KHÔNG có sẵn số liệu quá khứ
  * (mỗi lần nhập Excel mới đè lên số liệu cũ, không lưu lịch sử) nên lịch sử
  * chỉ bắt đầu từ lúc tính năng này ra đời. Số liệu tự chốt vào ĐÚNG ngày
@@ -222,9 +223,14 @@ function buildDebtDashboardData() {
   const snapshots = S.listMonthlySnapshots();
   const lastSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
 
+  // interestRatio (Lãi phải thu / Dư nợ) KHÔNG có sẵn cột riêng trong
+  // monthly_snapshots (chỉ lưu bad_debt_ratio) — tự tính lại từ 2 số đã có,
+  // dùng chung cho cả tháng đã chốt lẫn tháng sống.
+  const interestRatio = (interest, balance) => (balance > 0 ? (interest / balance) * 100 : 0);
   const months = snapshots.map((s) => ({
     yearMonth: s.yearMonth, label: monthLabel(s.yearMonth),
     balance: s.totalBalance, interest: s.interestReceivable, badDebt: s.badDebtBalance, badDebtRatio: s.badDebtRatio,
+    interestRatio: interestRatio(s.interestReceivable, s.totalBalance),
     groupBalances: s.groupBalances,
   }));
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -232,6 +238,7 @@ function buildDebtDashboardData() {
     months.push({
       yearMonth: currentYearMonth, label: monthLabel(currentYearMonth),
       balance: summary.totalBalance, interest: summary.interestReceivable, badDebt: summary.badDebtBalance, badDebtRatio: summary.badDebtRatio,
+      interestRatio: interestRatio(summary.interestReceivable, summary.totalBalance),
       groupBalances: summary.groupBalances,
       live: true,
     });
@@ -266,7 +273,7 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
   const rows = [
     { label: 'Dư nợ', color: 'var(--color-primary)', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, worse: false },
     { label: 'Nợ xấu', color: 'var(--danger)', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, worse: true },
-    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, worse: false },
+    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, worse: false },
   ];
   const th = 'padding:0 8px 8px 0;text-align:left;font-size:10.5px;color:var(--text-muted);font-weight:600;white-space:nowrap';
   const td = 'padding:10px 8px 10px 0;border-top:1px solid var(--border);white-space:nowrap';
@@ -321,7 +328,7 @@ function openMonthlyDetailModal() {
         <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}${yearStart ? ' <span style="font-size:9px;color:var(--text-faint)">▾</span>' : ''}</td>
         <td style="${td}">${formatVND(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
         <td style="${td}">${formatVND(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
-        <td style="${td}">${formatVND(m.interest)}<br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
+        <td style="${td}">${formatVND(m.interest)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.interestRatio)})</span><br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
       </tr>${yoyRow}`;
   }).join('');
   openModal({
