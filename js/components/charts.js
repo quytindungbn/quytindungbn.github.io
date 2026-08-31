@@ -78,8 +78,15 @@ export function barChartSvg({ items, aspect = 2.1 }) {
  * lại mỗi lần trang vẽ lại. Tháng hiện tại (chưa chốt chính thức, tự tính
  * theo ngày) tô nhạt hơn + nét đứt để phân biệt trực quan với các tháng đã
  * chốt.
+ *
+ * Mỗi cặp cột gắn `data-month` (giá trị year_month) — nơi gọi tự bind click
+ * để chọn xem tháng đó (cập nhật "Dư nợ theo nhóm nợ"/"Tổng hợp tăng giảm"
+ * mà KHÔNG thu gọn biểu đồ này lại, vẫn luôn vẽ TOÀN BỘ lịch sử). Truyền
+ * `selectedYm` (year_month đang chọn) để tô khung mờ + đậm nhãn tháng đó,
+ * phân biệt với việc tô đậm nhãn THÁNG SỐNG (isLive) — 1 tháng có thể vừa là
+ * tháng sống vừa là tháng đang chọn cùng lúc.
  */
-export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var(--color-primary)', badDebtColor = 'var(--warning)', interestColor = 'var(--purple)' }) {
+export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var(--color-primary)', badDebtColor = 'var(--warning)', interestColor = 'var(--purple)', selectedYm = null }) {
   if (!months.length) {
     return `<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu.</div>`;
   }
@@ -114,6 +121,7 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
   const bars = months.map((m, i) => {
     const slotX = i * slotW + slotGap / 2;
     const isLive = i === liveIdx;
+    const isSelected = selectedYm != null && m.yearMonth === selectedYm;
     const dash = isLive ? `stroke-dasharray="3 2"` : '';
 
     const balH = Math.max(3, (m.balance / balMax) * chartH);
@@ -138,7 +146,8 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
     const liveOpacity = isLive ? 0.85 : 1;
 
     return `
-      <g>
+      <g data-month="${m.yearMonth}" style="cursor:pointer">
+        ${isSelected ? `<rect x="${(slotX - slotGap / 2).toFixed(1)}" y="${(padTop - 6).toFixed(1)}" width="${slotW.toFixed(1)}" height="${(chartH + 12).toFixed(1)}" rx="6" fill="${balanceColor}" fill-opacity="0.08"></rect>` : ''}
         <rect x="${slotX.toFixed(1)}" y="${balY.toFixed(1)}" width="${balW.toFixed(1)}" height="${balH.toFixed(1)}" rx="4" fill="${balanceColor}" fill-opacity="${liveOpacity}" ${isLive ? `stroke="${balanceColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Dư nợ ${formatVND(m.balance)}</title></rect>
         ${badH > 0 ? `<rect x="${slotX.toFixed(1)}" y="${badY.toFixed(1)}" width="${balW.toFixed(1)}" height="${badH.toFixed(1)}" rx="4" fill="${badDebtColor}" fill-opacity="${liveOpacity}"><title>${m.label}: Nợ xấu ${formatVND(m.badDebt)} (${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</title></rect>
         <text x="${(slotX + balW / 2).toFixed(1)}" y="${(badY + 9).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#fff">${formatTyDong(m.badDebt)}</text>
@@ -149,7 +158,7 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
         <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 13).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${interestColor}">${formatTyDong(m.interest)}</text>
         <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 4).toFixed(1)}" text-anchor="middle" font-size="6.5" font-weight="700" fill="${interestColor}">(${interestRatio.toFixed(1).replace('.', ',')}%)</text>
 
-        <text x="${(slotX + innerW / 2).toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10" font-weight="${isLive ? 700 : 400}" fill="${isLive ? balanceColor : 'var(--text-faint)'}">${m.label}</text>
+        <text x="${(slotX + innerW / 2).toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10" font-weight="${isLive || isSelected ? 700 : 400}" fill="${isLive || isSelected ? balanceColor : 'var(--text-faint)'}">${m.label}</text>
       </g>`;
   }).join('');
 

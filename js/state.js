@@ -615,18 +615,12 @@ export function provisionSummary(contracts, asOf = new Date()) {
  * Super admin tích/nhập "Có TSBĐ" + giá trị cho 1 hợp đồng — dùng tính "Dự
  * phòng cụ thể phải trích" (provisionSummary() ở trên). CHỈ super admin gọi
  * được — RLS chặn admin thường ("super admin updates collateral" trên
- * `contracts`, xem mục docs/supabase-migration.md). MỘT KHI đã tích + lưu
- * (hasCollateral=true) trong khi hợp đồng CÒN dư nợ (>0) thì KHÔNG cho bỏ
- * tích lại — chỉ cho SỬA giá trị (đúng yêu cầu: còn ở Nhóm 2-5 thì không
- * được xóa dữ liệu TSBĐ, chỉ khi tất toán mới thôi cần theo dõi — lúc đó dư
- * nợ = 0 nên hợp đồng tự động không còn hiện trong danh sách nữa).
+ * `contracts`, xem mục docs/supabase-migration.md). Tích/bỏ tích được tự do,
+ * không giới hạn.
  */
 export async function setContractCollateral(contractId, { hasCollateral, collateralValue }) {
   const ct = state.contracts.find((c) => c.id === contractId);
   if (!ct) throw new Error('Không tìm thấy hợp đồng.');
-  if (ct.hasCollateral && !hasCollateral && (Number(ct.balance) || 0) > 0) {
-    throw new Error('Không thể bỏ tích TSBĐ khi hợp đồng còn dư nợ — chỉ có thể sửa giá trị.');
-  }
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
   const patch = { has_collateral: !!hasCollateral, collateral_value: hasCollateral ? (Number(collateralValue) || 0) : 0 };

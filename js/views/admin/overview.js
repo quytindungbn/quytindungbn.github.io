@@ -37,7 +37,7 @@ function visibleContracts() {
 }
 
 export function render(contentEl) {
-  const { isStaff, isSuper } = currentRoles();
+  const { isStaff } = currentRoles();
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
   const customers = S.listCustomers({ adminId: isStaff ? admin.id : undefined });
@@ -101,8 +101,7 @@ export function render(contentEl) {
       </div>
     </div>
 
-    ${nhomNoSectionHtml(contracts)}
-    ${isSuper ? debtDashboardHtml() : ''}
+    ${debtDashboardHtml()}
 
     <div class="card card-pad">
       <div class="section-head"><h2>Yêu cầu mới nhất</h2><a href="#/admin/ho-tro?tab=requests" class="link-more">Xem tất cả</a></div>
@@ -129,37 +128,17 @@ export function render(contentEl) {
   contentEl.querySelector('#tile-overdue').addEventListener('click', () => openContractListModal('Hợp đồng quá hạn', overdue, isStaff, 'var(--danger)'));
   contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', upcoming, isStaff, 'var(--warning)', { highlightWithinDays: S.NEAR_DUE_DAYS }));
 
-  // "Dư nợ theo nhóm nợ" LUÔN hiện (mọi vai trò) — bấm vào 1 cột/nhãn nhóm
-  // để xem danh sách hợp đồng đúng nhóm đó.
+  // "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng giảm" LUÔN
+  // hiện cho MỌI vai trò (staff lẫn super) — bấm vào 1 cột/nhãn nhóm nợ để
+  // xem danh sách hợp đồng đúng nhóm đó; bấm vào 1 cặp cột tháng ở biểu đồ
+  // "Biến động hàng tháng" để CHUYỂN cả "Dư nợ theo nhóm nợ" lẫn "Tổng hợp
+  // tăng giảm" sang đúng tháng đó (xem selectMonth()) — không tải lại trang.
   bindNhomNoClicks(contentEl);
-
-  // Bấm chọn 1 tháng ở dãy chip dưới biểu đồ "Biến động hàng tháng" — cập
-  // nhật bảng "Tổng hợp tăng giảm" bên dưới theo ĐÚNG tháng đó, không tải
-  // lại cả trang. Tính lại buildDebtDashboardData() mỗi lần bấm (rẻ, không
-  // gọi mạng) để luôn khớp dữ liệu mới nhất đang có.
-  if (isSuper) {
-    contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
-    contentEl.querySelectorAll('[data-month-picker]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const ym = btn.dataset.monthPicker;
-        const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
-        const m = months.find((x) => x.yearMonth === ym);
-        if (!m) return;
-        contentEl.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
-        contentEl.querySelector('#month-detail-label').textContent = `${m.label}${m.live ? ' (đang cập nhật)' : ''}`;
-        contentEl.querySelectorAll('[data-month-picker]').forEach((b) => {
-          const active = b.dataset.monthPicker === ym;
-          b.dataset.active = String(active);
-          b.style.border = `1px solid ${active ? 'var(--color-primary)' : 'var(--border)'}`;
-          b.style.background = active ? 'var(--color-primary)' : 'var(--surface)';
-          b.style.color = active ? '#fff' : 'var(--text-muted)';
-        });
-      });
-    });
-  }
+  bindMonthClicks(contentEl);
+  contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
 }
 
-/** Gắn click cho mỗi cột/nhãn "Dư nợ theo nhóm nợ" (data-id = số nhóm) — mở danh sách hợp đồng ĐÚNG nhóm đó theo phân loại HIỆN TẠI. `root` là contentEl (lúc render() đầu) hoặc document (lúc refreshNhomNoSection() gọi lại sau khi lưu TSBĐ) — cả 2 đều có .querySelector nên dùng chung được. */
+/** Gắn click cho mỗi cột/nhãn "Dư nợ theo nhóm nợ" (data-id = số nhóm, CHỈ có ở tháng đang sống — xem nhomNoBarHtml()) — mở danh sách hợp đồng ĐÚNG nhóm đó theo phân loại HIỆN TẠI. Gọi lại mỗi lần #nhom-no-slot được vẽ lại (render() đầu VÀ mỗi lần selectMonth() đổi tháng). */
 function bindNhomNoClicks(root) {
   const slot = root.querySelector('#nhom-no-slot');
   if (!slot) return;
@@ -171,88 +150,64 @@ function bindNhomNoClicks(root) {
 
 const GROUP_COLORS = { 1: 'var(--success)', 2: 'var(--warning)', 3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d' };
 
-/**
- * "Dư nợ theo nhóm nợ" + Dự phòng chung/cụ thể phải trích — LUÔN hiện cho
- * MỌI quản trị viên (staff lẫn super — staff chỉ thấy đúng phạm vi Thôn/Xóm
- * được gán, xem visibleContracts()), KHÁC với "Biến động hàng tháng"/"Tổng
- * hợp tăng giảm" bên dưới (debtDashboardHtml() — vẫn CHỈ super xem, đọc từ
- * bảng monthly_snapshots RLS super-only). Luôn tính "SỐNG" (ngay bây giờ,
- * không có lịch sử theo tháng — provisionSummary() ở state.js).
- *
- * Nhóm nợ 1-5 theo đúng quy định phân loại nợ NHNN (Thông tư 02/2013): Nhóm
- * 1 = quá hạn 0-10 ngày, Nhóm 2 = 11-90, Nhóm 3 = 91-180, Nhóm 4 = 181-360,
- * Nhóm 5 = trên 360 ngày.
- *
- * Bấm vào 1 cột/nhãn nhóm để xem danh sách hợp đồng đúng nhóm đó
- * (openDebtGroupModal) — với Nhóm 2-5, danh sách có thêm ô "Có TSBĐ" (tài
- * sản bảo đảm) — CHỈ super admin tích/sửa được (đúng yêu cầu: "chỉ tài
- * khoản admin mới có chức năng này còn tất cả tk quản trị đều xem được dữ
- * liệu"), ai cũng xem được giá trị đã lưu. Sau khi lưu TSBĐ,
- * refreshNhomNoSection() cập nhật lại ngay Dự phòng cụ thể mà không cần tải
- * lại trang.
- */
-function nhomNoSectionHtml(contracts) {
-  const now = new Date();
-  const summary = S.debtGroupSummary(contracts, now);
-  const provision = S.provisionSummary(contracts, now);
-  return `
-    <div class="card card-pad mb-16">
-      <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
-      <div id="nhom-no-slot">${nhomNoBarHtml(summary)}</div>
-      <div class="grid-2 mt-16" id="provision-slot">${provisionRowsHtml(provision)}</div>
-    </div>`;
-}
-function nhomNoBarHtml(summary) {
-  const barItems = [1, 2, 3, 4, 5].map((g) => ({ id: g, label: `Nhóm ${g}`, shortLabel: String(g), value: summary.groupBalances[g], color: GROUP_COLORS[g] }));
+/** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m — có thể là tháng đang sống hoặc tháng đã chốt trong quá khứ, xem selectMonth()). CHỈ gắn `id` (bấm ra danh sách hợp đồng) khi là THÁNG SỐNG — tháng đã chốt trong quá khứ không còn lưu chi tiết từng hợp đồng để tra lại được, chỉ có tổng theo nhóm. */
+function nhomNoBarHtml(m) {
+  const gb = m.groupBalances || {};
+  const barItems = [1, 2, 3, 4, 5].map((g) => ({
+    ...(m.live ? { id: g } : {}),
+    label: `Nhóm ${g}`, shortLabel: String(g), value: gb[g] || 0, color: GROUP_COLORS[g],
+  }));
   return barChartSvg({ items: barItems });
 }
+/** 2 dòng "Dự phòng chung/cụ thể phải trích" — chỉ chữ, không bỏ trong khung — LUÔN tính "SỐNG" (ngay bây giờ, không đổi theo tháng đang xem) vì cần đúng trạng thái TSBĐ hiện tại của từng hợp đồng, không có cách nào biết TSBĐ "tại thời điểm 1 tháng trong quá khứ". */
 function provisionRowsHtml(provision) {
+  const row = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border)';
   return `
-    <div class="stat-tile c-purple"><div class="stat-label">Dự phòng chung phải trích</div><div class="stat-value" style="font-size:14px">${formatVND(provision.generalProvision)}</div></div>
-    <div class="stat-tile c-orange"><div class="stat-label">Dự phòng cụ thể phải trích</div><div class="stat-value" style="font-size:14px">${formatVND(provision.specificProvision)}</div></div>`;
+    <div style="${row}"><span class="text-sm text-muted">Dự phòng chung phải trích</span><b style="font-size:13.5px">${formatVND(provision.generalProvision)}</b></div>
+    <div style="${row}"><span class="text-sm text-muted">Dự phòng cụ thể phải trích</span><b style="font-size:13.5px">${formatVND(provision.specificProvision)}</b></div>`;
 }
-/** Vẽ lại "Dư nợ theo nhóm nợ" + Dự phòng ngay sau khi lưu TSBĐ trong modal (openDebtGroupModal) — không cần tải lại trang, không cần đóng modal đang mở. */
-function refreshNhomNoSection() {
-  const contracts = visibleContracts();
-  const now = new Date();
-  const summary = S.debtGroupSummary(contracts, now);
-  const provision = S.provisionSummary(contracts, now);
-  const nhomSlot = document.getElementById('nhom-no-slot');
-  if (nhomSlot) nhomSlot.innerHTML = nhomNoBarHtml(summary);
-  const provisionSlot = document.getElementById('provision-slot');
-  if (provisionSlot) provisionSlot.innerHTML = provisionRowsHtml(provision);
-  bindNhomNoClicks(document);
+/** Vẽ lại 2 dòng Dự phòng ngay sau khi lưu TSBĐ trong modal (openDebtGroupModal) — KHÔNG đụng tới "Dư nợ theo nhóm nợ" (TSBĐ không đổi số dư từng nhóm, chỉ đổi số tiền phải trích) nên không cần vẽ lại biểu đồ, tránh làm mất tháng đang xem nếu đang xem 1 tháng quá khứ. */
+function refreshProvisionSlot() {
+  const provision = S.provisionSummary(visibleContracts(), new Date());
+  const slot = document.getElementById('provision-slot');
+  if (slot) slot.innerHTML = provisionRowsHtml(provision);
 }
 
 /**
- * Dashboard "Biến động hàng tháng" + "Tổng hợp tăng giảm" — CHỈ hiện cho
- * quản trị viên TOÀN QUYỀN (role='super'), dưới 4 ô thống kê chính + "Dư nợ
- * theo nhóm nợ" (2 mục đó LUÔN hiện cho mọi vai trò — xem nhomNoSectionHtml())
- * — vì 2 mục NÀY đọc từ bảng monthly_snapshots, RLS CHỈ cho super SELECT
- * (giống trang "Nhật ký") — xem mục 10.46 docs/supabase-migration.md.
+ * Dashboard "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng
+ * giảm" — LUÔN hiện cho MỌI quản trị viên (staff lẫn super), dưới 4 ô thống
+ * kê chính. "Dự phòng chung/cụ thể phải trích" (provisionRowsHtml() ở trên)
+ * LUÔN tính "SỐNG" (không đổi theo tháng đang xem — xem ghi chú ở đó), tách
+ * riêng khỏi phần chọn tháng dưới đây.
  *
  * "Lãi phải thu" chỉ tính Nhóm 1-4 (Nhóm 5 coi như khó thu, không còn tính
  * lãi phải thu nữa). "Nợ xấu" CHÍNH THỨC = Nhóm 3+4+5 (không tính Nhóm 2, dù
  * Nhóm 2 đã là "nợ cần chú ý").
  *
- * Thứ tự: biểu đồ "Biến động hàng tháng" (LUÔN vẽ TOÀN BỘ lịch sử, không đổi
- * theo tháng đang chọn) → dãy chip chọn Tháng/Năm → bảng "Tổng hợp tăng
- * giảm" (LUÔN hiện đúng số liệu của 1 THÁNG ĐANG CHỌN, mặc định = tháng mới
- * nhất/đang sống — bấm 1 chip tháng để đổi tháng xem, cập nhật ngay mà
- * không tải lại trang, xem buildDebtDashboardData()/monthDetailTableHtml()
- * và handler data-month-picker trong render()).
+ * MỘT trạng thái "tháng đang xem" DÙNG CHUNG cho cả "Dư nợ theo nhóm nợ" lẫn
+ * "Tổng hợp tăng giảm" (mặc định = tháng mới nhất/đang sống) — bấm vào 1 cặp
+ * cột tháng bất kỳ ở biểu đồ "Biến động hàng tháng" (data-month, xem
+ * js/components/charts.js) để CHUYỂN cả 2 mục đó sang đúng tháng vừa bấm,
+ * xem trực quan lịch sử — riêng bản THÂN biểu đồ "Biến động hàng tháng" LUÔN
+ * vẽ TOÀN BỘ lịch sử, chỉ tô khung mờ + đậm nhãn tháng đang chọn, không thu
+ * gọn lại — xem selectMonth()/bindMonthClicks() bên dưới.
  *
  * Biểu đồ "Biến động hàng tháng" (monthlyComboChartSvg — xem
  * js/components/charts.js) mỗi tháng vẽ 1 cặp cột liền nhau, đơn vị TỶ ĐỒNG
  * ghi 1 lần ở đầu: cột Dư nợ (to) LỒNG sẵn đoạn màu cam đè lên ở đáy thể
  * hiện Nợ xấu (số tiền ghi ngay trong cột), cột Lãi phải thu (nhỏ hơn) ngay
  * bên cạnh — cả 2 cột phụ co theo ĐÚNG tỷ lệ % của cột Dư nợ tháng đó. Đọc
- * dữ liệu từ bảng monthly_snapshots — bảng này KHÔNG có sẵn số liệu quá khứ
+ * dữ liệu từ bảng monthly_snapshots (RLS cho MỌI admin SELECT — xem mục
+ * 10.48 docs/supabase-migration.md) — bảng này KHÔNG có sẵn số liệu quá khứ
  * (mỗi lần nhập Excel mới đè lên số liệu cũ, không lưu lịch sử) nên lịch sử
  * chỉ bắt đầu từ lúc tính năng này ra đời. Số liệu tự chốt vào ĐÚNG ngày
  * cuối cùng mỗi tháng (xem send-due-reminders/index.ts); tháng hiện tại
  * (chưa chốt) tự tính "sống" theo dữ liệu hợp đồng đang có, không cần thao
- * tác gì.
+ * tác gì — riêng tháng SỐNG này tính trực tiếp từ `contracts` (RLS đã tự
+ * giới hạn staff về đúng phạm vi Thôn/Xóm được gán) nên CHỈ tháng sống mới
+ * có thể lệch phạm vi giữa staff/super — mọi tháng ĐÃ CHỐT trong quá khứ đều
+ * là số TOÀN QUỸ như nhau cho mọi vai trò (đã lưu sẵn dạng tổng hợp lúc chốt
+ * bằng service_role, không qua RLS).
  *
  * Cột "So sánh năm" ở bảng "Tổng hợp tăng giảm" so với CUỐI KỲ 31/12 năm
  * liền trước (đầu năm), KHÔNG phải cùng tháng năm trước — xem yearStartOf()
@@ -269,12 +224,14 @@ function buildDebtDashboardData() {
   const months = snapshots.map((s) => ({
     yearMonth: s.yearMonth, label: monthLabel(s.yearMonth),
     balance: s.totalBalance, interest: s.interestReceivable, badDebt: s.badDebtBalance, badDebtRatio: s.badDebtRatio,
+    groupBalances: s.groupBalances,
   }));
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   if (!lastSnapshot || lastSnapshot.yearMonth !== currentYearMonth) {
     months.push({
       yearMonth: currentYearMonth, label: monthLabel(currentYearMonth),
       balance: summary.totalBalance, interest: summary.interestReceivable, badDebt: summary.badDebtBalance, badDebtRatio: summary.badDebtRatio,
+      groupBalances: summary.groupBalances,
       live: true,
     });
   }
@@ -393,36 +350,20 @@ function openMonthlyDetailModal() {
   });
 }
 
-/** Dãy chip chọn tháng (gộp theo năm) đặt dưới biểu đồ "Biến động hàng tháng" — bấm vào 1 tháng để cập nhật 3 cột + biểu đồ nhóm nợ phía trên, không tải lại trang. */
-function monthPickerHtml(months, activeYm) {
-  // Chỉ có ĐÚNG 1 tháng thì KHÔNG có gì để "chọn" (dư thừa, chỉ 1 chip) — ẩn
-  // hẳn dãy chip, tự hiện lại khi có từ tháng thứ 2 trở lên.
-  if (months.length <= 1) return '';
-  const byYear = new Map();
-  for (const m of months) {
-    const y = m.yearMonth.slice(0, 4);
-    if (!byYear.has(y)) byYear.set(y, []);
-    byYear.get(y).push(m);
-  }
-  const groups = [...byYear.keys()].sort().map((y) => {
-    const chips = byYear.get(y).map((m) => {
-      const active = m.yearMonth === activeYm;
-      return `<button type="button" data-month-picker="${m.yearMonth}" data-active="${active}" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${active ? 'var(--color-primary)' : 'var(--border)'};background:${active ? 'var(--color-primary)' : 'var(--surface)'};color:${active ? '#fff' : 'var(--text-muted)'};font-size:12px;font-weight:600;white-space:nowrap">Th${Number(m.yearMonth.slice(5))}</button>`;
-    }).join('');
-    return `<div class="mb-6"><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px">Năm ${y}</div><div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px">${chips}</div></div>`;
-  }).join('');
-  return `<div class="mt-16">${groups}</div>`;
-}
-
 function debtDashboardHtml() {
+  const contracts = visibleContracts();
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const initial = months[months.length - 1];
+  const provision = S.provisionSummary(contracts, new Date());
 
   return `
     <div class="card card-pad mb-16">
-      <h3 style="font-size:13.5px;margin-bottom:10px">Biến động hàng tháng</h3>
-      ${monthlyComboChartSvg({ months })}
-      ${monthPickerHtml(months, initial.yearMonth)}
+      <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
+      <div id="nhom-no-slot">${nhomNoBarHtml(initial)}</div>
+      <div id="provision-slot" class="mt-16">${provisionRowsHtml(provision)}</div>
+
+      <h3 style="font-size:13.5px;margin-bottom:10px" class="mt-24">Biến động hàng tháng</h3>
+      <div id="trend-chart-slot">${monthlyComboChartSvg({ months, selectedYm: initial.yearMonth })}</div>
 
       <div class="flex items-center justify-between mb-10 mt-20">
         <h3 style="font-size:13.5px;margin:0">Tổng hợp tăng giảm</h3>
@@ -434,6 +375,25 @@ function debtDashboardHtml() {
       <div id="month-detail-slot">${monthDetailTableHtml(initial, prevMonthOf, yearStartOf)}</div>
     </div>
   `;
+}
+
+/** Gắn click cho mỗi cặp cột tháng ở biểu đồ "Biến động hàng tháng" (data-month = year_month) — bấm vào để CHUYỂN "Dư nợ theo nhóm nợ" + "Tổng hợp tăng giảm" sang đúng tháng đó, xem selectMonth(). */
+function bindMonthClicks(root) {
+  root.querySelectorAll('[data-month]').forEach((el) => {
+    el.addEventListener('click', () => selectMonth(root, el.dataset.month));
+  });
+}
+/** Chuyển "Dư nợ theo nhóm nợ" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn). Không đụng tới Dự phòng (luôn tính sống, xem provisionRowsHtml()). */
+function selectMonth(root, ym) {
+  const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
+  const m = months.find((x) => x.yearMonth === ym);
+  if (!m) return;
+  root.querySelector('#nhom-no-slot').innerHTML = nhomNoBarHtml(m);
+  root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
+  root.querySelector('#month-detail-label').textContent = `${m.label}${m.live ? ' (đang cập nhật)' : ''}`;
+  root.querySelector('#trend-chart-slot').innerHTML = monthlyComboChartSvg({ months, selectedYm: ym });
+  bindNhomNoClicks(root);
+  bindMonthClicks(root);
 }
 
 /** % thay đổi so với 1 giá trị trước đó — null nếu chưa có gì để so (chưa đủ lịch sử, hoặc giá trị trước = 0). */
@@ -454,9 +414,10 @@ function deltaChip(p, { worse = false } = {}) {
 /**
  * Danh sách hợp đồng thuộc ĐÚNG 1 nhóm nợ (1-5, phân loại theo Thông tư
  * 02/2013 — xem S.debtGroup()) — mở khi bấm vào cột/nhãn tương ứng ở biểu đồ
- * "Dư nợ theo nhóm nợ". Luôn tính theo phân loại HIỆN TẠI (thời điểm bấm),
- * dùng TOÀN BỘ hợp đồng của quỹ (không giới hạn theo phạm vi 1 nhân viên) —
- * khớp đúng cách "Dư nợ theo nhóm nợ" đang tổng hợp.
+ * "Dư nợ theo nhóm nợ" (CHỈ bấm được ở tháng đang sống — xem nhomNoBarHtml()).
+ * Luôn tính theo phân loại HIỆN TẠI (thời điểm bấm), dùng ĐÚNG phạm vi được
+ * phép xem của phiên đang đăng nhập (visibleContracts() — super = toàn quỹ,
+ * staff = trong Thôn/Xóm được gán).
  */
 function openDebtGroupModal(g, isStaff, isSuper) {
   const now = new Date();
@@ -507,31 +468,25 @@ function openDebtGroupModal(g, isStaff, isSuper) {
  * "Dự phòng cụ thể phải trích" (xem S.provisionSummary() ở state.js). CHỈ
  * super admin (editable=true) tích/sửa được — nhân viên thường CHỈ XEM, đúng
  * yêu cầu "chỉ tài khoản admin mới có chức năng này còn tất cả tk quản trị
- * đều xem được dữ liệu".
- *
- * Đã tích + lưu (hasCollateral=true) trong khi hợp đồng còn dư nợ (>0, tức
- * còn đang ở Nhóm 2-5 vì danh sách này chỉ liệt kê hợp đồng CÒN dư nợ) thì
- * KHÓA checkbox lại — KHÔNG cho bỏ tích nữa, chỉ cho SỬA giá trị — đúng yêu
- * cầu "còn trong nhóm 2 3 4 5 thì vẫn lưu không được xóa dữ liệu TSBĐ trừ
- * khi tất toán" (hợp đồng tất toán thì dư nợ = 0, không còn xuất hiện trong
- * danh sách này nữa nên không cần nút "xóa" riêng).
+ * đều xem được dữ liệu". Tích/bỏ tích được tự do (không khóa lại) — đúng
+ * yêu cầu. Giá trị nhập vào tự ngăn cách hàng nghìn bằng dấu chấm lúc gõ
+ * (VD "4.000.000") cho dễ đọc trên điện thoại — xem bindTsbdInputs().
  */
 function tsbdRowHtml(ct, editable) {
   if (!editable) {
     return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${ct.hasCollateral ? `Có TSBĐ: <b>${formatVND(ct.collateralValue)}</b>` : 'Chưa có TSBĐ'}</div>`;
   }
   const checked = !!ct.hasCollateral;
-  const locked = checked && (ct.balance || 0) > 0;
   return `
     <div data-tsbd-wrap="${ct.id}" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)">
-        <input type="checkbox" data-tsbd-check="${ct.id}" ${checked ? 'checked' : ''} ${locked ? 'disabled' : ''} style="width:16px;height:16px;flex-shrink:0">
-        <span>Có TSBĐ${locked ? ' <span style="color:var(--text-faint)">(đã lưu, chỉ sửa được giá trị)</span>' : ''}</span>
+        <input type="checkbox" data-tsbd-check="${ct.id}" ${checked ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0">
+        <span>Có TSBĐ</span>
       </label>
-      <input type="number" inputmode="decimal" data-tsbd-value="${ct.id}" placeholder="Giá trị TSBĐ (₫)" value="${checked && ct.collateralValue ? ct.collateralValue : ''}" ${checked ? '' : 'hidden'} style="margin-top:6px;width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12.5px">
+      <input type="text" inputmode="numeric" data-tsbd-value="${ct.id}" placeholder="Giá trị TSBĐ (₫)" value="${checked && ct.collateralValue ? formatNumber(ct.collateralValue) : ''}" ${checked ? '' : 'hidden'} style="margin-top:6px;width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12.5px">
     </div>`;
 }
-/** Gắn sự kiện cho ô "Có TSBĐ" + giá trị trong modal (chỉ gọi khi isSuper) — tích thì hiện ô nhập, gõ xong rời khỏi ô (blur) mới lưu (tránh lưu 0 lúc chưa kịp gõ); bỏ tích thì xóa hẳn (chỉ bấm được khi CHƯA khóa — xem tsbdRowHtml()). Lưu xong gọi refreshNhomNoSection() để "Dự phòng cụ thể phải trích" ở ngoài cập nhật ngay. */
+/** Gắn sự kiện cho ô "Có TSBĐ" + giá trị trong modal (chỉ gọi khi isSuper) — tích thì hiện ô nhập, gõ xong rời khỏi ô (blur) mới lưu (tránh lưu 0 lúc chưa kịp gõ); bỏ tích thì xóa hẳn ngay (không khóa lại). Ô nhập tự format thêm dấu chấm ngăn cách hàng nghìn MỖI LẦN gõ (input) — lúc lưu tự bỏ dấu chấm lại thành số thật. Lưu xong gọi refreshProvisionSlot() để "Dự phòng cụ thể phải trích" ở ngoài cập nhật ngay. */
 function bindTsbdInputs(sheet) {
   sheet.querySelectorAll('[data-tsbd-check]').forEach((cb) => {
     cb.addEventListener('click', (e) => e.stopPropagation());
@@ -545,8 +500,8 @@ function bindTsbdInputs(sheet) {
       }
       try {
         await S.setContractCollateral(ctId, { hasCollateral: false, collateralValue: 0 });
-        if (valueInput) valueInput.hidden = true;
-        refreshNhomNoSection();
+        if (valueInput) { valueInput.hidden = true; valueInput.value = ''; }
+        refreshProvisionSlot();
       } catch (err) {
         alert(err.message);
         cb.checked = true;
@@ -556,15 +511,16 @@ function bindTsbdInputs(sheet) {
   });
   sheet.querySelectorAll('[data-tsbd-value]').forEach((input) => {
     input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('input', () => {
+      const digits = input.value.replace(/\D/g, '');
+      input.value = digits ? formatNumber(Number(digits)) : '';
+    });
     input.addEventListener('blur', async () => {
       const ctId = input.dataset.tsbdValue;
-      const val = Number(input.value) || 0;
+      const val = Number(input.value.replace(/\D/g, '')) || 0;
       try {
         await S.setContractCollateral(ctId, { hasCollateral: true, collateralValue: val });
-        const cb = sheet.querySelector(`[data-tsbd-check="${ctId}"]`);
-        const ct = S.getContract(ctId);
-        if (cb && ct && (ct.balance || 0) > 0) cb.disabled = true;
-        refreshNhomNoSection();
+        refreshProvisionSlot();
       } catch (err) {
         alert(err.message);
       }

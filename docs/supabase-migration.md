@@ -2553,6 +2553,46 @@ duyệt qua RLS (policy trên), không qua `create-account`. Việc NHẬP EXCEL
 **Việc cần bạn làm**: chạy đoạn SQL trên — vào thẳng SQL Editor:
 https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
 
+**Cập nhật (lần 1) — KHÔNG cần chạy thêm SQL cho phần này (SQL bổ sung nằm ở mục 10.48 ngay dưới), KHÔNG
+cần deploy lại Edge Function**: theo yêu cầu mới —
+1. **Bỏ khóa checkbox TSBĐ**: tích/bỏ tích "Có TSBĐ" giờ tự do, không còn giới hạn "đã lưu thì không cho
+   bỏ tích khi còn dư nợ" như bản đầu.
+2. **Ô nhập giá trị TSBĐ** tự ngăn cách hàng nghìn bằng dấu chấm lúc gõ (VD `4.000.000`) cho dễ đọc.
+3. **"Biến động hàng tháng"/"Tổng hợp tăng giảm"** (trước CHỈ super xem) nay **MỞ CHO MỌI quản trị viên**
+   luôn, gộp chung 1 hệ thống chọn tháng với "Dư nợ theo nhóm nợ" — xem mục 10.48 ngay dưới.
+
+### 10.48. "Biến động hàng tháng" + "Tổng hợp tăng giảm" mở cho MỌI quản trị viên, gộp chung chọn tháng với "Dư nợ theo nhóm nợ" (BẮT BUỘC chạy SQL, KHÔNG cần deploy lại Edge Function)
+
+**Đổi quyền xem**: mục 10.46 cho "Biến động hàng tháng"/"Tổng hợp tăng giảm" CHỈ super xem (đọc từ bảng
+`monthly_snapshots` RLS super-only) — giờ đổi thành **MỌI quản trị viên đều xem được**, y hệt "Dư nợ theo
+nhóm nợ" ở mục 10.47. Bảng `monthly_snapshots` chỉ chứa số TỔNG HỢP toàn quỹ (không có tên/thông tin
+khách hàng nào) nên mở rộng an toàn, không lộ thông tin khách hàng ngoài phạm vi nhân viên được gán.
+
+```sql
+drop policy if exists "super sees monthly snapshots" on monthly_snapshots;
+create policy "any admin sees monthly snapshots" on monthly_snapshots
+  for select using ((auth.jwt() ->> 'app_role') = 'admin');
+```
+
+**Gộp chung hệ thống chọn tháng**: bỏ hẳn dãy chip "chọn tháng" riêng dưới biểu đồ (dư thừa, trục ngang
+biểu đồ đã ghi rõ từng tháng rồi) — giờ **bấm THẲNG vào 1 cặp cột tháng** ở biểu đồ "Biến động hàng
+tháng" để chọn xem tháng đó (tô khung mờ + đậm nhãn tháng đang chọn, biểu đồ vẫn luôn vẽ TOÀN BỘ lịch
+sử, không thu gọn lại) — chọn xong thì **CẢ "Dư nợ theo nhóm nợ" LẪN "Tổng hợp tăng giảm" đều chuyển
+sang đúng tháng đó cùng lúc**, xem trực quan lịch sử dễ nhất. "Dư nợ theo nhóm nợ" của tháng ĐÃ CHỐT
+trong quá khứ không bấm vào cột được nữa (không mở ra danh sách hợp đồng) — quỹ chỉ lưu TỔNG theo nhóm
+lúc chốt, không lưu chi tiết từng hợp đồng nên không tra lại được; chỉ tháng ĐANG SỐNG (hiện tại) mới
+bấm vào cột ra danh sách như cũ. "Dự phòng chung/cụ thể phải trích" LUÔN tính SỐNG theo TSBĐ hiện tại,
+KHÔNG đổi theo tháng đang xem (không có cách nào biết TSBĐ "tại thời điểm 1 tháng trong quá khứ").
+
+**LƯU Ý về tháng ĐANG SỐNG (hiện tại, chưa chốt)**: số liệu tháng này tính trực tiếp từ dữ liệu hợp đồng
+hiện có — nhân viên (staff) chỉ thấy đúng phạm vi Thôn/Xóm được gán do RLS bảng `contracts` chặn ở tầng
+bảng (không đổi gì, giữ nguyên bảo mật khách hàng). **Mọi tháng ĐÃ CHỐT** (đã lưu sẵn trong
+`monthly_snapshots` bằng service_role lúc chốt cuối tháng) thì **AI CŨNG THẤY SỐ TOÀN QUỸ NHƯ NHAU**, kể
+cả staff — đây là điểm khác biệt duy nhất giữa 2 vai trò trong toàn bộ dashboard này.
+
+**Việc cần bạn làm**: chạy đoạn SQL trên — vào thẳng SQL Editor:
+https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
