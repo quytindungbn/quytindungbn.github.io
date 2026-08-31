@@ -49,120 +49,87 @@ export function barChartSvg({ items, aspect = 2.1 }) {
     </div>`;
 }
 
-/** Màu theo mức nghiêm trọng tỷ lệ nợ xấu — CÙNG ngưỡng với ratioClass ở overview.js (dưới 2% xanh, 2-5% vàng, trên 5% đỏ). */
-function badDebtSeverityColor(ratio) {
+/** Màu theo mức nghiêm trọng tỷ lệ nợ xấu — dưới 2% xanh, 2-5% vàng, trên 5% đỏ. */
+export function badDebtSeverityColor(ratio) {
   if (ratio >= 5) return 'var(--danger)';
   if (ratio >= 2) return 'var(--warning)';
   return 'var(--success)';
 }
 
 /**
- * Biểu đồ GỘP theo tháng — dư nợ (vùng/đường, làn trên) + lãi phải thu (cột,
- * làn dưới) trong CÙNG 1 khối, chia sẻ 1 trục ngang (tháng) nhưng MỖI chuỗi
- * tự co giãn theo đúng thang riêng của nó (không dùng chung 1 trục tung —
- * dư nợ và lãi phải thu chênh lệch quá lớn, dùng chung trục sẽ làm cột lãi
- * biến mất). CÓ GHI TỶ LỆ ngay trên biểu đồ: mỗi cột lãi phải thu ghi % tăng/
- * giảm so với tháng trước (m.interestMomPct, tính sẵn ở nơi gọi); mỗi nhãn
- * tháng kèm luôn tỷ lệ nợ xấu tháng đó, tô màu theo mức nghiêm trọng (xanh/
- * vàng/đỏ). Số liệu tự động lấy từ dữ liệu hợp đồng/số đã chốt hiện có, luôn
- * cập nhật lại mỗi lần trang vẽ lại, không cần thao tác gì. Tháng hiện tại
- * (chưa chốt chính thức, tự tính theo ngày) tô nhạt hơn + nét đứt để phân
- * biệt trực quan với các tháng đã chốt.
+ * Biểu đồ cột GỘP theo tháng — MỖI tháng 1 cặp cột LIỀN NHAU, bắt đầu từ mép
+ * TRÁI của ô tháng đó (không căn giữa): cột Dư nợ (to, bên trái) LỒNG sẵn 1
+ * đoạn tô màu theo mức nghiêm trọng ở ĐỈNH cột thể hiện đúng phần Nợ xấu
+ * trong đó, và cột Lãi phải thu (nhỏ hơn, ngay bên phải) — cả 2 LUÔN ghi số
+ * tiền ngay trên cột, không cần chạm/hover mới thấy. Dư nợ và lãi phải thu
+ * chênh lệch quá lớn nên co giãn theo 2 thang riêng (không dùng chung 1 trục
+ * tung) dù cùng chia sẻ 1 đáy — phân biệt bằng vị trí + màu + số ghi kèm,
+ * không dựa vào việc so sánh chiều cao giữa 2 cột. Số liệu tự động lấy từ dữ
+ * liệu hợp đồng/số đã chốt hiện có, luôn cập nhật lại mỗi lần trang vẽ lại.
+ * Tháng hiện tại (chưa chốt chính thức, tự tính theo ngày) tô nhạt hơn + nét
+ * đứt để phân biệt trực quan với các tháng đã chốt.
  */
-export function monthlyComboChartSvg({ months, aspect = 1.7, balanceColor = 'var(--color-primary)', interestColor = 'var(--purple)' }) {
+export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var(--color-primary)', interestColor = 'var(--purple)' }) {
   if (!months.length) {
     return `<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu.</div>`;
   }
   const vbH = Math.round(VB_W / aspect);
-  const padBottom = 32; // nhãn tháng + tỷ lệ nợ xấu
-  const chartH = vbH - padBottom;
-  const areaH = chartH * 0.54;
-  const barsH = chartH * 0.32;
-  const barsBase = chartH; // đáy cột lãi phải thu = đáy toàn khối
-  const barsTop = chartH - barsH;
+  const padTop = 28; // 2 dòng nhãn số tiền (nợ xấu + dư nợ) phía trên cột dư nợ
+  const padBottom = 20; // nhãn tháng
+  const chartH = vbH - padTop - padBottom;
+  const baseY = padTop + chartH;
 
   const n = months.length;
-  const stepX = n > 1 ? VB_W / (n - 1) : 0;
-  const xs = months.map((m, i) => (n > 1 ? i * stepX : VB_W / 2));
-  const liveIdx = months[n - 1].live ? n - 1 : -1;
+  // Chỉ có 1 tháng (mới bắt đầu dùng tính năng) thì KHÔNG lấy nguyên VB_W
+  // làm bề rộng 1 ô tháng (ra 1 cặp cột khổng lồ) — dùng tạm bề rộng như thể
+  // đang có 8 tháng, cho tới khi có thêm tháng thứ 2 trở lên.
+  const slotW = n > 1 ? VB_W / n : VB_W / 8;
+  const slotGap = slotW * 0.12;
+  const innerW = slotW - slotGap;
+  const balW = innerW * 0.6;
+  const intW = innerW * 0.28;
 
   const balMax = Math.max(1, ...months.map((m) => m.balance));
-  const balMin = Math.min(0, ...months.map((m) => m.balance));
-  const balRange = balMax - balMin || 1;
-  const ys = months.map((m) => areaH - ((m.balance - balMin) / balRange) * areaH);
-
   const intMax = Math.max(1, ...months.map((m) => m.interest));
+  const liveIdx = months[n - 1].live ? n - 1 : -1;
 
-  const gradId = `mc-grad-${Math.random().toString(36).slice(2, 8)}`;
-  const solidEnd = liveIdx >= 0 ? liveIdx : n - 1;
-  const areaPath = xs.slice(0, solidEnd + 1).map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
-    + ` L ${xs[solidEnd].toFixed(1)} ${areaH.toFixed(1)} L ${xs[0].toFixed(1)} ${areaH.toFixed(1)} Z`;
-  const linePath = xs.slice(0, solidEnd + 1).map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ');
-  const dashSegment = liveIdx > 0 ? `M ${xs[liveIdx - 1].toFixed(1)} ${ys[liveIdx - 1].toFixed(1)} L ${xs[liveIdx].toFixed(1)} ${ys[liveIdx].toFixed(1)}` : '';
-
-  const dots = months.map((m, i) => {
-    const isLive = i === liveIdx;
-    const title = `${m.label}: Dư nợ ${formatVND(m.balance)} · Lãi phải thu ${formatVND(m.interest)} · Nợ xấu ${m.badDebtRatio.toFixed(1).replace('.', ',')}%`;
-    return isLive
-      ? `<circle cx="${xs[i].toFixed(1)}" cy="${ys[i].toFixed(1)}" r="4.5" fill="var(--surface)" stroke="${balanceColor}" stroke-width="2.5"><title>${title}</title></circle>`
-      : `<circle cx="${xs[i].toFixed(1)}" cy="${ys[i].toFixed(1)}" r="3.5" fill="${balanceColor}"><title>${title}</title></circle>`;
-  }).join('');
-
-  const showLabelEvery = n > 8 ? Math.ceil(n / 6) : 1;
-  const showAt = (i) => i % showLabelEvery === 0 || i === n - 1;
-
-  // Chỉ có ĐÚNG 1 tháng (mới bắt đầu dùng tính năng, chưa có tháng nào khác
-  // để chia khoảng cách — stepX = 0) thì KHÔNG được lấy nguyên VB_W làm bề
-  // rộng cột (sẽ ra 1 cột khổng lồ chiếm gần hết chiều ngang biểu đồ) — dùng
-  // tạm 1 khoảng cách "giả định" hợp lý (bằng đúng 1/8 chiều ngang, tương tự
-  // độ rộng 1 cột nếu có khoảng 8 tháng) cho tới khi có thêm tháng thứ 2.
-  const barW = (n > 1 ? stepX : VB_W / 8) * 0.42;
   const bars = months.map((m, i) => {
-    const h = Math.max(2, (m.interest / intMax) * barsH);
-    const y = barsBase - h;
+    const slotX = i * slotW + slotGap / 2;
     const isLive = i === liveIdx;
-    const title = `${m.label}: Lãi phải thu ${formatVND(m.interest)}`;
-    const rect = `<rect x="${(xs[i] - barW / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${interestColor}" fill-opacity="${isLive ? 0.45 : 1}" ${isLive ? `stroke="${interestColor}" stroke-width="1" stroke-dasharray="3 2"` : ''}><title>${title}</title></rect>`;
-    // Ghi % tăng/giảm so với tháng trước ngay trên đầu cột — thưa bớt như
-    // nhãn tháng nếu quá nhiều cột (đỡ đè chữ lên nhau), riêng cột THÁNG NÀY
-    // (mới nhất) luôn hiện vì đây là số quan trọng nhất.
-    const p = m.interestMomPct;
-    const pctLabel = (p != null && (showAt(i) || isLive))
-      ? `<text x="${xs[i].toFixed(1)}" y="${Math.max(barsTop - 3, y - 5).toFixed(1)}" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--text-muted)">${p > 0 ? '+' : ''}${Math.round(p)}%</text>`
-      : '';
-    return rect + pctLabel;
-  }).join('');
+    const dash = isLive ? `stroke-dasharray="3 2"` : '';
 
-  const xLabels = months.map((m, i) => {
-    if (!showAt(i)) return '';
-    const monthColor = i === liveIdx ? balanceColor : 'var(--text-faint)';
-    const monthWeight = i === liveIdx ? '700' : '400';
-    const ratioColor = badDebtSeverityColor(m.badDebtRatio);
-    const ratioText = `${m.badDebtRatio.toFixed(1).replace('.', ',')}%`;
-    return `<text x="${xs[i].toFixed(1)}" y="${vbH - 16}" text-anchor="middle" font-size="10.5" font-weight="${monthWeight}" fill="${monthColor}">${m.label}</text>
-      <text x="${xs[i].toFixed(1)}" y="${vbH - 4}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${ratioColor}">${ratioText}</text>`;
+    const balH = Math.max(3, (m.balance / balMax) * chartH);
+    const balY = baseY - balH;
+    const badRatio = m.balance > 0 ? Math.min(1, m.badDebt / m.balance) : 0;
+    const badH = badRatio > 0 ? Math.max(2, badRatio * balH) : 0;
+    const severityColor = badDebtSeverityColor(m.badDebtRatio);
+
+    const intH = Math.max(2, (m.interest / intMax) * chartH * 0.75);
+    const intY = baseY - intH;
+    const intX = slotX + balW + innerW * 0.12;
+
+    return `
+      <g>
+        <rect x="${slotX.toFixed(1)}" y="${balY.toFixed(1)}" width="${balW.toFixed(1)}" height="${balH.toFixed(1)}" rx="4" fill="${balanceColor}" fill-opacity="${isLive ? 0.45 : 1}" ${isLive ? `stroke="${balanceColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Dư nợ ${formatVND(m.balance)}</title></rect>
+        ${badH > 0 ? `<rect x="${slotX.toFixed(1)}" y="${balY.toFixed(1)}" width="${balW.toFixed(1)}" height="${badH.toFixed(1)}" rx="4" fill="${severityColor}" fill-opacity="${isLive ? 0.7 : 1}"><title>${m.label}: Nợ xấu ${formatVND(m.badDebt)} (${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</title></rect>` : ''}
+        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(balY - 14).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${severityColor}">${formatCompact(m.badDebt)}</text>
+        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(balY - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${balanceColor}">${formatCompact(m.balance)}</text>
+
+        <rect x="${intX.toFixed(1)}" y="${intY.toFixed(1)}" width="${intW.toFixed(1)}" height="${intH.toFixed(1)}" rx="3" fill="${interestColor}" fill-opacity="${isLive ? 0.45 : 1}" ${isLive ? `stroke="${interestColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Lãi phải thu ${formatVND(m.interest)}</title></rect>
+        <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 4).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${interestColor}">${formatCompact(m.interest)}</text>
+
+        <text x="${(slotX + innerW / 2).toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10" font-weight="${isLive ? 700 : 400}" fill="${isLive ? balanceColor : 'var(--text-faint)'}">${m.label}</text>
+      </g>`;
   }).join('');
 
   return `
-    <div class="flex items-center" style="gap:14px;margin-bottom:4px;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
-      <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:50%;background:${balanceColor};display:inline-block"></span>Dư nợ</span>
+    <div class="flex items-center" style="gap:14px;margin-bottom:6px;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
+      <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${balanceColor};display:inline-block"></span>Dư nợ</span>
+      <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:var(--warning);display:inline-block"></span>Nợ xấu</span>
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${interestColor};display:inline-block"></span>Lãi phải thu</span>
-      <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:50%;background:var(--warning);display:inline-block"></span>Nợ xấu</span>
     </div>
     <svg viewBox="0 0 ${VB_W} ${vbH}" style="width:100%;height:auto;display:block;overflow:visible">
-      <defs>
-        <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="${balanceColor}" stop-opacity="0.22"></stop>
-          <stop offset="100%" stop-color="${balanceColor}" stop-opacity="0"></stop>
-        </linearGradient>
-      </defs>
-      <line x1="0" y1="${barsTop.toFixed(1)}" x2="${VB_W}" y2="${barsTop.toFixed(1)}" stroke="var(--border)" stroke-width="1"></line>
-      <line x1="0" y1="${chartH - 0.5}" x2="${VB_W}" y2="${chartH - 0.5}" stroke="var(--border)" stroke-width="1"></line>
-      <path d="${areaPath}" fill="url(#${gradId})" stroke="none"></path>
-      ${linePath ? `<path d="${linePath}" fill="none" stroke="${balanceColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>` : ''}
-      ${dashSegment ? `<path d="${dashSegment}" fill="none" stroke="${balanceColor}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 5"></path>` : ''}
-      ${dots}
+      <line x1="0" y1="${(baseY - 0.5).toFixed(1)}" x2="${VB_W}" y2="${(baseY - 0.5).toFixed(1)}" stroke="var(--border)" stroke-width="1"></line>
       ${bars}
-      ${xLabels}
     </svg>`;
 }
