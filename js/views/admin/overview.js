@@ -3,7 +3,7 @@ import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
 import { formatVND, formatNumber, formatDateTime, formatCompact, initials, colorFor } from '../../utils.js';
-import { barChartSvg, monthlyComboChartSvg, badDebtSeverityColor } from '../../components/charts.js';
+import { barChartSvg, monthlyComboChartSvg } from '../../components/charts.js';
 import { openContractView } from './customers.js';
 
 /** "2026-08" -> "Th8/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
@@ -118,15 +118,17 @@ export function render(contentEl) {
   // buildDebtDashboardData() mỗi lần bấm (rẻ, không gọi mạng) để luôn khớp
   // dữ liệu mới nhất đang có.
   if (isSuper) {
+    bindNhomNoClicks(contentEl, isStaff);
     contentEl.querySelectorAll('[data-month-picker]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const ym = btn.dataset.monthPicker;
-        const { months, prevMonthOf, yearAgoOf } = buildDebtDashboardData();
+        const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
         const m = months.find((x) => x.yearMonth === ym);
         if (!m) return;
-        contentEl.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearAgoOf);
+        contentEl.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
         contentEl.querySelector('#nhom-no-slot').innerHTML = nhomNoHtml(m);
         contentEl.querySelector('#month-detail-label').textContent = `${m.label}${m.live ? ' (đang cập nhật)' : ''}`;
+        bindNhomNoClicks(contentEl, isStaff);
         contentEl.querySelectorAll('[data-month-picker]').forEach((b) => {
           const active = b.dataset.monthPicker === ym;
           b.dataset.active = String(active);
@@ -137,6 +139,15 @@ export function render(contentEl) {
       });
     });
   }
+}
+
+/** Gắn click cho mỗi cột/nhãn "Dư nợ theo nhóm nợ" (data-id = số nhóm) — mở danh sách hợp đồng ĐÚNG nhóm đó theo phân loại HIỆN TẠI (thời gian thực, không phải theo tháng đã chốt trong quá khứ — quỹ không lưu lịch sử xếp nhóm theo từng hợp đồng, chỉ lưu tổng dư nợ mỗi nhóm). Gọi lại mỗi lần #nhom-no-slot được vẽ lại (lúc render() đầu tiên VÀ mỗi lần bấm chọn tháng khác). */
+function bindNhomNoClicks(contentEl, isStaff) {
+  const slot = contentEl.querySelector('#nhom-no-slot');
+  if (!slot) return;
+  slot.querySelectorAll('[data-id]').forEach((el) => {
+    el.addEventListener('click', () => openDebtGroupModal(Number(el.dataset.id), isStaff));
+  });
 }
 
 /**
@@ -153,23 +164,31 @@ export function render(contentEl) {
  * tính Nhóm 2, dù Nhóm 2 đã là "nợ cần chú ý"). "Lãi phải thu" chỉ tính
  * Nhóm 1-4 (Nhóm 5 coi như khó thu, không tính lãi phải thu nữa).
  *
- * Thứ tự trên trang (từ trên xuống): biểu đồ "Biến động hàng tháng" (LUÔN vẽ
- * TOÀN BỘ lịch sử, không đổi theo tháng đang chọn) → dãy chip chọn Tháng/Năm
- * → biểu đồ "Dư nợ theo nhóm nợ" → bảng "Tổng hợp tăng giảm". 2 phần sau
- * LUÔN hiện đúng số liệu của 1 THÁNG ĐANG CHỌN (mặc định = tháng mới nhất/
- * đang sống) — bấm 1 chip tháng để đổi tháng xem, cập nhật ngay 2 chỗ đó mà
- * không tải lại trang (xem buildDebtDashboardData()/monthDetailTableHtml()/
- * nhomNoHtml() và handler data-month-picker trong render()).
+ * Thứ tự trên trang (từ trên xuống): biểu đồ "Dư nợ theo nhóm nợ" (bấm vào 1
+ * cột/nhãn để xem danh sách hợp đồng đúng nhóm đó — openDebtGroupModal()) →
+ * biểu đồ "Biến động hàng tháng" (LUÔN vẽ TOÀN BỘ lịch sử, không đổi theo
+ * tháng đang chọn) → dãy chip chọn Tháng/Năm → bảng "Tổng hợp tăng giảm".
+ * "Dư nợ theo nhóm nợ" + bảng LUÔN hiện đúng số liệu của 1 THÁNG ĐANG CHỌN
+ * (mặc định = tháng mới nhất/đang sống) — bấm 1 chip tháng để đổi tháng xem,
+ * cập nhật ngay 2 chỗ đó mà không tải lại trang (xem
+ * buildDebtDashboardData()/monthDetailTableHtml()/nhomNoHtml() và handler
+ * data-month-picker trong render()).
  *
  * Biểu đồ "Biến động hàng tháng" (monthlyComboChartSvg — xem
- * js/components/charts.js) mỗi tháng vẽ 1 cặp cột liền nhau: cột Dư nợ (to)
- * LỒNG sẵn đoạn Nợ xấu ở đỉnh, cột Lãi phải thu (nhỏ hơn) ngay bên cạnh —
- * cả 2 LUÔN ghi số tiền ngay trên cột. Đọc dữ liệu từ bảng monthly_snapshots
- * — bảng này KHÔNG có sẵn số liệu quá khứ (mỗi lần nhập Excel mới đè lên số
- * liệu cũ, không lưu lịch sử) nên lịch sử chỉ bắt đầu từ lúc tính năng này
- * ra đời. Số liệu tự chốt vào ĐÚNG ngày cuối cùng mỗi tháng (xem
- * send-due-reminders/index.ts); tháng hiện tại (chưa chốt) tự tính "sống"
- * theo dữ liệu hợp đồng đang có, không cần thao tác gì.
+ * js/components/charts.js) mỗi tháng vẽ 1 cặp cột liền nhau, đơn vị TỶ ĐỒNG
+ * ghi 1 lần ở đầu: cột Dư nợ (to) LỒNG sẵn đoạn màu cam đè lên ở đỉnh thể
+ * hiện Nợ xấu (số tiền ghi ngay trong cột, ở đầu đoạn cam), cột Lãi phải thu
+ * (nhỏ hơn) ngay bên cạnh — cả 2 cột phụ co theo ĐÚNG tỷ lệ % của cột Dư nợ
+ * tháng đó. Đọc dữ liệu từ bảng monthly_snapshots — bảng này KHÔNG có sẵn số
+ * liệu quá khứ (mỗi lần nhập Excel mới đè lên số liệu cũ, không lưu lịch sử)
+ * nên lịch sử chỉ bắt đầu từ lúc tính năng này ra đời. Số liệu tự chốt vào
+ * ĐÚNG ngày cuối cùng mỗi tháng (xem send-due-reminders/index.ts); tháng
+ * hiện tại (chưa chốt) tự tính "sống" theo dữ liệu hợp đồng đang có, không
+ * cần thao tác gì.
+ *
+ * Cột "So sánh năm" ở bảng "Tổng hợp tăng giảm" so với CUỐI KỲ 31/12 năm
+ * liền trước (đầu năm), KHÔNG phải cùng tháng năm trước — xem yearStartOf()
+ * trong buildDebtDashboardData().
  */
 const GROUP_COLORS = { 1: 'var(--success)', 2: 'var(--warning)', 3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d' };
 
@@ -196,39 +215,42 @@ function buildDebtDashboardData() {
     });
   }
   const byYearMonth = new Map(months.map((m) => [m.yearMonth, m]));
-  /** Tháng liền trước NĂM NAY (so sánh hàng tháng) và đúng tháng này NĂM TRƯỚC (so sánh hàng năm) — tra trực tiếp theo year_month, không giả định mảng liền mạch (có thể thiếu tháng nếu app mới dùng tính năng giữa chừng). */
+  /** Tháng liền trước (so sánh hàng tháng) — tra trực tiếp theo year_month, không giả định mảng liền mạch (có thể thiếu tháng nếu app mới dùng tính năng giữa chừng). */
   function prevMonthOf(ym) {
     const [y, m] = ym.split('-').map(Number);
     const py = m === 1 ? y - 1 : y;
     const pm = m === 1 ? 12 : m - 1;
     return byYearMonth.get(`${py}-${String(pm).padStart(2, '0')}`) || null;
   }
-  function yearAgoOf(ym) {
-    const [y, m] = ym.split('-').map(Number);
-    return byYearMonth.get(`${y - 1}-${String(m).padStart(2, '0')}`) || null;
+  /** "So sánh năm" = so với CUỐI KỲ 31/12 năm liền trước (đầu năm nay) đến ĐÚNG tháng đang xem — không phải so với cùng tháng năm trước. */
+  function yearStartOf(ym) {
+    const [y] = ym.split('-').map(Number);
+    return byYearMonth.get(`${y - 1}-12`) || null;
   }
-  return { months, prevMonthOf, yearAgoOf };
+  return { months, prevMonthOf, yearStartOf };
 }
 
-/** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m) — dùng lại khi bấm chọn tháng khác trên biểu đồ "Biến động hàng tháng" bên dưới, không cần tải lại trang. */
+/** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m) — dùng lại khi bấm chọn tháng khác trên biểu đồ "Biến động hàng tháng" bên dưới, không cần tải lại trang. Mỗi cột gắn `id` = số nhóm để render.js bind click mở danh sách hợp đồng đúng nhóm đó. */
 function nhomNoHtml(m) {
-  const barItems = [1, 2, 3, 4, 5].map((g) => ({ label: `Nhóm ${g}`, value: (m.groupBalances && m.groupBalances[g]) || 0, color: GROUP_COLORS[g] }));
+  const barItems = [1, 2, 3, 4, 5].map((g) => ({ id: g, label: `Nhóm ${g}`, value: (m.groupBalances && m.groupBalances[g]) || 0, color: GROUP_COLORS[g] }));
   return barChartSvg({ items: barItems });
 }
 
 /**
  * Bảng tổng hợp tăng/giảm — mỗi dòng 1 chỉ tiêu (Dư nợ/Lãi phải thu/Nợ xấu)
- * của ĐÚNG 1 tháng (m): số dư ĐÚNG tháng đó, kèm % so với tháng trước VÀ so
- * với cùng kỳ năm trước (cột "So năm trước" tự hiện "—" nếu chưa đủ lịch sử
- * để so, không giả vờ có số liệu không tồn tại).
+ * của ĐÚNG 1 tháng (m): số dư ĐÚNG tháng đó, kèm % so với tháng trước VÀ "So
+ * sánh năm" (so với 31/12 năm liền trước — cột này tự hiện "—" nếu chưa đủ
+ * lịch sử để so, không giả vờ có số liệu không tồn tại). Dòng Nợ xấu LUÔN tô
+ * màu đỏ (không đổi theo tỷ lệ nghiêm trọng) — đây là nhãn NHẬN DIỆN chỉ
+ * tiêu, không phải màu cảnh báo mức độ.
  */
-function monthDetailTableHtml(m, prevMonthOf, yearAgoOf) {
+function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
   const prev = prevMonthOf(m.yearMonth);
-  const yearAgo = yearAgoOf(m.yearMonth);
+  const yearStart = yearStartOf(m.yearMonth);
   const rows = [
-    { label: 'Dư nợ', color: 'var(--color-primary)', value: m.balance, prevV: prev?.balance ?? null, yearAgoV: yearAgo ? yearAgo.balance : null, worse: false },
-    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, prevV: prev?.interest ?? null, yearAgoV: yearAgo ? yearAgo.interest : null, worse: false },
-    { label: 'Nợ xấu', color: badDebtSeverityColor(m.badDebtRatio), value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearAgoV: yearAgo ? yearAgo.badDebt : null, worse: true },
+    { label: 'Dư nợ', color: 'var(--color-primary)', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, worse: false },
+    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, worse: false },
+    { label: 'Nợ xấu', color: 'var(--danger)', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, worse: true },
   ];
   const th = 'padding:0 8px 8px 0;text-align:left;font-size:10.5px;color:var(--text-muted);font-weight:600;white-space:nowrap';
   const td = 'padding:10px 8px 10px 0;border-top:1px solid var(--border);white-space:nowrap';
@@ -237,7 +259,7 @@ function monthDetailTableHtml(m, prevMonthOf, yearAgoOf) {
       <td style="${td}font-weight:700;color:${r.color}">${r.label}</td>
       <td style="${td}font-weight:700">${formatCompact(r.value)}${r.extra ? ` <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">(${r.extra})</span>` : ''}</td>
       <td style="${td}">${deltaChip(pct(r.value, r.prevV), { worse: r.worse })}</td>
-      <td style="${td}">${r.yearAgoV != null ? deltaChip(pct(r.value, r.yearAgoV), { worse: r.worse }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
+      <td style="${td}">${r.yearStartV != null ? deltaChip(pct(r.value, r.yearStartV), { worse: r.worse }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
     </tr>`).join('');
   return `
     <div style="overflow-x:auto">
@@ -246,7 +268,7 @@ function monthDetailTableHtml(m, prevMonthOf, yearAgoOf) {
           <th style="${th}">Chỉ tiêu</th>
           <th style="${th}">Số dư</th>
           <th style="${th}">So tháng trước</th>
-          <th style="${th}">So năm trước</th>
+          <th style="${th}">So sánh năm</th>
         </tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
@@ -273,27 +295,25 @@ function monthPickerHtml(months, activeYm) {
 }
 
 function debtDashboardHtml() {
-  const { months, prevMonthOf, yearAgoOf } = buildDebtDashboardData();
+  const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const initial = months[months.length - 1];
 
   return `
     <div class="card card-pad mb-16">
-      <div class="section-head"><h2>Dư nợ · Lãi phải thu · Nợ xấu (toàn quỹ)</h2></div>
+      <div class="mb-20">
+        <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
+        <div id="nhom-no-slot">${nhomNoHtml(initial)}</div>
+      </div>
 
       <h3 style="font-size:13.5px;margin-bottom:10px">Biến động hàng tháng</h3>
       ${monthlyComboChartSvg({ months })}
       ${monthPickerHtml(months, initial.yearMonth)}
 
-      <div class="mb-20 mt-20">
-        <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
-        <div id="nhom-no-slot">${nhomNoHtml(initial)}</div>
-      </div>
-
-      <div class="flex items-center justify-between mb-10">
+      <div class="flex items-center justify-between mb-10 mt-20">
         <h3 style="font-size:13.5px;margin:0">Tổng hợp tăng giảm</h3>
         <span id="month-detail-label" style="font-size:12px;color:var(--text-muted);font-weight:600">${initial.label}${initial.live ? ' (đang cập nhật)' : ''}</span>
       </div>
-      <div id="month-detail-slot">${monthDetailTableHtml(initial, prevMonthOf, yearAgoOf)}</div>
+      <div id="month-detail-slot">${monthDetailTableHtml(initial, prevMonthOf, yearStartOf)}</div>
     </div>
   `;
 }
@@ -311,6 +331,51 @@ function deltaChip(p, { worse = false } = {}) {
   const color = flat ? 'var(--text-faint)' : worse ? (up ? 'var(--danger)' : 'var(--success)') : 'var(--text-muted)';
   const arrow = flat ? '·' : up ? '▲' : '▼';
   return `<span style="font-size:10.5px;font-weight:700;color:${color}">${arrow} ${Math.abs(p).toFixed(1).replace('.', ',')}%</span>`;
+}
+
+/**
+ * Danh sách hợp đồng thuộc ĐÚNG 1 nhóm nợ (1-5, phân loại theo Thông tư
+ * 02/2013 — xem S.debtGroup()) — mở khi bấm vào cột/nhãn tương ứng ở biểu đồ
+ * "Dư nợ theo nhóm nợ". Luôn tính theo phân loại HIỆN TẠI (thời điểm bấm),
+ * dùng TOÀN BỘ hợp đồng của quỹ (không giới hạn theo phạm vi 1 nhân viên) —
+ * khớp đúng cách "Dư nợ theo nhóm nợ" đang tổng hợp.
+ */
+function openDebtGroupModal(g, isStaff) {
+  const now = new Date();
+  const list = S.getState().contracts.filter((ct) => S.debtGroup(ct, now) === g);
+  const total = list.reduce((s, ct) => s + (ct.balance || 0), 0);
+  const color = GROUP_COLORS[g];
+  openModal({
+    title: `Nhóm ${g} (${list.length})`,
+    bodyHtml: `
+      <div class="text-sm text-muted mb-12">Tổng dư nợ: <b style="color:${color}">${formatVND(total)}</b></div>
+      ${list.length ? list.map((ct) => {
+        const cust = S.getCustomer(ct.customerId);
+        const days = S.daysOverdue(ct, now);
+        const addressLabel = cust ? ([cust.xom, cust.thon, cust.tinh].filter(Boolean).join(', ') || cust.address || 'Chưa có địa bàn') : '—';
+        return `
+        <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:2px">
+          <div class="flex items-center gap-6" style="flex-wrap:nowrap">
+            <span style="font-size:14px;font-weight:700;line-height:1.8;padding-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${cust ? cust.name : '—'}</span>
+            <span class="text-sm text-muted" style="flex-shrink:0">${days > 0 ? `Quá hạn ${days} ngày` : 'Trong hạn'}</span>
+          </div>
+          <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
+            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${addressLabel}</span>
+            <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(ct.balance)}</b>
+          </div>
+          ${installmentHintHtml(ct)}
+        </div>`;
+      }).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Nhóm này hiện đang trống.' })}
+    `,
+    onMount(sheet) {
+      sheet.querySelectorAll('[data-view-ct]').forEach((row) => {
+        row.addEventListener('click', () => {
+          const ct = S.getContract(row.dataset.viewCt);
+          openContractView(ct.customerId, ct, { readOnly: isStaff });
+        });
+      });
+    },
+  });
 }
 
 /**

@@ -11,11 +11,18 @@ import { formatVND, formatCompact } from '../utils.js';
 
 const VB_W = 400; // "px logic" chiều ngang — chỉ là đơn vị nội bộ của viewBox, KHÔNG phải px thật (SVG tự co giãn đều theo khung chứa thật).
 
+/** Quy đổi ra tỷ đồng, CHỈ số (không kèm chữ đơn vị) — dùng khi đơn vị đã ghi sẵn 1 lần ở đầu biểu đồ, ghi lặp lại "tỷ" sau từng số sẽ rối mắt. */
+export function formatTyDong(n) {
+  return (Math.round((n || 0) / 1e7) / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',');
+}
+
 /**
  * Biểu đồ cột đứng (dư nợ theo TỪNG NHÓM NỢ) — mỗi cột 1 màu riêng (đã truyền
  * sẵn từ nơi gọi, theo đúng "màu trạng thái": xanh (tốt) -> vàng (cần chú ý)
  * -> các sắc đỏ đậm dần (nợ xấu, càng đậm càng nghiêm trọng) — LUÔN có CHỮ
- * (nhãn nhóm + số tiền) đi kèm màu, không chỉ dựa vào màu để phân biệt.
+ * (nhãn nhóm + số tiền) đi kèm màu, không chỉ dựa vào màu để phân biệt. Mỗi
+ * cột có thể bấm vào (nếu items có `id`) — nơi gọi tự bind click theo
+ * `data-id` để mở danh sách hợp đồng đúng nhóm đó.
  */
 export function barChartSvg({ items, aspect = 2.1 }) {
   const vbH = Math.round(VB_W / aspect);
@@ -31,14 +38,15 @@ export function barChartSvg({ items, aspect = 2.1 }) {
     const x = i * barW + gap / 2;
     const w = barW - gap;
     const y = chartH - h;
+    const idAttr = it.id != null ? ` data-id="${it.id}"` : '';
     return `
-      <g>
+      <g${idAttr} style="${it.id != null ? 'cursor:pointer' : ''}">
         <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="5" fill="${it.color}"></rect>
         <text x="${(x + w / 2).toFixed(1)}" y="${Math.max(13, y - 8).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="700" fill="${it.value > 0 ? it.color : 'var(--text-faint)'}">${formatCompact(it.value)}</text>
         <title>${it.label}: ${formatVND(it.value)}</title>
       </g>`;
   }).join('');
-  const labels = items.map((it) => `<div style="flex:1;text-align:center;font-size:11px;color:var(--text-muted)">${it.label}</div>`).join('');
+  const labels = items.map((it) => `<div${it.id != null ? ` data-id="${it.id}" style="cursor:pointer"` : ''} style="flex:1;text-align:center;font-size:11px;color:var(--text-muted)">${it.label}</div>`).join('');
   return `
     <div>
       <svg viewBox="0 0 ${VB_W} ${chartH}" style="width:100%;height:auto;display:block;overflow:visible">
@@ -49,32 +57,27 @@ export function barChartSvg({ items, aspect = 2.1 }) {
     </div>`;
 }
 
-/** Màu theo mức nghiêm trọng tỷ lệ nợ xấu — dưới 2% xanh, 2-5% vàng, trên 5% đỏ. */
-export function badDebtSeverityColor(ratio) {
-  if (ratio >= 5) return 'var(--danger)';
-  if (ratio >= 2) return 'var(--warning)';
-  return 'var(--success)';
-}
-
 /**
  * Biểu đồ cột GỘP theo tháng — MỖI tháng 1 cặp cột LIỀN NHAU, bắt đầu từ mép
  * TRÁI của ô tháng đó (không căn giữa): cột Dư nợ (to, bên trái) LỒNG sẵn 1
- * đoạn tô màu theo mức nghiêm trọng ở ĐỈNH cột thể hiện đúng phần Nợ xấu
- * trong đó, và cột Lãi phải thu (nhỏ hơn, ngay bên phải) — cả 2 LUÔN ghi số
- * tiền ngay trên cột, không cần chạm/hover mới thấy. Dư nợ và lãi phải thu
- * chênh lệch quá lớn nên co giãn theo 2 thang riêng (không dùng chung 1 trục
- * tung) dù cùng chia sẻ 1 đáy — phân biệt bằng vị trí + màu + số ghi kèm,
- * không dựa vào việc so sánh chiều cao giữa 2 cột. Số liệu tự động lấy từ dữ
- * liệu hợp đồng/số đã chốt hiện có, luôn cập nhật lại mỗi lần trang vẽ lại.
- * Tháng hiện tại (chưa chốt chính thức, tự tính theo ngày) tô nhạt hơn + nét
- * đứt để phân biệt trực quan với các tháng đã chốt.
+ * đoạn màu cam Ở ĐỈNH ĐÈ LÊN, thể hiện đúng phần Nợ xấu trong đó (số tiền
+ * ghi NGAY BÊN TRONG cột, ở đầu đoạn cam — vì tỷ lệ nợ xấu thường rất nhỏ so
+ * với tổng dư nợ nên phải đè màu lên mới thấy được, không thể tự co giãn ra
+ * rõ ràng), và cột Lãi phải thu (nhỏ hơn, ngay bên phải) — CẢ 2 cột phụ (nợ
+ * xấu lồng trong + lãi phải thu) đều co theo ĐÚNG tỷ lệ % so với chính cột
+ * Dư nợ của tháng đó (không dùng thang riêng theo lịch sử của từng chuỗi),
+ * nên nhìn là biết ngay tỷ trọng. Đơn vị TIỀN của cả biểu đồ là TỶ ĐỒNG, ghi
+ * 1 lần duy nhất ở đầu (không lặp lại chữ "tỷ" sau từng số). Số liệu tự động
+ * lấy từ dữ liệu hợp đồng/số đã chốt hiện có, luôn cập nhật lại mỗi lần
+ * trang vẽ lại. Tháng hiện tại (chưa chốt chính thức, tự tính theo ngày) tô
+ * nhạt hơn + nét đứt để phân biệt trực quan với các tháng đã chốt.
  */
-export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var(--color-primary)', interestColor = 'var(--purple)' }) {
+export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var(--color-primary)', badDebtColor = 'var(--warning)', interestColor = 'var(--purple)' }) {
   if (!months.length) {
     return `<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu.</div>`;
   }
   const vbH = Math.round(VB_W / aspect);
-  const padTop = 28; // 2 dòng nhãn số tiền (nợ xấu + dư nợ) phía trên cột dư nợ
+  const padTop = 16; // nhãn số tiền dư nợ phía trên cột (nhãn nợ xấu nằm LỒNG trong cột, không cần chừa riêng)
   const padBottom = 20; // nhãn tháng
   const chartH = vbH - padTop - padBottom;
   const baseY = padTop + chartH;
@@ -90,7 +93,6 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
   const intW = innerW * 0.28;
 
   const balMax = Math.max(1, ...months.map((m) => m.balance));
-  const intMax = Math.max(1, ...months.map((m) => m.interest));
   const liveIdx = months[n - 1].live ? n - 1 : -1;
 
   const bars = months.map((m, i) => {
@@ -100,32 +102,37 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
 
     const balH = Math.max(3, (m.balance / balMax) * chartH);
     const balY = baseY - balH;
+    // Nợ xấu + lãi phải thu co theo ĐÚNG tỷ lệ % của CHÍNH cột dư nợ tháng
+    // đó (KHÔNG dùng thang riêng theo lịch sử) — badH/balH = badDebt/balance
+    // và intH/balH = interest/balance, luôn đúng tỷ trọng thật.
     const badRatio = m.balance > 0 ? Math.min(1, m.badDebt / m.balance) : 0;
-    const badH = badRatio > 0 ? Math.max(2, badRatio * balH) : 0;
-    const severityColor = badDebtSeverityColor(m.badDebtRatio);
-
-    const intH = Math.max(2, (m.interest / intMax) * chartH * 0.75);
+    // Tỷ lệ nợ xấu thực tế thường rất nhỏ (vài %) — chừa chiều cao TỐI THIỂU
+    // đủ lớn (6 đơn vị) để mảng màu cam luôn nhìn thấy được khi đè lên cột
+    // dư nợ, không bị co gần như biến mất.
+    const badH = badRatio > 0 ? Math.max(6, badRatio * balH) : 0;
+    const intH = balH > 0 ? Math.max(2, (m.interest / m.balance) * balH) : 2;
     const intY = baseY - intH;
     const intX = slotX + balW + innerW * 0.12;
 
     return `
       <g>
         <rect x="${slotX.toFixed(1)}" y="${balY.toFixed(1)}" width="${balW.toFixed(1)}" height="${balH.toFixed(1)}" rx="4" fill="${balanceColor}" fill-opacity="${isLive ? 0.45 : 1}" ${isLive ? `stroke="${balanceColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Dư nợ ${formatVND(m.balance)}</title></rect>
-        ${badH > 0 ? `<rect x="${slotX.toFixed(1)}" y="${balY.toFixed(1)}" width="${balW.toFixed(1)}" height="${badH.toFixed(1)}" rx="4" fill="${severityColor}" fill-opacity="${isLive ? 0.7 : 1}"><title>${m.label}: Nợ xấu ${formatVND(m.badDebt)} (${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</title></rect>` : ''}
-        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(balY - 14).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${severityColor}">${formatCompact(m.badDebt)}</text>
-        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(balY - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${balanceColor}">${formatCompact(m.balance)}</text>
+        ${badH > 0 ? `<rect x="${slotX.toFixed(1)}" y="${balY.toFixed(1)}" width="${balW.toFixed(1)}" height="${badH.toFixed(1)}" rx="4" fill="${badDebtColor}" fill-opacity="${isLive ? 0.75 : 1}"><title>${m.label}: Nợ xấu ${formatVND(m.badDebt)} (${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</title></rect>
+        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(balY + Math.min(badH, 11) - 2).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#fff">${formatTyDong(m.badDebt)}</text>` : ''}
+        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(balY - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${balanceColor}">${formatTyDong(m.balance)}</text>
 
         <rect x="${intX.toFixed(1)}" y="${intY.toFixed(1)}" width="${intW.toFixed(1)}" height="${intH.toFixed(1)}" rx="3" fill="${interestColor}" fill-opacity="${isLive ? 0.45 : 1}" ${isLive ? `stroke="${interestColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Lãi phải thu ${formatVND(m.interest)}</title></rect>
-        <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 4).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${interestColor}">${formatCompact(m.interest)}</text>
+        <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 4).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${interestColor}">${formatTyDong(m.interest)}</text>
 
         <text x="${(slotX + innerW / 2).toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10" font-weight="${isLive ? 700 : 400}" fill="${isLive ? balanceColor : 'var(--text-faint)'}">${m.label}</text>
       </g>`;
   }).join('');
 
   return `
+    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị: tỷ đồng</div>
     <div class="flex items-center" style="gap:14px;margin-bottom:6px;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${balanceColor};display:inline-block"></span>Dư nợ</span>
-      <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:var(--warning);display:inline-block"></span>Nợ xấu</span>
+      <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${badDebtColor};display:inline-block"></span>Nợ xấu</span>
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${interestColor};display:inline-block"></span>Lãi phải thu</span>
     </div>
     <svg viewBox="0 0 ${VB_W} ${vbH}" style="width:100%;height:auto;display:block;overflow:visible">
