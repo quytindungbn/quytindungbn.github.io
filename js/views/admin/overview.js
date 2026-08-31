@@ -4,7 +4,6 @@ import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
 import { formatVND, formatNumber, formatDateTime, formatCompact, initials, colorFor } from '../../utils.js';
 import { barChartSvg, lineChartSvg } from '../../components/charts.js';
-import { toast } from '../../components/toast.js';
 import { openContractView } from './customers.js';
 
 /** "2026-08" -> "Th8/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
@@ -112,18 +111,6 @@ export function render(contentEl) {
   // không cần 2 bảng riêng bên dưới nữa.
   contentEl.querySelector('#tile-overdue').addEventListener('click', () => openContractListModal('Hợp đồng quá hạn', overdue, isStaff, 'var(--danger)'));
   contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', upcoming, isStaff, 'var(--warning)', { highlightWithinDays: S.NEAR_DUE_DAYS }));
-
-  const btnSnapshot = contentEl.querySelector('#btn-capture-snapshot');
-  if (btnSnapshot) {
-    btnSnapshot.addEventListener('click', async () => {
-      btnSnapshot.disabled = true;
-      btnSnapshot.textContent = 'Đang chốt số liệu...';
-      const res = await S.captureMonthlySnapshotNow();
-      if (res.ok) toast('Đã chốt số liệu tháng này', 'success');
-      else { toast(res.reason || 'Có lỗi xảy ra', 'error'); btnSnapshot.disabled = false; btnSnapshot.textContent = 'Chốt số liệu tháng này'; }
-      // Thành công thì render() sẽ tự được gọi lại (S.captureMonthlySnapshotNow() gọi notify()), không cần tự vẽ lại ở đây.
-    });
-  }
 }
 
 /**
@@ -151,8 +138,9 @@ export function render(contentEl) {
  * tháng chỉ cập nhật đúng 1 dòng của tháng đó (upsert theo year_month).
  */
 function debtDashboardHtml() {
+  const now = new Date();
   const contracts = S.getState().contracts;
-  const summary = S.debtGroupSummary(contracts);
+  const summary = S.debtGroupSummary(contracts, now);
   const snapshots = S.listMonthlySnapshots();
   const lastSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
 
@@ -170,6 +158,21 @@ function debtDashboardHtml() {
   const balancePoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.totalBalance }));
   const interestPoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.interestReceivable }));
   const ratioPoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.badDebtRatio }));
+
+  // Thêm điểm "SỐNG" của THÁNG HIỆN TẠI vào cuối mỗi biểu đồ — tự tính ngay
+  // từ dữ liệu hợp đồng đang có (đúng số dư nợ/lãi/nợ xấu tính đến HÔM NAY),
+  // KHÔNG cần bấm nút gì cả — biến động theo từng ngày trong tháng tự hiện
+  // lên ngay (nét đứt + chấm rỗng, xem lineChartSvg()). Chỉ thêm khi tháng
+  // này CHƯA được chốt chính thức (đã chốt rồi thì dùng đúng số đã chốt,
+  // không thêm trùng) — việc chốt chính thức vẫn hoàn toàn tự động vào đúng
+  // ngày cuối tháng (send-due-reminders), không cần thao tác gì thêm.
+  const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  if (!lastSnapshot || lastSnapshot.yearMonth !== currentYearMonth) {
+    const liveLabel = monthLabel(currentYearMonth);
+    balancePoints.push({ label: liveLabel, value: summary.totalBalance, live: true });
+    interestPoints.push({ label: liveLabel, value: summary.interestReceivable, live: true });
+    ratioPoints.push({ label: liveLabel, value: summary.badDebtRatio, live: true });
+  }
 
   return `
     <div class="card card-pad mb-16">
@@ -203,14 +206,15 @@ function debtDashboardHtml() {
         </div>
       </div>
 
-      <div class="flex justify-between items-center mt-16" style="flex-wrap:wrap;gap:8px">
-        <p class="text-sm text-muted" style="margin:0;max-width:520px">
-          ${lastSnapshot
-            ? `Đã chốt gần nhất: <b>Th${Number(lastSnapshot.yearMonth.split('-')[1])}/${lastSnapshot.yearMonth.split('-')[0]}</b> (ngày ${new Date(lastSnapshot.snapshotDate).toLocaleDateString('vi-VN')}). Số liệu tự chốt vào đúng ngày cuối mỗi tháng — 3 biểu đồ trên chỉ có dữ liệu từ tháng bắt đầu dùng tính năng này trở đi, không có số liệu các tháng trước đó.`
-            : `Chưa có tháng nào được chốt số liệu — bấm nút bên cạnh để chốt NGAY số liệu hôm nay làm điểm khởi đầu, các tháng sau tự động chốt vào đúng ngày cuối tháng.`}
-        </p>
-        <button type="button" class="btn btn-outline btn-sm" id="btn-capture-snapshot">Chốt số liệu tháng này</button>
-      </div>
+      <p class="text-sm text-muted mt-16" style="margin-bottom:0">
+        ${lastSnapshot
+          ? `Đã chốt chính thức gần nhất: <b>Th${Number(lastSnapshot.yearMonth.split('-')[1])}/${lastSnapshot.yearMonth.split('-')[0]}</b> (ngày ${new Date(lastSnapshot.snapshotDate).toLocaleDateString('vi-VN')}).`
+          : `Chưa có tháng nào được chốt chính thức.`}
+        Điểm nét đứt cuối mỗi biểu đồ là số liệu THÁNG NÀY, tự cập nhật theo từng ngày — hệ thống tự động
+        chốt lại thành chính thức (nét liền) đúng vào ngày cuối cùng mỗi tháng, không cần bấm gì cả.
+        3 biểu đồ chỉ có dữ liệu từ tháng bắt đầu dùng tính năng này trở đi, không có số liệu các tháng
+        trước đó (xem docs mục 10.46).
+      </p>
     </div>
   `;
 }

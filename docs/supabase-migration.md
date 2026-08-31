@@ -2484,13 +2484,20 @@ create policy "super sees monthly snapshots" on monthly_snapshots
 **Việc cần bạn làm**:
 1. Chạy đoạn SQL trên — vào thẳng SQL Editor:
    https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
-2. Deploy lại **CẢ 2 Edge Function** (2 file vừa gửi lần này) — Supabase Dashboard → Edge Functions →
-   chọn từng function → dán đè toàn bộ nội dung file mới → Deploy:
+2. Deploy lại **CẢ 2 Edge Function** — Supabase Dashboard → Edge Functions → chọn từng function → dán đè
+   toàn bộ nội dung file mới (mã 2 file lấy ở "Cập nhật (lần 1)" ngay bên dưới, vì đây là bản đã sửa gần
+   nhất) → Deploy:
    - `create-account`
    - `send-due-reminders`
-3. Vào **Tổng quan** (đăng nhập tài khoản toàn quyền), bấm **"Chốt số liệu tháng này"** để có ngay điểm
-   dữ liệu đầu tiên — các tháng sau tự động chốt vào đúng ngày cuối tháng, không cần bấm lại (bấm lại vẫn
-   được, chỉ cập nhật đúng số liệu mới nhất trong ngày, không sao).
+3. Vào **Tổng quan** (đăng nhập tài khoản toàn quyền) — dashboard tự hiện ngay, không cần bấm gì.
+
+**Cập nhật (lần 1) — KHÔNG cần chạy thêm SQL, KHÔNG cần deploy lại Edge Function (lần này chỉ sửa code
+JS phía trình duyệt)**: bỏ hẳn nút "Chốt số liệu tháng này" — 3 biểu đồ theo tháng giờ **tự thêm 1 điểm
+"SỐNG" ở cuối** (nét đứt + chấm rỗng, có ghi chú `*` bên dưới) = số liệu THÁNG HIỆN TẠI tính thẳng từ dữ
+liệu hợp đồng đang có, tự đổi theo TỪNG NGÀY, không cần bấm gì cả — ngay khi hết tháng, hệ thống tự động
+chốt lại thành điểm CHÍNH THỨC (nét liền + chấm đặc) đúng như trước, không cần thao tác gì thêm. Nút chốt
+tay + hàm `S.captureMonthlySnapshotNow()`/Edge Function `capture-monthly-snapshot` vẫn còn giữ lại trong
+code (không xoá) để dự phòng — chỉ không còn nút bấm ở giao diện nữa.
 
 ---
 

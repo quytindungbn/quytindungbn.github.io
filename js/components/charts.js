@@ -73,17 +73,31 @@ export function lineChartSvg({ points, aspect = 2.4, color = 'var(--color-primar
     const y = padTop + chartH - ((p.value - min) / range) * chartH;
     return { x, y, p };
   });
-  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
-  const areaPath = `${linePath} L ${coords[coords.length - 1].x.toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${coords[0].x.toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`;
+  // Điểm CUỐI có thể là số liệu "sống" của tháng hiện tại (chưa chốt chính
+  // thức, tự tính từ dữ liệu hợp đồng lúc đang xem — xem `live: true` ở nơi
+  // gọi) — đoạn nối tới điểm này vẽ NÉT ĐỨT + chấm rỗng để phân biệt rõ với
+  // các tháng ĐÃ CHỐT (nét liền + chấm đặc), tự chuyển thành nét liền/chấm
+  // đặc như bình thường ngay khi tháng đó được chốt chính thức.
+  const liveIdx = coords[n - 1].p.live ? n - 1 : -1;
+  const solidCoords = liveIdx >= 0 ? coords.slice(0, liveIdx) : coords;
+  const solidPath = solidCoords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
+  const dashSegment = liveIdx > 0 ? `M ${coords[liveIdx - 1].x.toFixed(1)} ${coords[liveIdx - 1].y.toFixed(1)} L ${coords[liveIdx].x.toFixed(1)} ${coords[liveIdx].y.toFixed(1)}` : '';
+  const areaEndCoords = liveIdx >= 0 ? coords : solidCoords; // vùng tô nhạt phủ luôn cả đoạn "sống" cho liền mạch
+  const areaPath = areaEndCoords.length > 1
+    ? `${areaEndCoords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ')} L ${areaEndCoords[areaEndCoords.length - 1].x.toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${areaEndCoords[0].x.toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`
+    : '';
   const last = coords[coords.length - 1];
   // Thưa bớt nhãn tháng nếu quá nhiều điểm (>8) — chỉ hiện đầu/cuối/giữa, đỡ chữ đè lên nhau.
   const showLabelEvery = n > 8 ? Math.ceil(n / 6) : 1;
   const gradId = `lc-grad-${Math.random().toString(36).slice(2, 8)}`;
-  const dots = coords.map((c) => `
-    <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4" fill="${color}">
-      <title>${c.p.label}: ${formatTooltip(c.p.value)}</title>
-    </circle>`).join('');
-  const xLabels = coords.map((c, i) => (i % showLabelEvery === 0 || i === n - 1) ? `<text x="${c.x.toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10.5" fill="var(--text-faint)">${c.p.label}</text>` : '').join('');
+  const dots = coords.map((c, i) => {
+    const isLive = i === liveIdx;
+    const tooltipSuffix = isLive ? ' (hôm nay, chưa chốt chính thức)' : '';
+    return isLive
+      ? `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4.5" fill="var(--surface)" stroke="${color}" stroke-width="2.5" stroke-dasharray="2.5 2"><title>${c.p.label}${tooltipSuffix}: ${formatTooltip(c.p.value)}</title></circle>`
+      : `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4" fill="${color}"><title>${c.p.label}${tooltipSuffix}: ${formatTooltip(c.p.value)}</title></circle>`;
+  }).join('');
+  const xLabels = coords.map((c, i) => (i % showLabelEvery === 0 || i === n - 1) ? `<text x="${c.x.toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10.5" fill="${i === liveIdx ? color : 'var(--text-faint)'}" font-weight="${i === liveIdx ? '700' : '400'}">${c.p.label}</text>` : '').join('');
   const lastAnchor = last.x > VB_W * 0.82 ? 'end' : last.x < VB_W * 0.18 ? 'start' : 'middle';
   return `
     <svg viewBox="0 0 ${VB_W} ${vbH}" style="width:100%;height:auto;display:block;overflow:visible">
@@ -94,10 +108,12 @@ export function lineChartSvg({ points, aspect = 2.4, color = 'var(--color-primar
         </linearGradient>
       </defs>
       <line x1="0" y1="${(padTop + chartH).toFixed(1)}" x2="${VB_W}" y2="${(padTop + chartH).toFixed(1)}" stroke="var(--border)" stroke-width="1"></line>
-      <path d="${areaPath}" fill="url(#${gradId})" stroke="none"></path>
-      <path d="${linePath}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+      ${areaPath ? `<path d="${areaPath}" fill="url(#${gradId})" stroke="none"></path>` : ''}
+      ${solidPath ? `<path d="${solidPath}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>` : ''}
+      ${dashSegment ? `<path d="${dashSegment}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 5"></path>` : ''}
       ${dots}
-      <text x="${last.x.toFixed(1)}" y="${Math.max(14, last.y - 12).toFixed(1)}" text-anchor="${lastAnchor}" font-size="14" font-weight="700" fill="${color}">${formatValue(last.p.value)}</text>
+      <text x="${last.x.toFixed(1)}" y="${Math.max(14, last.y - 12).toFixed(1)}" text-anchor="${lastAnchor}" font-size="14" font-weight="700" fill="${color}">${formatValue(last.p.value)}${liveIdx === n - 1 ? '*' : ''}</text>
       ${xLabels}
-    </svg>`;
+    </svg>
+    ${liveIdx >= 0 ? `<div class="text-sm text-muted" style="text-align:center;margin-top:2px">* Số liệu tháng này đang cập nhật theo ngày, chưa chốt chính thức</div>` : ''}`;
 }
