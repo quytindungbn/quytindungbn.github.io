@@ -2528,7 +2528,9 @@ alter table contracts add column if not exists collateral_value numeric not null
 -- không sửa được gì trên contracts (trước giờ contracts chỉ ghi qua Excel,
 -- đây là lần ĐẦU TIÊN có đường ghi trực tiếp từ trình duyệt, nên cần policy
 -- UPDATE riêng — trước đó bảng chỉ có policy SELECT, mặc định KHÔNG ai UPDATE
--- được qua RLS dù đã GRANT ở tầng bảng tại mục 4).
+-- được qua RLS dù đã GRANT ở tầng bảng tại mục 4). drop trước cho AN TOÀN
+-- chạy lại nhiều lần (create policy KHÔNG tự có "if not exists").
+drop policy if exists "super admin updates collateral" on contracts;
 create policy "super admin updates collateral" on contracts
   for update using (
     (auth.jwt() ->> 'app_role') = 'admin'
@@ -2543,6 +2545,11 @@ create policy "super admin updates collateral" on contracts
     )
   );
 ```
+
+**Gặp lỗi `policy "super admin updates collateral" for table "contracts" already exists`?** Nghĩa là
+đoạn SQL này ĐÃ chạy thành công lần trước rồi (không phải lỗi thật) — tính năng TSBĐ đã dùng được, không
+cần chạy lại. Bản SQL trên đã thêm dòng `drop policy if exists` ở trước để chạy lại bao nhiêu lần cũng
+không còn báo lỗi này nữa.
 
 **Vì sao KHÔNG cần deploy lại Edge Function**: `has_collateral`/`collateral_value` ghi thẳng từ trình
 duyệt qua RLS (policy trên), không qua `create-account`. Việc NHẬP EXCEL (`type: 'import'` trong

@@ -84,7 +84,10 @@ export function barChartSvg({ items, aspect = 2.1 }) {
  * mà KHÔNG thu gọn biểu đồ này lại, vẫn luôn vẽ TOÀN BỘ lịch sử). Truyền
  * `selectedYm` (year_month đang chọn) để tô khung mờ + đậm nhãn tháng đó,
  * phân biệt với việc tô đậm nhãn THÁNG SỐNG (isLive) — 1 tháng có thể vừa là
- * tháng sống vừa là tháng đang chọn cùng lúc.
+ * tháng sống vừa là tháng đang chọn cùng lúc. Ngay dưới biểu đồ LUÔN có 1
+ * dòng ghi ĐẦY ĐỦ số tiền (đến đơn vị đồng, không rút gọn tỷ đồng như trên
+ * cột) của ĐÚNG tháng đang chọn — đặt ngoài SVG (chữ HTML thường) vì số đầy
+ * đủ quá dài, ghi thẳng lên cột hẹp sẽ đè sang cột tháng bên cạnh.
  */
 export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var(--color-primary)', badDebtColor = 'var(--warning)', interestColor = 'var(--purple)', selectedYm = null }) {
   if (!months.length) {
@@ -168,12 +171,27 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
       ${bars}
     </svg>`;
 
+  // Bấm vào 1 cặp cột tháng (data-month, nơi gọi tự bind click) đổi selectedYm
+  // — dòng này ghi số liệu ĐẦY ĐỦ tới đơn vị đồng của ĐÚNG tháng vừa bấm, đặt
+  // NGOÀI phần SVG (chữ HTML thường, tự xuống dòng được trên điện thoại) thay
+  // vì ghi thẳng lên cột — cột quá hẹp, số đầy đủ (VD "44.850.000.000 ₫") sẽ
+  // đè sang cột tháng bên cạnh nếu ghi trong SVG.
+  const selectedMonth = (selectedYm != null && months.find((m) => m.yearMonth === selectedYm)) || months[months.length - 1];
+  const detailLine = `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;padding:9px 11px;background:var(--surface-alt);border-radius:var(--radius-sm);line-height:1.7">
+      <b style="color:${balanceColor}">${selectedMonth.label}</b>${selectedMonth.live ? ' <span style="color:var(--text-faint);font-weight:400">(đang cập nhật)</span>' : ''} —
+      Dư nợ <b style="color:var(--text)">${formatVND(selectedMonth.balance)}</b> ·
+      Nợ xấu <b style="color:${badDebtColor}">${formatVND(selectedMonth.badDebt)}</b> ·
+      Lãi phải thu <b style="color:${interestColor}">${formatVND(selectedMonth.interest)}</b>
+    </div>`;
+
   return `
-    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị: tỷ đồng${scroll ? ' — vuốt ngang để xem thêm tháng cũ hơn' : ''}</div>
+    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị trên biểu đồ: tỷ đồng${scroll ? ' — vuốt ngang để xem thêm tháng cũ hơn' : ''}</div>
     <div class="flex items-center" style="gap:14px;margin-bottom:6px;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${balanceColor};display:inline-block"></span>Dư nợ</span>
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${badDebtColor};display:inline-block"></span>Nợ xấu</span>
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${interestColor};display:inline-block"></span>Lãi phải thu</span>
     </div>
-    ${scroll ? `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">${svgHtml}</div>` : svgHtml}`;
+    ${scroll ? `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">${svgHtml}</div>` : svgHtml}
+    ${detailLine}`;
 }
