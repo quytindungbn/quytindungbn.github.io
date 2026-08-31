@@ -199,6 +199,60 @@ function nextInstallmentInfo(contract: any, asOf: Date): { idx: number; next: In
   return { idx, next: plan[idx] };
 }
 
+/** Y HỆT daysOverdue() trong js/state.js — số ngày quá hạn thật (xét cả ngày đáo hạn hợp đồng gốc lẫn Kỳ tới), null nếu đã tất toán. Dùng để xếp nhóm nợ (debtGroup) cho dashboard "Tổng quan" (mục 10.46 docs). */
+function daysOverdue(contract: any, asOf: Date): number | null {
+  if ((Number(contract.balance) || 0) <= 0) return null;
+  const mainOverdue = daysBetween(new Date(contract.due_date), asOf);
+  const inst = nextInstallmentInfo(contract, asOf);
+  const instOverdue = inst ? -inst.next.daysLeft : -Infinity;
+  return Math.max(0, mainOverdue, instOverdue);
+}
+
+/** Y HỆT debtGroup() trong js/state.js — Nhóm nợ 1-5 theo Thông tư 02/2013 NHNN. null nếu đã tất toán. */
+function debtGroup(contract: any, asOf: Date): number | null {
+  const d = daysOverdue(contract, asOf);
+  if (d === null) return null;
+  if (d <= 10) return 1;
+  if (d <= 90) return 2;
+  if (d <= 180) return 3;
+  if (d <= 360) return 4;
+  return 5;
+}
+
+/**
+ * Chốt số liệu THÁNG NÀY (dashboard "Tổng quan", mục 10.46 docs) — tính
+ * TOÀN BỘ hợp đồng (org-wide, không lọc theo Thôn/Xóm), upsert theo
+ * year_month (gọi lại nhiều lần trong cùng 1 tháng chỉ ghi đè đúng 1 dòng,
+ * không tạo trùng) — dùng CHUNG code này cho cả lịch tự động (đúng ngày
+ * cuối tháng, xem cuối Deno.serve() bên dưới) LẪN nút "Chốt số liệu tháng
+ * này" (gọi qua create-account, type 'capture-monthly-snapshot').
+ */
+async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: Date): Promise<void> {
+  const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+  let totalBalance = 0;
+  let interestReceivable = 0;
+  for (const ct of contracts) {
+    const g = debtGroup(ct, asOf);
+    if (g === null) continue;
+    const balance = Number(ct.balance) || 0;
+    groupBalances[String(g)] += balance;
+    totalBalance += balance;
+    if (g <= 4) interestReceivable += accruedInterest(ct, asOf);
+  }
+  const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
+  const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
+  const yearMonth = `${asOf.getFullYear()}-${String(asOf.getMonth() + 1).padStart(2, '0')}`;
+  await adminClient.from('monthly_snapshots').upsert({
+    year_month: yearMonth,
+    snapshot_date: toLocalISODate(asOf),
+    total_balance: totalBalance,
+    interest_receivable: interestReceivable,
+    group_balances: groupBalances,
+    bad_debt_balance: badDebtBalance,
+    bad_debt_ratio: badDebtRatio,
+  }, { onConflict: 'year_month' });
+}
+
 function formatVND(n: number): string {
   return Math.round(n).toLocaleString('vi-VN') + 'đ';
 }
@@ -714,6 +768,20 @@ Deno.serve(async (req) => {
     await admin.from('activity_log').delete().lt('created_at', cutoff);
   } catch (e) {
     console.error('Lỗi dọn activity_log cũ:', e);
+  }
+
+  // Tự chốt số liệu dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu, mục
+  // 10.46 docs) ĐÚNG vào ngày cuối cùng mỗi tháng (mai sang tháng mới) —
+  // tận dụng luôn lịch chạy hàng ngày có sẵn, không cần Scheduled Trigger
+  // riêng. Admin cũng tự chốt NGAY được bất cứ lúc nào qua nút "Chốt số
+  // liệu tháng này" (create-account, type 'capture-monthly-snapshot') —
+  // upsert theo year_month nên không sợ chốt trùng dù cả 2 đường đều chạy
+  // trong cùng 1 tháng.
+  try {
+    const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+    if (tomorrow.getDate() === 1) await captureMonthlySnapshot(admin, contracts || [], now);
+  } catch (e) {
+    console.error('Lỗi chốt số liệu tháng:', e);
   }
 
   return new Response(JSON.stringify({ ok: true, ...result }), { headers: { 'Content-Type': 'application/json' } });

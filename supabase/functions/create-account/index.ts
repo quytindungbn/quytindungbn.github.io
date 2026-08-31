@@ -368,6 +368,25 @@ function accruedInterestZalo(contract: any, asOf: Date): number {
   const raw = Number(contract.balance) * days * (Number(contract.interest_rate) / 100) / 365;
   return Math.round(raw / 1000) * 1000;
 }
+
+/** Y HỆT daysOverdue() trong js/state.js — dùng để xếp Nhóm nợ cho dashboard "Tổng quan" (mục 10.46 docs). null nếu đã tất toán. */
+function daysOverdueZalo(contract: any, asOf: Date): number | null {
+  if ((Number(contract.balance) || 0) <= 0) return null;
+  const mainOverdue = daysBetweenZalo(new Date(contract.due_date), asOf);
+  const inst = nextInstallmentInfoZalo(contract, asOf);
+  const instOverdue = inst ? -inst.next.daysLeft : -Infinity;
+  return Math.max(0, mainOverdue, instOverdue);
+}
+/** Y HỆT debtGroup() trong js/state.js — Nhóm nợ 1-5 theo Thông tư 02/2013 NHNN. null nếu đã tất toán. */
+function debtGroupZalo(contract: any, asOf: Date): number | null {
+  const d = daysOverdueZalo(contract, asOf);
+  if (d === null) return null;
+  if (d <= 10) return 1;
+  if (d <= 90) return 2;
+  if (d <= 180) return 3;
+  if (d <= 360) return 4;
+  return 5;
+}
 function formatDateVNZalo(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -1130,6 +1149,10 @@ Deno.serve(async (req) => {
     'update-customer-profile', 'delete-contract', 'import', 'update-staff-role',
     'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff', 'force-logout-staff',
     'update-staff-name',
+    // Dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu toàn quỹ, mục 10.46
+    // docs) — số liệu tài chính TOÀN QUỸ, chỉ super mới chốt/xem được, y hệt
+    // trang "Nhật ký" (activity_log) đã CHỈ dành riêng cho super từ trước.
+    'capture-monthly-snapshot',
   ];
   if (SUPER_ONLY_TYPES.includes(body.type) && !isSuper) {
     return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
@@ -1156,6 +1179,46 @@ Deno.serve(async (req) => {
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'update-staff-role',
       `Đổi vai trò tài khoản "**${target.name || target.username}**" thành **${newRole === 'super' ? 'Toàn quyền' : 'Nhân viên'}**`);
+    return json({ ok: true });
+  }
+
+  // ===== type: 'capture-monthly-snapshot' — CHỈ super (đã chặn ở
+  // SUPER_ONLY_TYPES) — chốt NGAY số liệu dashboard "Tổng quan" (dư nợ/lãi
+  // phải thu/nợ xấu) cho THÁNG HIỆN TẠI, không cần đợi tới đúng ngày cuối
+  // tháng (lịch tự động chốt đúng ngày cuối tháng — xem cuối
+  // send-due-reminders/index.ts). Tính TOÀN BỘ hợp đồng (org-wide, không lọc
+  // Thôn/Xóm) — upsert theo year_month nên bấm lại nhiều lần trong cùng 1
+  // tháng chỉ cập nhật đúng 1 dòng, không tạo trùng. Xem mục 10.46 docs. =====
+  if (body.type === 'capture-monthly-snapshot') {
+    const now = new Date();
+    const { data: allContracts, error: ctErr } = await admin.from('contracts').select('*');
+    if (ctErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+    let totalBalance = 0;
+    let interestReceivable = 0;
+    for (const ct of allContracts || []) {
+      const g = debtGroupZalo(ct, now);
+      if (g === null) continue;
+      const balance = Number(ct.balance) || 0;
+      groupBalances[String(g)] += balance;
+      totalBalance += balance;
+      if (g <= 4) interestReceivable += accruedInterestZalo(ct, now);
+    }
+    const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
+    const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
+    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const { error } = await admin.from('monthly_snapshots').upsert({
+      year_month: yearMonth,
+      snapshot_date: toLocalISODateZalo(now),
+      total_balance: totalBalance,
+      interest_receivable: interestReceivable,
+      group_balances: groupBalances,
+      bad_debt_balance: badDebtBalance,
+      bad_debt_ratio: badDebtRatio,
+    }, { onConflict: 'year_month' });
+    if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'capture-monthly-snapshot',
+      `Chốt số liệu dashboard Tổng quan cho tháng **${yearMonth}**`);
     return json({ ok: true });
   }
 

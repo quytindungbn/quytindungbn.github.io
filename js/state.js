@@ -75,6 +75,7 @@ function migrateState() {
   if (!Array.isArray(state.zaloAutoSendList)) state.zaloAutoSendList = [];
   if (!Array.isArray(state.zaloSendLog)) state.zaloSendLog = [];
   if (typeof state.chatUnreadCount !== 'number') state.chatUnreadCount = 0;
+  if (!Array.isArray(state.monthlySnapshots)) state.monthlySnapshots = [];
 }
 
 export async function init() {
@@ -515,6 +516,66 @@ export function nextInstallmentInfo(contract, asOf = new Date()) {
   const next = plan[idx];
   const urgency = next.daysLeft < 0 ? 'qua_han' : next.daysLeft <= NEAR_DUE_DAYS ? 'gan_den_han' : null;
   return { plan, idx, next, urgency };
+}
+
+/**
+ * Số ngày quá hạn THỰC SỰ của 1 hợp đồng — xét CẢ ngày đáo hạn hợp đồng gốc
+ * LẪN "Kỳ tới" của phân kỳ trả nợ (nếu có), lấy nguồn NÀO QUÁ HẠN NHIỀU HƠN
+ * (y hệt cách contractStatusInfo() ưu tiên "quá hạn" ở dưới) — dùng để xếp
+ * NHÓM NỢ theo đúng quy định phân loại nợ (Thông tư 02/2013 NHNN): Nhóm 1 =
+ * quá hạn 0-10 ngày, Nhóm 2 = 11-90, Nhóm 3 = 91-180, Nhóm 4 = 181-360, Nhóm
+ * 5 = trên 360 ngày — xem debtGroup() ngay bên dưới. Trả về null nếu hợp
+ * đồng đã tất toán (không xếp nhóm nợ cho hợp đồng đã trả hết).
+ */
+export function daysOverdue(contract, asOf = new Date()) {
+  if ((Number(contract.balance) || 0) <= 0) return null;
+  const mainOverdue = daysBetween(new Date(contract.dueDate), asOf);
+  const inst = nextInstallmentInfo(contract, asOf);
+  const instOverdue = inst ? -inst.next.daysLeft : -Infinity;
+  return Math.max(0, mainOverdue, instOverdue);
+}
+
+/**
+ * Nhóm nợ 1-5 theo đúng quy định phân loại nợ NHNN (Thông tư 02/2013, Điều
+ * 10) — dùng số ngày quá hạn từ daysOverdue() ở trên. null nếu đã tất toán
+ * (không thuộc nhóm nào). Dùng cho dashboard "Tỷ lệ nợ xấu" ở Tổng quan
+ * (xem debtGroupSummary() ngay bên dưới) — "nợ xấu" chính thức = Nhóm 3+4+5.
+ */
+export function debtGroup(contract, asOf = new Date()) {
+  const d = daysOverdue(contract, asOf);
+  if (d === null) return null;
+  if (d <= 10) return 1;
+  if (d <= 90) return 2;
+  if (d <= 180) return 3;
+  if (d <= 360) return 4;
+  return 5;
+}
+
+/**
+ * Tổng hợp dư nợ theo từng nhóm nợ + lãi phải thu (Nhóm 1-4, KHÔNG tính
+ * Nhóm 5 — nợ nhóm 5 coi như khó thu, không còn tính lãi phải thu nữa, theo
+ * đúng yêu cầu) + tỷ lệ nợ xấu (dư nợ Nhóm 3+4+5 / tổng dư nợ) — dùng cho
+ * dashboard "Tổng quan" (chỉ quản trị viên toàn quyền xem, xem overview.js)
+ * VÀ cho việc chốt số liệu cuối tháng (xem mục 10.46 docs/supabase-migration.md).
+ * `contracts` truyền vào nên là TOÀN BỘ hợp đồng (không lọc theo phạm vi
+ * Thôn/Xóm của 1 nhân viên) — dashboard này cho quản trị viên toàn quyền
+ * xem bức tranh CHUNG của cả quỹ.
+ */
+export function debtGroupSummary(contracts, asOf = new Date()) {
+  const groupBalances = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let totalBalance = 0;
+  let interestReceivable = 0;
+  for (const ct of contracts) {
+    const g = debtGroup(ct, asOf);
+    if (g === null) continue;
+    const balance = Number(ct.balance) || 0;
+    groupBalances[g] += balance;
+    totalBalance += balance;
+    if (g <= 4) interestReceivable += accruedInterest(ct, asOf);
+  }
+  const badDebtBalance = groupBalances[3] + groupBalances[4] + groupBalances[5];
+  const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
+  return { groupBalances, totalBalance, interestReceivable, badDebtBalance, badDebtRatio };
 }
 
 /**
@@ -1368,7 +1429,7 @@ export async function checkForceLogout() {
 
 async function loadAdminSessionData(token) {
   const sb = getSupabaseClient(token);
-  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes, zaloCustRes, zaloListRes, zaloLogRes, chatUnreadRes] = await Promise.all([
+  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes, zaloCustRes, zaloListRes, zaloLogRes, chatUnreadRes, snapshotRes] = await Promise.all([
     sb.from('admins').select('*'),
     sb.from('customers').select('*'),
     sb.from('contracts').select('*'),
@@ -1392,11 +1453,18 @@ async function loadAdminSessionData(token) {
     // js/components/shell.js renderSupportNavBadge). Bọc an toàn (giống
     // push_subscriptions) phòng lúc chưa chạy SQL tạo bảng chat_messages.
     sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('sender_role', 'customer').is('read_at', null).then((r) => r, () => ({ count: 0 })),
+    // Số liệu chốt cuối mỗi tháng (dashboard "Tổng quan" — dư nợ/lãi phải
+    // thu/nợ xấu theo tháng, xem mục 10.46 docs) — RLS chỉ trả về dữ liệu cho
+    // quản trị viên toàn quyền (role='super'), nhân viên thường sẽ tự nhận
+    // mảng rỗng (không phải lỗi) — không sao, dashboard này vốn CHỈ hiện cho
+    // super (xem overview.js). Bọc an toàn phòng lúc chưa chạy SQL tạo bảng.
+    sb.from('monthly_snapshots').select('*').order('year_month').then((r) => r, () => ({ data: [] })),
   ]);
   state.admins = (adminRows || []).map(mapAdminRow);
   state.customers = (customerRows || []).map(mapCustomerRow);
   state.contracts = (contractRows || []).map(mapContractRow);
   state.requests = (requestRows || []).map(mapRequestRow);
+  state.monthlySnapshots = (snapshotRes?.data || []).map(mapMonthlySnapshotRow);
   // Mảng thường (KHÔNG phải Set) — state được JSON.stringify() vào
   // localStorage mỗi lần persist()/notify(), Set sẽ bị mất sạch dữ liệu khi
   // serialize (JSON.stringify(new Set(...)) ra "{}"), lần tải lại từ cache sẽ
@@ -1406,6 +1474,34 @@ async function loadAdminSessionData(token) {
   state.zaloAutoSendList = (zaloListRes?.data || []).map(mapZaloAutoSendRow);
   state.zaloSendLog = (zaloLogRes?.data || []).map(mapZaloSendLogRow);
   state.chatUnreadCount = chatUnreadRes?.count || 0;
+}
+
+function mapMonthlySnapshotRow(row) {
+  return {
+    yearMonth: row.year_month, snapshotDate: row.snapshot_date,
+    totalBalance: Number(row.total_balance) || 0,
+    interestReceivable: Number(row.interest_receivable) || 0,
+    groupBalances: row.group_balances || {},
+    badDebtBalance: Number(row.bad_debt_balance) || 0,
+    badDebtRatio: Number(row.bad_debt_ratio) || 0,
+  };
+}
+/** Danh sách số liệu đã chốt theo tháng, sắp xếp từ CŨ -> MỚI (khớp thứ tự vẽ biểu đồ theo thời gian) — dùng cho dashboard "Tổng quan" (chỉ super admin, xem overview.js). */
+export function listMonthlySnapshots() { return state.monthlySnapshots || []; }
+
+/**
+ * Chốt số liệu THÁNG NÀY ngay bây giờ (không cần đợi đúng ngày cuối tháng) —
+ * gọi qua Edge Function create-account (type 'capture-monthly-snapshot',
+ * CHỈ super admin gọi được, server tự kiểm tra lại quyền). Tính lại và GHI
+ * ĐÈ (upsert theo year_month) — bấm nhiều lần trong cùng 1 tháng chỉ cập
+ * nhật đúng 1 dòng của tháng đó, không tạo trùng. Lịch tự động (đúng ngày
+ * cuối tháng, xem send-due-reminders) vẫn chạy song song, không đụng nhau.
+ */
+export async function captureMonthlySnapshotNow() {
+  const session = state.session;
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'capture-monthly-snapshot' });
+  if (res.ok) { await loadAdminSessionData(session.sbToken); notify(); }
+  return res;
 }
 
 function mapZaloCustomerRow(row) {

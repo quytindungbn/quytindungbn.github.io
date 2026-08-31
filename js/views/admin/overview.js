@@ -2,8 +2,19 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
-import { formatVND, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
+import { formatVND, formatNumber, formatDateTime, formatCompact, initials, colorFor } from '../../utils.js';
+import { barChartSvg, lineChartSvg } from '../../components/charts.js';
+import { toast } from '../../components/toast.js';
 import { openContractView } from './customers.js';
+
+/** "2026-08" -> "Th8/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
+function monthLabel(yearMonth) {
+  const [y, m] = String(yearMonth).split('-');
+  return `Th${Number(m)}/${y.slice(2)}`;
+}
+function formatPercent(n) {
+  return `${n.toFixed(1).replace('.', ',')}%`;
+}
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Tổng quan quản trị' });
@@ -13,6 +24,7 @@ export function render(contentEl) {
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
   const isStaff = admin.role === 'staff';
+  const isSuper = S.isSuperAdmin(session.id);
   const customers = S.listCustomers({ adminId: isStaff ? admin.id : undefined });
   const customerIds = new Set(customers.map((c) => c.id));
   const contracts = S.getState().contracts.filter((c) => !isStaff || customerIds.has(c.customerId));
@@ -74,6 +86,8 @@ export function render(contentEl) {
       </div>
     </div>
 
+    ${isSuper ? debtDashboardHtml() : ''}
+
     <div class="card card-pad">
       <div class="section-head"><h2>Yêu cầu mới nhất</h2><a href="#/admin/ho-tro?tab=requests" class="link-more">Xem tất cả</a></div>
       ${requests.length ? requests.slice(0, 5).map((r) => {
@@ -98,6 +112,107 @@ export function render(contentEl) {
   // không cần 2 bảng riêng bên dưới nữa.
   contentEl.querySelector('#tile-overdue').addEventListener('click', () => openContractListModal('Hợp đồng quá hạn', overdue, isStaff, 'var(--danger)'));
   contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', upcoming, isStaff, 'var(--warning)', { highlightWithinDays: S.NEAR_DUE_DAYS }));
+
+  const btnSnapshot = contentEl.querySelector('#btn-capture-snapshot');
+  if (btnSnapshot) {
+    btnSnapshot.addEventListener('click', async () => {
+      btnSnapshot.disabled = true;
+      btnSnapshot.textContent = 'Đang chốt số liệu...';
+      const res = await S.captureMonthlySnapshotNow();
+      if (res.ok) toast('Đã chốt số liệu tháng này', 'success');
+      else { toast(res.reason || 'Có lỗi xảy ra', 'error'); btnSnapshot.disabled = false; btnSnapshot.textContent = 'Chốt số liệu tháng này'; }
+      // Thành công thì render() sẽ tự được gọi lại (S.captureMonthlySnapshotNow() gọi notify()), không cần tự vẽ lại ở đây.
+    });
+  }
+}
+
+/**
+ * Dashboard "Dư nợ — Lãi phải thu — Nợ xấu" — CHỈ hiện cho quản trị viên
+ * TOÀN QUYỀN (role='super'), dưới 4 ô thống kê chính — tính trên TOÀN BỘ hợp
+ * đồng của cả quỹ (không giới hạn theo phạm vi Thôn/Xóm của 1 nhân viên,
+ * khác 4 ô phía trên) vì đây là bức tranh CHUNG toàn quỹ dành cho lãnh đạo,
+ * giống cách trang "Nhật ký" cũng chỉ dành riêng cho super — xem mục 10.46
+ * docs/supabase-migration.md.
+ *
+ * Nhóm nợ 1-5 theo đúng quy định phân loại nợ NHNN (Thông tư 02/2013):
+ * Nhóm 1 = quá hạn 0-10 ngày, Nhóm 2 = 11-90, Nhóm 3 = 91-180, Nhóm 4 =
+ * 181-360, Nhóm 5 = trên 360 ngày — "Nợ xấu" CHÍNH THỨC = Nhóm 3+4+5 (không
+ * tính Nhóm 2, dù Nhóm 2 đã là "nợ cần chú ý"). "Lãi phải thu" chỉ tính
+ * Nhóm 1-4 (Nhóm 5 coi như khó thu, không tính lãi phải thu nữa).
+ *
+ * 3 biểu đồ ĐƯỜNG theo tháng (dư nợ/lãi phải thu/tỷ lệ nợ xấu) đọc dữ liệu
+ * từ bảng monthly_snapshots — bảng này KHÔNG có sẵn số liệu quá khứ (app
+ * trước giờ không lưu lại lịch sử biến động, mỗi lần nhập Excel mới đè lên
+ * số liệu cũ) nên lịch sử CHỈ bắt đầu tính từ lúc tính năng này ra đời — có
+ * ghi chú rõ bên dưới biểu đồ, không giả vờ có sẵn số liệu quá khứ không hề
+ * tồn tại. Số liệu tự chốt vào ĐÚNG ngày cuối cùng mỗi tháng (xem
+ * send-due-reminders/index.ts) — nút "Chốt số liệu tháng này" chỉ để chốt
+ * ngay bây giờ (không cần đợi tới cuối tháng), bấm nhiều lần trong cùng 1
+ * tháng chỉ cập nhật đúng 1 dòng của tháng đó (upsert theo year_month).
+ */
+function debtDashboardHtml() {
+  const contracts = S.getState().contracts;
+  const summary = S.debtGroupSummary(contracts);
+  const snapshots = S.listMonthlySnapshots();
+  const lastSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
+
+  const groupColors = {
+    1: 'var(--success)', 2: 'var(--warning)',
+    3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d',
+  };
+  const barItems = [1, 2, 3, 4, 5].map((g) => ({ label: `Nhóm ${g}`, value: summary.groupBalances[g], color: groupColors[g] }));
+
+  // Tô màu tỷ lệ nợ xấu theo mức nghiêm trọng — chỉ mang tính tham khảo trực
+  // quan (không phải ngưỡng quy định chính thức nào): dưới 2% xanh (tốt),
+  // 2-5% vàng (cần chú ý), trên 5% đỏ (đáng lo).
+  const ratioClass = summary.badDebtRatio >= 5 ? { bg: 'var(--danger-bg)', fg: 'var(--danger)' } : summary.badDebtRatio >= 2 ? { bg: 'var(--warning-bg)', fg: 'var(--warning)' } : { bg: 'var(--success-bg)', fg: '#0d6b34' };
+
+  const balancePoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.totalBalance }));
+  const interestPoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.interestReceivable }));
+  const ratioPoints = snapshots.map((s) => ({ label: monthLabel(s.yearMonth), value: s.badDebtRatio }));
+
+  return `
+    <div class="card card-pad mb-16">
+      <div class="section-head"><h2>Dư nợ · Lãi phải thu · Nợ xấu (toàn quỹ)</h2></div>
+      <p class="text-sm text-muted mb-12">Chỉ quản trị viên toàn quyền xem được mục này. Nhóm nợ 1-5 theo đúng quy định phân loại nợ (quá hạn 0-10/11-90/91-180/181-360/trên 360 ngày) — "Nợ xấu" = Nhóm 3+4+5, "Lãi phải thu" chỉ tính Nhóm 1-4.</p>
+
+      <div class="grid-3 mb-16">
+        <div class="stat-tile c-blue"><div class="stat-label">Tổng dư nợ hiện tại</div><div class="stat-value" style="font-size:16px">${formatVND(summary.totalBalance)}</div></div>
+        <div class="stat-tile c-purple"><div class="stat-label">Lãi phải thu (Nhóm 1-4)</div><div class="stat-value" style="font-size:16px">${formatVND(summary.interestReceivable)}</div></div>
+        <div class="stat-tile" style="background:${ratioClass.bg};color:${ratioClass.fg}"><div class="stat-label">Tỷ lệ nợ xấu / Tổng dư nợ</div><div class="stat-value">${formatPercent(summary.badDebtRatio)}</div><div class="stat-trend" style="color:var(--text-muted)">Dư nợ xấu: ${formatVND(summary.badDebtBalance)}</div></div>
+      </div>
+
+      <div class="mb-20">
+        <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ (hiện tại)</h3>
+        ${barChartSvg({ items: barItems })}
+      </div>
+
+      <h3 style="font-size:13.5px;margin-bottom:2px">Biến động hàng tháng (tính số liệu đến cuối mỗi tháng)</h3>
+      <div class="grid-3">
+        <div>
+          <div class="text-sm text-muted mb-6" style="text-align:center">Tổng dư nợ</div>
+          ${lineChartSvg({ points: balancePoints, color: 'var(--color-primary)' })}
+        </div>
+        <div>
+          <div class="text-sm text-muted mb-6" style="text-align:center">Lãi phải thu</div>
+          ${lineChartSvg({ points: interestPoints, color: 'var(--purple)' })}
+        </div>
+        <div>
+          <div class="text-sm text-muted mb-6" style="text-align:center">Tỷ lệ nợ xấu</div>
+          ${lineChartSvg({ points: ratioPoints, color: 'var(--danger)', formatValue: formatPercent, formatTooltip: formatPercent })}
+        </div>
+      </div>
+
+      <div class="flex justify-between items-center mt-16" style="flex-wrap:wrap;gap:8px">
+        <p class="text-sm text-muted" style="margin:0;max-width:520px">
+          ${lastSnapshot
+            ? `Đã chốt gần nhất: <b>Th${Number(lastSnapshot.yearMonth.split('-')[1])}/${lastSnapshot.yearMonth.split('-')[0]}</b> (ngày ${new Date(lastSnapshot.snapshotDate).toLocaleDateString('vi-VN')}). Số liệu tự chốt vào đúng ngày cuối mỗi tháng — 3 biểu đồ trên chỉ có dữ liệu từ tháng bắt đầu dùng tính năng này trở đi, không có số liệu các tháng trước đó.`
+            : `Chưa có tháng nào được chốt số liệu — bấm nút bên cạnh để chốt NGAY số liệu hôm nay làm điểm khởi đầu, các tháng sau tự động chốt vào đúng ngày cuối tháng.`}
+        </p>
+        <button type="button" class="btn btn-outline btn-sm" id="btn-capture-snapshot">Chốt số liệu tháng này</button>
+      </div>
+    </div>
+  `;
 }
 
 /**

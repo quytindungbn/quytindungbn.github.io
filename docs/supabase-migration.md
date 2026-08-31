@@ -2418,6 +2418,80 @@ với dữ liệu đã hiện tạm), người dùng không nhận ra có sự t
 tích tắc lúc mới mở (trường hợp hiếm — chỉ xảy ra ở LẦN ĐẦU TIÊN mở app trên 1 máy, chưa từng lưu gì).
 Chỉ sửa code JS phía trình duyệt (`js/state.js`, `js/app.js`), không đụng dữ liệu/schema/Edge Function.
 
+### 10.46. Dashboard "Dư nợ · Lãi phải thu · Nợ xấu" ở Tổng quan (BẮT BUỘC chạy SQL + deploy lại CẢ 2 Edge Function)
+
+Thêm dưới 4 ô thống kê chính ở trang **Tổng quan** — **CHỈ quản trị viên toàn quyền (role='super') xem
+được** (giống trang "Nhật ký" đã dành riêng cho super từ trước), vì đây là số liệu tài chính TOÀN QUỸ,
+không giới hạn theo phạm vi Thôn/Xóm của 1 nhân viên.
+
+**Nhóm nợ 1-5** — xếp theo ĐÚNG quy định phân loại nợ hiện hành của Ngân hàng Nhà nước (Thông tư
+02/2013, khớp chính xác với số ngày bạn đã cho): Nhóm 1 = quá hạn 0-10 ngày, Nhóm 2 = 11-90 ngày, Nhóm 3 =
+91-180 ngày, Nhóm 4 = 181-360 ngày, Nhóm 5 = trên 360 ngày — xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới"
+của phân kỳ trả nợ (nếu có), lấy nguồn nào quá hạn nhiều hơn, y hệt cách các cảnh báo khác trong app đã
+làm. **"Nợ xấu"** = tổng dư nợ Nhóm 3+4+5 (KHÔNG tính Nhóm 2, đúng chuẩn phân loại chính thức dù Nhóm 2 đã
+là "nợ cần chú ý"). **"Lãi phải thu"** chỉ tính lãi của hợp đồng Nhóm 1-4 (Nhóm 5 coi như khó thu, không
+tính lãi phải thu nữa).
+
+**Hiện gồm**:
+1. 3 ô số liệu hiện tại: Tổng dư nợ, Lãi phải thu (Nhóm 1-4), Tỷ lệ nợ xấu/Tổng dư nợ (tô màu xanh/vàng/đỏ
+   theo mức — chỉ mang tính tham khảo trực quan, không phải ngưỡng quy định nào).
+2. Biểu đồ cột: dư nợ theo từng Nhóm nợ 1-5 (tại thời điểm hiện tại) — xanh (Nhóm 1) → vàng (Nhóm 2) → các
+   sắc đỏ đậm dần (Nhóm 3-5).
+3. 3 biểu đồ đường: Tổng dư nợ / Lãi phải thu / Tỷ lệ nợ xấu **biến động theo từng tháng**.
+
+**LƯU Ý QUAN TRỌNG về mục 3 (biểu đồ theo tháng)**: app từ trước giờ **KHÔNG hề lưu lại lịch sử biến động**
+— mỗi lần nhập file Excel mới là GHI ĐÈ thẳng lên số liệu cũ (dư nợ, ngày đáo hạn...), không giữ lại bản
+ghi cũ ở đâu cả. Vì vậy **không có cách nào tính lại được số liệu các tháng ĐÃ QUA** — 3 biểu đồ này sẽ
+BẮT ĐẦU TỪ CON SỐ 0 (trống trơn) và tự tích luỹ dần lịch sử thật kể từ THÁNG BẠN BẮT ĐẦU DÙNG tính năng
+này trở đi, KHÔNG hiển thị được số liệu các tháng trước đó (vì dữ liệu đó thực sự không còn tồn tại, không
+phải app thiếu sót gì để sửa được).
+
+Cơ chế chốt số liệu (bảng mới `monthly_snapshots`, xem SQL bên dưới):
+- **Tự động**: `send-due-reminders` (đã chạy sẵn hàng ngày) tự kiểm tra — đúng NGÀY CUỐI CÙNG mỗi tháng
+  thì tự tính và lưu 1 dòng số liệu cho đúng tháng đó.
+- **Chốt tay ngay**: nút "Chốt số liệu tháng này" ở dashboard — bấm bất cứ lúc nào để chốt NGAY số liệu
+  hôm nay cho tháng hiện tại (không cần đợi tới cuối tháng) — dùng để có ngay điểm dữ liệu ĐẦU TIÊN thay vì
+  phải đợi hết cả tháng mới thấy gì. Bấm nhiều lần trong cùng 1 tháng chỉ cập nhật đúng 1 dòng của tháng đó
+  (không tạo trùng, ghi đè theo `year_month`).
+
+```sql
+create table if not exists monthly_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  year_month text not null unique,       -- 'YYYY-MM'
+  snapshot_date date not null,           -- ngày thực tế chốt số liệu
+  total_balance numeric not null default 0,
+  interest_receivable numeric not null default 0,  -- lãi phải thu, Nhóm 1-4
+  group_balances jsonb not null default '{}',       -- {"1":.., "2":.., "3":.., "4":.., "5":..}
+  bad_debt_balance numeric not null default 0,      -- Nhóm 3+4+5
+  bad_debt_ratio numeric not null default 0,        -- % (0-100)
+  created_at timestamptz not null default now()
+);
+alter table monthly_snapshots enable row level security;
+grant select on monthly_snapshots to anon, authenticated;
+grant select, insert, update on monthly_snapshots to service_role;
+
+-- CHỈ quản trị viên toàn quyền (role='super') mới xem được — y hệt cách
+-- activity_log (trang "Nhật ký") đã chặn ở mục 10.33.
+create policy "super sees monthly snapshots" on monthly_snapshots
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a where a.id = (auth.jwt() ->> 'row_id') and a.role = 'super'
+    )
+  );
+```
+
+**Việc cần bạn làm**:
+1. Chạy đoạn SQL trên — vào thẳng SQL Editor:
+   https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
+2. Deploy lại **CẢ 2 Edge Function** (2 file vừa gửi lần này) — Supabase Dashboard → Edge Functions →
+   chọn từng function → dán đè toàn bộ nội dung file mới → Deploy:
+   - `create-account`
+   - `send-due-reminders`
+3. Vào **Tổng quan** (đăng nhập tài khoản toàn quyền), bấm **"Chốt số liệu tháng này"** để có ngay điểm
+   dữ liệu đầu tiên — các tháng sau tự động chốt vào đúng ngày cuối tháng, không cần bấm lại (bấm lại vẫn
+   được, chỉ cập nhật đúng số liệu mới nhất trong ngày, không sao).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
