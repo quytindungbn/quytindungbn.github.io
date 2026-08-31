@@ -1202,7 +1202,10 @@ Deno.serve(async (req) => {
       const balance = Number(ct.balance) || 0;
       groupBalances[String(g)] += balance;
       totalBalance += balance;
-      if (g <= 4) interestReceivable += accruedInterestZalo(ct, now);
+      // Lãi phải thu CHỈ tính Nhóm 1 — Y HỆT captureMonthlySnapshot() trong
+      // send-due-reminders/index.ts và debtGroupSummary() trong js/state.js
+      // (mục 10.49 docs).
+      if (g === 1) interestReceivable += accruedInterestZalo(ct, now);
     }
     const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
     const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
@@ -1215,6 +1218,7 @@ Deno.serve(async (req) => {
       group_balances: groupBalances,
       bad_debt_balance: badDebtBalance,
       bad_debt_ratio: badDebtRatio,
+      is_estimated: false, // bấm tay -> luôn dùng dữ liệu HÔM NAY, không phải chốt bù ước tính (xem mục 10.50 docs).
     }, { onConflict: 'year_month' });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'capture-monthly-snapshot',

@@ -2460,10 +2460,11 @@ create table if not exists monthly_snapshots (
   year_month text not null unique,       -- 'YYYY-MM'
   snapshot_date date not null,           -- ngày thực tế chốt số liệu
   total_balance numeric not null default 0,
-  interest_receivable numeric not null default 0,  -- lãi phải thu, Nhóm 1-4
+  interest_receivable numeric not null default 0,  -- lãi phải thu, CHỈ Nhóm 1 (xem mục 10.49)
   group_balances jsonb not null default '{}',       -- {"1":.., "2":.., "3":.., "4":.., "5":..}
   bad_debt_balance numeric not null default 0,      -- Nhóm 3+4+5
   bad_debt_ratio numeric not null default 0,        -- % (0-100)
+  is_estimated boolean not null default false,      -- true = chốt BÙ (lỡ ngày chốt chính xác), xem mục 10.50
   created_at timestamptz not null default now()
 );
 alter table monthly_snapshots enable row level security;
@@ -2616,14 +2617,68 @@ chi tiết" (nhiều tháng) — cột Dư nợ/Nợ xấu/Lãi phải thu giờ
 thay vì rút gọn `44,85 tỷ` như trước. Biểu đồ "Biến động hàng tháng" (trên cột, không phải bảng) vẫn giữ
 nguyên đơn vị tỷ đồng rút gọn như cũ — chỉ đủ chỗ cho số rút gọn trên 1 cột nhỏ.
 
-**Xác nhận đã có sẵn — tự động chốt số liệu cuối tháng**: cơ chế này đã chạy từ trước (không phải mới) —
-`send-due-reminders` chạy lịch HÀNG NGÀY, tự kiểm tra đúng ngày cuối cùng mỗi tháng thì tự gọi
-`captureMonthlySnapshot()` lưu 1 dòng vào `monthly_snapshots` cho đúng tháng đó — không cần bấm gì, tháng
-sau vẫn xem lại được lịch sử tháng trước bình thường.
+**Xác nhận đã có sẵn — tự động chốt số liệu cuối tháng**: `send-due-reminders` chạy lịch HÀNG NGÀY, tự
+kiểm tra đúng ngày cuối cùng mỗi tháng thì tự gọi `captureMonthlySnapshot()` lưu 1 dòng vào
+`monthly_snapshots` cho đúng tháng đó — không cần bấm gì. *(Lưu ý ghi lại sau: cơ chế này thực ra MỚI ra
+đời cùng ngày 31/08 — đúng ngày cần chốt lần đầu — nên lượt chốt đầu tiên đã bị lỡ; xem mục 10.50 để biết
+lý do cụ thể và cách đã sửa để việc này khó lặp lại.)*
 
 **Việc cần bạn làm**: deploy lại Edge Function `send-due-reminders` — Supabase Dashboard → Edge Functions
 → `send-due-reminders` → dán đè toàn bộ nội dung file `supabase/functions/send-due-reminders/index.ts`
 mới nhất trong repo này → Deploy. KHÔNG cần chạy SQL.
+
+---
+
+### 10.50. Chốt bù tháng bị lỡ (tại sao tháng 08 không được lưu) + nút "Chốt số liệu tháng này" (BẮT BUỘC chạy SQL + deploy lại CẢ 2 Edge Function)
+
+**Vì sao tháng 08 không được lưu lại**: toàn bộ tính năng "dashboard Tổng quan" (bảng `monthly_snapshots`
++ cơ chế tự chốt cuối tháng) mới được xây dựng và giao cho bạn **ĐÚNG vào ngày 31/08** — trùng ngay ngày
+cần tự chốt lần đầu tiên. Cơ chế tự chốt chạy dựa vào lịch cron hàng ngày (8h sáng giờ VN, xem mục 9.3) —
+rất có thể lượt cron chạy sáng 31/08 đã diễn ra TRƯỚC KHI bạn kịp deploy code mới lên Supabase (code được
+viết/giao trong ngày hôm đó), nên lượt chạy đó vẫn dùng bản Edge Function CŨ (chưa có đoạn tự lưu số
+liệu) — không có gì được ghi. Điều kiện tự chốt CŨ chỉ kiểm tra "đúng ngày cuối tháng" — **duy nhất 1
+ngày trong cả tháng** — lỡ đúng ngày đó thì coi như mất, không tự bù lại các lần chạy sau. Sang tháng 09,
+hệ thống lấy tháng 09 làm tháng "đang sống" (tính trực tiếp từ dữ liệu hợp đồng hiện tại), còn tháng 08
+đã qua nhưng chưa từng có dòng nào lưu — nên biến mất khỏi biểu đồ/bảng lịch sử.
+
+Thêm 1 lỗi liên quan: nút "Chốt số liệu tháng này" (bấm tay, gọi qua `create-account`) đã được viết sẵn
+phần xử lý ở Edge Function từ mục 10.46, nhưng **bị quên gắn nút đó lên giao diện Tổng quan** — nên trước
+bản sửa này, bạn không có cách nào tự bấm chốt tay để phòng hờ cả. Đã gắn nút vào phần "Xem lại tháng"
+(cạnh "Dư nợ theo nhóm nợ", chỉ tài khoản toàn quyền thấy) ở bản sửa này.
+
+**Về việc khôi phục lại đúng số liệu 31/08**: rất tiếc KHÔNG THỂ khôi phục lại chính xác 100% nữa — cách
+tính "Dư nợ theo nhóm nợ" cần dữ liệu hợp đồng TẠI ĐÚNG ngày 31/08, nhưng hệ thống không lưu "ảnh chụp"
+hợp đồng theo từng ngày trong quá khứ, chỉ có dữ liệu HIỆN TẠI. Nếu từ 31/08 tới nay đã có phát sinh thu
+tiền/tất toán/giải ngân mới, dư nợ hiện tại đã khác dư nợ đúng ngày 31/08.
+
+**Sửa 2 việc để việc này khó lặp lại**:
+
+1. **Tự chốt bù tháng bị lỡ** — mỗi lần `send-due-reminders` chạy (hàng ngày, không chỉ ngày cuối tháng),
+   tự quét lùi tối đa 3 tháng kể từ tháng trước tháng hiện tại; hễ gặp 1 tháng CHƯA có dòng nào trong
+   `monthly_snapshots` thì tự chốt bù ngay — dùng đúng ngày cuối cùng của tháng đó để phân loại nhóm nợ,
+   nhưng vẫn tính trên dữ liệu hợp đồng HIỆN TẠI (không có cách nào khác, xem giải thích ở trên) nên chỉ
+   **GẦN ĐÚNG**. Các tháng chốt bù kiểu này được đánh dấu cột mới `is_estimated=true` — giao diện tự ghi
+   chú "(ước tính)" ở tên tháng (ô chọn tháng/modal "Xem chi tiết") và ký hiệu "≈" trước nhãn tháng trên
+   biểu đồ "Biến động hàng tháng", để bạn biết số nào là chốt đúng ngày, số nào là chốt bù gần đúng.
+2. **Sửa lỗi "Lãi phải thu" ở nút chốt tay** — mục 10.49 đã đổi "Lãi phải thu" sang CHỈ tính Nhóm 1 ở
+   `js/state.js` và `send-due-reminders`, nhưng bỏ sót đúng chỗ tính của nút "Chốt số liệu tháng này"
+   trong `create-account` (vẫn tính Nhóm 1-4) — đã sửa khớp lại cả 3 nơi.
+
+```sql
+alter table monthly_snapshots add column if not exists is_estimated boolean not null default false;
+```
+
+**Việc cần bạn làm**:
+1. Chạy đoạn SQL trên — vào thẳng SQL Editor:
+   https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
+2. Deploy lại **CẢ 2** Edge Function — Supabase Dashboard → Edge Functions → chọn từng cái → dán đè toàn
+   bộ nội dung file mới nhất trong repo → Deploy:
+   - `send-due-reminders` (`supabase/functions/send-due-reminders/index.ts`)
+   - `create-account` (`supabase/functions/create-account/index.ts`)
+3. Deploy xong, lượt cron chạy TỰ ĐỘNG kế tiếp (8h sáng giờ VN) sẽ tự phát hiện tháng 08 chưa có dòng nào
+   và tự chốt bù ngay (đánh dấu "ước tính") — không cần bạn làm gì thêm. Muốn có ngay không đợi tới sáng
+   mai thì bấm nút **"Chốt số liệu tháng này"** ở Tổng quan — bấm nút này CHỈ chốt được tháng HIỆN TẠI
+   (tháng 09), không backfill được tháng 08 (chỉ chờ cron tự bù mới có tháng 08).
 
 ---
 

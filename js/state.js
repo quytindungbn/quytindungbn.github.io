@@ -1544,6 +1544,10 @@ function mapMonthlySnapshotRow(row) {
     groupBalances: row.group_balances || {},
     badDebtBalance: Number(row.bad_debt_balance) || 0,
     badDebtRatio: Number(row.bad_debt_ratio) || 0,
+    // true = tháng này được CHỐT BÙ (không chốt đúng ngày cuối tháng của nó,
+    // tính lại từ dữ liệu hợp đồng hiện tại nên chỉ GẦN ĐÚNG) — xem mục 10.50
+    // docs/supabase-migration.md. Giao diện tự ghi chú "(ước tính)" khi thấy cờ này.
+    isEstimated: !!row.is_estimated,
   };
 }
 /** Danh sách số liệu đã chốt theo tháng, sắp xếp từ CŨ -> MỚI (khớp thứ tự vẽ biểu đồ theo thời gian) — dùng cho dashboard "Tổng quan" (chỉ super admin, xem overview.js). */
