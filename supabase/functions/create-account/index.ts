@@ -1193,34 +1193,63 @@ Deno.serve(async (req) => {
     const now = new Date();
     const { data: allContracts, error: ctErr } = await admin.from('contracts').select('*');
     if (ctErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-    const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
-    let totalBalance = 0;
-    let interestReceivable = 0;
-    for (const ct of allContracts || []) {
-      const g = debtGroupZalo(ct, now);
-      if (g === null) continue;
-      const balance = Number(ct.balance) || 0;
-      groupBalances[String(g)] += balance;
-      totalBalance += balance;
-      // Lãi phải thu CHỈ tính Nhóm 1 — Y HỆT captureMonthlySnapshot() trong
-      // send-due-reminders/index.ts và debtGroupSummary() trong js/state.js
-      // (mục 10.49 docs).
-      if (g === 1) interestReceivable += accruedInterestZalo(ct, now);
+    const contracts = allContracts || [];
+
+    /** Tính + upsert 1 dòng monthly_snapshots cho đúng ngày `asOf` — Y HỆT captureMonthlySnapshot() trong send-due-reminders/index.ts. */
+    async function captureFor(asOf: Date, estimated: boolean) {
+      const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+      let totalBalance = 0;
+      let interestReceivable = 0;
+      for (const ct of contracts) {
+        const g = debtGroupZalo(ct, asOf);
+        if (g === null) continue;
+        const balance = Number(ct.balance) || 0;
+        groupBalances[String(g)] += balance;
+        totalBalance += balance;
+        // Lãi phải thu CHỈ tính Nhóm 1 — Y HỆT debtGroupSummary() trong js/state.js (mục 10.49 docs).
+        if (g === 1) interestReceivable += accruedInterestZalo(ct, asOf);
+      }
+      const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
+      const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
+      const yearMonth = `${asOf.getFullYear()}-${String(asOf.getMonth() + 1).padStart(2, '0')}`;
+      const { error } = await admin.from('monthly_snapshots').upsert({
+        year_month: yearMonth,
+        snapshot_date: toLocalISODateZalo(asOf),
+        total_balance: totalBalance,
+        interest_receivable: interestReceivable,
+        group_balances: groupBalances,
+        bad_debt_balance: badDebtBalance,
+        bad_debt_ratio: badDebtRatio,
+        is_estimated: estimated,
+      }, { onConflict: 'year_month' });
+      return { yearMonth, error };
     }
-    const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
-    const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const { error } = await admin.from('monthly_snapshots').upsert({
-      year_month: yearMonth,
-      snapshot_date: toLocalISODateZalo(now),
-      total_balance: totalBalance,
-      interest_receivable: interestReceivable,
-      group_balances: groupBalances,
-      bad_debt_balance: badDebtBalance,
-      bad_debt_ratio: badDebtRatio,
-      is_estimated: false, // bấm tay -> luôn dùng dữ liệu HÔM NAY, không phải chốt bù ước tính (xem mục 10.50 docs).
-    }, { onConflict: 'year_month' });
-    if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+
+    // Tháng HIỆN TẠI — luôn chính xác, dùng dữ liệu hôm nay. Lỗi ở đây thì
+    // báo luôn cho người bấm nút biết (đây là thao tác chính họ vừa yêu cầu).
+    const { yearMonth, error: mainError } = await captureFor(now, false);
+    if (mainError) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+
+    // Chốt BÙ luôn các tháng bị lỡ (mục 10.50 docs) NGAY khi bấm nút, không
+    // đợi tới lượt cron tự động kế tiếp — quét lùi tối đa 3 tháng, hễ gặp 1
+    // tháng CHƯA có dòng nào thì chốt bù (estimated=true, xem captureFor()).
+    // Lỗi ở bước này chỉ ghi log, KHÔNG làm hỏng kết quả chốt tháng hiện tại
+    // ở trên (best-effort, người dùng vẫn có thể tự bấm lại nếu cần).
+    try {
+      const { data: existingRows } = await admin.from('monthly_snapshots').select('year_month');
+      const existingYms = new Set((existingRows || []).map((r: any) => r.year_month));
+      for (let back = 1; back <= 3; back++) {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - back, 1);
+        const lastDay = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+        const ym = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`;
+        if (existingYms.has(ym)) break;
+        const { error: backfillError } = await captureFor(lastDay, true);
+        if (backfillError) console.error(`Lỗi chốt bù tháng ${ym}:`, backfillError);
+      }
+    } catch (e) {
+      console.error('Lỗi chốt bù tháng bị lỡ:', e);
+    }
+
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'capture-monthly-snapshot',
       `Chốt số liệu dashboard Tổng quan cho tháng **${yearMonth}**`);
     return json({ ok: true });

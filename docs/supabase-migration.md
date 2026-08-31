@@ -2641,10 +2641,11 @@ ngày trong cả tháng** — lỡ đúng ngày đó thì coi như mất, không
 hệ thống lấy tháng 09 làm tháng "đang sống" (tính trực tiếp từ dữ liệu hợp đồng hiện tại), còn tháng 08
 đã qua nhưng chưa từng có dòng nào lưu — nên biến mất khỏi biểu đồ/bảng lịch sử.
 
-Thêm 1 lỗi liên quan: nút "Chốt số liệu tháng này" (bấm tay, gọi qua `create-account`) đã được viết sẵn
-phần xử lý ở Edge Function từ mục 10.46, nhưng **bị quên gắn nút đó lên giao diện Tổng quan** — nên trước
-bản sửa này, bạn không có cách nào tự bấm chốt tay để phòng hờ cả. Đã gắn nút vào phần "Xem lại tháng"
-(cạnh "Dư nợ theo nhóm nợ", chỉ tài khoản toàn quyền thấy) ở bản sửa này.
+Thêm 1 việc liên quan: nút "Chốt số liệu tháng này" từng có ở giao diện lúc mới ra mắt (mục 10.46), nhưng
+đã CHỦ Ý bỏ đi ngay sau đó ("Cập nhật lần 1" cùng mục — lúc đó lý do là tháng hiện tại đã tự có điểm
+"SỐNG" tự cập nhật, tưởng không cần bấm tay nữa) — phần xử lý ở Edge Function vẫn giữ lại trong code,
+không xoá. Giờ nút này có thêm 1 việc quan trọng (chốt bù ngay lập tức, không cần đợi cron) nên gắn lại
+vào giao diện — đặt cạnh "Dư nợ theo nhóm nợ" ở phần "Xem lại tháng", chỉ tài khoản toàn quyền thấy.
 
 **Về việc khôi phục lại đúng số liệu 31/08**: rất tiếc KHÔNG THỂ khôi phục lại chính xác 100% nữa — cách
 tính "Dư nợ theo nhóm nợ" cần dữ liệu hợp đồng TẠI ĐÚNG ngày 31/08, nhưng hệ thống không lưu "ảnh chụp"
@@ -2653,13 +2654,14 @@ tiền/tất toán/giải ngân mới, dư nợ hiện tại đã khác dư nợ
 
 **Sửa 2 việc để việc này khó lặp lại**:
 
-1. **Tự chốt bù tháng bị lỡ** — mỗi lần `send-due-reminders` chạy (hàng ngày, không chỉ ngày cuối tháng),
-   tự quét lùi tối đa 3 tháng kể từ tháng trước tháng hiện tại; hễ gặp 1 tháng CHƯA có dòng nào trong
-   `monthly_snapshots` thì tự chốt bù ngay — dùng đúng ngày cuối cùng của tháng đó để phân loại nhóm nợ,
-   nhưng vẫn tính trên dữ liệu hợp đồng HIỆN TẠI (không có cách nào khác, xem giải thích ở trên) nên chỉ
-   **GẦN ĐÚNG**. Các tháng chốt bù kiểu này được đánh dấu cột mới `is_estimated=true` — giao diện tự ghi
-   chú "(ước tính)" ở tên tháng (ô chọn tháng/modal "Xem chi tiết") và ký hiệu "≈" trước nhãn tháng trên
-   biểu đồ "Biến động hàng tháng", để bạn biết số nào là chốt đúng ngày, số nào là chốt bù gần đúng.
+1. **Tự chốt bù tháng bị lỡ** — quét lùi tối đa 3 tháng kể từ tháng trước tháng hiện tại, hễ gặp 1 tháng
+   CHƯA có dòng nào trong `monthly_snapshots` thì tự chốt bù ngay — dùng đúng ngày cuối cùng của tháng đó
+   để phân loại nhóm nợ, nhưng vẫn tính trên dữ liệu hợp đồng HIỆN TẠI (không có cách nào khác, xem giải
+   thích ở trên) nên chỉ **GẦN ĐÚNG**. Chạy ở CẢ 2 chỗ: mỗi lần `send-due-reminders` chạy (hàng ngày,
+   không chỉ ngày cuối tháng) VÀ mỗi lần bấm nút "Chốt số liệu tháng này" (có ngay lập tức, không cần đợi
+   cron). Các tháng chốt bù kiểu này được đánh dấu cột mới `is_estimated=true` — giao diện tự ghi chú
+   "(ước tính)" ở tên tháng (ô chọn tháng/modal "Xem chi tiết") và ký hiệu "≈" trước nhãn tháng trên biểu
+   đồ "Biến động hàng tháng", để bạn biết số nào là chốt đúng ngày, số nào là chốt bù gần đúng.
 2. **Sửa lỗi "Lãi phải thu" ở nút chốt tay** — mục 10.49 đã đổi "Lãi phải thu" sang CHỈ tính Nhóm 1 ở
    `js/state.js` và `send-due-reminders`, nhưng bỏ sót đúng chỗ tính của nút "Chốt số liệu tháng này"
    trong `create-account` (vẫn tính Nhóm 1-4) — đã sửa khớp lại cả 3 nơi.
@@ -2675,10 +2677,10 @@ alter table monthly_snapshots add column if not exists is_estimated boolean not 
    bộ nội dung file mới nhất trong repo → Deploy:
    - `send-due-reminders` (`supabase/functions/send-due-reminders/index.ts`)
    - `create-account` (`supabase/functions/create-account/index.ts`)
-3. Deploy xong, lượt cron chạy TỰ ĐỘNG kế tiếp (8h sáng giờ VN) sẽ tự phát hiện tháng 08 chưa có dòng nào
-   và tự chốt bù ngay (đánh dấu "ước tính") — không cần bạn làm gì thêm. Muốn có ngay không đợi tới sáng
-   mai thì bấm nút **"Chốt số liệu tháng này"** ở Tổng quan — bấm nút này CHỈ chốt được tháng HIỆN TẠI
-   (tháng 09), không backfill được tháng 08 (chỉ chờ cron tự bù mới có tháng 08).
+3. Deploy xong, bấm nút **"Chốt số liệu tháng này"** ở Tổng quan (cạnh "Dư nợ theo nhóm nợ") — bấm 1 lần
+   là có NGAY tháng 08 (đánh dấu "ước tính"), không cần đợi tới lượt cron sáng hôm sau (nút này giờ tự
+   chốt bù mọi tháng bị thiếu luôn, không chỉ chốt tháng hiện tại). Không bấm cũng không sao — lượt cron
+   TỰ ĐỘNG kế tiếp (8h sáng giờ VN) cũng tự làm y hệt.
 
 ---
 
