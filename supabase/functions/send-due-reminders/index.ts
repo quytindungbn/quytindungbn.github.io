@@ -220,24 +220,14 @@ function debtGroup(contract: any, asOf: Date): number | null {
 }
 
 /**
- * Chốt số liệu 1 THÁNG (dashboard "Tổng quan", mục 10.46 docs) — tính TOÀN
- * BỘ hợp đồng (org-wide, không lọc theo Thôn/Xóm), upsert theo year_month
- * (gọi lại nhiều lần cho cùng 1 tháng chỉ ghi đè đúng 1 dòng, không tạo
- * trùng) — dùng CHUNG code này cho cả lịch tự động (đúng ngày cuối tháng
- * LẪN chốt bù tháng bị lỡ, xem cuối Deno.serve() bên dưới) VÀ nút "Chốt số
- * liệu tháng này" (gọi qua create-account, type 'capture-monthly-snapshot').
- *
- * `estimated=true` khi đây là 1 lượt CHỐT BÙ (tháng đã qua nhưng lỡ không
- * chốt đúng ngày cuối tháng của nó — VD lần đầu triển khai tính năng này
- * đúng vào ngày 31/08, cron sáng hôm đó đã chạy TRƯỚC khi kịp deploy nên bỏ
- * lỡ) — vẫn tính `asOf` = đúng ngày cuối tháng đó (phân loại nhóm nợ/số
- * ngày quá hạn CHÍNH XÁC), nhưng `contracts` truyền vào là dữ liệu HIỆN TẠI
- * (hệ thống không lưu "ảnh chụp" hợp đồng tại 1 ngày quá khứ) nên DƯ NỢ có
- * thể lệch nếu từ tháng đó tới nay có phát sinh thu tiền/tất toán/giải ngân
- * mới — ghi cờ `is_estimated` để giao diện tự ghi chú "ước tính", còn hơn
- * mất trắng không có gì để xem lại.
+ * Chốt số liệu THÁNG NÀY (dashboard "Tổng quan", mục 10.46 docs) — tính
+ * TOÀN BỘ hợp đồng (org-wide, không lọc theo Thôn/Xóm), upsert theo
+ * year_month (gọi lại nhiều lần trong cùng 1 tháng chỉ ghi đè đúng 1 dòng,
+ * không tạo trùng) — dùng CHUNG code này cho cả lịch tự động (đúng ngày
+ * cuối tháng, xem cuối Deno.serve() bên dưới) LẪN nút "Chốt số liệu tháng
+ * này" (gọi qua create-account, type 'capture-monthly-snapshot').
  */
-async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: Date, estimated = false): Promise<void> {
+async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: Date): Promise<void> {
   const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
   let totalBalance = 0;
   let interestReceivable = 0;
@@ -260,7 +250,6 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
     group_balances: groupBalances,
     bad_debt_balance: badDebtBalance,
     bad_debt_ratio: badDebtRatio,
-    is_estimated: estimated,
   }, { onConflict: 'year_month' });
 }
 
@@ -791,28 +780,22 @@ Deno.serve(async (req) => {
   try {
     const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
     if (tomorrow.getDate() === 1) await captureMonthlySnapshot(admin, contracts || [], now);
-
-    // Chốt BÙ các tháng bị LỠ (mục 10.50 docs) — quét lùi tối đa 3 tháng kể
-    // từ tháng TRƯỚC tháng hiện tại, hễ gặp 1 tháng CHƯA có dòng nào trong
-    // monthly_snapshots thì chốt bù ngay (estimated=true, xem ghi chú ở
-    // captureMonthlySnapshot) — gặp 1 tháng ĐÃ có dòng thì dừng quét (coi
-    // như các tháng xa hơn đã chốt đủ từ trước, không cần lùi tiếp). Chạy
-    // MỖI LẦN function này chạy (không chỉ ngày cuối tháng) để tự bù càng
-    // sớm càng tốt ngay khi phát hiện thiếu, không đợi tới đúng dịp cuối
-    // tháng sau mới bù — lỡ 1 ngày chốt chính xác không còn nghĩa là mất
-    // TRẮNG lịch sử tháng đó mãi mãi như trước.
-    const { data: existingRows } = await admin.from('monthly_snapshots').select('year_month');
-    const existingYms = new Set((existingRows || []).map((r: any) => r.year_month));
-    for (let back = 1; back <= 3; back++) {
-      const monthStart = new Date(now.getFullYear(), now.getMonth() - back, 1);
-      const lastDay = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
-      const ym = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`;
-      if (existingYms.has(ym)) break;
-      console.warn(`Chốt BÙ số liệu tháng ${ym} (không tìm thấy dòng nào — có thể lỡ đúng ngày chốt cuối tháng) — ước tính từ dữ liệu hợp đồng hiện tại.`);
-      await captureMonthlySnapshot(admin, contracts || [], lastDay, true);
-    }
   } catch (e) {
     console.error('Lỗi chốt số liệu tháng:', e);
+  }
+
+  // Chốt bù DUY NHẤT 1 LẦN cho tháng 08/2026 (mục 10.50 docs) — tháng đầu
+  // tiên bị lỡ vì tính năng chốt tự động ở trên mới ra đời ĐÚNG ngày 31/08
+  // (lượt cron sáng hôm đó rất có thể đã chạy trước khi kịp deploy). KHÔNG
+  // phải cơ chế tổng quát dò các tháng thiếu — chỉ đúng 1 tháng này, các
+  // tháng lịch sử khác (trước 08/2026) sẽ nhập tay qua tính năng nạp Excel
+  // riêng sau này. Tự kiểm tra đã có dòng tháng 08 chưa trước khi chốt nên
+  // vô hại nếu chạy lại nhiều lần — có thể xoá hẳn đoạn này sau khi đã chốt xong.
+  try {
+    const { data: aug2026 } = await admin.from('monthly_snapshots').select('year_month').eq('year_month', '2026-08').maybeSingle();
+    if (!aug2026) await captureMonthlySnapshot(admin, contracts || [], new Date(2026, 7, 31));
+  } catch (e) {
+    console.error('Lỗi chốt bù tháng 08/2026:', e);
   }
 
   return new Response(JSON.stringify({ ok: true, ...result }), { headers: { 'Content-Type': 'application/json' } });

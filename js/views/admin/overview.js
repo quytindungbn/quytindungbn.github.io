@@ -4,7 +4,6 @@ import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
 import { formatVND, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
 import { barChartSvg, monthlyComboChartSvg } from '../../components/charts.js';
-import { toast } from '../../components/toast.js';
 import { openContractView } from './customers.js';
 
 /** "2026-08" -> "Th8/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
@@ -15,11 +14,9 @@ function monthLabel(yearMonth) {
 function formatPercent(n) {
   return `${n.toFixed(1).replace('.', ',')}%`;
 }
-/** Nhãn tháng (dạng chữ thường, không kèm thẻ HTML) kèm ghi chú trạng thái — "đang cập nhật" cho tháng sống, "ước tính" cho tháng bị chốt bù (m.isEstimated, xem mục 10.50 docs) — dùng thống nhất ở mọi chỗ hiện tên tháng ngoài bảng "Xem chi tiết" (nơi cần tô màu nhạt riêng cho ghi chú, xem monthDetailTableHtml/openMonthlyDetailModal). */
+/** Nhãn tháng (dạng chữ thường, không kèm thẻ HTML) kèm ghi chú "đang cập nhật" cho tháng sống — dùng thống nhất ở mọi chỗ hiện tên tháng ngoài bảng "Xem chi tiết" (nơi cần tô màu nhạt riêng cho ghi chú, xem monthDetailTableHtml/openMonthlyDetailModal). */
 function monthLabelWithNote(m) {
-  if (m.live) return `${m.label} (đang cập nhật)`;
-  if (m.isEstimated) return `${m.label} (ước tính)`;
-  return m.label;
+  return m.live ? `${m.label} (đang cập nhật)` : m.label;
 }
 
 export function renderHeader(headerEl) {
@@ -143,7 +140,6 @@ export function render(contentEl) {
   bindNhomNoClicks(contentEl);
   bindMonthClicks(contentEl);
   bindMonthSelector(contentEl);
-  bindCaptureSnapshot(contentEl);
   contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
 }
 
@@ -240,7 +236,6 @@ function buildDebtDashboardData() {
     balance: s.totalBalance, interest: s.interestReceivable, badDebt: s.badDebtBalance, badDebtRatio: s.badDebtRatio,
     interestRatio: interestRatio(s.interestReceivable, s.totalBalance),
     groupBalances: s.groupBalances,
-    isEstimated: s.isEstimated,
   }));
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   if (!lastSnapshot || lastSnapshot.yearMonth !== currentYearMonth) {
@@ -250,7 +245,6 @@ function buildDebtDashboardData() {
       interestRatio: interestRatio(summary.interestReceivable, summary.totalBalance),
       groupBalances: summary.groupBalances,
       live: true,
-      isEstimated: false, // tháng sống LUÔN tính trực tiếp từ dữ liệu hiện tại, không phải chốt bù.
     });
   }
   const byYearMonth = new Map(months.map((m) => [m.yearMonth, m]));
@@ -335,7 +329,7 @@ function openMonthlyDetailModal() {
       </tr>` : '';
     return `
       <tr data-toggle-yoy="${m.yearMonth}" style="${yearStart ? 'cursor:pointer' : ''}">
-        <td style="${td}font-weight:700">${m.label}${m.live || m.isEstimated ? ` <span style="font-weight:400;color:var(--text-faint)">(${m.live ? 'đang cập nhật' : 'ước tính'})</span>` : ''}${yearStart ? ' <span style="font-size:9px;color:var(--text-faint)">▾</span>' : ''}</td>
+        <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}${yearStart ? ' <span style="font-size:9px;color:var(--text-faint)">▾</span>' : ''}</td>
         <td style="${td}">${formatVND(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
         <td style="${td}">${formatVND(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
         <td style="${td}">${formatVND(m.interest)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.interestRatio)})</span><br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
@@ -372,28 +366,22 @@ function openMonthlyDetailModal() {
  * Nút chọn tháng để xem lại lịch sử, đặt NGAY SAU "Dư nợ theo nhóm nợ" —
  * chọn 1 tháng bất kỳ (VD 07/2026) sẽ gọi selectMonth() y hệt như bấm vào
  * cột biểu đồ "Biến động hàng tháng". Danh sách xếp mới nhất trước cho dễ
- * tìm. Kèm nút "Chốt số liệu tháng này" (CHỈ super, xem bindCaptureSnapshot())
- * — chốt tay bất cứ lúc nào, không cần đợi lịch tự động đúng ngày cuối tháng
- * — phòng hờ trường hợp cron bị lỡ đúng ngày đó (xem mục 10.50 docs).
+ * tìm.
  */
-function monthSelectorHtml(months, selectedYm, isSuper) {
+function monthSelectorHtml(months, selectedYm) {
   const options = months
     .slice()
     .reverse()
     .map((m) => `<option value="${m.yearMonth}" ${m.yearMonth === selectedYm ? 'selected' : ''}>${monthLabelWithNote(m)}</option>`)
     .join('');
   return `
-    <div class="flex items-center justify-between mt-12" style="gap:8px;flex-wrap:wrap">
-      <div class="flex items-center" style="gap:8px">
-        <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Xem lại tháng</label>
-        <select id="month-select" class="pill-select" style="max-width:220px">${options}</select>
-      </div>
-      ${isSuper ? `<a href="javascript:void(0)" id="btn-capture-month" class="link-more" style="font-size:11.5px">Chốt số liệu tháng này</a>` : ''}
+    <div class="flex items-center mt-12" style="gap:8px">
+      <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Xem lại tháng</label>
+      <select id="month-select" class="pill-select" style="max-width:220px">${options}</select>
     </div>`;
 }
 
 function debtDashboardHtml() {
-  const { isSuper } = currentRoles();
   const contracts = visibleContracts();
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const initial = months[months.length - 1];
@@ -404,7 +392,7 @@ function debtDashboardHtml() {
       <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
       <div id="nhom-no-slot">${nhomNoBarHtml(initial)}</div>
       <div id="provision-slot" class="mt-16">${provisionRowsHtml(provision)}</div>
-      <div id="month-selector-slot">${monthSelectorHtml(months, initial.yearMonth, isSuper)}</div>
+      <div id="month-selector-slot">${monthSelectorHtml(months, initial.yearMonth)}</div>
 
       <h3 style="font-size:13.5px;margin-bottom:10px" class="mt-24">Biến động hàng tháng</h3>
       <div id="trend-chart-slot">${monthlyComboChartSvg({ months, selectedYm: initial.yearMonth })}</div>
@@ -432,37 +420,6 @@ function bindMonthSelector(root) {
   const sel = root.querySelector('#month-select');
   if (!sel) return;
   sel.addEventListener('change', () => selectMonth(root, sel.value));
-}
-/**
- * Gắn nút "Chốt số liệu tháng này" (chỉ hiện cho super, xem monthSelectorHtml())
- * — bấm để chốt NGAY số liệu tháng hiện tại (không cần đợi lịch tự động
- * đúng ngày cuối tháng), phòng hờ cron bị lỡ đúng ngày đó (xem mục 10.50
- * docs). Vẽ lại TOÀN BỘ trang sau khi chốt xong để mọi chỗ (biểu đồ/bảng)
- * cùng cập nhật theo dòng vừa lưu.
- */
-function bindCaptureSnapshot(contentEl) {
-  const btn = contentEl.querySelector('#btn-capture-month');
-  if (!btn) return;
-  btn.addEventListener('click', async () => {
-    const original = btn.textContent;
-    btn.textContent = 'Đang chốt...';
-    btn.style.pointerEvents = 'none';
-    try {
-      const res = await S.captureMonthlySnapshotNow();
-      if (res.ok) {
-        toast('Đã chốt số liệu tháng này', 'success');
-        render(contentEl);
-      } else {
-        toast(res.reason || 'Có lỗi xảy ra', 'error');
-        btn.textContent = original;
-        btn.style.pointerEvents = '';
-      }
-    } catch (e) {
-      toast(e.message || 'Có lỗi xảy ra', 'error');
-      btn.textContent = original;
-      btn.style.pointerEvents = '';
-    }
-  });
 }
 /** Chuyển "Dư nợ theo nhóm nợ" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn). Không đụng tới Dự phòng (luôn tính sống, xem provisionRowsHtml()). */
 function selectMonth(root, ym) {

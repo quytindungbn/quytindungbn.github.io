@@ -153,7 +153,7 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
         <text x="${(balX + balW / 2).toFixed(1)}" y="${(badY + 17).toFixed(1)}" text-anchor="middle" font-size="6.5" font-weight="700" fill="#fff">(${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</text>` : ''}
         <text x="${(balX + balW / 2).toFixed(1)}" y="${(balY - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${balanceColor}">${formatTyDong(m.balance)}</text>
 
-        <text x="${(slotX + innerW / 2).toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10" font-weight="${isLive || isSelected ? 700 : 400}" fill="${isLive || isSelected ? balanceColor : 'var(--text-faint)'}">${m.isEstimated ? '≈' : ''}${m.label}</text>
+        <text x="${(slotX + innerW / 2).toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10" font-weight="${isLive || isSelected ? 700 : 400}" fill="${isLive || isSelected ? balanceColor : 'var(--text-faint)'}">${m.label}</text>
       </g>`;
   }).join('');
 
@@ -163,13 +163,8 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
       ${bars}
     </svg>`;
 
-  // "≈" trước nhãn tháng (xem trong bars ở trên) đánh dấu tháng bị CHỐT BÙ
-  // (mục 10.50 docs) — chỉ ghi chú giải thích ký hiệu này khi thực sự có ít
-  // nhất 1 tháng như vậy, tránh dòng chữ thừa khi mọi tháng đều chốt đúng hạn.
-  const hasEstimated = months.some((m) => m.isEstimated);
-
   return `
-    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị trên biểu đồ: tỷ đồng${scroll ? ' — vuốt ngang để xem thêm tháng cũ hơn' : ''}${hasEstimated ? ' · ≈ = tháng chốt bù, số ước tính' : ''}</div>
+    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị trên biểu đồ: tỷ đồng${scroll ? ' — vuốt ngang để xem thêm tháng cũ hơn' : ''}</div>
     <div class="flex items-center" style="gap:14px;margin-bottom:6px;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${balanceColor};display:inline-block"></span>Dư nợ</span>
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${badDebtColor};display:inline-block"></span>Nợ xấu</span>
