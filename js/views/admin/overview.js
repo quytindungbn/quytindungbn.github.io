@@ -2,7 +2,7 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
-import { formatVND, formatNumber, formatDateTime, formatCompact, initials, colorFor } from '../../utils.js';
+import { formatVND, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
 import { barChartSvg, monthlyComboChartSvg } from '../../components/charts.js';
 import { openContractView } from './customers.js';
 
@@ -180,9 +180,9 @@ function refreshProvisionSlot() {
  * LUÔN tính "SỐNG" (không đổi theo tháng đang xem — xem ghi chú ở đó), tách
  * riêng khỏi phần chọn tháng dưới đây.
  *
- * "Lãi phải thu" chỉ tính Nhóm 1-4 (Nhóm 5 coi như khó thu, không còn tính
- * lãi phải thu nữa). "Nợ xấu" CHÍNH THỨC = Nhóm 3+4+5 (không tính Nhóm 2, dù
- * Nhóm 2 đã là "nợ cần chú ý").
+ * "Lãi phải thu" CHỈ tính Nhóm 1 (từ Nhóm 2 trở lên coi như khó thu lãi
+ * đúng hạn, không tính vào lãi phải thu nữa). "Nợ xấu" CHÍNH THỨC = Nhóm
+ * 3+4+5 (không tính Nhóm 2, dù Nhóm 2 đã là "nợ cần chú ý").
  *
  * MỘT trạng thái "tháng đang xem" DÙNG CHUNG cho cả "Dư nợ theo nhóm nợ" lẫn
  * "Tổng hợp tăng giảm" (mặc định = tháng mới nhất/đang sống) — bấm vào 1 cặp
@@ -272,7 +272,7 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
   const bodyRows = rows.map((r) => `
     <tr>
       <td style="${td}font-weight:700;color:${r.color}">${r.label}</td>
-      <td style="${td}font-weight:700">${formatCompact(r.value)}${r.extra ? ` <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">(${r.extra})</span>` : ''}</td>
+      <td style="${td}font-weight:700">${formatVND(r.value)}${r.extra ? ` <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">(${r.extra})</span>` : ''}</td>
       <td style="${td}">${deltaChip(pct(r.value, r.prevV), { worse: r.worse })}</td>
       <td style="${td}">${r.yearStartV != null ? deltaChip(pct(r.value, r.yearStartV), { worse: r.worse }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
     </tr>`).join('');
@@ -318,9 +318,9 @@ function openMonthlyDetailModal() {
     return `
       <tr data-toggle-yoy="${m.yearMonth}" style="${yearStart ? 'cursor:pointer' : ''}">
         <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}${yearStart ? ' <span style="font-size:9px;color:var(--text-faint)">▾</span>' : ''}</td>
-        <td style="${td}">${formatCompact(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
-        <td style="${td}">${formatCompact(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
-        <td style="${td}">${formatCompact(m.interest)}<br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
+        <td style="${td}">${formatVND(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
+        <td style="${td}">${formatVND(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
+        <td style="${td}">${formatVND(m.interest)}<br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
       </tr>${yoyRow}`;
   }).join('');
   openModal({

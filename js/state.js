@@ -552,14 +552,14 @@ export function debtGroup(contract, asOf = new Date()) {
 }
 
 /**
- * Tổng hợp dư nợ theo từng nhóm nợ + lãi phải thu (Nhóm 1-4, KHÔNG tính
- * Nhóm 5 — nợ nhóm 5 coi như khó thu, không còn tính lãi phải thu nữa, theo
- * đúng yêu cầu) + tỷ lệ nợ xấu (dư nợ Nhóm 3+4+5 / tổng dư nợ) — dùng cho
- * dashboard "Tổng quan" (chỉ quản trị viên toàn quyền xem, xem overview.js)
- * VÀ cho việc chốt số liệu cuối tháng (xem mục 10.46 docs/supabase-migration.md).
- * `contracts` truyền vào nên là TOÀN BỘ hợp đồng (không lọc theo phạm vi
- * Thôn/Xóm của 1 nhân viên) — dashboard này cho quản trị viên toàn quyền
- * xem bức tranh CHUNG của cả quỹ.
+ * Tổng hợp dư nợ theo từng nhóm nợ + lãi phải thu (CHỈ tính Nhóm 1 — nợ từ
+ * Nhóm 2 trở lên coi như khó thu lãi đúng hạn, không tính vào lãi phải thu
+ * nữa, theo đúng yêu cầu) + tỷ lệ nợ xấu (dư nợ Nhóm 3+4+5 / tổng dư nợ) —
+ * dùng cho dashboard "Tổng quan" (xem overview.js) VÀ cho việc chốt số liệu
+ * cuối tháng (xem mục 10.46 docs/supabase-migration.md).
+ * `contracts` truyền vào nên là ĐÚNG phạm vi được phép xem của phiên đang
+ * gọi (super = toàn quỹ, staff = trong Thôn/Xóm được gán — xem
+ * visibleContracts() ở overview.js).
  */
 export function debtGroupSummary(contracts, asOf = new Date()) {
   const groupBalances = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -571,7 +571,7 @@ export function debtGroupSummary(contracts, asOf = new Date()) {
     const balance = Number(ct.balance) || 0;
     groupBalances[g] += balance;
     totalBalance += balance;
-    if (g <= 4) interestReceivable += accruedInterest(ct, asOf);
+    if (g === 1) interestReceivable += accruedInterest(ct, asOf);
   }
   const badDebtBalance = groupBalances[3] + groupBalances[4] + groupBalances[5];
   const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;

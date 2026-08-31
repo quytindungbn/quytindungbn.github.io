@@ -237,7 +237,7 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
     const balance = Number(ct.balance) || 0;
     groupBalances[String(g)] += balance;
     totalBalance += balance;
-    if (g <= 4) interestReceivable += accruedInterest(ct, asOf);
+    if (g === 1) interestReceivable += accruedInterest(ct, asOf);
   }
   const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
   const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;

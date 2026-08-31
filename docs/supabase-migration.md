@@ -2595,6 +2595,31 @@ https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
 
 ---
 
+### 10.49. "Lãi phải thu" chỉ tính Nhóm 1 + số liệu theo tháng ra đến đơn vị đồng (BẮT BUỘC deploy lại `send-due-reminders`, KHÔNG cần chạy SQL)
+
+**"Lãi phải thu" đổi thành CHỈ tính Nhóm 1** (trước tính cả Nhóm 1-4) — từ Nhóm 2 trở lên (đã quá hạn
+trên 10 ngày) coi như khó thu lãi đúng hạn, không tính vào lãi phải thu nữa. Áp dụng ở CẢ 2 nơi tính:
+`js/state.js` (`debtGroupSummary()`, tính lúc xem trực tiếp) VÀ `supabase/functions/send-due-reminders/
+index.ts` (`captureMonthlySnapshot()`, tính lúc CHỐT số liệu cuối tháng) — **BẮT BUỘC deploy lại
+`send-due-reminders`** để các lần chốt SAU này tính đúng theo quy tắc mới (các tháng ĐÃ chốt trước đó
+trong `monthly_snapshots` giữ nguyên số cũ, không tự tính lại).
+
+**Số liệu theo tháng ra đến đơn vị đồng**: bảng "Tổng hợp tăng giảm" (1 tháng đang chọn) và modal "Xem
+chi tiết" (nhiều tháng) — cột Dư nợ/Nợ xấu/Lãi phải thu giờ ghi ĐẦY ĐỦ số tiền (VD `44.850.000.000 ₫`)
+thay vì rút gọn `44,85 tỷ` như trước. Biểu đồ "Biến động hàng tháng" (trên cột, không phải bảng) vẫn giữ
+nguyên đơn vị tỷ đồng rút gọn như cũ — chỉ đủ chỗ cho số rút gọn trên 1 cột nhỏ.
+
+**Xác nhận đã có sẵn — tự động chốt số liệu cuối tháng**: cơ chế này đã chạy từ trước (không phải mới) —
+`send-due-reminders` chạy lịch HÀNG NGÀY, tự kiểm tra đúng ngày cuối cùng mỗi tháng thì tự gọi
+`captureMonthlySnapshot()` lưu 1 dòng vào `monthly_snapshots` cho đúng tháng đó — không cần bấm gì, tháng
+sau vẫn xem lại được lịch sử tháng trước bình thường.
+
+**Việc cần bạn làm**: deploy lại Edge Function `send-due-reminders` — Supabase Dashboard → Edge Functions
+→ `send-due-reminders` → dán đè toàn bộ nội dung file `supabase/functions/send-due-reminders/index.ts`
+mới nhất trong repo này → Deploy. KHÔNG cần chạy SQL.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
