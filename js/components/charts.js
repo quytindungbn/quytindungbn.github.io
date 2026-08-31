@@ -24,7 +24,10 @@ export function barChartSvg({ items, aspect = 2.1 }) {
   const barW = VB_W / items.length;
   const gap = barW * 0.14;
   const barsHtml = items.map((it, i) => {
-    const h = Math.max(3, (it.value / max) * chartH);
+    // Chừa TRẦN 15% phía trên cột cao nhất — nếu không, cột giá trị lớn
+    // nhất cao kín hết chartH (chạm y=0) thì nhãn số tiền của NÓ bị đẩy vào
+    // NẰM ĐÈ lên chính cột đó, cùng màu nên chữ biến mất (không đọc được).
+    const h = Math.max(3, (it.value / max) * chartH * 0.85);
     const x = i * barW + gap / 2;
     const w = barW - gap;
     const y = chartH - h;
@@ -108,7 +111,12 @@ export function monthlyComboChartSvg({ months, aspect = 1.7, balanceColor = 'var
   const showLabelEvery = n > 8 ? Math.ceil(n / 6) : 1;
   const showAt = (i) => i % showLabelEvery === 0 || i === n - 1;
 
-  const barW = (n > 1 ? stepX : VB_W) * 0.42;
+  // Chỉ có ĐÚNG 1 tháng (mới bắt đầu dùng tính năng, chưa có tháng nào khác
+  // để chia khoảng cách — stepX = 0) thì KHÔNG được lấy nguyên VB_W làm bề
+  // rộng cột (sẽ ra 1 cột khổng lồ chiếm gần hết chiều ngang biểu đồ) — dùng
+  // tạm 1 khoảng cách "giả định" hợp lý (bằng đúng 1/8 chiều ngang, tương tự
+  // độ rộng 1 cột nếu có khoảng 8 tháng) cho tới khi có thêm tháng thứ 2.
+  const barW = (n > 1 ? stepX : VB_W / 8) * 0.42;
   const bars = months.map((m, i) => {
     const h = Math.max(2, (m.interest / intMax) * barsH);
     const y = barsBase - h;
