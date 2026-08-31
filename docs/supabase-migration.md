@@ -2499,6 +2499,60 @@ chốt lại thành điểm CHÍNH THỨC (nét liền + chấm đặc) đúng n
 tay + hàm `S.captureMonthlySnapshotNow()`/Edge Function `capture-monthly-snapshot` vẫn còn giữ lại trong
 code (không xoá) để dự phòng — chỉ không còn nút bấm ở giao diện nữa.
 
+### 10.47. "Dư nợ theo nhóm nợ" mở cho MỌI quản trị viên + Dự phòng chung/cụ thể + TSBĐ (BẮT BUỘC chạy SQL, KHÔNG cần deploy lại Edge Function)
+
+**Đổi quyền xem**: mục "Dư nợ theo nhóm nợ" (biểu đồ cột theo Nhóm 1-5) tách RIÊNG khỏi phần "Biến động
+hàng tháng"/"Tổng hợp tăng giảm" (2 phần đó vẫn CHỈ super xem, vì đọc từ bảng `monthly_snapshots` RLS
+super-only ở mục 10.46) — giờ **MỌI quản trị viên đều xem được** (staff chỉ thấy đúng phạm vi Thôn/Xóm
+được gán, super thấy toàn quỹ — y hệt cách 4 ô thống kê chính đang lọc).
+
+**Thêm Dự phòng rủi ro** (Thông tư 02/2013 NHNN), hiện ngay dưới biểu đồ nhóm nợ, tính "SỐNG" (ngay bây
+giờ, không có lịch sử theo tháng):
+- **Dự phòng CHUNG** = 0,75% × tổng dư nợ Nhóm 1-4 (không tính Nhóm 5).
+- **Dự phòng CỤ THỂ** = với từng hợp đồng Nhóm 2-5 (Nhóm 1 = 0%, không trích): tỷ lệ theo nhóm (Nhóm 2 =
+  5%, Nhóm 3 = 20%, Nhóm 4 = 50%, Nhóm 5 = 100%) × phần dư nợ còn lại SAU khi trừ 50% giá trị TSBĐ (nếu
+  có khai báo) — dư nợ vượt quá phần được khấu trừ đó vẫn phải trích đúng phần vượt.
+
+**TSBĐ (tài sản bảo đảm)**: bấm vào 1 cột/nhãn Nhóm 2-5 ở biểu đồ mở ra danh sách hợp đồng đúng nhóm đó,
+mỗi hợp đồng có thêm ô "Có TSBĐ" (tích) + ô nhập giá trị (chỉ hiện khi đã tích) — **CHỈ tài khoản toàn
+quyền (super) tích/sửa được**, nhân viên thường chỉ xem giá trị đã lưu (đúng dạng chỉ đọc). Đã tích + lưu
+trong khi hợp đồng còn dư nợ (còn ở Nhóm 2-5) thì **KHÔNG cho bỏ tích lại** — chỉ sửa được giá trị, tránh
+mất dữ liệu giữa chừng; hợp đồng tất toán (dư nợ = 0) tự động không còn hiện trong danh sách nữa nên
+không cần thao tác "xóa" riêng.
+
+```sql
+alter table contracts add column if not exists has_collateral boolean not null default false;
+alter table contracts add column if not exists collateral_value numeric not null default 0;
+
+-- CHỈ super admin được SỬA (tích/nhập TSBĐ) — nhân viên thường/khách hàng
+-- không sửa được gì trên contracts (trước giờ contracts chỉ ghi qua Excel,
+-- đây là lần ĐẦU TIÊN có đường ghi trực tiếp từ trình duyệt, nên cần policy
+-- UPDATE riêng — trước đó bảng chỉ có policy SELECT, mặc định KHÔNG ai UPDATE
+-- được qua RLS dù đã GRANT ở tầng bảng tại mục 4).
+create policy "super admin updates collateral" on contracts
+  for update using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a where a.id = (auth.jwt() ->> 'row_id') and a.role = 'super'
+    )
+  )
+  with check (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (
+      select 1 from admins a where a.id = (auth.jwt() ->> 'row_id') and a.role = 'super'
+    )
+  );
+```
+
+**Vì sao KHÔNG cần deploy lại Edge Function**: `has_collateral`/`collateral_value` ghi thẳng từ trình
+duyệt qua RLS (policy trên), không qua `create-account`. Việc NHẬP EXCEL (`type: 'import'` trong
+`create-account`) build object hợp đồng KHÔNG đụng tới 2 cột này (không có trong danh sách cột được ghi)
+— nên mỗi lần nhập Excel lại (kể cả nhập đè khách/hợp đồng đã có) **KHÔNG xóa mất dữ liệu TSBĐ đã lưu**,
+đúng yêu cầu chỉ được xóa khi tất toán.
+
+**Việc cần bạn làm**: chạy đoạn SQL trên — vào thẳng SQL Editor:
+https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

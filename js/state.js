@@ -578,6 +578,66 @@ export function debtGroupSummary(contracts, asOf = new Date()) {
   return { groupBalances, totalBalance, interestReceivable, badDebtBalance, badDebtRatio };
 }
 
+/** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 (Nhóm 1 = 0%, không trích) — Thông tư 02/2013 NHNN, đúng số quỹ đang áp dụng. */
+const SPECIFIC_PROVISION_RATE = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
+/** Tỷ lệ dự phòng CHUNG, áp dụng trên tổng dư nợ Nhóm 1-4 (không tính Nhóm 5). */
+const GENERAL_PROVISION_RATE = 0.0075;
+
+/**
+ * Dự phòng rủi ro phải trích — dùng cho dashboard "Tổng quan" (mục "Dư nợ
+ * theo nhóm nợ", xem overview.js nhomNoSectionHtml()), tính "SỐNG" ngay lúc
+ * gọi (không có lịch sử theo tháng, giống debtGroupSummary() ở trên).
+ *
+ * - Dự phòng CHUNG = 0,75% × tổng dư nợ Nhóm 1-4 (không tính Nhóm 5).
+ * - Dự phòng CỤ THỂ = với TỪNG hợp đồng ở Nhóm 2-5: tỷ lệ theo nhóm (2=5%,
+ *   3=20%, 4=50%, 5=100%) × PHẦN DƯ NỢ CÒN LẠI sau khi trừ 50% giá trị TSBĐ
+ *   đã khai báo (`ct.hasCollateral`/`ct.collateralValue`, xem
+ *   setContractCollateral() bên dưới) — dư nợ vượt quá phần được khấu trừ đó
+ *   VẪN phải trích đúng phần vượt, không phải cứ có TSBĐ là miễn hoàn toàn.
+ */
+export function provisionSummary(contracts, asOf = new Date()) {
+  let generalBase = 0;
+  let specificProvision = 0;
+  for (const ct of contracts) {
+    const g = debtGroup(ct, asOf);
+    if (g === null) continue;
+    const balance = Number(ct.balance) || 0;
+    if (g <= 4) generalBase += balance;
+    const rate = SPECIFIC_PROVISION_RATE[g];
+    if (!rate) continue;
+    const deductible = ct.hasCollateral ? (Number(ct.collateralValue) || 0) * 0.5 : 0;
+    specificProvision += Math.max(0, balance - deductible) * rate;
+  }
+  return { generalProvision: generalBase * GENERAL_PROVISION_RATE, specificProvision };
+}
+
+/**
+ * Super admin tích/nhập "Có TSBĐ" + giá trị cho 1 hợp đồng — dùng tính "Dự
+ * phòng cụ thể phải trích" (provisionSummary() ở trên). CHỈ super admin gọi
+ * được — RLS chặn admin thường ("super admin updates collateral" trên
+ * `contracts`, xem mục docs/supabase-migration.md). MỘT KHI đã tích + lưu
+ * (hasCollateral=true) trong khi hợp đồng CÒN dư nợ (>0) thì KHÔNG cho bỏ
+ * tích lại — chỉ cho SỬA giá trị (đúng yêu cầu: còn ở Nhóm 2-5 thì không
+ * được xóa dữ liệu TSBĐ, chỉ khi tất toán mới thôi cần theo dõi — lúc đó dư
+ * nợ = 0 nên hợp đồng tự động không còn hiện trong danh sách nữa).
+ */
+export async function setContractCollateral(contractId, { hasCollateral, collateralValue }) {
+  const ct = state.contracts.find((c) => c.id === contractId);
+  if (!ct) throw new Error('Không tìm thấy hợp đồng.');
+  if (ct.hasCollateral && !hasCollateral && (Number(ct.balance) || 0) > 0) {
+    throw new Error('Không thể bỏ tích TSBĐ khi hợp đồng còn dư nợ — chỉ có thể sửa giá trị.');
+  }
+  const session = getSession();
+  const sb = getSupabaseClient(session?.sbToken);
+  const patch = { has_collateral: !!hasCollateral, collateral_value: hasCollateral ? (Number(collateralValue) || 0) : 0 };
+  const { error } = await sb.from('contracts').update(patch).eq('id', contractId);
+  if (error) throw new Error('Không lưu được TSBĐ, thử lại sau.');
+  ct.hasCollateral = patch.has_collateral;
+  ct.collateralValue = patch.collateral_value;
+  notify();
+  logAdminAction('update-contract-collateral', { contractId });
+}
+
 /**
  * Trạng thái HIỂN THỊ đầy đủ của 1 hợp đồng — xét CẢ ngày đáo hạn hợp đồng
  * gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nextInstallmentInfo(), nếu có), dùng
@@ -758,6 +818,12 @@ function mapContractRow(row) {
     // computeInstallmentPlan() (xem hàm đó bên dưới).
     agreementCode: row.agreement_code || null,
     installmentSchedule: row.installment_schedule || null,
+    // Tài sản bảo đảm (TSBĐ) — dùng tính "Dự phòng cụ thể phải trích" ở
+    // dashboard "Tổng quan" (xem overview.js debtGroupHtml()/setContractCollateral()
+    // bên dưới) — KHÔNG liên quan tới đợt nhập Excel nào, chỉ super admin tự
+    // tích/nhập tay từng hợp đồng qua danh sách "Dư nợ theo nhóm nợ".
+    hasCollateral: !!row.has_collateral,
+    collateralValue: Number(row.collateral_value) || 0,
   };
 }
 
