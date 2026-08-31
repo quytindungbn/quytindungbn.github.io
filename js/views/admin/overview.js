@@ -111,6 +111,31 @@ export function render(contentEl) {
   // không cần 2 bảng riêng bên dưới nữa.
   contentEl.querySelector('#tile-overdue').addEventListener('click', () => openContractListModal('Hợp đồng quá hạn', overdue, isStaff, 'var(--danger)'));
   contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', upcoming, isStaff, 'var(--warning)', { highlightWithinDays: S.NEAR_DUE_DAYS }));
+
+  // Bấm chọn 1 tháng ở dãy chip dưới biểu đồ "Biến động hàng tháng" — cập
+  // nhật 3 cột số liệu + biểu đồ "Dư nợ theo nhóm nợ" phía trên theo ĐÚNG
+  // tháng đó, không tải lại cả trang. Tính lại buildDebtDashboardData() mỗi
+  // lần bấm (rẻ, không gọi mạng) để luôn khớp dữ liệu mới nhất đang có.
+  if (isSuper) {
+    contentEl.querySelectorAll('[data-month-picker]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const ym = btn.dataset.monthPicker;
+        const { months, prevMonthOf, yearAgoOf } = buildDebtDashboardData();
+        const m = months.find((x) => x.yearMonth === ym);
+        if (!m) return;
+        contentEl.querySelector('#month-detail-slot').innerHTML = monthDetailHtml(m, prevMonthOf, yearAgoOf);
+        contentEl.querySelector('#nhom-no-slot').innerHTML = nhomNoHtml(m);
+        contentEl.querySelector('#month-detail-label').textContent = `${m.label}${m.live ? ' (đang cập nhật)' : ''}`;
+        contentEl.querySelectorAll('[data-month-picker]').forEach((b) => {
+          const active = b.dataset.monthPicker === ym;
+          b.dataset.active = String(active);
+          b.style.border = `1px solid ${active ? 'var(--color-primary)' : 'var(--border)'}`;
+          b.style.background = active ? 'var(--color-primary)' : 'var(--surface)';
+          b.style.color = active ? '#fff' : 'var(--text-muted)';
+        });
+      });
+    });
+  }
 }
 
 /**
@@ -127,40 +152,45 @@ export function render(contentEl) {
  * tính Nhóm 2, dù Nhóm 2 đã là "nợ cần chú ý"). "Lãi phải thu" chỉ tính
  * Nhóm 1-4 (Nhóm 5 coi như khó thu, không tính lãi phải thu nữa).
  *
+ * 3 cột "Dư nợ / Lãi phải thu / Nợ xấu" + biểu đồ "Dư nợ theo nhóm nợ" LUÔN
+ * hiện đúng số liệu của 1 THÁNG ĐANG CHỌN (mặc định = tháng mới nhất/đang
+ * sống) — bấm 1 chip tháng ở dưới biểu đồ "Biến động hàng tháng" để đổi
+ * tháng xem, cập nhật ngay 2 chỗ trên mà không tải lại trang (xem
+ * buildDebtDashboardData()/monthDetailHtml()/nhomNoHtml() và handler
+ * data-month-picker trong render()) — không còn lặp lại y hệt "Tổng dư nợ"
+ * đã có ở 4 ô thống kê phía trên nữa.
+ *
  * Biểu đồ "Biến động hàng tháng" GỘP dư nợ + lãi phải thu vào CHUNG 1 khối
  * (monthlyComboChartSvg — xem js/components/charts.js) thay vì 3 biểu đồ
- * đường riêng như bản đầu — không lặp lại số liệu đã có ở 3 ô thống kê phía
- * trên, chỉ vẽ hình dạng xu hướng cho gọn. Đọc dữ liệu từ bảng
- * monthly_snapshots — bảng này KHÔNG có sẵn số liệu quá khứ (mỗi lần nhập
- * Excel mới đè lên số liệu cũ, không lưu lịch sử) nên lịch sử chỉ bắt đầu từ
- * lúc tính năng này ra đời. Số liệu tự chốt vào ĐÚNG ngày cuối cùng mỗi
- * tháng (xem send-due-reminders/index.ts); tháng hiện tại (chưa chốt) tự
- * tính "sống" theo dữ liệu hợp đồng đang có, không cần thao tác gì.
+ * đường riêng như bản đầu, luôn vẽ TOÀN BỘ lịch sử (không đổi theo tháng
+ * đang chọn). Đọc dữ liệu từ bảng monthly_snapshots — bảng này KHÔNG có sẵn
+ * số liệu quá khứ (mỗi lần nhập Excel mới đè lên số liệu cũ, không lưu lịch
+ * sử) nên lịch sử chỉ bắt đầu từ lúc tính năng này ra đời. Số liệu tự chốt
+ * vào ĐÚNG ngày cuối cùng mỗi tháng (xem send-due-reminders/index.ts);
+ * tháng hiện tại (chưa chốt) tự tính "sống" theo dữ liệu hợp đồng đang có,
+ * không cần thao tác gì.
  */
-function debtDashboardHtml() {
+const GROUP_COLORS = { 1: 'var(--success)', 2: 'var(--warning)', 3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d' };
+
+/** Tính lại toàn bộ dữ liệu tháng (kể cả tháng hiện tại đang "sống", chưa chốt) — gọi lại MỖI LẦN cần vẽ (kể cả khi bấm chọn tháng khác), rẻ vì chỉ tính trên dữ liệu đã có sẵn trong bộ nhớ, không gọi mạng. */
+function buildDebtDashboardData() {
   const now = new Date();
   const contracts = S.getState().contracts;
   const summary = S.debtGroupSummary(contracts, now);
   const snapshots = S.listMonthlySnapshots();
   const lastSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
 
-  const groupColors = {
-    1: 'var(--success)', 2: 'var(--warning)',
-    3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d',
-  };
-  const barItems = [1, 2, 3, 4, 5].map((g) => ({ label: `Nhóm ${g}`, value: summary.groupBalances[g], color: groupColors[g] }));
-
-  const ratioClass = summary.badDebtRatio >= 5 ? { bg: 'var(--danger-bg)', fg: 'var(--danger)' } : summary.badDebtRatio >= 2 ? { bg: 'var(--warning-bg)', fg: 'var(--warning)' } : { bg: 'var(--success-bg)', fg: '#0d6b34' };
-
   const months = snapshots.map((s) => ({
     yearMonth: s.yearMonth, label: monthLabel(s.yearMonth),
     balance: s.totalBalance, interest: s.interestReceivable, badDebt: s.badDebtBalance, badDebtRatio: s.badDebtRatio,
+    groupBalances: s.groupBalances,
   }));
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   if (!lastSnapshot || lastSnapshot.yearMonth !== currentYearMonth) {
     months.push({
       yearMonth: currentYearMonth, label: monthLabel(currentYearMonth),
       balance: summary.totalBalance, interest: summary.interestReceivable, badDebt: summary.badDebtBalance, badDebtRatio: summary.badDebtRatio,
+      groupBalances: summary.groupBalances,
       live: true,
     });
   }
@@ -177,29 +207,98 @@ function debtDashboardHtml() {
     return byYearMonth.get(`${y - 1}-${String(m).padStart(2, '0')}`) || null;
   }
   // Gắn sẵn % tăng/giảm lãi phải thu so với tháng trước vào TỪNG tháng — để
-  // monthlyComboChartSvg() ghi thẳng lên biểu đồ (cột), không phải chỉ có
-  // trong bảng bên dưới nữa.
+  // monthlyComboChartSvg() ghi thẳng lên biểu đồ (cột).
   months.forEach((m) => { m.interestMomPct = pct(m.interest, prevMonthOf(m.yearMonth)?.interest ?? null); });
+
+  return { months, prevMonthOf, yearAgoOf };
+}
+
+function ratioClassFor(ratio) {
+  return ratio >= 5 ? { bg: 'var(--danger-bg)', fg: 'var(--danger)' } : ratio >= 2 ? { bg: 'var(--warning-bg)', fg: 'var(--warning)' } : { bg: 'var(--success-bg)', fg: '#0d6b34' };
+}
+
+/** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m) — dùng lại khi bấm chọn tháng khác trên biểu đồ "Biến động hàng tháng" bên dưới, không cần tải lại trang. */
+function nhomNoHtml(m) {
+  const barItems = [1, 2, 3, 4, 5].map((g) => ({ label: `Nhóm ${g}`, value: (m.groupBalances && m.groupBalances[g]) || 0, color: GROUP_COLORS[g] }));
+  return barChartSvg({ items: barItems });
+}
+
+/**
+ * 3 cột nhỏ gọn Dư nợ / Lãi phải thu / Nợ xấu của ĐÚNG 1 tháng (m), kèm %
+ * tăng/giảm so với tháng trước VÀ so với cùng kỳ năm trước (nếu đã có đủ
+ * lịch sử để so — chưa đủ thì tự ẩn dòng "Năm trước", không giả vờ có số
+ * liệu không tồn tại).
+ */
+function monthDetailHtml(m, prevMonthOf, yearAgoOf) {
+  const prev = prevMonthOf(m.yearMonth);
+  const yearAgo = yearAgoOf(m.yearMonth);
+  const ratioClass = ratioClassFor(m.badDebtRatio);
+  const trend = (curr, prevV, yearAgoV, opts) => `
+    <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:10px;color:var(--text-faint)">
+      <span>Tháng trước ${deltaChip(pct(curr, prevV), opts)}</span>
+      ${yearAgoV != null ? `<span>Năm trước ${deltaChip(pct(curr, yearAgoV), opts)}</span>` : ''}
+    </div>`;
+  return `
+    <div class="stat-tile c-blue">
+      <div class="stat-label">Dư nợ</div>
+      <div class="stat-value" style="font-size:15px">${formatCompact(m.balance)}</div>
+      ${trend(m.balance, prev?.balance ?? null, yearAgo ? yearAgo.balance : null)}
+    </div>
+    <div class="stat-tile c-purple">
+      <div class="stat-label">Lãi phải thu</div>
+      <div class="stat-value" style="font-size:15px">${formatCompact(m.interest)}</div>
+      ${trend(m.interest, prev?.interest ?? null, yearAgo ? yearAgo.interest : null)}
+    </div>
+    <div class="stat-tile" style="background:${ratioClass.bg};color:${ratioClass.fg}">
+      <div class="stat-label">Nợ xấu</div>
+      <div class="stat-value">${formatPercent(m.badDebtRatio)}</div>
+      <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">${formatCompact(m.badDebt)}</div>
+      ${trend(m.badDebt, prev?.badDebt ?? null, yearAgo ? yearAgo.badDebt : null, { worse: true })}
+    </div>`;
+}
+
+/** Dãy chip chọn tháng (gộp theo năm) đặt dưới biểu đồ "Biến động hàng tháng" — bấm vào 1 tháng để cập nhật 3 cột + biểu đồ nhóm nợ phía trên, không tải lại trang. */
+function monthPickerHtml(months, activeYm) {
+  if (!months.length) return '';
+  const byYear = new Map();
+  for (const m of months) {
+    const y = m.yearMonth.slice(0, 4);
+    if (!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y).push(m);
+  }
+  const groups = [...byYear.keys()].sort().map((y) => {
+    const chips = byYear.get(y).map((m) => {
+      const active = m.yearMonth === activeYm;
+      return `<button type="button" data-month-picker="${m.yearMonth}" data-active="${active}" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${active ? 'var(--color-primary)' : 'var(--border)'};background:${active ? 'var(--color-primary)' : 'var(--surface)'};color:${active ? '#fff' : 'var(--text-muted)'};font-size:12px;font-weight:600;white-space:nowrap">Th${Number(m.yearMonth.slice(5))}</button>`;
+    }).join('');
+    return `<div class="mb-6"><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px">Năm ${y}</div><div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px">${chips}</div></div>`;
+  }).join('');
+  return `<div class="mt-16">${groups}</div>`;
+}
+
+function debtDashboardHtml() {
+  const { months, prevMonthOf, yearAgoOf } = buildDebtDashboardData();
+  const initial = months[months.length - 1];
 
   return `
     <div class="card card-pad mb-16">
       <div class="section-head"><h2>Dư nợ · Lãi phải thu · Nợ xấu (toàn quỹ)</h2></div>
 
-      <div class="grid-3 mb-16">
-        <div class="stat-tile c-blue"><div class="stat-label">Tổng dư nợ hiện tại</div><div class="stat-value" style="font-size:16px">${formatVND(summary.totalBalance)}</div></div>
-        <div class="stat-tile c-purple"><div class="stat-label">Lãi phải thu (Nhóm 1-4)</div><div class="stat-value" style="font-size:16px">${formatVND(summary.interestReceivable)}</div></div>
-        <div class="stat-tile" style="background:${ratioClass.bg};color:${ratioClass.fg}"><div class="stat-label">Tỷ lệ nợ xấu / Tổng dư nợ</div><div class="stat-value">${formatPercent(summary.badDebtRatio)}</div><div class="stat-trend" style="color:var(--text-muted)">Dư nợ xấu: ${formatVND(summary.badDebtBalance)}</div></div>
+      <div class="flex items-center justify-between mb-10">
+        <h3 style="font-size:13.5px;margin:0">Số liệu chi tiết</h3>
+        <span id="month-detail-label" style="font-size:12px;color:var(--text-muted);font-weight:600">${initial.label}${initial.live ? ' (đang cập nhật)' : ''}</span>
       </div>
+      <div class="grid-3 mb-20" id="month-detail-slot">${monthDetailHtml(initial, prevMonthOf, yearAgoOf)}</div>
 
       <div class="mb-20">
         <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
-        ${barChartSvg({ items: barItems })}
+        <div id="nhom-no-slot">${nhomNoHtml(initial)}</div>
       </div>
 
       <h3 style="font-size:13.5px;margin-bottom:10px">Biến động hàng tháng</h3>
       ${monthlyComboChartSvg({ months })}
 
-      ${monthlyTableHtml(months, prevMonthOf, yearAgoOf)}
+      ${monthPickerHtml(months, initial.yearMonth)}
     </div>
   `;
 }
@@ -217,58 +316,6 @@ function deltaChip(p, { worse = false } = {}) {
   const color = flat ? 'var(--text-faint)' : worse ? (up ? 'var(--danger)' : 'var(--success)') : 'var(--text-muted)';
   const arrow = flat ? '·' : up ? '▲' : '▼';
   return `<span style="font-size:10.5px;font-weight:700;color:${color}">${arrow} ${Math.abs(p).toFixed(1).replace('.', ',')}%</span>`;
-}
-
-/**
- * Bảng số liệu từng tháng — đúng số tiền (Dư nợ/Nợ xấu/Lãi phải thu) KÈM
- * tỷ lệ tăng/giảm so với tháng trước (dưới mỗi số) VÀ so với cùng kỳ năm
- * trước (dòng riêng ngay trên bảng, chỉ hiện khi đã có đủ 12 tháng lịch sử
- * để so — chưa đủ thì tự ẩn, không giả vờ có số liệu không tồn tại). Mới
- * nhất lên đầu bảng cho dễ xem ngay việc gần đây nhất.
- */
-function monthlyTableHtml(months, prevMonthOf, yearAgoOf) {
-  if (!months.length) return '';
-  const rows = [...months].reverse();
-  const latest = months[months.length - 1];
-  const yearAgoLatest = yearAgoOf(latest.yearMonth);
-
-  const yoyStrip = yearAgoLatest ? `
-    <div class="flex items-center" style="gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--text-muted);margin-bottom:10px">
-      <span>So với cùng kỳ năm trước (${yearAgoLatest.label} → ${latest.label}):</span>
-      <span>Dư nợ ${deltaChip(pct(latest.balance, yearAgoLatest.balance))}</span>
-      <span>Nợ xấu ${deltaChip(pct(latest.badDebt, yearAgoLatest.badDebt), { worse: true })}</span>
-      <span>Lãi phải thu ${deltaChip(pct(latest.interest, yearAgoLatest.interest))}</span>
-    </div>` : '';
-
-  const td = 'padding:8px 10px 8px 0;border-bottom:1px solid var(--border);white-space:nowrap';
-  const bodyRows = rows.map((m) => {
-    const prev = prevMonthOf(m.yearMonth);
-    return `
-      <tr>
-        <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}</td>
-        <td style="${td}">${formatCompact(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
-        <td style="${td}">${formatCompact(m.badDebt)}<br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
-        <td style="${td}">${formatCompact(m.interest)}<br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
-      </tr>`;
-  }).join('');
-
-  return `
-    <div class="mt-16">
-      ${yoyStrip}
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-          <thead>
-            <tr style="color:var(--text-muted);font-size:11px;text-align:left">
-              <th style="padding:0 10px 6px 0">Tháng</th>
-              <th style="padding:0 10px 6px 0">Dư nợ</th>
-              <th style="padding:0 10px 6px 0">Nợ xấu</th>
-              <th style="padding:0 10px 6px 0">Lãi phải thu</th>
-            </tr>
-          </thead>
-          <tbody>${bodyRows}</tbody>
-        </table>
-      </div>
-    </div>`;
 }
 
 /**
