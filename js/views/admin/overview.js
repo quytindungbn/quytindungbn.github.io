@@ -135,6 +135,7 @@ export function render(contentEl) {
   // tăng giảm" sang đúng tháng đó (xem selectMonth()) — không tải lại trang.
   bindNhomNoClicks(contentEl);
   bindMonthClicks(contentEl);
+  bindMonthSelector(contentEl);
   contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
 }
 
@@ -350,6 +351,20 @@ function openMonthlyDetailModal() {
   });
 }
 
+/** Nút chọn tháng để xem lại lịch sử, đặt NGAY SAU "Dư nợ theo nhóm nợ" — chọn 1 tháng bất kỳ (VD 07/2026) sẽ gọi selectMonth() y hệt như bấm vào cột biểu đồ "Biến động hàng tháng". Danh sách xếp mới nhất trước cho dễ tìm. */
+function monthSelectorHtml(months, selectedYm) {
+  const options = months
+    .slice()
+    .reverse()
+    .map((m) => `<option value="${m.yearMonth}" ${m.yearMonth === selectedYm ? 'selected' : ''}>${m.label}${m.live ? ' (đang cập nhật)' : ''}</option>`)
+    .join('');
+  return `
+    <div class="flex items-center mt-12" style="gap:8px">
+      <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Xem lại tháng</label>
+      <select id="month-select" class="pill-select" style="flex:1;max-width:220px">${options}</select>
+    </div>`;
+}
+
 function debtDashboardHtml() {
   const contracts = visibleContracts();
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
@@ -361,6 +376,7 @@ function debtDashboardHtml() {
       <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
       <div id="nhom-no-slot">${nhomNoBarHtml(initial)}</div>
       <div id="provision-slot" class="mt-16">${provisionRowsHtml(provision)}</div>
+      <div id="month-selector-slot">${monthSelectorHtml(months, initial.yearMonth)}</div>
 
       <h3 style="font-size:13.5px;margin-bottom:10px" class="mt-24">Biến động hàng tháng</h3>
       <div id="trend-chart-slot">${monthlyComboChartSvg({ months, selectedYm: initial.yearMonth })}</div>
@@ -383,6 +399,12 @@ function bindMonthClicks(root) {
     el.addEventListener('click', () => selectMonth(root, el.dataset.month));
   });
 }
+/** Gắn sự kiện đổi cho nút chọn tháng (ngay sau "Dư nợ theo nhóm nợ") — chọn 1 tháng trong danh sách sẽ chuyển y hệt như bấm vào cột biểu đồ, xem selectMonth(). */
+function bindMonthSelector(root) {
+  const sel = root.querySelector('#month-select');
+  if (!sel) return;
+  sel.addEventListener('change', () => selectMonth(root, sel.value));
+}
 /** Chuyển "Dư nợ theo nhóm nợ" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn). Không đụng tới Dự phòng (luôn tính sống, xem provisionRowsHtml()). */
 function selectMonth(root, ym) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
@@ -392,6 +414,8 @@ function selectMonth(root, ym) {
   root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
   root.querySelector('#month-detail-label').textContent = `${m.label}${m.live ? ' (đang cập nhật)' : ''}`;
   root.querySelector('#trend-chart-slot').innerHTML = monthlyComboChartSvg({ months, selectedYm: ym });
+  const sel = root.querySelector('#month-select');
+  if (sel) sel.value = ym;
   bindNhomNoClicks(root);
   bindMonthClicks(root);
 }
