@@ -119,6 +119,7 @@ export function render(contentEl) {
   // dữ liệu mới nhất đang có.
   if (isSuper) {
     bindNhomNoClicks(contentEl, isStaff);
+    contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
     contentEl.querySelectorAll('[data-month-picker]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const ym = btn.dataset.monthPicker;
@@ -275,6 +276,45 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
     </div>`;
 }
 
+/**
+ * Modal "Xem chi tiết" — bảng ĐẦY ĐỦ toàn bộ lịch sử các tháng (mới nhất lên
+ * đầu), mỗi cột 1 chỉ tiêu (Dư nợ/Nợ xấu/Lãi phải thu) kèm % so với tháng
+ * trước ngay dưới số — khác bảng "Tổng hợp tăng giảm" ở ngoài (CHỈ hiện 1
+ * tháng đang chọn): ở đây xem được NHIỀU tháng cùng lúc để so sánh xu hướng.
+ */
+function openMonthlyDetailModal() {
+  const { months, prevMonthOf } = buildDebtDashboardData();
+  const rows = [...months].reverse();
+  const td = 'padding:8px 10px 8px 0;border-bottom:1px solid var(--border);white-space:nowrap';
+  const bodyRows = rows.map((m) => {
+    const prev = prevMonthOf(m.yearMonth);
+    return `
+      <tr>
+        <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}</td>
+        <td style="${td}">${formatCompact(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
+        <td style="${td}">${formatCompact(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
+        <td style="${td}">${formatCompact(m.interest)}<br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
+      </tr>`;
+  }).join('');
+  openModal({
+    title: 'Chi tiết theo từng tháng',
+    bodyHtml: `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead>
+            <tr style="color:var(--text-muted);font-size:11px;text-align:left">
+              <th style="padding:0 10px 6px 0">Tháng</th>
+              <th style="padding:0 10px 6px 0">Dư nợ</th>
+              <th style="padding:0 10px 6px 0">Nợ xấu</th>
+              <th style="padding:0 10px 6px 0">Lãi phải thu</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>`,
+  });
+}
+
 /** Dãy chip chọn tháng (gộp theo năm) đặt dưới biểu đồ "Biến động hàng tháng" — bấm vào 1 tháng để cập nhật 3 cột + biểu đồ nhóm nợ phía trên, không tải lại trang. */
 function monthPickerHtml(months, activeYm) {
   if (!months.length) return '';
@@ -311,7 +351,10 @@ function debtDashboardHtml() {
 
       <div class="flex items-center justify-between mb-10 mt-20">
         <h3 style="font-size:13.5px;margin:0">Tổng hợp tăng giảm</h3>
-        <span id="month-detail-label" style="font-size:12px;color:var(--text-muted);font-weight:600">${initial.label}${initial.live ? ' (đang cập nhật)' : ''}</span>
+        <div class="flex items-center" style="gap:10px">
+          <span id="month-detail-label" style="font-size:12px;color:var(--text-muted);font-weight:600">${initial.label}${initial.live ? ' (đang cập nhật)' : ''}</span>
+          <a href="javascript:void(0)" id="btn-monthly-detail" class="link-more">Xem chi tiết</a>
+        </div>
       </div>
       <div id="month-detail-slot">${monthDetailTableHtml(initial, prevMonthOf, yearStartOf)}</div>
     </div>

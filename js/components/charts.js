@@ -66,14 +66,17 @@ export function barChartSvg({ items, aspect = 2.1 }) {
  * trong đó (số tiền ghi NGAY BÊN TRONG cột, ở đầu đoạn cam), và cột Lãi phải
  * thu (nhỏ hơn, ngay bên phải) — CẢ 2 cột phụ (nợ xấu lồng trong + lãi phải
  * thu) co theo ĐÚNG tỷ lệ % so với chính cột Dư nợ của tháng đó, NHƯNG được
- * "khuếch đại" thêm 1 hệ số + chiều cao tối thiểu (xem BOOST/MIN_H bên dưới)
- * để luôn nhìn rõ trên màn hình nhỏ — tỷ lệ % chính xác vẫn ghi rõ bằng số
- * (formatTyDong) nên không gây hiểu nhầm dù cột được phóng to hơn thực tế.
+ * "khuếch đại" thêm hệ số BOOST + chiều cao tối thiểu để luôn nhìn rõ trên
+ * màn hình nhỏ — tỷ lệ % CHÍNH XÁC vẫn ghi ngay trong ngoặc bên cạnh số tiền
+ * (VD "2 (4,5%)") nên không gây hiểu nhầm dù cột được phóng to hơn thực tế.
  * Đơn vị TIỀN của cả biểu đồ là TỶ ĐỒNG, ghi 1 lần duy nhất ở đầu (không lặp
- * lại chữ "tỷ" sau từng số). Số liệu tự động lấy từ dữ liệu hợp đồng/số đã
- * chốt hiện có, luôn cập nhật lại mỗi lần trang vẽ lại. Tháng hiện tại (chưa
- * chốt chính thức, tự tính theo ngày) tô nhạt hơn + nét đứt để phân biệt
- * trực quan với các tháng đã chốt.
+ * lại chữ "tỷ" sau từng số). Quá 7 tháng thì bề rộng mỗi ô tháng GIỮ NGUYÊN
+ * (không co thêm) và cả khối biểu đồ cho VUỐT/CUỘN NGANG để xem tiếp tháng cũ
+ * hơn, tránh cột co lại nhỏ xíu khó xem khi lịch sử dài dần theo thời gian.
+ * Số liệu tự động lấy từ dữ liệu hợp đồng/số đã chốt hiện có, luôn cập nhật
+ * lại mỗi lần trang vẽ lại. Tháng hiện tại (chưa chốt chính thức, tự tính
+ * theo ngày) tô nhạt hơn + nét đứt để phân biệt trực quan với các tháng đã
+ * chốt.
  */
 export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var(--color-primary)', badDebtColor = 'var(--warning)', interestColor = 'var(--purple)' }) {
   if (!months.length) {
@@ -86,10 +89,19 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
   const baseY = padTop + chartH;
 
   const n = months.length;
-  // Chỉ có 1 tháng (mới bắt đầu dùng tính năng) thì KHÔNG lấy nguyên VB_W
+  // Mỗi ô tháng cần tối thiểu ~54 đơn vị ngang mới đủ chỗ vẽ rõ cặp cột +
+  // nhãn — dồn QUÁ NHIỀU tháng vào bề ngang cố định (VB_W) sẽ ép cột co lại
+  // nhỏ xíu, khó xem. Quá 7 tháng (ước lượng vừa đúng 1 màn hình điện thoại ở
+  // bề rộng chuẩn) thì GIỮ NGUYÊN bề rộng mỗi ô — không co thêm nữa — và cho
+  // CUỘN NGANG để xem tiếp các tháng cũ hơn (bọc trong div overflow-x:auto ở
+  // nơi gọi), thay vì ép co hết vào 1 màn hình.
+  const SLOT_PX = 54;
+  const scroll = n > 7;
+  const chartW = scroll ? n * SLOT_PX : VB_W;
+  // Chỉ có 1 tháng (mới bắt đầu dùng tính năng) thì KHÔNG lấy nguyên chartW
   // làm bề rộng 1 ô tháng (ra 1 cặp cột khổng lồ) — dùng tạm bề rộng như thể
   // đang có 8 tháng, cho tới khi có thêm tháng thứ 2 trở lên.
-  const slotW = n > 1 ? VB_W / n : VB_W / 8;
+  const slotW = scroll ? SLOT_PX : (n > 1 ? chartW / n : chartW / 8);
   const slotGap = slotW * 0.12;
   const innerW = slotW - slotGap;
   const balW = innerW * 0.6;
@@ -108,10 +120,11 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
     // Nợ xấu + lãi phải thu co theo ĐÚNG tỷ lệ % của CHÍNH cột dư nợ tháng đó
     // (KHÔNG dùng thang riêng theo lịch sử) — nhưng khuếch đại thêm hệ số
     // BOOST + chiều cao tối thiểu để luôn nhìn rõ trên điện thoại (tỷ lệ %
-    // thật thường rất nhỏ, co đúng tỷ lệ sẽ gần như biến mất) — số liệu chính
-    // xác vẫn ghi rõ ràng bằng chữ nên không gây hiểu nhầm.
-    const BOOST = 3.5;
+    // thật thường rất nhỏ, co đúng tỷ lệ sẽ gần như biến mất) — tỷ lệ % chính
+    // xác vẫn ghi rõ bằng số ngay trong nhãn nên không gây hiểu nhầm.
+    const BOOST = 6.5;
     const badRatio = m.balance > 0 ? Math.min(1, m.badDebt / m.balance) : 0;
+    const interestRatio = m.balance > 0 ? (m.interest / m.balance) * 100 : 0;
     const badH = badRatio > 0 ? Math.min(balH * 0.65, Math.max(20, badRatio * balH * BOOST)) : 0;
     const badY = baseY - badH; // ĐÁY cột (không phải đỉnh) — đè lên phần dưới của cột dư nợ.
     const intH = balH > 0 ? Math.min(balH * 0.6, Math.max(18, (m.interest / m.balance) * balH * BOOST)) : 18;
@@ -127,25 +140,28 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
       <g>
         <rect x="${slotX.toFixed(1)}" y="${balY.toFixed(1)}" width="${balW.toFixed(1)}" height="${balH.toFixed(1)}" rx="4" fill="${balanceColor}" fill-opacity="${liveOpacity}" ${isLive ? `stroke="${balanceColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Dư nợ ${formatVND(m.balance)}</title></rect>
         ${badH > 0 ? `<rect x="${slotX.toFixed(1)}" y="${badY.toFixed(1)}" width="${balW.toFixed(1)}" height="${badH.toFixed(1)}" rx="4" fill="${badDebtColor}" fill-opacity="${liveOpacity}"><title>${m.label}: Nợ xấu ${formatVND(m.badDebt)} (${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</title></rect>
-        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(badY + Math.min(badH, 11) - 2).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#fff">${formatTyDong(m.badDebt)}</text>` : ''}
+        <text x="${(slotX + balW / 2).toFixed(1)}" y="${(badY + Math.min(badH, 11) - 2).toFixed(1)}" text-anchor="middle" font-size="7" font-weight="700" fill="#fff">${formatTyDong(m.badDebt)} (${m.badDebtRatio.toFixed(1).replace('.', ',')}%)</text>` : ''}
         <text x="${(slotX + balW / 2).toFixed(1)}" y="${(balY - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${balanceColor}">${formatTyDong(m.balance)}</text>
 
         <rect x="${intX.toFixed(1)}" y="${intY.toFixed(1)}" width="${intW.toFixed(1)}" height="${intH.toFixed(1)}" rx="3" fill="${interestColor}" fill-opacity="${liveOpacity}" ${isLive ? `stroke="${interestColor}" stroke-width="1" ${dash}` : ''}><title>${m.label}: Lãi phải thu ${formatVND(m.interest)}</title></rect>
-        <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 4).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${interestColor}">${formatTyDong(m.interest)}</text>
+        <text x="${(intX + intW / 2).toFixed(1)}" y="${(intY - 4).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="700" fill="${interestColor}">${formatTyDong(m.interest)} (${interestRatio.toFixed(1).replace('.', ',')}%)</text>
 
         <text x="${(slotX + innerW / 2).toFixed(1)}" y="${vbH - 5}" text-anchor="middle" font-size="10" font-weight="${isLive ? 700 : 400}" fill="${isLive ? balanceColor : 'var(--text-faint)'}">${m.label}</text>
       </g>`;
   }).join('');
 
+  const svgHtml = `
+    <svg viewBox="0 0 ${chartW} ${vbH}" style="${scroll ? `width:${chartW}px;flex-shrink:0` : 'width:100%'};height:auto;display:block;overflow:visible">
+      <line x1="0" y1="${(baseY - 0.5).toFixed(1)}" x2="${chartW}" y2="${(baseY - 0.5).toFixed(1)}" stroke="var(--border)" stroke-width="1"></line>
+      ${bars}
+    </svg>`;
+
   return `
-    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị: tỷ đồng</div>
+    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị: tỷ đồng${scroll ? ' — vuốt ngang để xem thêm tháng cũ hơn' : ''}</div>
     <div class="flex items-center" style="gap:14px;margin-bottom:6px;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${balanceColor};display:inline-block"></span>Dư nợ</span>
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${badDebtColor};display:inline-block"></span>Nợ xấu</span>
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${interestColor};display:inline-block"></span>Lãi phải thu</span>
     </div>
-    <svg viewBox="0 0 ${VB_W} ${vbH}" style="width:100%;height:auto;display:block;overflow:visible">
-      <line x1="0" y1="${(baseY - 0.5).toFixed(1)}" x2="${VB_W}" y2="${(baseY - 0.5).toFixed(1)}" stroke="var(--border)" stroke-width="1"></line>
-      ${bars}
-    </svg>`;
+    ${scroll ? `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">${svgHtml}</div>` : svgHtml}`;
 }
