@@ -232,7 +232,7 @@ function buildDebtDashboardData() {
 
 /** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m) — dùng lại khi bấm chọn tháng khác trên biểu đồ "Biến động hàng tháng" bên dưới, không cần tải lại trang. Mỗi cột gắn `id` = số nhóm để render.js bind click mở danh sách hợp đồng đúng nhóm đó. */
 function nhomNoHtml(m) {
-  const barItems = [1, 2, 3, 4, 5].map((g) => ({ id: g, label: `Nhóm ${g}`, value: (m.groupBalances && m.groupBalances[g]) || 0, color: GROUP_COLORS[g] }));
+  const barItems = [1, 2, 3, 4, 5].map((g) => ({ id: g, label: `Nhóm ${g}`, shortLabel: String(g), value: (m.groupBalances && m.groupBalances[g]) || 0, color: GROUP_COLORS[g] }));
   return barChartSvg({ items: barItems });
 }
 
@@ -300,7 +300,7 @@ function debtDashboardHtml() {
 
   return `
     <div class="card card-pad mb-16">
-      <div class="mb-20">
+      <div class="mb-24">
         <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
         <div id="nhom-no-slot">${nhomNoHtml(initial)}</div>
       </div>
