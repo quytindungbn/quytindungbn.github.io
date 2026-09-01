@@ -255,10 +255,20 @@ function buildDebtDashboardData() {
     const pm = m === 1 ? 12 : m - 1;
     return byYearMonth.get(`${py}-${String(pm).padStart(2, '0')}`) || null;
   }
-  /** "So sánh năm" = so với CUỐI KỲ 31/12 năm liền trước (đầu năm nay) đến ĐÚNG tháng đang xem — không phải so với cùng tháng năm trước. */
+  /**
+   * "So sánh năm" = so với CUỐI KỲ 31/12 năm liền trước (đầu năm nay) đến
+   * ĐÚNG tháng đang xem — không phải so với cùng tháng năm trước. Tính năng
+   * còn quá mới, CHƯA có dữ liệu tới tận 31/12 năm trước — lúc đó tạm lấy
+   * THÁNG SỚM NHẤT đang có làm mốc so sánh (đánh dấu `isFallbackStart`, nơi
+   * hiển thị tự ghi đúng tên tháng đó thay vì gọi nhầm là "đầu năm") để luôn
+   * có gì đó để so sánh, không ẩn hẳn cột này cho tới khi đủ dữ liệu thật.
+   */
   function yearStartOf(ym) {
     const [y] = ym.split('-').map(Number);
-    return byYearMonth.get(`${y - 1}-12`) || null;
+    const exact = byYearMonth.get(`${y - 1}-12`);
+    if (exact) return exact;
+    const earliest = months[0];
+    return earliest && earliest.yearMonth < ym ? { ...earliest, isFallbackStart: true } : null;
   }
   return { months, prevMonthOf, yearStartOf };
 }
@@ -266,10 +276,11 @@ function buildDebtDashboardData() {
 /**
  * Bảng tổng hợp tăng/giảm — mỗi dòng 1 chỉ tiêu (Dư nợ/Lãi phải thu/Nợ xấu)
  * của ĐÚNG 1 tháng (m): số dư ĐÚNG tháng đó, kèm % so với tháng trước VÀ "So
- * sánh năm" (so với 31/12 năm liền trước — cột này tự hiện "—" nếu chưa đủ
- * lịch sử để so, không giả vờ có số liệu không tồn tại). Dòng Nợ xấu LUÔN tô
- * màu đỏ (không đổi theo tỷ lệ nghiêm trọng) — đây là nhãn NHẬN DIỆN chỉ
- * tiêu, không phải màu cảnh báo mức độ.
+ * sánh năm" (so với 31/12 năm liền trước — chưa đủ lịch sử tới mốc đó thì
+ * yearStartOf() tự lấy tạm THÁNG SỚM NHẤT hiện có, xem giải thích ở đó — cột
+ * này chỉ hiện "—" khi thực sự chưa có tháng nào khác để so). Dòng Nợ xấu
+ * LUÔN tô màu đỏ (không đổi theo tỷ lệ nghiêm trọng) — đây là nhãn NHẬN DIỆN
+ * chỉ tiêu, không phải màu cảnh báo mức độ.
  */
 function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
   const prev = prevMonthOf(m.yearMonth);
@@ -321,7 +332,7 @@ function openMonthlyDetailModal() {
     const yoyRow = yearStart ? `
       <tr data-yoy-row="${m.yearMonth}" hidden>
         <td colspan="4" style="padding:2px 10px 10px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)">
-          So với đầu năm (${yearStart.label} → ${m.label}):
+          ${yearStart.isFallbackStart ? `So với ${yearStart.label} (mốc sớm nhất hiện có)` : `So với đầu năm (${yearStart.label})`} → ${m.label}:
           Dư nợ ${deltaChip(pct(m.balance, yearStart.balance))} ·
           Nợ xấu ${deltaChip(pct(m.badDebt, yearStart.badDebt), { worse: true })} ·
           Lãi phải thu ${deltaChip(pct(m.interest, yearStart.interest))}
