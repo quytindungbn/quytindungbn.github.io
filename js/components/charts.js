@@ -106,10 +106,11 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
   const SLOT_PX = 54;
   const scroll = n > 7;
   const chartW = scroll ? n * SLOT_PX : VB_W;
-  // Chỉ có 1 tháng (mới bắt đầu dùng tính năng) thì KHÔNG lấy nguyên chartW
-  // làm bề rộng 1 ô tháng (ra 1 cặp cột khổng lồ) — dùng tạm bề rộng như thể
-  // đang có 8 tháng, cho tới khi có thêm tháng thứ 2 trở lên.
-  const slotW = scroll ? SLOT_PX : (n > 1 ? chartW / n : chartW / 8);
+  // Còn ÍT tháng (1, 2...) thì KHÔNG chia đều hết bề ngang cho từng đó ô (ra
+  // cột khổng lồ) — luôn chia CHO ÍT NHẤT 8 ô như thể đã có 8 tháng, cột giữ
+  // nguyên nhỏ gọn, phần dư bên phải để trống — tới khi đủ 8 tháng trở lên
+  // mới thật sự chia đều hết bề ngang.
+  const slotW = scroll ? SLOT_PX : chartW / Math.max(n, 8);
   const slotGap = slotW * 0.12;
   const innerW = slotW - slotGap;
   const balW = innerW * 0.6;
