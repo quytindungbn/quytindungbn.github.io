@@ -259,16 +259,14 @@ function buildDebtDashboardData() {
    * "So sánh năm" = so với CUỐI KỲ 31/12 năm liền trước (đầu năm nay) đến
    * ĐÚNG tháng đang xem — không phải so với cùng tháng năm trước. Tính năng
    * còn quá mới, CHƯA có dữ liệu tới tận 31/12 năm trước — lúc đó tạm lấy
-   * THÁNG SỚM NHẤT đang có làm mốc so sánh (đánh dấu `isFallbackStart`, nơi
-   * hiển thị tự ghi đúng tên tháng đó thay vì gọi nhầm là "đầu năm") để luôn
-   * có gì đó để so sánh, không ẩn hẳn cột này cho tới khi đủ dữ liệu thật.
+   * THÁNG SỚM NHẤT đang có làm mốc, để luôn có gì đó so sánh thay vì ẩn hẳn.
    */
   function yearStartOf(ym) {
     const [y] = ym.split('-').map(Number);
     const exact = byYearMonth.get(`${y - 1}-12`);
     if (exact) return exact;
     const earliest = months[0];
-    return earliest && earliest.yearMonth < ym ? { ...earliest, isFallbackStart: true } : null;
+    return earliest && earliest.yearMonth < ym ? earliest : null;
   }
   return { months, prevMonthOf, yearStartOf };
 }
@@ -332,7 +330,7 @@ function openMonthlyDetailModal() {
     const yoyRow = yearStart ? `
       <tr data-yoy-row="${m.yearMonth}" hidden>
         <td colspan="4" style="padding:2px 10px 10px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)">
-          ${yearStart.isFallbackStart ? `So với ${yearStart.label} (mốc sớm nhất hiện có)` : `So với đầu năm (${yearStart.label})`} → ${m.label}:
+          So với đầu năm:
           Dư nợ ${deltaChip(pct(m.balance, yearStart.balance))} ·
           Nợ xấu ${deltaChip(pct(m.badDebt, yearStart.badDebt), { worse: true })} ·
           Lãi phải thu ${deltaChip(pct(m.interest, yearStart.interest))}
