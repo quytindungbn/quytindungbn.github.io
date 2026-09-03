@@ -1412,7 +1412,21 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
   const summary = debtGroupSummary(contracts, asOf);
   const yearMonth = asOfDate.slice(0, 7);
   const existing = (state.monthlySnapshots || []).find((s) => s.yearMonth === yearMonth);
-  return { yearMonth, snapshotDate: asOfDate, contractsCount: contracts.length, summary, parseErrors, willOverwrite: !!existing };
+  // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — để xem lại lịch
+  // sử vẫn tra được đúng danh sách của đúng tháng đã nạp, không chỉ tổng.
+  // File mẫu này KHÔNG có cột TSBĐ nên hasCollateral/collateralValue để
+  // false/0 (không phải "biết chắc không có", chỉ là "không có dữ liệu").
+  const contractsDetail = [];
+  for (const ct of contracts) {
+    const g = debtGroup(ct, asOf);
+    if (g === null) continue;
+    contractsDetail.push({
+      name: ct.name || null, address: ct.address || null,
+      balance: Number(ct.balance) || 0, group: g, daysOverdue: daysOverdue(ct, asOf),
+      hasCollateral: false, collateralValue: 0,
+    });
+  }
+  return { yearMonth, snapshotDate: asOfDate, contractsCount: contracts.length, summary, contractsDetail, parseErrors, willOverwrite: !!existing };
 }
 
 /**
@@ -1423,7 +1437,7 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
  * year_month, tải lên lại tháng đã có sẵn sẽ GHI ĐÈ (đúng để sửa nhầm lẫn
  * nếu có), không tạo trùng dòng.
  */
-export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary }) {
+export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary, contractsDetail }) {
   const session = state.session;
   const res = await callCreateAccountFunction(session?.sbToken, {
     type: 'import-historical-snapshot',
@@ -1433,6 +1447,7 @@ export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary 
     groupBalances: summary.groupBalances,
     badDebtBalance: summary.badDebtBalance,
     badDebtRatio: summary.badDebtRatio,
+    contractsDetail: contractsDetail || [],
   });
   if (res.ok) { await loadAdminSessionData(session.sbToken); notify(); }
   return res;
@@ -1629,6 +1644,10 @@ function mapMonthlySnapshotRow(row) {
     // tháng chốt từ nay về sau (tự động lẫn bấm tay) đều có 2 số này.
     generalProvision: row.general_provision != null ? Number(row.general_provision) : null,
     specificProvision: row.specific_provision != null ? Number(row.specific_provision) : null,
+    // Danh sách hợp đồng của TỪNG NHÓM NỢ TẠI ĐÚNG THÁNG NÀY (mục 10.53 docs)
+    // — mảng rỗng/không có = tháng chốt TRƯỚC khi có tính năng này (VD tháng
+    // 08 chốt bù), xem lại chỉ hiện được danh sách HIỆN TẠI như trước.
+    contractsDetail: Array.isArray(row.contracts_detail) ? row.contracts_detail : [],
   };
 }
 /** Danh sách số liệu đã chốt theo tháng, sắp xếp từ CŨ -> MỚI (khớp thứ tự vẽ biểu đồ theo thời gian) — dùng cho dashboard "Tổng quan" (chỉ super admin, xem overview.js). */

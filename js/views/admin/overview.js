@@ -269,6 +269,7 @@ function buildDebtDashboardData() {
     interestRatio: interestRatio(s.interestReceivable, s.totalBalance),
     groupBalances: s.groupBalances,
     generalProvision: s.generalProvision, specificProvision: s.specificProvision,
+    contractsDetail: s.contractsDetail,
   }));
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   if (!lastSnapshot || lastSnapshot.yearMonth !== currentYearMonth) {
@@ -628,17 +629,47 @@ function deltaChip(p, { mode = null } = {}) {
  * (visibleContracts() — super = toàn quỹ, staff = trong Thôn/Xóm được gán).
  */
 function openDebtGroupModal(g, isStaff, isSuper, m) {
-  const now = new Date();
-  const list = visibleContracts().filter((ct) => S.debtGroup(ct, now) === g);
-  const total = list.reduce((s, ct) => s + (ct.balance || 0), 0);
   const color = GROUP_COLORS[g];
   // TSBĐ (tài sản bảo đảm) chỉ có ý nghĩa với Nhóm 2-5 (Nhóm 1 = 0% dự phòng
   // cụ thể, xem S.provisionSummary()) — Nhóm 1 giữ đúng danh sách gọn như cũ.
   const showTsbd = g >= 2;
-  openModal({
-    title: `Nhóm ${g} (${list.length})`,
-    bodyHtml: `
-      ${m && !m.live ? `<div class="text-sm mb-12" style="color:var(--warning)">Danh sách theo dữ liệu HIỆN TẠI — ${m.label} đã chốt trước đó chỉ lưu số tổng theo nhóm, không lưu chi tiết từng hợp đồng nên không tra đúng danh sách của riêng tháng đó được.</div>` : ''}
+  // Tháng ĐÃ CHỐT và có lưu sẵn chi tiết từng hợp đồng (mục 10.53 docs, chốt
+  // từ nay về sau) -> dùng ĐÚNG danh sách CỦA THÁNG ĐÓ (đông cứng theo lúc
+  // chốt). Tháng ĐANG SỐNG, hoặc tháng đã chốt TRƯỚC khi có tính năng này
+  // (VD tháng 08 chốt bù) -> vẫn phải dùng dữ liệu HIỆN TẠI như trước, có
+  // ghi chú rõ khi không phải tháng sống để không hiểu nhầm khớp đúng tháng
+  // đang xem.
+  const isHistorical = m && !m.live;
+  const historicalList = isHistorical && Array.isArray(m.contractsDetail)
+    ? m.contractsDetail.filter((d) => d.group === g)
+    : null;
+
+  let listHtml, count;
+  if (historicalList) {
+    const total = historicalList.reduce((s, d) => s + (d.balance || 0), 0);
+    count = historicalList.length;
+    listHtml = `
+      <div class="text-sm text-muted mb-12">Tổng dư nợ (${m.label}): <b style="color:${color}">${formatVND(total)}</b></div>
+      ${historicalList.length ? historicalList.map((d) => `
+        <div class="list-row" style="flex-direction:column;align-items:stretch;gap:2px">
+          <div class="flex items-center gap-6" style="flex-wrap:nowrap">
+            <span style="font-size:14px;font-weight:700;line-height:1.8;padding-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${d.name || '—'}</span>
+            <span class="text-sm text-muted" style="flex-shrink:0">${d.daysOverdue > 0 ? `Quá hạn ${d.daysOverdue} ngày` : 'Trong hạn'}</span>
+          </div>
+          <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
+            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${d.address || 'Chưa có địa bàn'}</span>
+            <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(d.balance)}</b>
+          </div>
+          ${showTsbd ? `<div class="text-sm text-muted" style="margin-top:2px">${d.hasCollateral ? `Có TSBĐ: ${formatVND(d.collateralValue)}` : 'Chưa có TSBĐ'}</div>` : ''}
+        </div>`).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Nhóm này hiện đang trống.' })}
+    `;
+  } else {
+    const now = new Date();
+    const list = visibleContracts().filter((ct) => S.debtGroup(ct, now) === g);
+    const total = list.reduce((s, ct) => s + (ct.balance || 0), 0);
+    count = list.length;
+    listHtml = `
+      ${isHistorical ? `<div class="text-sm mb-12" style="color:var(--warning)">Danh sách theo dữ liệu HIỆN TẠI — ${m.label} đã chốt trước đó chỉ lưu số tổng theo nhóm, không lưu chi tiết từng hợp đồng nên không tra đúng danh sách của riêng tháng đó được.</div>` : ''}
       <div class="text-sm text-muted mb-12">Tổng dư nợ: <b style="color:${color}">${formatVND(total)}</b></div>
       ${list.length ? list.map((ct) => {
         const cust = S.getCustomer(ct.customerId);
@@ -658,8 +689,14 @@ function openDebtGroupModal(g, isStaff, isSuper, m) {
           ${showTsbd ? tsbdRowHtml(ct, isSuper) : ''}
         </div>`;
       }).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Nhóm này hiện đang trống.' })}
-    `,
+    `;
+  }
+
+  openModal({
+    title: `Nhóm ${g} (${count})`,
+    bodyHtml: listHtml,
     onMount(sheet) {
+      if (historicalList) return; // danh sách đông cứng của tháng đã chốt — chỉ xem, không click-through/sửa TSBĐ được.
       sheet.querySelectorAll('[data-view-ct]').forEach((row) => {
         row.addEventListener('click', (e) => {
           if (e.target.closest('[data-tsbd-wrap]')) return; // bấm vào ô TSBĐ thì đừng mở chi tiết hợp đồng

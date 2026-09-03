@@ -1200,6 +1200,10 @@ Deno.serve(async (req) => {
     const now = new Date();
     const { data: allContracts, error: ctErr } = await admin.from('contracts').select('*');
     if (ctErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — Y HỆT
+    // captureMonthlySnapshot() trong send-due-reminders/index.ts.
+    const { data: customers } = await admin.from('customers').select('id, name, thon, xom, tinh, address');
+    const custMap = new Map<string, any>((customers || []).map((c: any) => [c.id, c]));
     const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
     let totalBalance = 0;
     let interestReceivable = 0;
@@ -1207,6 +1211,7 @@ Deno.serve(async (req) => {
     // js/state.js VÀ captureMonthlySnapshot() trong send-due-reminders/index.ts.
     let generalBase = 0;
     let specificProvision = 0;
+    const contractsDetail: any[] = [];
     for (const ct of allContracts || []) {
       const g = debtGroupZalo(ct, now);
       if (g === null) continue;
@@ -1223,6 +1228,16 @@ Deno.serve(async (req) => {
         const deductible = ct.has_collateral ? (Number(ct.collateral_value) || 0) * 0.5 : 0;
         specificProvision += Math.max(0, balance - deductible) * rate;
       }
+      const cust = custMap.get(ct.customer_id);
+      contractsDetail.push({
+        name: cust?.name || null,
+        address: (cust && [cust.thon, cust.xom, cust.tinh].filter(Boolean).join(', ')) || cust?.address || null,
+        balance,
+        group: g,
+        daysOverdue: daysOverdueZalo(ct, now),
+        hasCollateral: !!ct.has_collateral,
+        collateralValue: Number(ct.collateral_value) || 0,
+      });
     }
     const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
     const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
@@ -1237,6 +1252,7 @@ Deno.serve(async (req) => {
       bad_debt_ratio: badDebtRatio,
       general_provision: generalBase * PROVISION_GENERAL_RATE,
       specific_provision: specificProvision,
+      contracts_detail: contractsDetail,
     }, { onConflict: 'year_month' });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'capture-monthly-snapshot',
@@ -1273,6 +1289,11 @@ Deno.serve(async (req) => {
     if (![totalBalance, interestReceivable, badDebtBalance, badDebtRatio].every((n) => Number.isFinite(n) && n >= 0)) {
       return json({ ok: false, reason: 'Số liệu không hợp lệ.' }, 400);
     }
+    // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — Y HỆT
+    // captureMonthlySnapshot() trong send-due-reminders/index.ts, nhưng
+    // trình duyệt tự tính từ file Excel (không có nguồn nào khác để đối
+    // chiếu ở server, xem ghi chú đầu khối này) — chỉ kiểm tra ĐÚNG là mảng.
+    const contractsDetail = Array.isArray(body.contractsDetail) ? body.contractsDetail : [];
     const { error } = await admin.from('monthly_snapshots').upsert({
       year_month: yearMonth,
       snapshot_date: snapshotDate,
@@ -1281,6 +1302,7 @@ Deno.serve(async (req) => {
       group_balances: groupBalances,
       bad_debt_balance: badDebtBalance,
       bad_debt_ratio: badDebtRatio,
+      contracts_detail: contractsDetail,
     }, { onConflict: 'year_month' });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import-historical-snapshot',

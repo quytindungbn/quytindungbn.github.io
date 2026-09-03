@@ -2466,6 +2466,7 @@ create table if not exists monthly_snapshots (
   bad_debt_ratio numeric not null default 0,        -- % (0-100)
   general_provision numeric,   -- Dự phòng CHUNG phải trích — NULL (không phải 0) = tháng này chưa có dữ liệu (xem mục 10.52)
   specific_provision numeric,  -- Dự phòng CỤ THỂ phải trích — NULL = chưa có dữ liệu, y hệt trên
+  contracts_detail jsonb,      -- Danh sách hợp đồng TỪNG NHÓM NỢ tại đúng tháng này — [] = chưa có dữ liệu (xem mục 10.53)
   created_at timestamptz not null default now()
 );
 alter table monthly_snapshots enable row level security;
@@ -2588,10 +2589,10 @@ biểu đồ đã ghi rõ từng tháng rồi) — giờ **bấm THẲNG vào 1 
 tháng" để chọn xem tháng đó (tô khung mờ + đậm nhãn tháng đang chọn, biểu đồ vẫn luôn vẽ TOÀN BỘ lịch
 sử, không thu gọn lại) — chọn xong thì **CẢ "Dư nợ theo nhóm nợ" LẪN "Tổng hợp tăng giảm" đều chuyển
 sang đúng tháng đó cùng lúc**, xem trực quan lịch sử dễ nhất. *(Cập nhật sau: "Dư nợ theo nhóm nợ" của
-tháng ĐÃ CHỐT trong quá khứ ban đầu KHÔNG bấm vào cột được — nay đã đổi lại, bấm được ở MỌI tháng, chỉ tự
-ghi chú rõ đó là danh sách HIỆN TẠI (quỹ không lưu chi tiết từng hợp đồng của đúng tháng đã qua); "Dự
-phòng chung/cụ thể phải trích" cũng đã đổi từ "luôn tính sống" sang chốt theo từng tháng — xem đầy đủ ở
-mục 10.52.)*
+tháng ĐÃ CHỐT trong quá khứ ban đầu KHÔNG bấm vào cột được — nay đã đổi lại, bấm được ở MỌI tháng, hiện
+ĐÚNG danh sách của tháng đó (tháng chốt từ nay về sau, xem mục 10.53) hoặc danh sách HIỆN TẠI kèm ghi chú
+(tháng chốt trước đó, chưa có dữ liệu chi tiết); "Dự phòng chung/cụ thể phải trích" cũng đã đổi từ "luôn
+tính sống" sang chốt theo từng tháng — xem đầy đủ ở mục 10.52/10.53.)*
 
 **LƯU Ý về tháng ĐANG SỐNG (hiện tại, chưa chốt)**: số liệu tháng này tính trực tiếp từ dữ liệu hợp đồng
 hiện có — nhân viên (staff) chỉ thấy đúng phạm vi Thôn/Xóm được gán do RLS bảng `contracts` chặn ở tầng
@@ -2708,6 +2709,33 @@ Dự phòng thay vì một con số sai — trung thực còn hơn ghi liều 1 
 ```sql
 alter table monthly_snapshots add column if not exists general_provision numeric;
 alter table monthly_snapshots add column if not exists specific_provision numeric;
+```
+
+**Việc cần bạn làm**:
+1. Chạy đoạn SQL trên — vào thẳng SQL Editor:
+   https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
+2. Deploy lại **CẢ 2** Edge Function — Supabase Dashboard → Edge Functions → chọn từng cái → dán đè toàn
+   bộ nội dung file mới nhất trong repo → Deploy:
+   - `send-due-reminders` (`supabase/functions/send-due-reminders/index.ts`)
+   - `create-account` (`supabase/functions/create-account/index.ts`)
+
+---
+
+### 10.53. Xem lại ĐÚNG danh sách hợp đồng từng nhóm nợ của tháng đã chốt (BẮT BUỘC chạy SQL + deploy lại CẢ 2 Edge Function)
+
+**Trước đây**: bấm vào cột nhóm nợ ở 1 tháng đã chốt trong quá khứ chỉ hiện được danh sách hợp đồng HIỆN
+TẠI (kèm cảnh báo) — vì `monthly_snapshots` chỉ lưu TỔNG theo nhóm, không lưu chi tiết từng hợp đồng nào.
+
+**Giờ**: mỗi lần chốt tháng (tự động, bấm tay, LẪN "Nạp dữ liệu cũ") lưu kèm luôn danh sách hợp đồng của
+TỪNG NHÓM NỢ tại đúng tháng đó (tên, địa chỉ, dư nợ, số ngày quá hạn, TSBĐ nếu có) vào cột mới
+`contracts_detail`. Bấm vào cột nhóm nợ ở 1 tháng ĐÃ CÓ dữ liệu này sẽ hiện ĐÚNG danh sách của tháng đó
+(đông cứng, không đổi theo dữ liệu hiện tại nữa) — chỉ xem, không click mở hồ sơ khách hàng/sửa TSBĐ được
+(đây là ảnh chụp lúc chốt, không phải hợp đồng sống). Các tháng chốt TRƯỚC khi có tính năng này (VD tháng
+08 chốt bù, mục 10.50) sẽ không có `contracts_detail` — vẫn hiện danh sách HIỆN TẠI kèm cảnh báo như cũ,
+không tự bịa ra dữ liệu không có.
+
+```sql
+alter table monthly_snapshots add column if not exists contracts_detail jsonb;
 ```
 
 **Việc cần bạn làm**:

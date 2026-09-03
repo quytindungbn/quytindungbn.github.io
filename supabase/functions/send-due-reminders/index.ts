@@ -239,11 +239,21 @@ const GENERAL_PROVISION_RATE = 0.0075;
  * TSBĐ/dư nợ sau này có đổi tiếp.
  */
 async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: Date): Promise<void> {
+  // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — chốt kèm luôn,
+  // KHÔNG chỉ tổng theo nhóm, để xem lại lịch sử vẫn tra được đúng danh sách
+  // của đúng tháng đó (trước đây chỉ có tổng, xem lại tháng cũ chỉ hiện
+  // được danh sách HIỆN TẠI, dễ hiểu nhầm là khớp đúng tháng đang xem).
+  // `contracts` không có sẵn tên/địa chỉ khách hàng (ở bảng `customers`
+  // riêng) — tự dò thêm 1 lượt.
+  const { data: customers } = await adminClient.from('customers').select('id, name, thon, xom, tinh, address');
+  const custMap = new Map<string, any>((customers || []).map((c: any) => [c.id, c]));
+
   const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
   let totalBalance = 0;
   let interestReceivable = 0;
   let generalBase = 0;
   let specificProvision = 0;
+  const contractsDetail: any[] = [];
   for (const ct of contracts) {
     const g = debtGroup(ct, asOf);
     if (g === null) continue;
@@ -257,6 +267,16 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
       const deductible = ct.has_collateral ? (Number(ct.collateral_value) || 0) * 0.5 : 0;
       specificProvision += Math.max(0, balance - deductible) * rate;
     }
+    const cust = custMap.get(ct.customer_id);
+    contractsDetail.push({
+      name: cust?.name || null,
+      address: (cust && [cust.thon, cust.xom, cust.tinh].filter(Boolean).join(', ')) || cust?.address || null,
+      balance,
+      group: g,
+      daysOverdue: daysOverdue(ct, asOf),
+      hasCollateral: !!ct.has_collateral,
+      collateralValue: Number(ct.collateral_value) || 0,
+    });
   }
   const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
   const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
@@ -271,6 +291,7 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
     bad_debt_ratio: badDebtRatio,
     general_provision: generalBase * GENERAL_PROVISION_RATE,
     specific_provision: specificProvision,
+    contracts_detail: contractsDetail,
   }, { onConflict: 'year_month' });
 }
 
