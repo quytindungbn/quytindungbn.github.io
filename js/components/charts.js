@@ -57,8 +57,8 @@ export function barChartSvg({ items, aspect = 2.1 }) {
   }).join('');
   const labels = items.map((it) => `<div${it.id != null ? ` data-id="${it.id}"` : ''} style="flex:1;text-align:center;font-size:11px;color:var(--text-muted)${it.id != null ? ';cursor:pointer' : ''}">${it.shortLabel ?? it.label}</div>`).join('');
   return `
-    <div>
-      <svg viewBox="0 0 ${VB_W} ${chartH}" style="width:100%;max-width:460px;height:auto;display:block;overflow:visible">
+    <div style="max-width:460px">
+      <svg viewBox="0 0 ${VB_W} ${chartH}" style="width:100%;height:auto;display:block;overflow:visible">
         <line x1="0" y1="${chartH - 0.5}" x2="${VB_W}" y2="${chartH - 0.5}" stroke="var(--border)" stroke-width="1"></line>
         ${barsHtml}
       </svg>
