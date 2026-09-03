@@ -1153,6 +1153,9 @@ Deno.serve(async (req) => {
     // docs) — số liệu tài chính TOÀN QUỸ, chỉ super mới chốt/xem được, y hệt
     // trang "Nhật ký" (activity_log) đã CHỈ dành riêng cho super từ trước.
     'capture-monthly-snapshot',
+    // "Nạp dữ liệu cũ" (mục 10.51 docs) — ghi số liệu TÀI CHÍNH TOÀN QUỸ của
+    // 1 tháng ĐÃ QUA vào monthly_snapshots, y hệt lý do capture-monthly-snapshot ở trên.
+    'import-historical-snapshot',
   ];
   if (SUPER_ONLY_TYPES.includes(body.type) && !isSuper) {
     return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
@@ -1222,6 +1225,50 @@ Deno.serve(async (req) => {
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'capture-monthly-snapshot',
       `Chốt số liệu dashboard Tổng quan cho tháng **${yearMonth}**`);
+    return json({ ok: true });
+  }
+
+  // ===== type: 'import-historical-snapshot' — CHỈ super (đã chặn ở
+  // SUPER_ONLY_TYPES) — "Nạp dữ liệu cũ" (mục 10.51 docs): lưu 1 dòng
+  // monthly_snapshots cho 1 THÁNG ĐÃ QUA, số liệu do TRÌNH DUYỆT tự tính sẵn
+  // (readExcelFirstSheet + debtGroupSummary() trong js/state.js, từ file
+  // Excel "Sao kê hợp đồng tín dụng" người dùng tự tải lên, ĐỌC TẠI TRÌNH
+  // DUYỆT — không đụng gì tới bảng contracts, không có "danh sách hợp đồng
+  // lúc đó" nào để server tự tính lại được) — server ở đây CHỈ kiểm tra kiểu
+  // dữ liệu hợp lệ rồi ghi thẳng, KHÔNG tính toán lại (không có nguồn nào
+  // khác để đối chiếu). Upsert theo year_month — nạp lại đúng tháng đã có sẽ
+  // GHI ĐÈ (đúng ý để sửa nếu nạp nhầm), không tạo trùng. =====
+  if (body.type === 'import-historical-snapshot') {
+    const yearMonth = String(body.yearMonth || '');
+    const snapshotDate = String(body.snapshotDate || '');
+    if (!/^\d{4}-\d{2}$/.test(yearMonth)) return json({ ok: false, reason: 'Tháng không hợp lệ.' }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) return json({ ok: false, reason: 'Ngày chốt không hợp lệ.' }, 400);
+    const totalBalance = Number(body.totalBalance);
+    const interestReceivable = Number(body.interestReceivable);
+    const badDebtBalance = Number(body.badDebtBalance);
+    const badDebtRatio = Number(body.badDebtRatio);
+    const groupBalancesIn = body.groupBalances && typeof body.groupBalances === 'object' ? body.groupBalances : {};
+    const groupBalances: Record<string, number> = {};
+    for (const g of ['1', '2', '3', '4', '5']) {
+      const v = Number(groupBalancesIn[g]);
+      if (!Number.isFinite(v) || v < 0) return json({ ok: false, reason: 'Số liệu nhóm nợ không hợp lệ.' }, 400);
+      groupBalances[g] = v;
+    }
+    if (![totalBalance, interestReceivable, badDebtBalance, badDebtRatio].every((n) => Number.isFinite(n) && n >= 0)) {
+      return json({ ok: false, reason: 'Số liệu không hợp lệ.' }, 400);
+    }
+    const { error } = await admin.from('monthly_snapshots').upsert({
+      year_month: yearMonth,
+      snapshot_date: snapshotDate,
+      total_balance: totalBalance,
+      interest_receivable: interestReceivable,
+      group_balances: groupBalances,
+      bad_debt_balance: badDebtBalance,
+      bad_debt_ratio: badDebtRatio,
+    }, { onConflict: 'year_month' });
+    if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import-historical-snapshot',
+      `Nạp dữ liệu cũ cho tháng **${yearMonth}** (đến ngày ${snapshotDate.split('-').reverse().join('/')})`);
     return json({ ok: true });
   }
 

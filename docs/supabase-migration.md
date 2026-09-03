@@ -2656,6 +2656,35 @@ VN hôm sau) sẽ tự chốt tháng 08 — không cần bấm gì.
 
 ---
 
+### 10.51. Nút "Nạp dữ liệu cũ" — nạp file Excel của 1 tháng đã qua để xem lại lịch sử (BẮT BUỘC deploy lại `create-account`, KHÔNG cần chạy SQL)
+
+**Vì sao có nút này**: `monthly_snapshots` chỉ bắt đầu có dữ liệu từ tháng tính năng ra đời (08/2026) —
+những tháng TRƯỚC đó (VD cuối năm 2025, để so "tăng trưởng so với đầu năm") không tự có được vì dữ liệu đó
+thực sự không còn tồn tại trong `contracts` (mỗi lần nhập Excel mới GHI ĐÈ số liệu cũ, không giữ lịch
+sử). Nút "Nạp dữ liệu cũ" cho phép tự bù các tháng lịch sử đó — tải lên đúng file "Sao kê hợp đồng tín
+dụng" tại 1 THỜI ĐIỂM ĐÃ QUA (file có dòng "Đến ngày DD/MM/YYYY" ở đầu, giống hệt mẫu Excel nhập hợp đồng
+bình thường) — đọc trực tiếp trong trình duyệt, tính TỔNG (dư nợ theo nhóm/nợ xấu/lãi phải thu, dùng
+ĐÚNG hàm `debtGroupSummary()` như mọi chỗ khác) rồi lưu 1 dòng lịch sử cho đúng tháng đó.
+
+**Đặt TÁCH RIÊNG hẳn khỏi nút "Nhập dữ liệu từ Excel"** ở trang Khách hàng & Hợp đồng — nút đó coi file là
+danh sách hợp đồng ĐANG SỐNG đầy đủ (ghi đè/xóa hợp đồng không còn trong file). Nút "Nạp dữ liệu cũ" ở
+Tổng quan (cạnh "Xem lại tháng", chỉ tài khoản toàn quyền thấy) **KHÔNG đụng gì tới bảng `contracts`** —
+chỉ tính tổng rồi lưu vào `monthly_snapshots`, có thể tải lên nhiều tháng khác nhau lần lượt (mỗi tháng 1
+file, mỗi file 1 dòng "Đến ngày" khác nhau) mà không ảnh hưởng gì tới dữ liệu khách hàng/hợp đồng thật.
+
+**Luồng**: chọn file → đọc + tính tổng ngay trong trình duyệt → hiện **bản xem trước** (tháng, ngày chốt,
+số hợp đồng, dư nợ/nợ xấu/lãi phải thu từng nhóm, cảnh báo nếu tháng đó đã có sẵn số liệu) → bấm "Xác nhận
+lưu" mới thật sự ghi vào `monthly_snapshots` (upsert theo year_month — nạp lại đúng tháng đã có sẽ GHI ĐÈ,
+đúng ý để sửa nếu nạp nhầm). Server (`create-account`, type `import-historical-snapshot`, CHỈ super) chỉ
+kiểm tra số liệu hợp lệ rồi ghi thẳng — không tự tính lại được vì không có "danh sách hợp đồng lúc đó" nào
+lưu ở server để đối chiếu, nguồn sự thật DUY NHẤT là file Excel người dùng tự tải lên.
+
+**Việc cần bạn làm**: deploy lại Edge Function `create-account` — Supabase Dashboard → Edge Functions →
+`create-account` → dán đè toàn bộ nội dung file `supabase/functions/create-account/index.ts` mới nhất
+trong repo này → Deploy. KHÔNG cần chạy SQL (bảng `monthly_snapshots` đã có đủ cột từ mục 10.46).
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

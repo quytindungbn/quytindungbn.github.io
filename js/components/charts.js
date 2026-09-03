@@ -7,6 +7,13 @@
 // px với %) và scale ĐỀU theo tỷ lệ gốc (KHÔNG dùng preserveAspectRatio=
 // "none") — tránh chữ/chấm tròn bị kéo méo ngang/dọc khi khung chứa co giãn
 // (lỗi rất dễ gặp nếu trộn "%" với viewBox hoặc ép co giãn không đều).
+//
+// width:100% trên <svg> co giãn theo ĐÚNG bề ngang khung chứa thật — trên
+// điện thoại khung chứa vốn đã hẹp (~360-430px) nên vừa mắt, nhưng trên máy
+// tính (khung chứa rộng hơn nhiều) sẽ phóng cột to quá khổ nếu không chặn —
+// nên LUÔN kèm max-width (khớp cỡ 1 màn hình điện thoại) ở mọi chỗ dùng
+// width:100%, để trên máy tính chỉ đứng yên ở đúng cỡ đã vừa mắt trên điện
+// thoại, không phóng to thêm theo khung chứa.
 import { formatVND, formatCompact } from '../utils.js';
 
 const VB_W = 400; // "px logic" chiều ngang — chỉ là đơn vị nội bộ của viewBox, KHÔNG phải px thật (SVG tự co giãn đều theo khung chứa thật).
@@ -51,7 +58,7 @@ export function barChartSvg({ items, aspect = 2.1 }) {
   const labels = items.map((it) => `<div${it.id != null ? ` data-id="${it.id}"` : ''} style="flex:1;text-align:center;font-size:11px;color:var(--text-muted)${it.id != null ? ';cursor:pointer' : ''}">${it.shortLabel ?? it.label}</div>`).join('');
   return `
     <div>
-      <svg viewBox="0 0 ${VB_W} ${chartH}" style="width:100%;height:auto;display:block;overflow:visible">
+      <svg viewBox="0 0 ${VB_W} ${chartH}" style="width:100%;max-width:460px;height:auto;display:block;overflow:visible">
         <line x1="0" y1="${chartH - 0.5}" x2="${VB_W}" y2="${chartH - 0.5}" stroke="var(--border)" stroke-width="1"></line>
         ${barsHtml}
       </svg>
@@ -155,7 +162,7 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
   }).join('');
 
   const svgHtml = `
-    <svg viewBox="0 0 ${chartW} ${vbH}" style="${scroll ? `width:${chartW}px;flex-shrink:0` : 'width:100%'};height:auto;display:block;overflow:visible">
+    <svg viewBox="0 0 ${chartW} ${vbH}" style="${scroll ? `width:${chartW}px;flex-shrink:0` : 'width:100%;max-width:460px'};height:auto;display:block;overflow:visible">
       <line x1="0" y1="${(baseY - 0.5).toFixed(1)}" x2="${chartW}" y2="${(baseY - 0.5).toFixed(1)}" stroke="var(--border)" stroke-width="1"></line>
       ${bars}
     </svg>`;

@@ -1,8 +1,10 @@
 import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
+import { toast } from '../../components/toast.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
-import { formatVND, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
+import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { barChartSvg, monthlyComboChartSvg } from '../../components/charts.js';
 import { openContractView } from './customers.js';
 
@@ -141,6 +143,7 @@ export function render(contentEl) {
   bindMonthClicks(contentEl);
   bindMonthSelector(contentEl);
   contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
+  contentEl.querySelector('#btn-import-historical')?.addEventListener('click', openImportHistoricalModal);
 }
 
 /** Gắn click cho mỗi cột/nhãn "Dư nợ theo nhóm nợ" (data-id = số nhóm, CHỈ có ở tháng đang sống — xem nhomNoBarHtml()) — mở danh sách hợp đồng ĐÚNG nhóm đó theo phân loại HIỆN TẠI. Gọi lại mỗi lần #nhom-no-slot được vẽ lại (render() đầu VÀ mỗi lần selectMonth() đổi tháng). */
@@ -375,22 +378,30 @@ function openMonthlyDetailModal() {
  * Nút chọn tháng để xem lại lịch sử, đặt NGAY SAU "Dư nợ theo nhóm nợ" —
  * chọn 1 tháng bất kỳ (VD 07/2026) sẽ gọi selectMonth() y hệt như bấm vào
  * cột biểu đồ "Biến động hàng tháng". Danh sách xếp mới nhất trước cho dễ
- * tìm.
+ * tìm. Kèm nút "Nạp dữ liệu cũ" (CHỈ super, xem openImportHistoricalModal())
+ * — nạp file Excel của 1 tháng ĐÃ QUA để có số liệu xem lại lịch sử, TÁCH
+ * RIÊNG hẳn khỏi nút "Nhập dữ liệu từ Excel" ở trang Khách hàng (nút đó ghi
+ * đè danh sách hợp đồng ĐANG SỐNG — nút này chỉ tính tổng rồi lưu 1 dòng
+ * lịch sử, không đụng gì tới hợp đồng thật).
  */
-function monthSelectorHtml(months, selectedYm) {
+function monthSelectorHtml(months, selectedYm, isSuper) {
   const options = months
     .slice()
     .reverse()
     .map((m) => `<option value="${m.yearMonth}" ${m.yearMonth === selectedYm ? 'selected' : ''}>${monthLabelWithNote(m)}</option>`)
     .join('');
   return `
-    <div class="flex items-center mt-12" style="gap:8px">
-      <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Xem lại tháng</label>
-      <select id="month-select" class="pill-select" style="max-width:220px">${options}</select>
+    <div class="flex items-center justify-between mt-12" style="gap:8px;flex-wrap:wrap">
+      <div class="flex items-center" style="gap:8px">
+        <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Xem lại tháng</label>
+        <select id="month-select" class="pill-select" style="max-width:220px">${options}</select>
+      </div>
+      ${isSuper ? `<a href="javascript:void(0)" id="btn-import-historical" class="link-more" style="font-size:11.5px">Nạp dữ liệu cũ</a>` : ''}
     </div>`;
 }
 
 function debtDashboardHtml() {
+  const { isSuper } = currentRoles();
   const contracts = visibleContracts();
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const initial = months[months.length - 1];
@@ -401,7 +412,7 @@ function debtDashboardHtml() {
       <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
       <div id="nhom-no-slot">${nhomNoBarHtml(initial)}</div>
       <div id="provision-slot" class="mt-16">${provisionRowsHtml(provision)}</div>
-      <div id="month-selector-slot">${monthSelectorHtml(months, initial.yearMonth)}</div>
+      <div id="month-selector-slot">${monthSelectorHtml(months, initial.yearMonth, isSuper)}</div>
 
       <h3 style="font-size:13.5px;margin-bottom:10px" class="mt-24">Biến động hàng tháng</h3>
       <div id="trend-chart-slot">${monthlyComboChartSvg({ months, selectedYm: initial.yearMonth })}</div>
@@ -429,6 +440,102 @@ function bindMonthSelector(root) {
   const sel = root.querySelector('#month-select');
   if (!sel) return;
   sel.addEventListener('change', () => selectMonth(root, sel.value));
+}
+
+/** Dò dòng "Đến ngày DD/MM/YYYY" (mẫu "Sao kê hợp đồng tín dụng" luôn ghi ở vài dòng đầu file, TRƯỚC dòng tiêu đề cột "STT") trong dữ liệu THÔ đọc từ Excel (chưa qua remapReportTemplateRows — hàm đó đã bỏ các dòng này) — đây là ngày quyết định số liệu vừa nạp thuộc về THÁNG NÀO. null nếu không tìm thấy. */
+function extractReportAsOfDate(rawRows) {
+  for (const row of rawRows.slice(0, 10)) {
+    for (const cell of row || []) {
+      const m = String(cell ?? '').match(/đến ngày\s+(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})/i);
+      if (m) return S.parseVNDate(m[1]);
+    }
+  }
+  return null;
+}
+
+/**
+ * "Nạp dữ liệu cũ" (mục 10.51 docs) — TÁCH RIÊNG hẳn nút "Nhập dữ liệu từ
+ * Excel" ở trang Khách hàng (nút đó ghi đè danh sách hợp đồng ĐANG SỐNG).
+ * Dùng ĐÚNG mẫu "Sao kê hợp đồng tín dụng" (có dòng "Đến ngày DD/MM/YYYY" ở
+ * đầu file) — đọc + tính tổng NGAY TRONG TRÌNH DUYỆT (KHÔNG đụng gì tới bảng
+ * hợp đồng thật), hiện bản xem trước để xác nhận, rồi mới lưu 1 dòng lịch sử
+ * cho đúng tháng của ngày "Đến ngày" đó (xem S.previewHistoricalSnapshot()/
+ * S.saveHistoricalSnapshot() trong state.js).
+ */
+function openImportHistoricalModal() {
+  let preview = null; // { yearMonth, snapshotDate, contractsCount, summary, parseErrors, willOverwrite }
+  openModal({
+    title: 'Nạp dữ liệu cũ',
+    bodyHtml: `
+      <p class="text-sm text-muted mb-8">
+        Dùng đúng mẫu <b>"Sao kê hợp đồng tín dụng"</b> (file có dòng "Đến ngày DD/MM/YYYY" ở đầu) — hệ
+        thống tự đọc ngày này để biết số liệu thuộc tháng nào. <b>Chỉ tính tổng để xem lại lịch sử</b>,
+        KHÔNG đụng gì tới danh sách hợp đồng đang dùng hiện tại.
+      </p>
+      <div class="field">
+        <input type="file" id="hist-file-input" accept=".xls,.xlsx"/>
+      </div>
+      <button class="btn btn-primary btn-block mt-8" id="btn-hist-upload" disabled>Đọc file</button>
+      <div id="hist-preview"></div>
+    `,
+    onMount(sheet, closeFn) {
+      const fileInput = sheet.querySelector('#hist-file-input');
+      const uploadBtn = sheet.querySelector('#btn-hist-upload');
+      const previewEl = sheet.querySelector('#hist-preview');
+      fileInput.addEventListener('change', () => { uploadBtn.disabled = !fileInput.files[0]; });
+
+      const uploadIdleHtml = uploadBtn.innerHTML;
+      uploadBtn.addEventListener('click', async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = 'Đang đọc file...';
+        preview = null;
+        previewEl.innerHTML = '';
+        try {
+          const rawRows = await readExcelFirstSheet(file);
+          const asOfDate = extractReportAsOfDate(rawRows);
+          const tsv = rowsToTsv(remapReportTemplateRows(rawRows));
+          preview = S.previewHistoricalSnapshot(tsv, asOfDate);
+        } catch (err) {
+          toast(err.message || 'Không đọc được file', 'error');
+          uploadBtn.innerHTML = uploadIdleHtml;
+          uploadBtn.disabled = !fileInput.files[0];
+          return;
+        }
+        uploadBtn.innerHTML = uploadIdleHtml;
+        uploadBtn.disabled = !fileInput.files[0];
+        const g = preview.summary.groupBalances;
+        previewEl.innerHTML = `
+          <div class="card card-pad mt-16" style="background:var(--surface-alt)">
+            <div class="text-sm fw-700 mb-8">Xem trước — tháng ${monthLabel(preview.yearMonth)} (đến ngày ${formatDate(preview.snapshotDate)})</div>
+            ${preview.willOverwrite ? `<div class="text-sm mb-8" style="color:var(--warning)">Tháng này đã có sẵn số liệu — lưu sẽ GHI ĐÈ.</div>` : ''}
+            <div class="text-sm mb-4">${preview.contractsCount} hợp đồng · Dư nợ <b>${formatVND(preview.summary.totalBalance)}</b></div>
+            <div class="text-sm mb-4">Nợ xấu <b style="color:var(--danger)">${formatVND(preview.summary.badDebtBalance)}</b> (${formatPercent(preview.summary.badDebtRatio)}) · Lãi phải thu <b style="color:var(--purple)">${formatVND(preview.summary.interestReceivable)}</b></div>
+            <div class="text-sm text-muted mb-8">Nhóm 1: ${formatVND(g[1])} · Nhóm 2: ${formatVND(g[2])} · Nhóm 3: ${formatVND(g[3])} · Nhóm 4: ${formatVND(g[4])} · Nhóm 5: ${formatVND(g[5])}</div>
+            ${preview.parseErrors.length ? `<div class="text-sm text-danger mb-8">${preview.parseErrors.slice(0, 5).join('<br/>')}</div>` : ''}
+            <button class="btn btn-primary btn-block" id="btn-hist-confirm">Xác nhận lưu</button>
+          </div>
+        `;
+        previewEl.querySelector('#btn-hist-confirm').addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          btn.textContent = 'Đang lưu...';
+          try {
+            const res = await S.saveHistoricalSnapshot(preview);
+            if (!res.ok) throw new Error(res.reason || 'Có lỗi xảy ra');
+            toast('Đã lưu dữ liệu cũ', 'success');
+            closeFn();
+            render(document.getElementById('app-content'));
+          } catch (err) {
+            toast(err.message || 'Có lỗi xảy ra', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Xác nhận lưu';
+          }
+        });
+      });
+    },
+  });
 }
 /** Chuyển "Dư nợ theo nhóm nợ" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn). Không đụng tới Dự phòng (luôn tính sống, xem provisionRowsHtml()). */
 function selectMonth(root, ym) {

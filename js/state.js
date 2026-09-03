@@ -1275,6 +1275,66 @@ const HEADER_HINTS = ['cccd', 'cmnd', 'người nhận nợ', 'nguoi nhan no', '
  * fullSync với kiểu dán tay (chỉ thêm/cập nhật, không xóa/dọn gì).
  */
 /**
+ * Tách 1 dòng TSV/CSV (đúng thứ tự cột mẫu sổ theo dõi vay, xem ghi chú đầu
+ * mục "Nhập dữ liệu từ bảng" ở trên) thành 1 object hợp đồng thô — DÙNG
+ * CHUNG cho cả `importFromPastedTable()` (nhập thật, ghi vào contracts) LẪN
+ * `previewHistoricalSnapshot()` (nạp dữ liệu CŨ, chỉ tính tổng — không đụng
+ * contracts, xem mục 10.51 docs) — tách riêng ra đây để 2 nơi LUÔN parse
+ * giống hệt nhau, không lệch nhau theo thời gian nếu sửa 1 chỗ mà quên chỗ
+ * kia. Trả về `null` nếu dòng này không phải 1 hợp đồng thật (thiếu cột,
+ * dòng tiêu đề, CCCD không hợp lệ) — kèm lý do trong `error` để nơi gọi tự
+ * quyết định báo lỗi hay bỏ qua lặng lẽ tuỳ ngữ cảnh.
+ */
+function parseImportLine(line) {
+  const cells = line.includes('\t') ? line.split('\t') : line.split(',');
+  if (cells.length < 2) return { error: 'skip' };
+  const headerCheck = cells.slice(0, 2).join(' ').toLowerCase();
+  if (HEADER_HINTS.some((h) => headerCheck.includes(h))) return { error: 'header' }; // bỏ qua dòng tiêu đề
+
+  // 2 cột cuối (agreementCode, installmentScheduleRaw) CHỈ có khi đọc từ
+  // "mẫu báo cáo" mới (xem remapReportTemplateRows() trong js/lib/xlsxLite.js)
+  // — dán tay/mẫu phẳng cũ không có 2 cột này, tự ra undefined, không ảnh
+  // hưởng gì (2 trường tương ứng dưới đây tự thành null).
+  const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate, agreementCode, installmentScheduleRaw] = cells.map((c) => c.trim());
+  const cccd = (cccdRaw || '').replace(/\s/g, '');
+  if (!cccd || !/^\d{9,12}$/.test(cccd)) return { error: `Bỏ qua dòng (CCCD không hợp lệ): ${line.slice(0, 40)}...` };
+
+  // Phân kỳ trả nợ theo từng năm (nếu file có cột "Phân kỳ năm..."), ĐÓNG
+  // GÓI qua 1 cột chuỗi JSON — chỉ giữ lại năm có SỐ TIỀN THẬT > 0 (năm
+  // ghi 0/rỗng không phải 1 kỳ trả nợ thật). Quyết định "có phân kỳ trả nợ
+  // hẳn hoi hay không" (từ 2 năm có số liệu trở lên) để dành cho chỗ TÍNH
+  // TOÁN hiển thị (xem computeInstallmentPlan()), ở đây chỉ ghi nhận đúng
+  // dữ liệu thô đã có, không tự quyết định trước.
+  let installmentSchedule = null;
+  if (installmentScheduleRaw) {
+    try {
+      const raw = JSON.parse(installmentScheduleRaw);
+      const parsed = {};
+      for (const [year, amtRaw] of Object.entries(raw)) {
+        const amt = parseVNNumber(amtRaw);
+        if (amt > 0) parsed[year] = amt;
+      }
+      if (Object.keys(parsed).length) installmentSchedule = parsed;
+    } catch (e) { /* dữ liệu phân kỳ lỗi/đọc không được — bỏ qua, không chặn nhập cả dòng vì lỗi ở đúng phần không bắt buộc này */ }
+  }
+
+  const disbursed = parseVNDate(disbursedDate) || new Date().toISOString().slice(0, 10);
+  return {
+    row: {
+      cccd, name, address, phone, code: code || null,
+      agreementCode: agreementCode || null,
+      installmentSchedule,
+      principal: principal ? parseVNNumber(principal) : null,
+      disbursedDate: disbursed,
+      dueDate: dueDate ? parseVNDate(dueDate) : null,
+      interestRate: interestRate ? parseVNNumber(interestRate) : null,
+      balance: parseVNNumber(balance),
+      interestPaidUntil: parseVNDate(interestPaidUntil) || null,
+    },
+  };
+}
+
+/**
  * Nhập dữ liệu từ Excel/dán tay — ĐÃ CHUYỂN SANG SUPABASE THẬT. Trình duyệt
  * chỉ còn lo tách cột + parse ngày/số (KHÔNG nhạy cảm, giữ nguyên logic cũ ở
  * đây) — việc GHI vào database (đặc biệt tự tạo tài khoản cho khách hoàn
@@ -1288,50 +1348,11 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
   let skipped = 0;
   const parseErrors = [];
   for (const line of lines) {
-    const cells = line.includes('\t') ? line.split('\t') : line.split(',');
-    if (cells.length < 2) { skipped++; continue; }
-    const headerCheck = cells.slice(0, 2).join(' ').toLowerCase();
-    if (HEADER_HINTS.some((h) => headerCheck.includes(h))) continue; // bỏ qua dòng tiêu đề
-
-    // 2 cột cuối (agreementCode, installmentScheduleRaw) CHỈ có khi đọc từ
-    // "mẫu báo cáo" mới (xem remapReportTemplateRows() trong js/lib/xlsxLite.js)
-    // — dán tay/mẫu phẳng cũ không có 2 cột này, tự ra undefined, không ảnh
-    // hưởng gì (2 trường tương ứng dưới đây tự thành null).
-    const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate, agreementCode, installmentScheduleRaw] = cells.map((c) => c.trim());
-    const cccd = (cccdRaw || '').replace(/\s/g, '');
-    if (!cccd || !/^\d{9,12}$/.test(cccd)) { parseErrors.push(`Bỏ qua dòng (CCCD không hợp lệ): ${line.slice(0, 40)}...`); continue; }
-
-    // Phân kỳ trả nợ theo từng năm (nếu file có cột "Phân kỳ năm..."), ĐÓNG
-    // GÓI qua 1 cột chuỗi JSON — chỉ giữ lại năm có SỐ TIỀN THẬT > 0 (năm
-    // ghi 0/rỗng không phải 1 kỳ trả nợ thật). Quyết định "có phân kỳ trả nợ
-    // hẳn hoi hay không" (từ 2 năm có số liệu trở lên) để dành cho chỗ TÍNH
-    // TOÁN hiển thị (xem computeInstallmentPlan()), ở đây chỉ ghi nhận đúng
-    // dữ liệu thô đã có, không tự quyết định trước.
-    let installmentSchedule = null;
-    if (installmentScheduleRaw) {
-      try {
-        const raw = JSON.parse(installmentScheduleRaw);
-        const parsed = {};
-        for (const [year, amtRaw] of Object.entries(raw)) {
-          const amt = parseVNNumber(amtRaw);
-          if (amt > 0) parsed[year] = amt;
-        }
-        if (Object.keys(parsed).length) installmentSchedule = parsed;
-      } catch (e) { /* dữ liệu phân kỳ lỗi/đọc không được — bỏ qua, không chặn nhập cả dòng vì lỗi ở đúng phần không bắt buộc này */ }
-    }
-
-    const disbursed = parseVNDate(disbursedDate) || new Date().toISOString().slice(0, 10);
-    rows.push({
-      cccd, name, address, phone, code: code || null,
-      agreementCode: agreementCode || null,
-      installmentSchedule,
-      principal: principal ? parseVNNumber(principal) : null,
-      disbursedDate: disbursed,
-      dueDate: dueDate ? parseVNDate(dueDate) : null,
-      interestRate: interestRate ? parseVNNumber(interestRate) : null,
-      balance: parseVNNumber(balance),
-      interestPaidUntil: parseVNDate(interestPaidUntil) || null,
-    });
+    const { row, error } = parseImportLine(line);
+    if (error === 'skip') { skipped++; continue; }
+    if (error === 'header') continue;
+    if (error) { parseErrors.push(error); continue; }
+    rows.push(row);
   }
 
   const session = getSession();
@@ -1357,6 +1378,64 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
     skipped: skipped + (res.skipped || 0), errors: [...parseErrors, ...(res.errors || [])],
     newAccounts: res.newAccounts || [],
   };
+}
+
+/**
+ * "Nạp dữ liệu cũ" (mục 10.51 docs) — dùng ĐÚNG mẫu Excel "Sao kê hợp đồng
+ * tín dụng" như nhập hợp đồng bình thường, nhưng nạp 1 file "TẠI 1 THỜI
+ * ĐIỂM ĐÃ QUA" (VD "Đến ngày 31/12/2025") để LƯU LẠI LỊCH SỬ dashboard Tổng
+ * quan cho tháng đó — hoàn toàn TÁCH RIÊNG khỏi bảng `contracts` đang sống
+ * (KHÔNG thêm/sửa/xóa 1 hợp đồng thật nào) — chỉ tính TỔNG (dư nợ theo
+ * nhóm/nợ xấu/lãi phải thu) rồi lưu 1 dòng vào `monthly_snapshots`, y hệt
+ * cách tính của debtGroupSummary() (CÙNG 1 hàm, không viết lại — số ra chắc
+ * chắn khớp với cách app tính lúc chốt sống).
+ *
+ * Bước 1 (hàm này) — CHỈ tính, KHÔNG gọi mạng — cho phép giao diện hiện bản
+ * xem trước (tổng dư nợ/số hợp đồng/từng nhóm/nợ xấu/lãi phải thu) để người
+ * dùng xác nhận đúng trước khi thật sự lưu (xem saveHistoricalSnapshot() bên
+ * dưới) — nạp NHẦM file/nhầm ngày sẽ ghi đè mất số liệu thật của đúng tháng
+ * đó nên bắt buộc phải xem trước.
+ */
+export function previewHistoricalSnapshot(tsvText, asOfDate) {
+  if (!asOfDate) throw new Error('Không tìm thấy dòng "Đến ngày ..." trong file — không xác định được đây là số liệu của tháng nào.');
+  const lines = tsvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const contracts = [];
+  const parseErrors = [];
+  for (const line of lines) {
+    const { row, error } = parseImportLine(line);
+    if (error === 'skip' || error === 'header') continue;
+    if (error) { parseErrors.push(error); continue; }
+    contracts.push(row);
+  }
+  if (!contracts.length) throw new Error('Không đọc được hợp đồng nào từ file — kiểm tra lại đúng mẫu chưa.');
+  const asOf = new Date(asOfDate);
+  const summary = debtGroupSummary(contracts, asOf);
+  const yearMonth = asOfDate.slice(0, 7);
+  const existing = (state.monthlySnapshots || []).find((s) => s.yearMonth === yearMonth);
+  return { yearMonth, snapshotDate: asOfDate, contractsCount: contracts.length, summary, parseErrors, willOverwrite: !!existing };
+}
+
+/**
+ * Bước 2 — lưu THẬT sau khi người dùng đã xem trước & xác nhận (xem
+ * previewHistoricalSnapshot() ở trên). Gọi qua Edge Function create-account
+ * (type 'import-historical-snapshot', CHỈ super admin gọi được, server tự
+ * kiểm tra lại quyền + tự kiểm tra lại số liệu hợp lệ) — upsert theo
+ * year_month, tải lên lại tháng đã có sẵn sẽ GHI ĐÈ (đúng để sửa nhầm lẫn
+ * nếu có), không tạo trùng dòng.
+ */
+export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary }) {
+  const session = state.session;
+  const res = await callCreateAccountFunction(session?.sbToken, {
+    type: 'import-historical-snapshot',
+    yearMonth, snapshotDate,
+    totalBalance: summary.totalBalance,
+    interestReceivable: summary.interestReceivable,
+    groupBalances: summary.groupBalances,
+    badDebtBalance: summary.badDebtBalance,
+    badDebtRatio: summary.badDebtRatio,
+  });
+  if (res.ok) { await loadAdminSessionData(session.sbToken); notify(); }
+  return res;
 }
 
 // ------------------------------------------------------------
