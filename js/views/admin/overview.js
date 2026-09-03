@@ -546,7 +546,8 @@ function openImportHistoricalModal() {
             <div class="text-sm mb-4">${preview.contractsCount} hợp đồng · Dư nợ <b>${formatVND(preview.summary.totalBalance)}</b></div>
             <div class="text-sm mb-4">Nợ xấu <b style="color:var(--danger)">${formatVND(preview.summary.badDebtBalance)}</b> (${formatPercent(preview.summary.badDebtRatio)}) · Lãi phải thu <b style="color:var(--purple)">${formatVND(preview.summary.interestReceivable)}</b></div>
             <div class="text-sm text-muted mb-4">Nhóm 1: ${formatVND(g[1])} · Nhóm 2: ${formatVND(g[2])} · Nhóm 3: ${formatVND(g[3])} · Nhóm 4: ${formatVND(g[4])} · Nhóm 5: ${formatVND(g[5])}</div>
-            <div class="text-sm text-muted mb-8">Mẫu này không có cột TSBĐ nên chưa tính được Dự phòng cho tháng này.</div>
+            <div class="text-sm mb-4">Dự phòng chung <b>${formatVND(preview.generalProvision)}</b> · Dự phòng cụ thể <b>${formatVND(preview.specificProvision)}</b></div>
+            <div class="text-sm text-muted mb-8">Mẫu này không có cột TSBĐ — Dự phòng tính coi như CHƯA khách nào có TSBĐ (giả định an toàn: trích đủ, không trích thiếu).</div>
             ${preview.parseErrors.length ? `<div class="text-sm text-danger mb-8">${preview.parseErrors.slice(0, 5).join('<br/>')}</div>` : ''}
             <button class="btn btn-primary btn-block" id="btn-hist-confirm">Xác nhận lưu</button>
           </div>

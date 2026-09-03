@@ -2748,6 +2748,24 @@ alter table monthly_snapshots add column if not exists contracts_detail jsonb;
 
 ---
 
+### 10.54. "Nạp dữ liệu cũ" giờ tính kèm Dự phòng, xem lại được lịch sử (BẮT BUỘC deploy lại `create-account`, KHÔNG cần chạy SQL)
+
+**Trước đây**: "Nạp dữ liệu cũ" chỉ tính Dư nợ/Nợ xấu/Lãi phải thu — bỏ trống Dự phòng chung/cụ thể (mẫu
+Excel "Sao kê hợp đồng tín dụng" không có cột TSBĐ, tưởng không tính được).
+
+**Giờ**: Dự phòng CHUNG không cần TSBĐ (chỉ cần dư nợ + nhóm nợ) nên luôn tính được. Dự phòng CỤ THỂ cần
+TSBĐ để khấu trừ — mẫu này không có, nên tính coi như **CHƯA khách nào có TSBĐ** (giả định AN TOÀN: trích
+ĐỦ, không trích THIẾU — nếu thực tế có TSBĐ thì số trích lập đúng ra sẽ THẤP hơn số này). Bản xem trước
+lúc nạp file ghi rõ giả định này. Từ nay các tháng nạp qua "Nạp dữ liệu cũ" đều xem lại được đầy đủ 2
+dòng Dự phòng như tháng đang sống, không còn "— chưa có dữ liệu" nữa.
+
+**Việc cần bạn làm**: deploy lại Edge Function `create-account` — Supabase Dashboard → Edge Functions →
+`create-account` → dán đè toàn bộ nội dung file `supabase/functions/create-account/index.ts` mới nhất
+trong repo này → Deploy. KHÔNG cần chạy SQL (đã có đủ cột từ mục 10.52). Các tháng đã nạp trước đó (chưa
+có Dự phòng) tải file lên lại là được — ghi đè lại đúng dòng đó, tính kèm luôn Dự phòng.
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase

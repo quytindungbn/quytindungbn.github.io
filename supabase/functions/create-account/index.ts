@@ -1289,6 +1289,13 @@ Deno.serve(async (req) => {
     if (![totalBalance, interestReceivable, badDebtBalance, badDebtRatio].every((n) => Number.isFinite(n) && n >= 0)) {
       return json({ ok: false, reason: 'Số liệu không hợp lệ.' }, 400);
     }
+    // Dự phòng chung/cụ thể (mục 10.54 docs) — trình duyệt đã tự tính (coi
+    // như CHƯA có TSBĐ vì mẫu Excel này không có cột đó — giả định AN TOÀN,
+    // trích ĐỦ không trích THIẾU) — CHO PHÉP thiếu/không hợp lệ (undefined
+    // với các lượt nạp từ bản cũ hơn chưa gửi field này) thì để NULL, KHÁC
+    // 0 (0 nghĩa là ĐÃ tính ra đúng 0), xem mục 10.52.
+    const generalProvision = Number.isFinite(Number(body.generalProvision)) && Number(body.generalProvision) >= 0 ? Number(body.generalProvision) : null;
+    const specificProvision = Number.isFinite(Number(body.specificProvision)) && Number(body.specificProvision) >= 0 ? Number(body.specificProvision) : null;
     // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — Y HỆT
     // captureMonthlySnapshot() trong send-due-reminders/index.ts, nhưng
     // trình duyệt tự tính từ file Excel (không có nguồn nào khác để đối
@@ -1302,6 +1309,8 @@ Deno.serve(async (req) => {
       group_balances: groupBalances,
       bad_debt_balance: badDebtBalance,
       bad_debt_ratio: badDebtRatio,
+      general_provision: generalProvision,
+      specific_provision: specificProvision,
       contracts_detail: contractsDetail,
     }, { onConflict: 'year_month' });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);

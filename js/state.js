@@ -1414,8 +1414,11 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
   const existing = (state.monthlySnapshots || []).find((s) => s.yearMonth === yearMonth);
   // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — để xem lại lịch
   // sử vẫn tra được đúng danh sách của đúng tháng đã nạp, không chỉ tổng.
-  // File mẫu này KHÔNG có cột TSBĐ nên hasCollateral/collateralValue để
-  // false/0 (không phải "biết chắc không có", chỉ là "không có dữ liệu").
+  // File mẫu này KHÔNG có cột TSBĐ — coi như CHƯA có TSBĐ (hasCollateral=
+  // false), là giả định AN TOÀN cho Dự phòng (không có TSBĐ để khấu trừ ->
+  // trích ĐỦ, không trích THIẾU) — KHÁC "không có dữ liệu" (null): đây là
+  // 1 con số TRÍCH LẬP thật, chỉ là giả định thận trọng khi chưa rõ TSBĐ,
+  // không phải chưa tính được.
   const contractsDetail = [];
   for (const ct of contracts) {
     const g = debtGroup(ct, asOf);
@@ -1426,7 +1429,15 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
       hasCollateral: false, collateralValue: 0,
     });
   }
-  return { yearMonth, snapshotDate: asOfDate, contractsCount: contracts.length, summary, contractsDetail, parseErrors, willOverwrite: !!existing };
+  // Dự phòng chung/cụ thể (mục 10.52/10.54 docs) — provisionSummary() không
+  // cần dữ liệu nào khác ngoài balance/nhóm nợ/TSBĐ đã có sẵn trong
+  // `contracts` ở trên (TSBĐ mặc định false/0 như giải thích trên) nên tính
+  // được luôn, không cần để trống như trước.
+  const provision = provisionSummary(contracts, asOf);
+  return {
+    yearMonth, snapshotDate: asOfDate, contractsCount: contracts.length, summary, contractsDetail, parseErrors, willOverwrite: !!existing,
+    generalProvision: provision.generalProvision, specificProvision: provision.specificProvision,
+  };
 }
 
 /**
@@ -1437,7 +1448,7 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
  * year_month, tải lên lại tháng đã có sẵn sẽ GHI ĐÈ (đúng để sửa nhầm lẫn
  * nếu có), không tạo trùng dòng.
  */
-export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary, contractsDetail }) {
+export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary, contractsDetail, generalProvision, specificProvision }) {
   const session = state.session;
   const res = await callCreateAccountFunction(session?.sbToken, {
     type: 'import-historical-snapshot',
@@ -1448,6 +1459,7 @@ export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary,
     badDebtBalance: summary.badDebtBalance,
     badDebtRatio: summary.badDebtRatio,
     contractsDetail: contractsDetail || [],
+    generalProvision, specificProvision,
   });
   if (res.ok) { await loadAdminSessionData(session.sbToken); notify(); }
   return res;
