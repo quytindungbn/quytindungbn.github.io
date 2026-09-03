@@ -2587,11 +2587,11 @@ create policy "any admin sees monthly snapshots" on monthly_snapshots
 biểu đồ đã ghi rõ từng tháng rồi) — giờ **bấm THẲNG vào 1 cặp cột tháng** ở biểu đồ "Biến động hàng
 tháng" để chọn xem tháng đó (tô khung mờ + đậm nhãn tháng đang chọn, biểu đồ vẫn luôn vẽ TOÀN BỘ lịch
 sử, không thu gọn lại) — chọn xong thì **CẢ "Dư nợ theo nhóm nợ" LẪN "Tổng hợp tăng giảm" đều chuyển
-sang đúng tháng đó cùng lúc**, xem trực quan lịch sử dễ nhất. "Dư nợ theo nhóm nợ" của tháng ĐÃ CHỐT
-trong quá khứ không bấm vào cột được nữa (không mở ra danh sách hợp đồng) — quỹ chỉ lưu TỔNG theo nhóm
-lúc chốt, không lưu chi tiết từng hợp đồng nên không tra lại được; chỉ tháng ĐANG SỐNG (hiện tại) mới
-bấm vào cột ra danh sách như cũ. "Dự phòng chung/cụ thể phải trích" LUÔN tính SỐNG theo TSBĐ hiện tại,
-KHÔNG đổi theo tháng đang xem (không có cách nào biết TSBĐ "tại thời điểm 1 tháng trong quá khứ").
+sang đúng tháng đó cùng lúc**, xem trực quan lịch sử dễ nhất. *(Cập nhật sau: "Dư nợ theo nhóm nợ" của
+tháng ĐÃ CHỐT trong quá khứ ban đầu KHÔNG bấm vào cột được — nay đã đổi lại, bấm được ở MỌI tháng, chỉ tự
+ghi chú rõ đó là danh sách HIỆN TẠI (quỹ không lưu chi tiết từng hợp đồng của đúng tháng đã qua); "Dự
+phòng chung/cụ thể phải trích" cũng đã đổi từ "luôn tính sống" sang chốt theo từng tháng — xem đầy đủ ở
+mục 10.52.)*
 
 **LƯU Ý về tháng ĐANG SỐNG (hiện tại, chưa chốt)**: số liệu tháng này tính trực tiếp từ dữ liệu hợp đồng
 hiện có — nhân viên (staff) chỉ thấy đúng phạm vi Thôn/Xóm được gán do RLS bảng `contracts` chặn ở tầng

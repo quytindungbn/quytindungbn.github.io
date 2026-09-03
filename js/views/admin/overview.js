@@ -146,23 +146,36 @@ export function render(contentEl) {
   contentEl.querySelector('#btn-import-historical')?.addEventListener('click', openImportHistoricalModal);
 }
 
-/** Gắn click cho mỗi cột/nhãn "Dư nợ theo nhóm nợ" (data-id = số nhóm, CHỈ có ở tháng đang sống — xem nhomNoBarHtml()) — mở danh sách hợp đồng ĐÚNG nhóm đó theo phân loại HIỆN TẠI. Gọi lại mỗi lần #nhom-no-slot được vẽ lại (render() đầu VÀ mỗi lần selectMonth() đổi tháng). */
+/**
+ * Gắn click cho mỗi cột/nhãn "Dư nợ theo nhóm nợ" (data-id = số nhóm, xem
+ * nhomNoBarHtml()) — mở danh sách hợp đồng ĐÚNG nhóm đó theo phân loại
+ * HIỆN TẠI (LUÔN tính từ dữ liệu hợp đồng sống, KỂ CẢ khi đang xem lại 1
+ * tháng đã chốt trong quá khứ — quỹ chỉ lưu TỔNG theo nhóm lúc chốt, không
+ * lưu chi tiết từng hợp đồng nên không tra đúng danh sách CỦA đúng tháng đó
+ * được; openDebtGroupModal() tự ghi rõ đây là dữ liệu hiện tại khi mở từ 1
+ * tháng không phải tháng sống, tránh hiểu nhầm là khớp đúng số liệu tháng
+ * đó). Đọc tháng đang xem qua `data-ym` trên #nhom-no-slot (do
+ * debtDashboardHtml()/selectMonth() tự ghi) — gọi lại mỗi lần #nhom-no-slot
+ * được vẽ lại (render() đầu VÀ mỗi lần selectMonth() đổi tháng).
+ */
 function bindNhomNoClicks(root) {
   const slot = root.querySelector('#nhom-no-slot');
   if (!slot) return;
   const { isStaff, isSuper } = currentRoles();
+  const { months } = buildDebtDashboardData();
+  const m = months.find((x) => x.yearMonth === slot.dataset.ym) || months[months.length - 1];
   slot.querySelectorAll('[data-id]').forEach((el) => {
-    el.addEventListener('click', () => openDebtGroupModal(Number(el.dataset.id), isStaff, isSuper));
+    el.addEventListener('click', () => openDebtGroupModal(Number(el.dataset.id), isStaff, isSuper, m));
   });
 }
 
 const GROUP_COLORS = { 1: 'var(--success)', 2: 'var(--warning)', 3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d' };
 
-/** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m — có thể là tháng đang sống hoặc tháng đã chốt trong quá khứ, xem selectMonth()). CHỈ gắn `id` (bấm ra danh sách hợp đồng) khi là THÁNG SỐNG — tháng đã chốt trong quá khứ không còn lưu chi tiết từng hợp đồng để tra lại được, chỉ có tổng theo nhóm. */
+/** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m — có thể là tháng đang sống hoặc tháng đã chốt trong quá khứ, xem selectMonth()) — mỗi cột bấm được để mở danh sách hợp đồng, xem bindNhomNoClicks(). */
 function nhomNoBarHtml(m) {
   const gb = m.groupBalances || {};
   const barItems = [1, 2, 3, 4, 5].map((g) => ({
-    ...(m.live ? { id: g } : {}),
+    id: g,
     label: `Nhóm ${g}`, shortLabel: String(g), value: gb[g] || 0, color: GROUP_COLORS[g],
   }));
   return barChartSvg({ items: barItems });
@@ -428,7 +441,7 @@ function debtDashboardHtml() {
   return `
     <div class="card card-pad mb-16">
       <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
-      <div id="nhom-no-slot">${nhomNoBarHtml(initial)}</div>
+      <div id="nhom-no-slot" data-ym="${initial.yearMonth}">${nhomNoBarHtml(initial)}</div>
       <div id="provision-slot" class="mt-16">${provisionRowsHtml(provision)}</div>
       <div id="month-selector-slot">${monthSelectorHtml(months, initial.yearMonth, isSuper)}</div>
 
@@ -561,7 +574,9 @@ function selectMonth(root, ym) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === ym);
   if (!m) return;
-  root.querySelector('#nhom-no-slot').innerHTML = nhomNoBarHtml(m);
+  const nhomNoSlot = root.querySelector('#nhom-no-slot');
+  nhomNoSlot.dataset.ym = m.yearMonth;
+  nhomNoSlot.innerHTML = nhomNoBarHtml(m);
   root.querySelector('#provision-slot').innerHTML = provisionRowsHtml(provisionForMonth(m));
   root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
   root.querySelector('#month-detail-label').textContent = monthLabelWithNote(m);
@@ -596,12 +611,16 @@ function deltaChip(p, { mode = null } = {}) {
 /**
  * Danh sách hợp đồng thuộc ĐÚNG 1 nhóm nợ (1-5, phân loại theo Thông tư
  * 02/2013 — xem S.debtGroup()) — mở khi bấm vào cột/nhãn tương ứng ở biểu đồ
- * "Dư nợ theo nhóm nợ" (CHỈ bấm được ở tháng đang sống — xem nhomNoBarHtml()).
- * Luôn tính theo phân loại HIỆN TẠI (thời điểm bấm), dùng ĐÚNG phạm vi được
- * phép xem của phiên đang đăng nhập (visibleContracts() — super = toàn quỹ,
- * staff = trong Thôn/Xóm được gán).
+ * "Dư nợ theo nhóm nợ", bấm được ở MỌI tháng (kể cả tháng đã chốt trong quá
+ * khứ, xem nhomNoBarHtml()/bindNhomNoClicks()). Luôn tính theo phân loại
+ * HIỆN TẠI (thời điểm bấm) — quỹ chỉ lưu TỔNG theo nhóm lúc chốt, không lưu
+ * chi tiết từng hợp đồng của đúng tháng đó — nên khi mở từ 1 tháng KHÔNG
+ * phải tháng sống (`m.live` false, `m` truyền vào từ bindNhomNoClicks()) tự
+ * ghi rõ đây là danh sách HIỆN TẠI, tránh hiểu nhầm khớp đúng số liệu tháng
+ * đang xem. Dùng ĐÚNG phạm vi được phép xem của phiên đang đăng nhập
+ * (visibleContracts() — super = toàn quỹ, staff = trong Thôn/Xóm được gán).
  */
-function openDebtGroupModal(g, isStaff, isSuper) {
+function openDebtGroupModal(g, isStaff, isSuper, m) {
   const now = new Date();
   const list = visibleContracts().filter((ct) => S.debtGroup(ct, now) === g);
   const total = list.reduce((s, ct) => s + (ct.balance || 0), 0);
@@ -612,6 +631,7 @@ function openDebtGroupModal(g, isStaff, isSuper) {
   openModal({
     title: `Nhóm ${g} (${list.length})`,
     bodyHtml: `
+      ${m && !m.live ? `<div class="text-sm mb-12" style="color:var(--warning)">Danh sách theo dữ liệu HIỆN TẠI — ${m.label} đã chốt trước đó chỉ lưu số tổng theo nhóm, không lưu chi tiết từng hợp đồng nên không tra đúng danh sách của riêng tháng đó được.</div>` : ''}
       <div class="text-sm text-muted mb-12">Tổng dư nợ: <b style="color:${color}">${formatVND(total)}</b></div>
       ${list.length ? list.map((ct) => {
         const cust = S.getCustomer(ct.customerId);
