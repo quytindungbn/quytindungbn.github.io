@@ -142,6 +142,7 @@ export function render(contentEl) {
   bindNhomNoClicks(contentEl);
   bindMonthClicks(contentEl);
   bindMonthSelector(contentEl);
+  scrollTrendChartToEnd(contentEl);
   contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
   contentEl.querySelector('#btn-import-historical')?.addEventListener('click', openImportHistoricalModal);
 }
@@ -569,6 +570,11 @@ function openImportHistoricalModal() {
     },
   });
 }
+/** Tự cuộn khối "Biến động hàng tháng" (nếu có cuộn ngang — quá 7 tháng, xem monthlyComboChartSvg()) về SÁT MÉP PHẢI ngay sau khi vẽ — LUÔN thấy đúng tháng MỚI NHẤT trước tiên, không phải kéo từ tháng đầu tiên bên trái mới tới được tháng mới nhất. Gọi lại mỗi lần #trend-chart-slot được vẽ lại (render() đầu VÀ selectMonth()). */
+function scrollTrendChartToEnd(root) {
+  const scrollEl = root.querySelector('#trend-chart-slot .trend-scroll');
+  if (scrollEl) scrollEl.scrollLeft = scrollEl.scrollWidth;
+}
 /** Chuyển "Dư nợ theo nhóm nợ" + "Dự phòng" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn). */
 function selectMonth(root, ym) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
@@ -581,6 +587,7 @@ function selectMonth(root, ym) {
   root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
   root.querySelector('#month-detail-label').textContent = monthLabelWithNote(m);
   root.querySelector('#trend-chart-slot').innerHTML = monthlyComboChartSvg({ months, selectedYm: ym });
+  scrollTrendChartToEnd(root);
   const sel = root.querySelector('#month-select');
   if (sel) sel.value = ym;
   bindNhomNoClicks(root);

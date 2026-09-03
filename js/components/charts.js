@@ -81,6 +81,9 @@ export function barChartSvg({ items, aspect = 2.1 }) {
  * lại chữ "tỷ" sau từng số). Quá 7 tháng thì bề rộng mỗi ô tháng GIỮ NGUYÊN
  * (không co thêm) và cả khối biểu đồ cho VUỐT/CUỘN NGANG để xem tiếp tháng cũ
  * hơn, tránh cột co lại nhỏ xíu khó xem khi lịch sử dài dần theo thời gian.
+ * Khối cuộn gắn class "trend-scroll" — nơi gọi (overview.js) tự cuộn SÁT MÉP
+ * PHẢI ngay sau khi vẽ, để LUÔN thấy đúng tháng MỚI NHẤT trước tiên (không
+ * phải kéo từ tháng đầu tiên bên trái mới tới được tháng mới nhất).
  * Số liệu tự động lấy từ dữ liệu hợp đồng/số đã chốt hiện có, luôn cập nhật
  * lại mỗi lần trang vẽ lại. Tháng hiện tại (chưa chốt chính thức, tự tính
  * theo ngày) tô nhạt hơn + nét đứt để phân biệt trực quan với các tháng đã
@@ -168,10 +171,10 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
     </svg>`;
 
   return `
-    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị trên biểu đồ: tỷ đồng${scroll ? ' — vuốt ngang để xem thêm tháng cũ hơn' : ''}</div>
+    <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">Đơn vị trên biểu đồ: tỷ đồng${scroll ? ' — vuốt sang trái để xem thêm tháng cũ hơn' : ''}</div>
     <div class="flex items-center" style="gap:14px;margin-bottom:6px;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${balanceColor};display:inline-block"></span>Dư nợ</span>
       <span class="flex items-center" style="gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${badDebtColor};display:inline-block"></span>Nợ xấu</span>
     </div>
-    ${scroll ? `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">${svgHtml}</div>` : svgHtml}`;
+    ${scroll ? `<div class="trend-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch">${svgHtml}</div>` : svgHtml}`;
 }
