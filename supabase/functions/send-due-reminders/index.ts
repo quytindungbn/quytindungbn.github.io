@@ -629,6 +629,17 @@ Deno.serve(async (req) => {
     if (provided !== CRON_SECRET) return new Response('Unauthorized', { status: 401 });
   }
 
+  // 2 "mục đích" gọi function này, PHÂN BIỆT qua query string `?purpose=...`
+  // (2 Cron Job riêng, xem mục 9.3 docs):
+  // - 'daily-reminders' (mặc định, không cần truyền) — lịch cũ, chạy 8h sáng
+  //   giờ VN mỗi ngày, quét + gửi nhắc lãi/gần-quá hạn như trước giờ.
+  // - 'monthly-close' — lịch RIÊNG chạy 00h (nửa đêm) giờ VN mỗi ngày, CHỈ để
+  //   tự chốt số liệu dashboard "Tổng quan" ĐÚNG lúc vừa sang ngày 01 đầu
+  //   tháng (đã trọn vẹn hết ngày cuối tháng trước, không lỡ giao dịch phát
+  //   sinh cuối ngày như khi chốt lúc 8h sáng) — KHÔNG gửi nhắc lãi/Zalo gì
+  //   cả trong lượt gọi này, xem đoạn "Tự chốt số liệu" phía cuối.
+  const purpose = new URL(req.url).searchParams.get('purpose') || 'daily-reminders';
+
   const now = new Date();
   const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0 };
 
@@ -653,7 +664,7 @@ Deno.serve(async (req) => {
   // Chỉ tốn 1 lần làm mới token/lượt chạy (không phải mỗi hợp đồng 1 lần) —
   // và CHỈ làm khi đã cấu hình ÍT NHẤT 1 trong 2 mẫu (mục Quản lý OA > Cấu
   // hình), tránh gọi API Zalo vô ích lúc chưa cấu hình gì.
-  const zaloAccessToken = (orgRow?.zalo_template_interest_id || orgRow?.zalo_template_due_id) ? await getZaloAccessToken() : null;
+  const zaloAccessToken = (purpose !== 'monthly-close' && (orgRow?.zalo_template_interest_id || orgRow?.zalo_template_due_id)) ? await getZaloAccessToken() : null;
 
   // Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi (loại trừ nhau, 1 hợp
   // đồng chỉ ở 1 trong 2): 'lai_hang_thang_auto' theo đúng lịch nhắc lãi
@@ -678,7 +689,9 @@ Deno.serve(async (req) => {
     await admin.from('notification_log').insert({ owner_id: customerId, contract_id: contractId, kind, sent_at: now.toISOString() });
   }
 
-  for (const ct of contracts || []) {
+  // Lượt gọi 'monthly-close' (00h giờ VN) KHÔNG gửi nhắc lãi/Zalo gì cả — chỉ
+  // dùng để chốt số liệu tháng ở đoạn cuối function này.
+  for (const ct of (purpose === 'monthly-close' ? [] : contracts || [])) {
     const status = effectiveStatus(ct, now);
     if (status === 'da_tat_toan') continue;
 
@@ -813,17 +826,22 @@ Deno.serve(async (req) => {
   }
 
   // Tự chốt số liệu dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu, mục
-  // 10.46 docs) ĐÚNG vào ngày cuối cùng mỗi tháng (mai sang tháng mới) —
-  // tận dụng luôn lịch chạy hàng ngày có sẵn, không cần Scheduled Trigger
-  // riêng. Admin cũng tự chốt NGAY được bất cứ lúc nào qua nút "Chốt số
-  // liệu tháng này" (create-account, type 'capture-monthly-snapshot') —
+  // 10.46 docs) — CHỈ chạy ở lượt gọi 'monthly-close' (Cron riêng 00h giờ VN
+  // mỗi ngày, xem mục 9.3 docs), tự nhận biết ĐÚNG lúc vừa sang ngày 01 đầu
+  // tháng (function chạy ở giờ UTC nên "tomorrow" ở đây vẫn đúng ngày VN vì
+  // Cron này canh giờ chạy NGAY LÚC giao giữa 2 ngày VN — xem chi tiết mục
+  // 9.3 docs) thì mới thật sự chốt, còn lại các lượt chạy khác trong tháng
+  // không làm gì. Admin cũng tự chốt NGAY được bất cứ lúc nào qua nút "Chốt
+  // số liệu tháng này" (create-account, type 'capture-monthly-snapshot') —
   // upsert theo year_month nên không sợ chốt trùng dù cả 2 đường đều chạy
   // trong cùng 1 tháng.
-  try {
-    const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
-    if (tomorrow.getDate() === 1) await captureMonthlySnapshot(admin, contracts || [], now);
-  } catch (e) {
-    console.error('Lỗi chốt số liệu tháng:', e);
+  if (purpose === 'monthly-close') {
+    try {
+      const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+      if (tomorrow.getDate() === 1) await captureMonthlySnapshot(admin, contracts || [], now);
+    } catch (e) {
+      console.error('Lỗi chốt số liệu tháng:', e);
+    }
   }
 
   // Chốt bù DUY NHẤT 1 LẦN cho tháng 08/2026 (mục 10.50 docs) — tháng đầu

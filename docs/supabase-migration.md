@@ -2766,6 +2766,52 @@ có Dự phòng) tải file lên lại là được — ghi đè lại đúng d�
 
 ---
 
+### 10.55. Tự chốt số liệu tháng đổi giờ sang 00h ngày 01 đầu tháng (BẮT BUỘC deploy lại `send-due-reminders` + chạy SQL thêm 1 Cron Job mới)
+
+**Trước đây**: tự chốt số liệu dashboard "Tổng quan" (mục 10.46) chạy chung với lượt cron nhắc lãi hàng
+ngày, tức là **8h sáng giờ VN ngày CUỐI CÙNG** của tháng. Nếu khách nộp tiền/tất toán/giải ngân sau 8h
+sáng hôm đó (còn cả 1 ngày nữa mới hết tháng), phần phát sinh đó bị lỡ mất, không có trong số liệu tháng
+đã chốt.
+
+**Giờ**: tách riêng việc chốt tháng ra khỏi lượt cron nhắc lãi (không đổi gì lượt 8h sáng — vẫn nhắc lãi
+như cũ). Thêm 1 Cron Job MỚI, chạy vào đúng **00h (nửa đêm) giờ Việt Nam mỗi ngày** — tức đúng lúc vừa
+"bước qua" ngày mới. Nội bộ code tự nhận biết đúng lúc nào vừa "bước qua ngày 01 đầu tháng" thì mới thật
+sự chốt (mọi lượt chạy khác trong tháng không làm gì) — nhờ vậy số liệu tháng chốt luôn trọn vẹn hết
+NGÀY CUỐI CÙNG của tháng đó (không bị lỡ giao dịch phát sinh buổi chiều/tối như trước).
+
+**Việc cần bạn làm** (2 bước):
+
+1. Deploy lại Edge Function `send-due-reminders` — Supabase Dashboard → Edge Functions →
+   `send-due-reminders` → dán đè toàn bộ nội dung file `supabase/functions/send-due-reminders/index.ts`
+   mới nhất trong repo này → Deploy.
+
+2. Chạy thêm SQL sau để tạo 1 Cron Job MỚI (Cron Job cũ `send-due-reminders-daily` ở mục 9.3 **giữ
+   nguyên, không cần sửa/xoá gì**) — mở SQL Editor:
+   https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
+
+```sql
+select cron.schedule(
+  'send-due-reminders-monthly-close',
+  '0 17 * * *', -- 17h UTC = 0h (nửa đêm) giờ Việt Nam mỗi ngày
+  $$
+  select net.http_post(
+    url := 'https://amwiyxhawueqlmnzkdls.supabase.co/functions/v1/send-due-reminders?purpose=monthly-close',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', '<CRON_SECRET_giống_hệt_secret_đã_đặt_ở_mục_9.3>'
+    )
+  );
+  $$
+);
+```
+
+Thay `<CRON_SECRET_...>` bằng đúng giá trị `CRON_SECRET` đã đặt ở Edge Functions → Secrets (mục 9.3,
+GIỐNG HỆT secret đang dùng cho Cron Job cũ). Chạy xong, mỗi đêm hệ thống sẽ tự kiểm tra — chỉ đúng đêm
+giao sang ngày 01 đầu tháng mới thật sự chốt số liệu tháng vừa qua, các đêm khác chạy xong không làm gì
+cả (vô hại).
+
+---
+
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
 `supabase/functions/`), gắn với project Supabase thật của bạn. Các mục "Việc cần bạn làm" rải rác ở
 trên là những bước KHÔNG tự động (SQL/secret/deploy Edge Function) bạn cần tự chạy trên Supabase
