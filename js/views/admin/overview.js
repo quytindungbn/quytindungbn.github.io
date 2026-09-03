@@ -167,14 +167,29 @@ function nhomNoBarHtml(m) {
   }));
   return barChartSvg({ items: barItems });
 }
-/** 2 dòng "Dự phòng chung/cụ thể phải trích" — chỉ chữ, không bỏ trong khung — LUÔN tính "SỐNG" (ngay bây giờ, không đổi theo tháng đang xem) vì cần đúng trạng thái TSBĐ hiện tại của từng hợp đồng, không có cách nào biết TSBĐ "tại thời điểm 1 tháng trong quá khứ". */
+/**
+ * Dự phòng phải trích của ĐÚNG 1 tháng (m, mục 10.52 docs) — tháng ĐANG
+ * SỐNG luôn tính lại NGAY BÂY GIỜ (`m.live`, tự cập nhật ngay khi dư nợ/
+ * TSBĐ đổi — VD vừa tải file Excel mới, xem selectMonth()/render()); tháng
+ * ĐÃ CHỐT dùng ĐÚNG số đã lưu lúc chốt (`captureMonthlySnapshot()` trong
+ * send-due-reminders/index.ts) — không tính lại theo TSBĐ/dư nợ HIỆN TẠI
+ * nữa, giữ đúng lịch sử của tháng đó. `null` (không phải 0) nếu tháng đó
+ * chốt TRƯỚC khi có tính năng lưu Dự phòng, hoặc nạp qua "Nạp dữ liệu cũ"
+ * (mẫu Excel đó không có cột TSBĐ nên không tính được).
+ */
+function provisionForMonth(m) {
+  if (m.live) return S.provisionSummary(visibleContracts(), new Date());
+  return { generalProvision: m.generalProvision, specificProvision: m.specificProvision };
+}
+/** 2 dòng "Dự phòng chung/cụ thể phải trích" — chỉ chữ, không bỏ trong khung. `null` (xem provisionForMonth()) hiện "—" kèm ghi chú thay vì 0đ dễ hiểu nhầm là ĐÃ tính ra đúng 0. */
 function provisionRowsHtml(provision) {
   const row = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border)';
+  const val = (n) => (n != null ? formatVND(n) : '<span class="text-muted" style="font-weight:400;font-size:12px">— chưa có dữ liệu</span>');
   return `
-    <div style="${row}"><span class="text-sm text-muted">Dự phòng chung phải trích</span><b style="font-size:13.5px">${formatVND(provision.generalProvision)}</b></div>
-    <div style="${row}"><span class="text-sm text-muted">Dự phòng cụ thể phải trích</span><b style="font-size:13.5px">${formatVND(provision.specificProvision)}</b></div>`;
+    <div style="${row}"><span class="text-sm text-muted">Dự phòng chung phải trích</span><b style="font-size:13.5px">${val(provision.generalProvision)}</b></div>
+    <div style="${row}"><span class="text-sm text-muted">Dự phòng cụ thể phải trích</span><b style="font-size:13.5px">${val(provision.specificProvision)}</b></div>`;
 }
-/** Vẽ lại 2 dòng Dự phòng ngay sau khi lưu TSBĐ trong modal (openDebtGroupModal) — KHÔNG đụng tới "Dư nợ theo nhóm nợ" (TSBĐ không đổi số dư từng nhóm, chỉ đổi số tiền phải trích) nên không cần vẽ lại biểu đồ, tránh làm mất tháng đang xem nếu đang xem 1 tháng quá khứ. */
+/** Vẽ lại 2 dòng Dự phòng ngay sau khi lưu TSBĐ trong modal (openDebtGroupModal) — CHỈ sửa được TSBĐ khi đang xem tháng SỐNG (xem tsbdRowHtml()/showTsbd), nên luôn tính lại SỐNG ở đây. KHÔNG đụng tới "Dư nợ theo nhóm nợ" (TSBĐ không đổi số dư từng nhóm, chỉ đổi số tiền phải trích). */
 function refreshProvisionSlot() {
   const provision = S.provisionSummary(visibleContracts(), new Date());
   const slot = document.getElementById('provision-slot');
@@ -184,9 +199,9 @@ function refreshProvisionSlot() {
 /**
  * Dashboard "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng
  * giảm" — LUÔN hiện cho MỌI quản trị viên (staff lẫn super), dưới 4 ô thống
- * kê chính. "Dự phòng chung/cụ thể phải trích" (provisionRowsHtml() ở trên)
- * LUÔN tính "SỐNG" (không đổi theo tháng đang xem — xem ghi chú ở đó), tách
- * riêng khỏi phần chọn tháng dưới đây.
+ * kê chính. "Dự phòng chung/cụ thể phải trích" ĐỔI theo tháng đang xem như
+ * mọi mục khác (xem provisionForMonth() ở trên) — tháng sống tính SỐNG, tháng
+ * đã chốt dùng đúng số đã lưu lúc chốt.
  *
  * "Lãi phải thu" CHỈ tính Nhóm 1 (từ Nhóm 2 trở lên coi như khó thu lãi
  * đúng hạn, không tính vào lãi phải thu nữa). "Nợ xấu" CHÍNH THỨC = Nhóm
@@ -239,6 +254,7 @@ function buildDebtDashboardData() {
     balance: s.totalBalance, interest: s.interestReceivable, badDebt: s.badDebtBalance, badDebtRatio: s.badDebtRatio,
     interestRatio: interestRatio(s.interestReceivable, s.totalBalance),
     groupBalances: s.groupBalances,
+    generalProvision: s.generalProvision, specificProvision: s.specificProvision,
   }));
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   if (!lastSnapshot || lastSnapshot.yearMonth !== currentYearMonth) {
@@ -248,6 +264,9 @@ function buildDebtDashboardData() {
       interestRatio: interestRatio(summary.interestReceivable, summary.totalBalance),
       groupBalances: summary.groupBalances,
       live: true,
+      // Tháng sống LUÔN tính dự phòng SỐNG (xem provisionForMonth()) — 2 field
+      // này chỉ dùng cho tháng ĐÃ CHỐT, giữ null ở đây cho rõ không dùng tới.
+      generalProvision: null, specificProvision: null,
     });
   }
   const byYearMonth = new Map(months.map((m) => [m.yearMonth, m]));
@@ -402,10 +421,9 @@ function monthSelectorHtml(months, selectedYm, isSuper) {
 
 function debtDashboardHtml() {
   const { isSuper } = currentRoles();
-  const contracts = visibleContracts();
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const initial = months[months.length - 1];
-  const provision = S.provisionSummary(contracts, new Date());
+  const provision = provisionForMonth(initial);
 
   return `
     <div class="card card-pad mb-16">
@@ -512,7 +530,8 @@ function openImportHistoricalModal() {
             ${preview.willOverwrite ? `<div class="text-sm mb-8" style="color:var(--warning)">Tháng này đã có sẵn số liệu — lưu sẽ GHI ĐÈ.</div>` : ''}
             <div class="text-sm mb-4">${preview.contractsCount} hợp đồng · Dư nợ <b>${formatVND(preview.summary.totalBalance)}</b></div>
             <div class="text-sm mb-4">Nợ xấu <b style="color:var(--danger)">${formatVND(preview.summary.badDebtBalance)}</b> (${formatPercent(preview.summary.badDebtRatio)}) · Lãi phải thu <b style="color:var(--purple)">${formatVND(preview.summary.interestReceivable)}</b></div>
-            <div class="text-sm text-muted mb-8">Nhóm 1: ${formatVND(g[1])} · Nhóm 2: ${formatVND(g[2])} · Nhóm 3: ${formatVND(g[3])} · Nhóm 4: ${formatVND(g[4])} · Nhóm 5: ${formatVND(g[5])}</div>
+            <div class="text-sm text-muted mb-4">Nhóm 1: ${formatVND(g[1])} · Nhóm 2: ${formatVND(g[2])} · Nhóm 3: ${formatVND(g[3])} · Nhóm 4: ${formatVND(g[4])} · Nhóm 5: ${formatVND(g[5])}</div>
+            <div class="text-sm text-muted mb-8">Mẫu này không có cột TSBĐ nên chưa tính được Dự phòng cho tháng này.</div>
             ${preview.parseErrors.length ? `<div class="text-sm text-danger mb-8">${preview.parseErrors.slice(0, 5).join('<br/>')}</div>` : ''}
             <button class="btn btn-primary btn-block" id="btn-hist-confirm">Xác nhận lưu</button>
           </div>
@@ -537,12 +556,13 @@ function openImportHistoricalModal() {
     },
   });
 }
-/** Chuyển "Dư nợ theo nhóm nợ" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn). Không đụng tới Dự phòng (luôn tính sống, xem provisionRowsHtml()). */
+/** Chuyển "Dư nợ theo nhóm nợ" + "Dự phòng" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn). */
 function selectMonth(root, ym) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === ym);
   if (!m) return;
   root.querySelector('#nhom-no-slot').innerHTML = nhomNoBarHtml(m);
+  root.querySelector('#provision-slot').innerHTML = provisionRowsHtml(provisionForMonth(m));
   root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
   root.querySelector('#month-detail-label').textContent = monthLabelWithNote(m);
   root.querySelector('#trend-chart-slot').innerHTML = monthlyComboChartSvg({ months, selectedYm: ym });

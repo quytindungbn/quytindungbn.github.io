@@ -387,6 +387,10 @@ function debtGroupZalo(contract: any, asOf: Date): number | null {
   if (d <= 360) return 4;
   return 5;
 }
+/** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 — Y HỆT SPECIFIC_PROVISION_RATE trong js/state.js (dùng cho type 'capture-monthly-snapshot', mục 10.52 docs). */
+const PROVISION_SPECIFIC_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
+/** Tỷ lệ dự phòng CHUNG, áp trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
+const PROVISION_GENERAL_RATE = 0.0075;
 function formatDateVNZalo(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -1199,6 +1203,10 @@ Deno.serve(async (req) => {
     const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
     let totalBalance = 0;
     let interestReceivable = 0;
+    // Dự phòng chung/cụ thể (mục 10.52 docs) — Y HỆT provisionSummary() trong
+    // js/state.js VÀ captureMonthlySnapshot() trong send-due-reminders/index.ts.
+    let generalBase = 0;
+    let specificProvision = 0;
     for (const ct of allContracts || []) {
       const g = debtGroupZalo(ct, now);
       if (g === null) continue;
@@ -1209,6 +1217,12 @@ Deno.serve(async (req) => {
       // send-due-reminders/index.ts và debtGroupSummary() trong js/state.js
       // (mục 10.49 docs).
       if (g === 1) interestReceivable += accruedInterestZalo(ct, now);
+      if (g <= 4) generalBase += balance;
+      const rate = PROVISION_SPECIFIC_RATE[g];
+      if (rate) {
+        const deductible = ct.has_collateral ? (Number(ct.collateral_value) || 0) * 0.5 : 0;
+        specificProvision += Math.max(0, balance - deductible) * rate;
+      }
     }
     const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
     const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
@@ -1221,6 +1235,8 @@ Deno.serve(async (req) => {
       group_balances: groupBalances,
       bad_debt_balance: badDebtBalance,
       bad_debt_ratio: badDebtRatio,
+      general_provision: generalBase * PROVISION_GENERAL_RATE,
+      specific_provision: specificProvision,
     }, { onConflict: 'year_month' });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'capture-monthly-snapshot',

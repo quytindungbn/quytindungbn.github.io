@@ -219,6 +219,11 @@ function debtGroup(contract: any, asOf: Date): number | null {
   return 5;
 }
 
+/** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 (Nhóm 1 = 0%, không trích) — Y HỆT SPECIFIC_PROVISION_RATE trong js/state.js. */
+const SPECIFIC_PROVISION_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
+/** Tỷ lệ dự phòng CHUNG, áp dụng trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
+const GENERAL_PROVISION_RATE = 0.0075;
+
 /**
  * Chốt số liệu THÁNG NÀY (dashboard "Tổng quan", mục 10.46 docs) — tính
  * TOÀN BỘ hợp đồng (org-wide, không lọc theo Thôn/Xóm), upsert theo
@@ -226,11 +231,19 @@ function debtGroup(contract: any, asOf: Date): number | null {
  * không tạo trùng) — dùng CHUNG code này cho cả lịch tự động (đúng ngày
  * cuối tháng, xem cuối Deno.serve() bên dưới) LẪN nút "Chốt số liệu tháng
  * này" (gọi qua create-account, type 'capture-monthly-snapshot').
+ *
+ * Dự phòng chung/cụ thể (mục 10.52 docs) — chốt CÙNG lúc, dùng ĐÚNG công
+ * thức provisionSummary() trong js/state.js (dựa trên has_collateral/
+ * collateral_value hiện có ngay lúc chốt) — giữ lại số liệu này cho đúng
+ * tháng thay vì luôn tính SỐNG như trước, để xem lại lịch sử vẫn đúng dù
+ * TSBĐ/dư nợ sau này có đổi tiếp.
  */
 async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: Date): Promise<void> {
   const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
   let totalBalance = 0;
   let interestReceivable = 0;
+  let generalBase = 0;
+  let specificProvision = 0;
   for (const ct of contracts) {
     const g = debtGroup(ct, asOf);
     if (g === null) continue;
@@ -238,6 +251,12 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
     groupBalances[String(g)] += balance;
     totalBalance += balance;
     if (g === 1) interestReceivable += accruedInterest(ct, asOf);
+    if (g <= 4) generalBase += balance;
+    const rate = SPECIFIC_PROVISION_RATE[g];
+    if (rate) {
+      const deductible = ct.has_collateral ? (Number(ct.collateral_value) || 0) * 0.5 : 0;
+      specificProvision += Math.max(0, balance - deductible) * rate;
+    }
   }
   const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
   const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
@@ -250,6 +269,8 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
     group_balances: groupBalances,
     bad_debt_balance: badDebtBalance,
     bad_debt_ratio: badDebtRatio,
+    general_provision: generalBase * GENERAL_PROVISION_RATE,
+    specific_provision: specificProvision,
   }, { onConflict: 'year_month' });
 }
 

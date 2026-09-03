@@ -2464,6 +2464,8 @@ create table if not exists monthly_snapshots (
   group_balances jsonb not null default '{}',       -- {"1":.., "2":.., "3":.., "4":.., "5":..}
   bad_debt_balance numeric not null default 0,      -- Nhóm 3+4+5
   bad_debt_ratio numeric not null default 0,        -- % (0-100)
+  general_provision numeric,   -- Dự phòng CHUNG phải trích — NULL (không phải 0) = tháng này chưa có dữ liệu (xem mục 10.52)
+  specific_provision numeric,  -- Dự phòng CỤ THỂ phải trích — NULL = chưa có dữ liệu, y hệt trên
   created_at timestamptz not null default now()
 );
 alter table monthly_snapshots enable row level security;
@@ -2682,6 +2684,39 @@ lưu ở server để đối chiếu, nguồn sự thật DUY NHẤT là file Ex
 **Việc cần bạn làm**: deploy lại Edge Function `create-account` — Supabase Dashboard → Edge Functions →
 `create-account` → dán đè toàn bộ nội dung file `supabase/functions/create-account/index.ts` mới nhất
 trong repo này → Deploy. KHÔNG cần chạy SQL (bảng `monthly_snapshots` đã có đủ cột từ mục 10.46).
+
+---
+
+### 10.52. "Dự phòng phải trích" tự cập nhật ngay khi dư nợ đổi + lưu lại theo từng tháng (BẮT BUỘC chạy SQL + deploy lại CẢ 2 Edge Function)
+
+**"Tự động cập nhật ngay khi tải file Excel có dư nợ thay đổi"**: đã đúng như vậy từ trước (không phải lỗi
+cần sửa) — "Dự phòng phải trích" ở tháng ĐANG SỐNG luôn tính lại NGAY từ dữ liệu hợp đồng mới nhất mỗi lần
+trang vẽ lại, mà trang TỰ vẽ lại ngay sau khi tải file Excel xong (không cần thoát ra vào lại/bấm gì
+thêm). Xác nhận lại để bạn yên tâm — không có gì phải sửa ở phần này.
+
+**"Lưu lại theo từng tháng"**: đây là phần MỚI — trước đây "Dự phòng phải trích" LUÔN tính SỐNG theo TSBĐ
++ dư nợ NGAY BÂY GIỜ, kể cả khi đang xem lại 1 tháng đã qua (không khớp đúng dư nợ của tháng đó, chỉ là số
+của HÔM NAY hiện dưới nhãn tháng khác). Giờ Dự phòng được CHỐT CÙNG LÚC với Dư nợ/Nợ xấu/Lãi phải thu mỗi
+tháng (`captureMonthlySnapshot()`) — xem lại 1 tháng đã chốt sẽ thấy ĐÚNG Dự phòng của tháng đó, không đổi
+theo TSBĐ/dư nợ hiện tại nữa; CHỈ tháng đang sống mới tiếp tục tự tính lại theo thời gian thực như trước.
+
+**Giới hạn thật**: TSBĐ chưa từng được lưu lại lịch sử (chỉ là 1 thuộc tính "hiện tại" trên hợp đồng, sửa
+là mất bản cũ) — nên Dự phòng chỉ CHÍNH XÁC cho các tháng chốt TỪ NAY VỀ SAU. Các tháng chốt bù/nạp qua
+"Nạp dữ liệu cũ" (mục 10.50/10.51, mẫu Excel đó không có cột TSBĐ) sẽ hiện "— chưa có dữ liệu" ở 2 dòng
+Dự phòng thay vì một con số sai — trung thực còn hơn ghi liều 1 số không đúng.
+
+```sql
+alter table monthly_snapshots add column if not exists general_provision numeric;
+alter table monthly_snapshots add column if not exists specific_provision numeric;
+```
+
+**Việc cần bạn làm**:
+1. Chạy đoạn SQL trên — vào thẳng SQL Editor:
+   https://supabase.com/dashboard/project/amwiyxhawueqlmnzkdls/sql/new
+2. Deploy lại **CẢ 2** Edge Function — Supabase Dashboard → Edge Functions → chọn từng cái → dán đè toàn
+   bộ nội dung file mới nhất trong repo → Deploy:
+   - `send-due-reminders` (`supabase/functions/send-due-reminders/index.ts`)
+   - `create-account` (`supabase/functions/create-account/index.ts`)
 
 ---
 

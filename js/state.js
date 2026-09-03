@@ -1623,6 +1623,12 @@ function mapMonthlySnapshotRow(row) {
     groupBalances: row.group_balances || {},
     badDebtBalance: Number(row.bad_debt_balance) || 0,
     badDebtRatio: Number(row.bad_debt_ratio) || 0,
+    // null = tháng này KHÔNG có dữ liệu Dự phòng đã chốt (VD: nạp qua "Nạp
+    // dữ liệu cũ" — mẫu Excel đó không có cột TSBĐ nên không tính được) —
+    // KHÁC 0 (0 nghĩa là có tính, ra đúng 0đ) — xem mục 10.52 docs. Mọi
+    // tháng chốt từ nay về sau (tự động lẫn bấm tay) đều có 2 số này.
+    generalProvision: row.general_provision != null ? Number(row.general_provision) : null,
+    specificProvision: row.specific_provision != null ? Number(row.specific_provision) : null,
   };
 }
 /** Danh sách số liệu đã chốt theo tháng, sắp xếp từ CŨ -> MỚI (khớp thứ tự vẽ biểu đồ theo thời gian) — dùng cho dashboard "Tổng quan" (chỉ super admin, xem overview.js). */
