@@ -306,9 +306,9 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
   const prev = prevMonthOf(m.yearMonth);
   const yearStart = yearStartOf(m.yearMonth);
   const rows = [
-    { label: 'Dư nợ', color: 'var(--color-primary)', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, worse: false },
-    { label: 'Nợ xấu', color: 'var(--danger)', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, worse: true },
-    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, worse: false },
+    { label: 'Dư nợ', color: 'var(--color-primary)', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, mode: 'better' },
+    { label: 'Nợ xấu', color: 'var(--danger)', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, mode: 'worse' },
+    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, mode: 'better' },
   ];
   const th = 'padding:0 8px 8px 0;text-align:left;font-size:10.5px;color:var(--text-muted);font-weight:600;white-space:nowrap';
   const td = 'padding:10px 8px 10px 0;border-top:1px solid var(--border);white-space:nowrap';
@@ -316,8 +316,8 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
     <tr>
       <td style="${td}font-weight:700;color:${r.color}">${r.label}</td>
       <td style="${td}font-weight:700">${formatVND(r.value)}${r.extra ? ` <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">(${r.extra})</span>` : ''}</td>
-      <td style="${td}">${deltaChip(pct(r.value, r.prevV), { worse: r.worse })}</td>
-      <td style="${td}">${r.yearStartV != null ? deltaChip(pct(r.value, r.yearStartV), { worse: r.worse }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
+      <td style="${td}">${deltaChip(pct(r.value, r.prevV), { mode: r.mode })}</td>
+      <td style="${td}">${r.yearStartV != null ? deltaChip(pct(r.value, r.yearStartV), { mode: r.mode }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
     </tr>`).join('');
   return `
     <div style="overflow-x:auto">
@@ -353,17 +353,17 @@ function openMonthlyDetailModal() {
       <tr data-yoy-row="${m.yearMonth}" hidden>
         <td colspan="4" style="padding:2px 10px 10px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)">
           So với đầu năm:
-          Dư nợ ${deltaChip(pct(m.balance, yearStart.balance))} ·
-          Nợ xấu ${deltaChip(pct(m.badDebt, yearStart.badDebt), { worse: true })} ·
-          Lãi phải thu ${deltaChip(pct(m.interest, yearStart.interest))}
+          Dư nợ ${deltaChip(pct(m.balance, yearStart.balance), { mode: 'better' })} ·
+          Nợ xấu ${deltaChip(pct(m.badDebt, yearStart.badDebt), { mode: 'worse' })} ·
+          Lãi phải thu ${deltaChip(pct(m.interest, yearStart.interest), { mode: 'better' })}
         </td>
       </tr>` : '';
     return `
       <tr data-toggle-yoy="${m.yearMonth}" style="${yearStart ? 'cursor:pointer' : ''}">
         <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}${yearStart ? ' <span style="font-size:9px;color:var(--text-faint)">▾</span>' : ''}</td>
-        <td style="${td}">${formatVND(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null))}</td>
-        <td style="${td}">${formatVND(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { worse: true })}</td>
-        <td style="${td}">${formatVND(m.interest)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.interestRatio)})</span><br>${deltaChip(pct(m.interest, prev?.interest ?? null))}</td>
+        <td style="${td}">${formatVND(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null), { mode: 'better' })}</td>
+        <td style="${td}">${formatVND(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { mode: 'worse' })}</td>
+        <td style="${td}">${formatVND(m.interest)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.interestRatio)})</span><br>${deltaChip(pct(m.interest, prev?.interest ?? null), { mode: 'better' })}</td>
       </tr>${yoyRow}`;
   }).join('');
   openModal({
@@ -577,12 +577,18 @@ function pct(curr, prevVal) {
   if (prevVal === null || prevVal === undefined || prevVal === 0) return null;
   return ((curr - prevVal) / Math.abs(prevVal)) * 100;
 }
-/** `worse` = chiều tăng bị coi là XẤU (chỉ dùng cho Nợ xấu — tăng tô đỏ, giảm tô xanh). Mặc định trung tính (chỉ hiện mũi tên + %, không phán xét tốt/xấu). */
-function deltaChip(p, { worse = false } = {}) {
+/**
+ * `mode`: 'better' (tăng = TỐT, tam giác XANH — giảm = ĐỎ; dùng cho Dư nợ/
+ * Lãi phải thu, quỹ cho vay ra được nhiều hơn/thu lãi tốt hơn là tín hiệu
+ * tốt) | 'worse' (tăng = XẤU, tam giác ĐỎ — giảm = XANH; dùng cho Nợ xấu) |
+ * bỏ trống = trung tính (chỉ hiện mũi tên + %, không tô màu phán xét).
+ */
+function deltaChip(p, { mode = null } = {}) {
   if (p === null) return `<span style="font-size:10.5px;color:var(--text-faint)">—</span>`;
   const flat = Math.abs(p) < 0.05;
   const up = p > 0;
-  const color = flat ? 'var(--text-faint)' : worse ? (up ? 'var(--danger)' : 'var(--success)') : 'var(--text-muted)';
+  const isGood = mode === 'better' ? up : mode === 'worse' ? !up : null;
+  const color = flat ? 'var(--text-faint)' : isGood === null ? 'var(--text-muted)' : isGood ? 'var(--success)' : 'var(--danger)';
   const arrow = flat ? '·' : up ? '▲' : '▼';
   return `<span style="font-size:10.5px;font-weight:700;color:${color}">${arrow} ${Math.abs(p).toFixed(1).replace('.', ',')}%</span>`;
 }
