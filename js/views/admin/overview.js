@@ -572,12 +572,12 @@ function openImportHistoricalModal() {
     },
   });
 }
-/** Tự cuộn khối "Biến động hàng tháng" (nếu có cuộn ngang — quá 7 tháng, xem monthlyComboChartSvg()) về SÁT MÉP PHẢI ngay sau khi vẽ — LUÔN thấy đúng tháng MỚI NHẤT trước tiên, không phải kéo từ tháng đầu tiên bên trái mới tới được tháng mới nhất. Gọi lại mỗi lần #trend-chart-slot được vẽ lại (render() đầu VÀ selectMonth()). */
+/** Tự cuộn khối "Biến động hàng tháng" (nếu có cuộn ngang — quá 7 tháng, xem monthlyComboChartSvg()) về SÁT MÉP PHẢI ngay sau khi vẽ — LUÔN thấy đúng tháng MỚI NHẤT trước tiên, không phải kéo từ tháng đầu tiên bên trái mới tới được tháng mới nhất. CHỈ gọi lúc mới vào trang (render() đầu) — bấm chọn 1 tháng khác (selectMonth(), kể cả bấm thẳng vào 1 cột trong biểu đồ) KHÔNG được tự kéo lại về mép phải, giữ nguyên đúng vị trí đang cuộn để không giật ngược ngay dưới ngón tay vừa bấm. */
 function scrollTrendChartToEnd(root) {
   const scrollEl = root.querySelector('#trend-chart-slot .trend-scroll');
   if (scrollEl) scrollEl.scrollLeft = scrollEl.scrollWidth;
 }
-/** Chuyển "Dư nợ theo nhóm nợ" + "Dự phòng" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn). */
+/** Chuyển "Dư nợ theo nhóm nợ" + "Dự phòng" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn) — GIỮ NGUYÊN vị trí đang cuộn ngang (nếu có), không tự kéo về mép nào cả, xem scrollTrendChartToEnd(). */
 function selectMonth(root, ym) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === ym);
@@ -588,8 +588,16 @@ function selectMonth(root, ym) {
   root.querySelector('#provision-slot').innerHTML = provisionRowsHtml(provisionForMonth(m));
   root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
   root.querySelector('#month-detail-label').textContent = monthLabelWithNote(m);
+  // Đổi trend-chart-slot.innerHTML sẽ làm mất luôn vị trí cuộn ngang cũ (nếu
+  // khối trước đó có cuộn) — LƯU LẠI trước, đặt lại ĐÚNG vị trí đó sau khi
+  // vẽ xong, thay vì gọi scrollTrendChartToEnd() (chỉ dùng lúc mới vào trang).
+  const oldScrollEl = root.querySelector('#trend-chart-slot .trend-scroll');
+  const oldScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : null;
   root.querySelector('#trend-chart-slot').innerHTML = monthlyComboChartSvg({ months, selectedYm: ym });
-  scrollTrendChartToEnd(root);
+  if (oldScrollLeft !== null) {
+    const newScrollEl = root.querySelector('#trend-chart-slot .trend-scroll');
+    if (newScrollEl) newScrollEl.scrollLeft = oldScrollLeft;
+  }
   const sel = root.querySelector('#month-select');
   if (sel) sel.value = ym;
   bindNhomNoClicks(root);
