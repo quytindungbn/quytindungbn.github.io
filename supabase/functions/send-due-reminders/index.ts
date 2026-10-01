@@ -253,6 +253,14 @@ const SPECIFIC_PROVISION_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.
 /** Tỷ lệ dự phòng CHUNG, áp dụng trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
 const GENERAL_PROVISION_RATE = 0.0075;
 
+/** Ngày cuối tháng trước theo giờ Việt Nam, độc lập múi giờ của Edge Function. */
+function previousMonthEndInVietnam(now: Date): Date | null {
+  const vietnamNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  if (vietnamNow.getUTCDate() !== 1) return null;
+  const startOfMonthUTC = Date.UTC(vietnamNow.getUTCFullYear(), vietnamNow.getUTCMonth(), 1) - 7 * 60 * 60 * 1000;
+  return new Date(startOfMonthUTC - 1);
+}
+
 /**
  * Chốt số liệu THÁNG NÀY (dashboard "Tổng quan", mục 10.46 docs) — tính
  * TOÀN BỘ hợp đồng (org-wide, không lọc theo Thôn/Xóm), upsert theo
@@ -274,7 +282,8 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
   // được danh sách HIỆN TẠI, dễ hiểu nhầm là khớp đúng tháng đang xem).
   // `contracts` không có sẵn tên/địa chỉ khách hàng (ở bảng `customers`
   // riêng) — tự dò thêm 1 lượt.
-  const { data: customers } = await adminClient.from('customers').select('id, name, thon, xom, tinh, address');
+  const { data: customers, error: customersError } = await adminClient.from('customers').select('id, name, thon, xom, tinh, address');
+  if (customersError) throw new Error(`Không đọc được khách hàng để chốt tháng: ${customersError.message}`);
   const custMap = new Map<string, any>((customers || []).map((c: any) => [c.id, c]));
 
   const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
@@ -310,7 +319,7 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
   const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
   const badDebtRatio = totalBalance > 0 ? (badDebtBalance / totalBalance) * 100 : 0;
   const yearMonth = `${asOf.getFullYear()}-${String(asOf.getMonth() + 1).padStart(2, '0')}`;
-  await adminClient.from('monthly_snapshots').upsert({
+  const { error: snapshotError } = await adminClient.from('monthly_snapshots').upsert({
     year_month: yearMonth,
     snapshot_date: toLocalISODate(asOf),
     total_balance: totalBalance,
@@ -322,6 +331,7 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
     specific_provision: specificProvision,
     contracts_detail: contractsDetail,
   }, { onConflict: 'year_month' });
+  if (snapshotError) throw new Error(`Không lưu được số liệu tháng ${yearMonth}: ${snapshotError.message}`);
 }
 
 function formatVND(n: number): string {
@@ -856,20 +866,25 @@ Deno.serve(async (req) => {
 
   // Tự chốt số liệu dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu, mục
   // 10.46 docs) — CHỈ chạy ở lượt gọi 'monthly-close' (Cron riêng 00h giờ VN
-  // mỗi ngày, xem mục 9.3 docs), tự nhận biết ĐÚNG lúc vừa sang ngày 01 đầu
-  // tháng (function chạy ở giờ UTC nên "tomorrow" ở đây vẫn đúng ngày VN vì
-  // Cron này canh giờ chạy NGAY LÚC giao giữa 2 ngày VN — xem chi tiết mục
-  // 9.3 docs) thì mới thật sự chốt, còn lại các lượt chạy khác trong tháng
-  // không làm gì. Admin cũng tự chốt NGAY được bất cứ lúc nào qua nút "Chốt
+  // mỗi ngày, xem mục 10.55 docs). Xác định ngày 01 theo giờ Việt Nam một
+  // cách tường minh, không phụ thuộc múi giờ của môi trường chạy. Chốt tại
+  // thời điểm cuối cùng của tháng trước; các ngày khác không làm gì.
+  // Admin cũng tự chốt NGAY được bất cứ lúc nào qua nút "Chốt
   // số liệu tháng này" (create-account, type 'capture-monthly-snapshot') —
   // upsert theo year_month nên không sợ chốt trùng dù cả 2 đường đều chạy
   // trong cùng 1 tháng.
   if (purpose === 'monthly-close') {
     try {
-      const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
-      if (tomorrow.getDate() === 1) await captureMonthlySnapshot(admin, contracts || [], now);
+      const monthEnd = previousMonthEndInVietnam(now);
+      if (monthEnd) {
+        await captureMonthlySnapshot(admin, contracts || [], monthEnd);
+        console.info('Đã chốt số liệu tháng:', toLocalISODate(monthEnd));
+      }
     } catch (e) {
       console.error('Lỗi chốt số liệu tháng:', e);
+      return new Response(JSON.stringify({ ok: false, reason: 'Không chốt được số liệu tháng.' }), {
+        status: 500, headers: { 'Content-Type': 'application/json' },
+      });
     }
   }
 
