@@ -1437,35 +1437,59 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
     contracts.push(row);
   }
   if (!contracts.length) throw new Error('Không đọc được hợp đồng nào từ file — kiểm tra lại đúng mẫu chưa.');
+  // Mẫu Excel không có TSBĐ. Dùng TSBĐ đã khai báo trên hợp đồng đang dùng
+  // nếu Số HĐTD khớp chính xác; áp dụng cả cho file của tháng trước ngày nhập
+  // TSBĐ, theo quy tắc nghiệp vụ của quỹ. Không sửa hợp đồng đang dùng.
+  const currentByCode = new Map();
+  const ambiguousCodes = new Set();
+  for (const current of state.contracts || []) {
+    const code = String(current.code || '').trim();
+    if (!code) continue;
+    const previous = currentByCode.get(code);
+    if (previous && (previous.hasCollateral || current.hasCollateral)) ambiguousCodes.add(code);
+    else if (!previous) currentByCode.set(code, current);
+  }
+  const importedCollateralCodes = new Set();
+  let collateralMatchedCount = 0;
+  let collateralUnmatchedCount = 0;
+  for (const ct of contracts) {
+    const code = String(ct.code || '').trim();
+    const current = currentByCode.get(code);
+    if (ambiguousCodes.has(code) || (current?.hasCollateral && importedCollateralCodes.has(code))) {
+      throw new Error(`Số HĐTD ${code} bị trùng nên không thể xác định TSBĐ cho từng dòng. Hãy kiểm tra lại trước khi lưu.`);
+    }
+    ct.hasCollateral = !!current?.hasCollateral;
+    ct.collateralValue = ct.hasCollateral ? Number(current.collateralValue) || 0 : 0;
+    if (ct.hasCollateral) {
+      importedCollateralCodes.add(code);
+      collateralMatchedCount++;
+    } else {
+      collateralUnmatchedCount++;
+    }
+  }
   const asOf = new Date(asOfDate);
   const summary = debtGroupSummary(contracts, asOf);
   const yearMonth = asOfDate.slice(0, 7);
   const existing = (state.monthlySnapshots || []).find((s) => s.yearMonth === yearMonth);
   // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — để xem lại lịch
   // sử vẫn tra được đúng danh sách của đúng tháng đã nạp, không chỉ tổng.
-  // File mẫu này KHÔNG có cột TSBĐ — coi như CHƯA có TSBĐ (hasCollateral=
-  // false), là giả định AN TOÀN cho Dự phòng (không có TSBĐ để khấu trừ ->
-  // trích ĐỦ, không trích THIẾU) — KHÁC "không có dữ liệu" (null): đây là
-  // 1 con số TRÍCH LẬP thật, chỉ là giả định thận trọng khi chưa rõ TSBĐ,
-  // không phải chưa tính được.
+  // Đóng băng TSBĐ đã đối chiếu theo Số HĐTD trong chi tiết tháng này.
   const contractsDetail = [];
   for (const ct of contracts) {
     const g = debtGroup(ct, asOf);
     if (g === null) continue;
     contractsDetail.push({
-      name: ct.name || null, address: ct.address || null,
+      code: ct.code || null, name: ct.name || null, address: ct.address || null,
       balance: Number(ct.balance) || 0, group: g, daysOverdue: daysOverdue(ct, asOf),
-      hasCollateral: false, collateralValue: 0,
+      hasCollateral: ct.hasCollateral, collateralValue: ct.collateralValue,
     });
   }
-  // Dự phòng chung/cụ thể (mục 10.52/10.54 docs) — provisionSummary() không
-  // cần dữ liệu nào khác ngoài balance/nhóm nợ/TSBĐ đã có sẵn trong
-  // `contracts` ở trên (TSBĐ mặc định false/0 như giải thích trên) nên tính
-  // được luôn, không cần để trống như trước.
+  // Cùng một công thức với dashboard, dùng TSBĐ đã đối chiếu ở trên.
   const provision = provisionSummary(contracts, asOf);
   return {
     yearMonth, snapshotDate: asOfDate, contractsCount: contracts.length, summary, contractsDetail, parseErrors, willOverwrite: !!existing,
     generalProvision: provision.generalProvision, specificProvision: provision.specificProvision,
+    collateralMatchedCount, collateralUnmatchedCount,
   };
 }
 
