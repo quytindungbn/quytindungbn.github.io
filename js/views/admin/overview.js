@@ -5,7 +5,8 @@ import { toast } from '../../components/toast.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
 import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
-import { barChartSvg, monthlyComboChartSvg } from '../../components/charts.js';
+import { isSupplementReportRows } from '../../lib/xlsxLite.js';
+import { barChartSvg, monthlyComboChartSvg, compositionDonutHtml } from '../../components/charts.js';
 import { openContractView, openCustomerDetail } from './customers.js';
 
 /** "2026-08" -> "Th8/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
@@ -145,6 +146,7 @@ export function render(contentEl) {
   bindNhomNoClicks(contentEl);
   bindMonthClicks(contentEl);
   bindMonthSelector(contentEl);
+  bindCompositionTabs(contentEl);
   scrollTrendChartToEnd(contentEl);
   contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
   contentEl.querySelector('#btn-import-historical')?.addEventListener('click', openImportHistoricalModal);
@@ -174,6 +176,149 @@ function bindNhomNoClicks(root) {
 }
 
 const GROUP_COLORS = { 1: 'var(--success)', 2: 'var(--warning)', 3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d' };
+
+const COMPOSITION_OPTIONS = {
+  purpose: {
+    label: 'Phân theo mục đích vay', field: 'loanPurpose',
+    categories: [
+      { code: '01', label: 'Vay tiêu dùng', color: '#0f766e' },
+      { code: '04', label: 'Vay sản xuất kinh doanh', color: '#2563eb' },
+      { code: '052', label: 'Vay nông nghiệp', color: '#e59b16' },
+    ],
+  },
+  term: {
+    label: 'Loại vay', field: 'loanTerm',
+    categories: [
+      { code: 'NH', label: 'Ngắn hạn', color: '#0f766e' },
+      { code: 'TH', label: 'Trung hạn', color: '#2563eb' },
+    ],
+  },
+  collateral: {
+    label: 'Tài sản bảo đảm', field: 'collateralType',
+    categories: [
+      { code: '01', label: 'Quyền sử dụng đất chính chủ', color: '#0f766e' },
+      { code: '02', label: 'Quyền sử dụng đất bên thứ ba', color: '#2563eb' },
+      { code: '04', label: 'Xe ô tô chính chủ', color: '#e59b16' },
+      { code: '06', label: 'Sổ tiết kiệm', color: '#8b5cf6' },
+      { code: 'KCDB', label: 'Không có tài sản bảo đảm', color: '#e05b50' },
+    ],
+  },
+};
+const COMPOSITION_UNKNOWN = { label: 'Khác / chưa xác định', color: '#94a3b8' };
+let activeCompositionTab = 'purpose';
+let activeCompositionMetric = 'balance';
+
+/** Excel đôi khi chuyển 01 thành số 1; mã kỳ hạn trong file có dạng NH01/TH01. */
+function compositionCode(value, tab) {
+  const code = String(value ?? '').trim().toUpperCase();
+  if (tab === 'term') {
+    if (code === 'NH' || code === 'NH01') return 'NH';
+    if (code === 'TH' || code === 'TH01') return 'TH';
+    return code;
+  }
+  if (/^\d+$/.test(code)) {
+    if (tab === 'purpose' && code === '52') return '052';
+    return code.padStart(2, '0');
+  }
+  return code;
+}
+
+/** Các bản chốt cũ có thể chưa lưu mã phân loại; phần thiếu được tính vào
+ * “Khác / chưa xác định” để tổng tỷ trọng vẫn bằng 100%, không suy diễn KCDB. */
+function compositionData(m, tab) {
+  const option = COMPOSITION_OPTIONS[tab];
+  const rows = m.live
+    ? visibleContracts().filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan')
+    : (Array.isArray(m.contractsDetail) ? m.contractsDetail : []);
+  const byCode = new Map(option.categories.map((c) => [c.code, { value: 0, count: 0 }]));
+  const unknownBucket = { value: 0, count: 0 };
+  let detailTotal = 0;
+  let totalCount = 0;
+  for (const row of rows) {
+    const balance = Math.max(0, Number(row.balance) || 0);
+    if (!balance) continue;
+    detailTotal += balance;
+    totalCount += 1;
+    const code = compositionCode(row[option.field], tab);
+    // Mã AB khác 01/02/04/06 (kể cả KCDB, 08, 11) thuộc nhóm không có TSBĐ.
+    // Riêng mã trống trong bản chốt cũ là thiếu dữ liệu, không thể suy diễn.
+    const bucket = tab === 'collateral' && code && !byCode.has(code) ? 'KCDB' : code;
+    const item = byCode.get(bucket) || unknownBucket;
+    item.value += balance;
+    item.count += 1;
+  }
+  // Một số bản lưu cũ chỉ có số tổng, chưa có chi tiết từng hợp đồng.
+  const total = Math.max(0, Number(m.balance) || 0, detailTotal);
+  const missingBalance = Math.max(0, total - detailTotal);
+  unknownBucket.value += missingBalance;
+  const countComplete = missingBalance < 1;
+  const items = option.categories
+    .filter((c) => byCode.get(c.code).value > 0)
+    .map((c) => ({ label: c.label, color: c.color, ...byCode.get(c.code) }));
+  if (unknownBucket.value > 0) items.push({ ...COMPOSITION_UNKNOWN, ...unknownBucket, countKnown: !missingBalance });
+  return { items, total, totalCount, countComplete };
+}
+
+function compositionTabsHtml() {
+  return `<div class="composition-tabs" role="tablist" aria-label="Chọn cách phân nhóm khoản vay">
+    ${Object.entries(COMPOSITION_OPTIONS).map(([key, option]) => `<button type="button" id="composition-tab-${key}"
+      role="tab" aria-controls="composition-slot" aria-selected="${activeCompositionTab === key}"
+      tabindex="${activeCompositionTab === key ? '0' : '-1'}" data-composition-tab="${key}"
+      class="${activeCompositionTab === key ? 'active' : ''}">${option.label}</button>`).join('')}
+  </div>`;
+}
+
+function compositionPanelHtml(m) {
+  const { items, total, totalCount, countComplete } = compositionData(m, activeCompositionTab);
+  const metric = countComplete ? activeCompositionMetric : 'balance';
+  return `<div class="composition-total">${monthLabelWithNote(m)} · Tổng dư nợ <strong>${formatVND(total)}</strong>
+    · Số khoản vay <strong>${countComplete ? formatNumber(totalCount) : 'Chưa có dữ liệu'}</strong></div>
+    <div class="composition-metrics" role="group" aria-label="Chọn thước đo tỷ trọng">
+      <button type="button" data-composition-metric="balance" aria-pressed="${metric === 'balance'}" class="${metric === 'balance' ? 'active' : ''}">Theo dư nợ</button>
+      <button type="button" data-composition-metric="count" aria-pressed="${metric === 'count'}" class="${metric === 'count' ? 'active' : ''}" ${countComplete ? '' : 'disabled title="Tháng này chưa lưu đủ chi tiết hợp đồng"'}>Theo số khoản vay</button>
+    </div>
+    ${!countComplete ? '<p class="composition-note">Bản chốt cũ chưa có đủ chi tiết hợp đồng. Nạp lại file của tháng này để xem số khoản vay và tỷ trọng theo số khoản vay.</p>' : ''}
+    ${compositionDonutHtml({ items, total, totalCount, metric, countComplete })}`;
+}
+
+function bindCompositionTabs(root) {
+  const tabs = [...root.querySelectorAll('[data-composition-tab]')];
+  const activate = (tab, focus = false) => {
+    activeCompositionTab = tab.dataset.compositionTab;
+    for (const button of tabs) {
+      const selected = button === tab;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+    const { months } = buildDebtDashboardData();
+    const ym = root.querySelector('#nhom-no-slot')?.dataset.ym;
+    const m = months.find((item) => item.yearMonth === ym) || months[months.length - 1];
+    if (m) root.querySelector('#composition-slot').innerHTML = compositionPanelHtml(m);
+    root.querySelector('#composition-slot').setAttribute('aria-labelledby', tab.id);
+    if (focus) tab.focus();
+  };
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => activate(tab));
+    tab.addEventListener('keydown', (event) => {
+      const nextIndex = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+        : event.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length
+          : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+      if (nextIndex === null) return;
+      event.preventDefault();
+      activate(tabs[nextIndex], true);
+    });
+  });
+  root.querySelector('#composition-slot')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-composition-metric]');
+    if (!button || button.disabled) return;
+    activeCompositionMetric = button.dataset.compositionMetric;
+    const { months } = buildDebtDashboardData();
+    const ym = root.querySelector('#nhom-no-slot')?.dataset.ym;
+    const m = months.find((item) => item.yearMonth === ym) || months[months.length - 1];
+    if (m) root.querySelector('#composition-slot').innerHTML = compositionPanelHtml(m);
+  });
+}
 
 /** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m — có thể là tháng đang sống hoặc tháng đã chốt trong quá khứ, xem selectMonth()) — mỗi cột bấm được để mở danh sách hợp đồng, xem bindNhomNoClicks(). */
 function nhomNoBarHtml(m) {
@@ -456,6 +601,14 @@ function debtDashboardHtml() {
       <h3 style="font-size:13.5px;margin-bottom:10px" class="mt-24">Biến động hàng tháng</h3>
       <div id="trend-chart-slot">${monthlyComboChartSvg({ months, selectedYm: initial.yearMonth })}</div>
 
+      <section class="composition-section" aria-labelledby="composition-heading">
+        <h3 id="composition-heading" style="font-size:13.5px;margin-bottom:10px">Tỷ trọng dư nợ và số khoản vay</h3>
+        ${compositionTabsHtml()}
+        <div id="composition-slot" role="tabpanel" aria-labelledby="composition-tab-${activeCompositionTab}">
+          ${compositionPanelHtml(initial)}
+        </div>
+      </section>
+
       <div class="flex items-center justify-between mb-10 mt-20">
         <h3 style="font-size:13.5px;margin:0">Tổng hợp tăng giảm</h3>
         <div class="flex items-center" style="gap:10px">
@@ -495,8 +648,8 @@ function extractReportAsOfDate(rawRows) {
 /**
  * "Nạp dữ liệu cũ" (mục 10.51 docs) — TÁCH RIÊNG hẳn nút "Nhập dữ liệu từ
  * Excel" ở trang Khách hàng (nút đó ghi đè danh sách hợp đồng ĐANG SỐNG).
- * Dùng ĐÚNG mẫu "Sao kê hợp đồng tín dụng" (có dòng "Đến ngày DD/MM/YYYY" ở
- * đầu file) — đọc + tính tổng NGAY TRONG TRÌNH DUYỆT (KHÔNG đụng gì tới bảng
+ * Dùng mẫu sao kê có dòng "Đến ngày" hoặc file số 1 kèm ngày chốt do người
+ * dùng chọn — đọc + tính tổng NGAY TRONG TRÌNH DUYỆT (KHÔNG đụng gì tới bảng
  * hợp đồng thật), hiện bản xem trước để xác nhận, rồi mới lưu 1 dòng lịch sử
  * cho đúng tháng của ngày "Đến ngày" đó (xem S.previewHistoricalSnapshot()/
  * S.saveHistoricalSnapshot() trong state.js).
@@ -507,18 +660,23 @@ function openImportHistoricalModal() {
     title: 'Nạp dữ liệu cũ',
     bodyHtml: `
       <p class="text-sm text-muted mb-8">
-        Dùng đúng mẫu <b>"Sao kê hợp đồng tín dụng"</b> (file có dòng "Đến ngày DD/MM/YYYY" ở đầu) — hệ
-        thống tự đọc ngày này để biết số liệu thuộc tháng nào. <b>Chỉ tính tổng để xem lại lịch sử</b>,
+        Dùng mẫu <b>"Sao kê hợp đồng tín dụng"</b> có dòng "Đến ngày DD/MM/YYYY" hoặc <b>file số 1</b>.
+        Nếu file không có dòng ngày, chọn ngày chốt bên dưới. <b>Chỉ tính tổng để xem lại lịch sử</b>,
         KHÔNG đụng gì tới danh sách hợp đồng đang dùng hiện tại.
       </p>
       <div class="field">
         <input type="file" id="hist-file-input" accept=".xls,.xlsx"/>
+      </div>
+      <div class="field mt-8">
+        <label for="hist-as-of-date" class="fw-700 text-sm">Ngày chốt trong file (khi file không ghi “Đến ngày”)</label>
+        <input type="date" id="hist-as-of-date"/>
       </div>
       <button class="btn btn-primary btn-block mt-8" id="btn-hist-upload" disabled>Đọc file</button>
       <div id="hist-preview"></div>
     `,
     onMount(sheet, closeFn) {
       const fileInput = sheet.querySelector('#hist-file-input');
+      const asOfInput = sheet.querySelector('#hist-as-of-date');
       const uploadBtn = sheet.querySelector('#btn-hist-upload');
       const previewEl = sheet.querySelector('#hist-preview');
       fileInput.addEventListener('change', () => { uploadBtn.disabled = !fileInput.files[0]; });
@@ -533,7 +691,8 @@ function openImportHistoricalModal() {
         previewEl.innerHTML = '';
         try {
           const rawRows = await readExcelFirstSheet(file);
-          const asOfDate = extractReportAsOfDate(rawRows);
+          if (isSupplementReportRows(rawRows)) throw new Error('File số 2 chỉ bổ sung khế ước và phân kỳ; hãy dùng file số 1 hoặc mẫu sao kê để nạp dữ liệu cũ.');
+          const asOfDate = extractReportAsOfDate(rawRows) || asOfInput.value;
           const tsv = rowsToTsv(remapReportTemplateRows(rawRows));
           preview = S.previewHistoricalSnapshot(tsv, asOfDate);
         } catch (err) {
@@ -553,7 +712,7 @@ function openImportHistoricalModal() {
             <div class="text-sm mb-4">Nợ xấu <b style="color:var(--danger)">${formatVND(preview.summary.badDebtBalance)}</b> (${formatPercent(preview.summary.badDebtRatio)}) · Lãi phải thu <b style="color:var(--purple)">${formatVND(preview.summary.interestReceivable)}</b></div>
             <div class="text-sm text-muted mb-4">Nhóm 1: ${formatVND(g[1])} · Nhóm 2: ${formatVND(g[2])} · Nhóm 3: ${formatVND(g[3])} · Nhóm 4: ${formatVND(g[4])} · Nhóm 5: ${formatVND(g[5])}</div>
             <div class="text-sm mb-4">Dự phòng chung <b>${formatVND(preview.generalProvision)}</b> · Dự phòng cụ thể <b>${formatVND(preview.specificProvision)}</b></div>
-            <div class="text-sm text-muted mb-8">TSBĐ đối chiếu theo đúng Số HĐTD đang có: ${preview.collateralMatchedCount} hợp đồng có TSBĐ được áp dụng cho tháng này (kể cả tháng trước khi nhập TSBĐ); ${preview.collateralUnmatchedCount} hợp đồng còn lại tính chưa có TSBĐ.</div>
+            <div class="text-sm text-muted mb-8">Số HĐ được áp TSBĐ: ${preview.collateralMatchedCount} (kể cả tháng trước khi nhập TSBĐ); ${preview.collateralUnmatchedCount} hợp đồng còn lại tính chưa có TSBĐ.</div>
             ${preview.parseErrors.length ? `<div class="text-sm text-danger mb-8">${preview.parseErrors.slice(0, 5).join('<br/>')}</div>` : ''}
             <button class="btn btn-primary btn-block" id="btn-hist-confirm">Xác nhận lưu</button>
           </div>
@@ -592,6 +751,7 @@ function selectMonth(root, ym) {
   nhomNoSlot.dataset.ym = m.yearMonth;
   nhomNoSlot.innerHTML = nhomNoBarHtml(m);
   root.querySelector('#provision-slot').innerHTML = provisionRowsHtml(provisionForMonth(m));
+  root.querySelector('#composition-slot').innerHTML = compositionPanelHtml(m);
   root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
   root.querySelector('#month-detail-label').textContent = monthLabelWithNote(m);
   // Đổi trend-chart-slot.innerHTML sẽ làm mất luôn vị trí cuộn ngang cũ (nếu
