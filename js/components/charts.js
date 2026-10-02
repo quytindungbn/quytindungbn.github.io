@@ -76,7 +76,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
   const measure = (item) => byCount ? item.count : item.value;
   const centerX = 145;
   const centerY = 120;
-  const radius = 65;
+  const radius = 76;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
   const percent = (value, base) => {
@@ -89,7 +89,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     const share = measure(item) / denominator;
     const angle = -Math.PI / 2 + (offset + length / 2) / radius;
     const label = percent(measure(item), denominator);
-    const arc = `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="${item.color}" stroke-width="30"
+    const arc = `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="${item.color}" stroke-width="34"
       stroke-dasharray="${length.toFixed(4)} ${circumference.toFixed(4)}" stroke-dashoffset="${(-offset).toFixed(4)}"
       transform="rotate(-90 ${centerX} ${centerY})" data-composition-category="${item.code}" role="button" tabindex="0"
       aria-label="Xem danh sách ${item.label}" style="cursor:pointer"><title>${item.label}: ${byCount ? `${formatNumber(item.count)} món vay` : formatVND(item.value)} (${label})</title></circle>`;
@@ -102,7 +102,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
       outsideLabels.push({ inside: true, html: `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="800" fill="${brightness > 155 ? '#17212b' : '#fff'}" style="pointer-events:none">${label}</text>` });
     } else if (share > 0) {
       outsideLabels.push({ inside: false, right: Math.cos(angle) >= 0,
-        x: centerX + 82 * Math.cos(angle), y: centerY + 82 * Math.sin(angle), label });
+        x: centerX + 100 * Math.cos(angle), y: centerY + 100 * Math.sin(angle), label });
     }
     offset += length;
     return arc;
@@ -117,8 +117,8 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
   }
   const shareLabels = outsideLabels.map((item) => {
     if (item.inside) return item.html;
-    const lineX = item.right ? 236 : 54;
-    const textX = item.right ? 241 : 49;
+    const lineX = item.right ? 247 : 43;
+    const textX = item.right ? 252 : 38;
     return `<polyline points="${item.x.toFixed(1)},${item.y.toFixed(1)} ${lineX},${item.labelY.toFixed(1)}" fill="none" stroke="var(--text-muted)" stroke-width="1" />
       <text x="${textX}" y="${item.labelY.toFixed(1)}" text-anchor="${item.right ? 'start' : 'end'}" dominant-baseline="middle" font-size="10" font-weight="800" fill="var(--text)">${item.label}</text>`;
   }).join('');
@@ -152,7 +152,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
   return `
     <div class="composition-content">
       <svg class="composition-donut-svg" viewBox="0 0 290 240" role="img" aria-label="Biểu đồ tỷ trọng ${byCount ? 'số món vay' : 'dư nợ'}">
-        <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="var(--surface-alt)" stroke-width="30"></circle>
+        <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="var(--surface-alt)" stroke-width="34"></circle>
         ${arcs}
         ${shareLabels}
         <text x="${centerX}" y="${centerY}" text-anchor="middle" dominant-baseline="middle" font-size="12" font-weight="700" fill="var(--text)">${byCount ? 'Số món vay' : 'Dư nợ'}</text>
