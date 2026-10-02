@@ -923,7 +923,7 @@ function openImportModal() {
         <b>1. File số 1 (dữ liệu chính)</b>: lấy đầy đủ thông tin hợp đồng, giá trị TSBĐ ở cột T, loại vay ở W, mục đích vay ở AA và loại TSBĐ ở AB. Nếu chưa có số khế ước thì dùng Số HĐTD. Hỗ trợ cả mẫu sao kê hợp đồng tín dụng có dòng "STT" (các cột: <b>${REPORT_TEMPLATE_COLUMNS}</b>).<br/>
         <b>2. Mẫu phẳng cũ</b> (đúng thứ tự cột, không có dòng "STT"): <b>${REQUIRED_COLUMNS}</b>.
       </p>
-      <p class="text-sm text-muted mb-8">Cột nào thiếu dữ liệu ở 1 dòng vẫn nhập được — hệ thống tự tính/tự sinh (mã hợp đồng, ngày đến hạn...). <b class="text-danger">Tải file số 1 = danh sách hợp đồng đầy đủ hiện tại</b>: hợp đồng nào đang có trong hệ thống mà không còn trong file này sẽ tự động bị xóa để luôn khớp đúng file mới nhất (khách hết hợp đồng và chưa có tài khoản Use sẽ dọn hồ sơ luôn). Khách hàng <b>hoàn toàn mới</b> (CCCD chưa từng có) sẽ được <b>tự động cấp tài khoản Use</b> (mật khẩu tự sinh, hiện ra sau khi nhập). Khách <b>đã có sẵn</b> hồ sơ/tài khoản sẽ được cập nhật tên, số điện thoại và địa chỉ nếu file số 1 có dữ liệu; tài khoản và mật khẩu được giữ nguyên.</p>
+      <p class="text-sm text-muted mb-8">Cột nào thiếu dữ liệu ở 1 dòng vẫn nhập được — hệ thống tự tính/tự sinh (mã hợp đồng, ngày đến hạn...). <b class="text-danger">Tải file số 1 = danh sách hợp đồng đầy đủ hiện tại</b>: hợp đồng không còn trong file hoặc có dư nợ bằng 0 sẽ tự động bị xóa để luôn khớp đúng file mới nhất (khách hết hợp đồng và chưa có tài khoản Use sẽ dọn hồ sơ luôn). Khách hàng <b>hoàn toàn mới</b> (CCCD chưa từng có) sẽ được <b>tự động cấp tài khoản Use</b> (mật khẩu tự sinh, hiện ra sau khi nhập). Khách <b>đã có sẵn</b> hồ sơ/tài khoản sẽ được cập nhật tên, số điện thoại và địa chỉ nếu file số 1 có dữ liệu; tài khoản và mật khẩu được giữ nguyên.</p>
       <div class="field">
         <input type="file" id="file-input" accept=".xls,.xlsx"/>
         <div class="field-hint">Chọn file số 1 trước. Đọc trực tiếp trong trình duyệt; hỗ trợ .xls và .xlsx.</div>
@@ -962,7 +962,7 @@ function openImportModal() {
         resultEl.innerHTML = `
           <div class="card card-pad mt-16" style="background:var(--surface-alt)">
             <div class="text-sm mb-8">✅ Đã nhập xong — ${res.newProfiles} khách hàng mới · ${res.existingCustomers} khách đã có sẵn được cập nhật · ${res.contracts} hợp đồng</div>
-            ${res.deletedContracts ? `<div class="text-sm mb-8" style="color:var(--warning)">${icon('alert', 'icon-sm')} Đã xóa ${res.deletedContracts} hợp đồng không còn trong file này</div>` : ''}
+            ${res.deletedContracts ? `<div class="text-sm mb-8" style="color:var(--warning)">${icon('alert', 'icon-sm')} Đã xóa ${res.deletedContracts} hợp đồng hết dư nợ hoặc không còn trong file này</div>` : ''}
             ${res.zaloAutoSendMigrated ? `<div class="text-sm mb-8" style="color:var(--success)">${icon('message', 'icon-sm')} Đã tự chuyển ${res.zaloAutoSendMigrated} lựa chọn "Gửi tin tự động" sang hợp đồng mới của cùng khách (khách vẫn còn vay, chỉ đổi số hợp đồng)</div>` : ''}
             ${res.deletedCustomers ? `<div class="text-sm mb-8" style="color:var(--warning)">${icon('alert', 'icon-sm')} Đã dọn ${res.deletedCustomers} hồ sơ không còn hợp đồng nào (chưa có tài khoản Use)</div>` : ''}
             ${res.newAccounts.length ? `

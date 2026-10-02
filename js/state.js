@@ -741,6 +741,9 @@ export const WIDE_NEAR_DUE_DAYS = 45;
  * dueAmount, chỉ khác ngưỡng "gần đến hạn" (RỘNG 45 ngày thay vì 15 ngày).
  */
 export function contractAttentionInfo(contract, asOf = new Date()) {
+  if ((Number(contract.balance) || 0) <= 0) {
+    return { level: null, days: 0, dueAmount: 0, source: null };
+  }
   const d = daysBetween(asOf, new Date(contract.dueDate));
   const contractLevel = contractUrgency(contract, asOf) === 'qua_han' ? 'qua_han' : (d >= 0 && d <= WIDE_NEAR_DUE_DAYS ? 'gan_den_han' : null);
   const inst = nextInstallmentInfo(contract, asOf);

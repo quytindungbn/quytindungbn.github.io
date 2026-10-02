@@ -66,7 +66,9 @@ export function render(contentEl) {
   // (chưa tới ngày đáo hạn cuối) đến/quá hạn cũng được tính vào đây, y hệt
   // trang "Khách hàng & Hợp đồng". Tính 1 lần, dùng lại cho cả tile lẫn
   // popup danh sách bên dưới, khỏi tính lại nhiều lần.
-  const attention = contracts.map((c) => ({ c, info: S.contractAttentionInfo(c) }));
+  const attention = contracts
+    .filter((c) => Number(c.balance) > 0)
+    .map((c) => ({ c, info: S.contractAttentionInfo(c) }));
   const overdue = attention
   .filter((x) => x.info.level === 'qua_han')
   .sort((a, b) => a.info.days - b.info.days)
@@ -291,7 +293,7 @@ function compositionPanelHtml(m) {
       : 'Bản chốt cũ chưa có đủ chi tiết hợp đồng. Nạp lại file của tháng này để xem số món vay và tỷ trọng theo số món vay.'}</p>` : ''}
     ${activeCompositionTab === 'collateral' && !countComplete
       ? ''
-      : compositionDonutHtml({ items, total, totalCount, metric, countComplete })}`;
+      : compositionDonutHtml({ items, total, totalCount, metric, countComplete, tab: activeCompositionTab })}`;
 }
 
 function openCompositionCategoryModal(m, tab, code) {
