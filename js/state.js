@@ -619,10 +619,9 @@ const GENERAL_PROVISION_RATE = 0.0075;
  *
  * - Dự phòng CHUNG = 0,75% × tổng dư nợ Nhóm 1-4 (không tính Nhóm 5).
  * - Dự phòng CỤ THỂ = với TỪNG hợp đồng ở Nhóm 2-5: tỷ lệ theo nhóm (2=5%,
- *   3=20%, 4=50%, 5=100%) × PHẦN DƯ NỢ CÒN LẠI sau khi trừ 50% giá trị TSBĐ
- *   đã khai báo (`ct.hasCollateral`/`ct.collateralValue`, xem
- *   setContractCollateral() bên dưới) — dư nợ vượt quá phần được khấu trừ đó
- *   VẪN phải trích đúng phần vượt, không phải cứ có TSBĐ là miễn hoàn toàn.
+ *   3=20%, 4=50%, 5=100%) × PHẦN DƯ NỢ CÒN LẠI sau khấu trừ TSBĐ:
+ *   đất 01/02 = 50% giá trị; sổ tiết kiệm 06 = 100%; xe 04 và các mã
+ *   chưa được quy định = 0%. Hợp đồng cũ chưa có mã loại giữ hệ số 50%.
  */
 export function provisionSummary(contracts, asOf = new Date()) {
   let generalBase = 0;
@@ -634,7 +633,13 @@ export function provisionSummary(contracts, asOf = new Date()) {
     if (g <= 4) generalBase += balance;
     const rate = SPECIFIC_PROVISION_RATE[g];
     if (!rate) continue;
-    const deductible = ct.hasCollateral ? (Number(ct.collateralValue) || 0) * 0.5 : 0;
+    const type = String(ct.collateralType || '').trim().toUpperCase();
+    // Hợp đồng cũ chưa phân loại giữ hệ số 50% như trước; mã khác 01/02/04/06
+    // được xem như không có TSBĐ để khấu trừ.
+    const factor = type === '01' || type === '02' ? 0.5
+      : type === '06' ? 1
+        : type ? 0 : (ct.hasCollateral ? 0.5 : 0);
+    const deductible = ct.hasCollateral ? (Number(ct.collateralValue) || 0) * factor : 0;
     specificProvision += Math.max(0, balance - deductible) * rate;
   }
   return { generalProvision: generalBase * GENERAL_PROVISION_RATE, specificProvision };
@@ -652,11 +657,17 @@ export async function setContractCollateral(contractId, { hasCollateral, collate
   if (!ct) throw new Error('Không tìm thấy hợp đồng.');
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
-  const patch = { has_collateral: !!hasCollateral, collateral_value: hasCollateral ? (Number(collateralValue) || 0) : 0 };
+  const recognizedType = ['01', '02', '04', '06'].includes(ct.collateralType);
+  const patch = {
+    has_collateral: !!hasCollateral,
+    collateral_value: hasCollateral ? (Number(collateralValue) || 0) : 0,
+    collateral_type: hasCollateral ? (recognizedType ? ct.collateralType : null) : 'KCDB',
+  };
   const { error } = await sb.from('contracts').update(patch).eq('id', contractId);
   if (error) throw new Error('Không lưu được TSBĐ, thử lại sau.');
   ct.hasCollateral = patch.has_collateral;
   ct.collateralValue = patch.collateral_value;
+  ct.collateralType = patch.collateral_type;
   notify();
   logAdminAction('update-contract-collateral', { contractId });
 }
@@ -847,6 +858,9 @@ function mapContractRow(row) {
     // tích/nhập tay từng hợp đồng qua danh sách "Dư nợ theo nhóm nợ".
     hasCollateral: !!row.has_collateral,
     collateralValue: Number(row.collateral_value) || 0,
+    collateralType: row.collateral_type || null,
+    loanTerm: row.loan_term || null,
+    loanPurpose: row.loan_purpose || null,
   };
 }
 
@@ -1225,9 +1239,9 @@ export async function deleteContract(id) {
 // Số dư | Lãi suất
 // (địa chỉ tự tách Xóm/Thôn/Tỉnh; cột nào thiếu dữ liệu sẽ tự tính/tự sinh)
 //
-// 2 cột TÙY CHỌN thêm ở CUỐI (chỉ có khi đọc file "mẫu báo cáo" mới — xem
-// remapReportTemplateRows() trong js/lib/xlsxLite.js, KHÔNG bắt buộc với
-// mẫu phẳng/dán tay): Mã khế ước | Phân kỳ trả nợ theo năm (đóng gói JSON).
+// Các cột TÙY CHỌN thêm ở CUỐI sau 11 cột chính: Mã khế ước | Phân kỳ trả
+// nợ (JSON) | Giá trị TSBĐ | Loại TSBĐ | Loại vay | Mục đích vay. Mẫu phẳng
+// và dữ liệu dán không có các cột này vẫn dùng được như trước.
 // ------------------------------------------------------------
 export function parseVNNumber(str) {
   let s = String(str ?? '').trim().replace(/[^\d.,-]/g, '');
@@ -1320,11 +1334,9 @@ function parseImportLine(line) {
   const headerCheck = cells.slice(0, 2).join(' ').toLowerCase();
   if (HEADER_HINTS.some((h) => headerCheck.includes(h))) return { error: 'header' }; // bỏ qua dòng tiêu đề
 
-  // 2 cột cuối (agreementCode, installmentScheduleRaw) CHỈ có khi đọc từ
-  // "mẫu báo cáo" mới (xem remapReportTemplateRows() trong js/lib/xlsxLite.js)
-  // — dán tay/mẫu phẳng cũ không có 2 cột này, tự ra undefined, không ảnh
-  // hưởng gì (2 trường tương ứng dưới đây tự thành null).
-  const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate, agreementCode, installmentScheduleRaw] = cells.map((c) => c.trim());
+  // Các cột sau 11 cột chính chỉ có ở mẫu báo cáo/file số 1; dán tay/mẫu
+  // phẳng cũ không có thì các giá trị tương ứng tự thành undefined.
+  const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate, agreementCode, installmentScheduleRaw, collateralValueRaw, collateralTypeRaw, loanTermRaw, loanPurposeRaw] = cells.map((c) => c.trim());
   const cccd = (cccdRaw || '').replace(/\s/g, '');
   if (!cccd || !/^\d{9,12}$/.test(cccd)) return { error: `Bỏ qua dòng (CCCD không hợp lệ): ${line.slice(0, 40)}...` };
 
@@ -1348,8 +1360,7 @@ function parseImportLine(line) {
   }
 
   const disbursed = parseVNDate(disbursedDate) || new Date().toISOString().slice(0, 10);
-  return {
-    row: {
+  const row = {
       cccd, name, address, phone, code: code || null,
       agreementCode: agreementCode || null,
       installmentSchedule,
@@ -1359,8 +1370,21 @@ function parseImportLine(line) {
       interestRate: interestRate ? parseVNNumber(interestRate) : null,
       balance: parseVNNumber(balance),
       interestPaidUntil: parseVNDate(interestPaidUntil) || null,
-    },
-  };
+    };
+  // Chỉ file số 1 có bốn cột bổ sung. Mẫu dán/mẫu cũ không được gửi các
+  // thuộc tính này, để máy chủ giữ nguyên TSBĐ và mã phân loại đã có.
+  if (cells.length >= 17) {
+    const collateralCode = String(collateralTypeRaw || '').trim().toUpperCase();
+    const purposeCode = String(loanPurposeRaw || '').trim();
+    const termCode = String(loanTermRaw || '').trim().toUpperCase();
+    row.collateralValue = parseVNNumber(collateralValueRaw);
+    row.collateralType = /^\d{1,2}$/.test(collateralCode) ? collateralCode.padStart(2, '0') : collateralCode;
+    row.loanTerm = termCode.startsWith('NH') ? 'NH' : termCode.startsWith('TH') ? 'TH' : termCode;
+    row.loanPurpose = purposeCode === '1' || purposeCode === '01' ? '01'
+      : purposeCode === '4' || purposeCode === '04' ? '04'
+        : purposeCode === '52' || purposeCode === '052' ? '052' : purposeCode;
+  }
+  return { row };
 }
 
 /**
@@ -1382,6 +1406,10 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
     if (error === 'header') continue;
     if (error) { parseErrors.push(error); continue; }
     rows.push(row);
+  }
+
+  if (fullSync && (skipped || parseErrors.length || !rows.length)) {
+    throw new Error(parseErrors[0] || 'File có dòng không hợp lệ hoặc không có hợp đồng; đã hủy đồng bộ để tránh xóa nhầm dữ liệu.');
   }
 
   const session = getSession();
@@ -1409,6 +1437,32 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
   };
 }
 
+/** Nạp file số 2: chỉ bổ sung khế ước và phân kỳ, không xóa hợp đồng khác. */
+export async function importSupplementRows(rawRows) {
+  if (!Array.isArray(rawRows) || !rawRows.length) throw new Error('File số 2 không có hợp đồng hợp lệ.');
+  const rows = rawRows.map((raw) => {
+    const code = String(raw.code || '').trim();
+    if (!code) throw new Error('File số 2 có dòng thiếu Số HĐ.');
+    const installmentSchedule = {};
+    for (const [year, amountRaw] of Object.entries(raw.installmentSchedule || {})) {
+      if (!/^\d{4}$/.test(year)) continue;
+      const amount = parseVNNumber(amountRaw);
+      if (amount > 0) installmentSchedule[year] = amount;
+    }
+    // Ô khế ước trống trong file bổ sung không được ghi đè giá trị đã lưu.
+    return { code, agreementCode: String(raw.agreementCode || '').trim() || null, installmentSchedule };
+  });
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-supplement', rows });
+  if (!res.ok) throw new Error(res.reason || 'Không bổ sung được file số 2.');
+  await loadAdminSessionData(session.sbToken);
+  notify();
+  return {
+    updated: res.updated || 0, unmatched: res.unmatched || 0, errors: res.errors || [],
+    emptySchedules: rows.filter((row) => !Object.keys(row.installmentSchedule).length).length,
+  };
+}
+
 /**
  * "Nạp dữ liệu cũ" (mục 10.51 docs) — dùng ĐÚNG mẫu Excel "Sao kê hợp đồng
  * tín dụng" như nhập hợp đồng bình thường, nhưng nạp 1 file "TẠI 1 THỜI
@@ -1426,7 +1480,7 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
  * đó nên bắt buộc phải xem trước.
  */
 export function previewHistoricalSnapshot(tsvText, asOfDate) {
-  if (!asOfDate) throw new Error('Không tìm thấy dòng "Đến ngày ..." trong file — không xác định được đây là số liệu của tháng nào.');
+  if (!asOfDate) throw new Error('File không có dòng "Đến ngày ...". Hãy chọn Ngày chốt trong file để xác định tháng cần lưu.');
   const lines = tsvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const contracts = [];
   const parseErrors = [];
@@ -1458,8 +1512,18 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
     if (ambiguousCodes.has(code) || (current?.hasCollateral && importedCollateralCodes.has(code))) {
       throw new Error(`Số HĐTD ${code} bị trùng nên không thể xác định TSBĐ cho từng dòng. Hãy kiểm tra lại trước khi lưu.`);
     }
-    ct.hasCollateral = !!current?.hasCollateral;
-    ct.collateralValue = ct.hasCollateral ? Number(current.collateralValue) || 0 : 0;
+    if (current) {
+      // Hợp đồng đang dùng là nguồn TSBĐ ưu tiên, kể cả với tháng lịch sử.
+      ct.hasCollateral = !!current.hasCollateral;
+      ct.collateralValue = Number(current.collateralValue) || 0;
+      ct.collateralType = current.collateralType || null;
+      ct.loanTerm = ct.loanTerm || current.loanTerm || null;
+      ct.loanPurpose = ct.loanPurpose || current.loanPurpose || null;
+    } else {
+      // Nếu file lịch sử có sẵn cột T/AB thì vẫn tính từ chính file đó.
+      ct.hasCollateral = ['01', '02', '04', '06'].includes(ct.collateralType);
+      ct.collateralValue = Number(ct.collateralValue) || 0;
+    }
     if (ct.hasCollateral) {
       importedCollateralCodes.add(code);
       collateralMatchedCount++;
@@ -1482,6 +1546,9 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
       code: ct.code || null, name: ct.name || null, address: ct.address || null,
       balance: Number(ct.balance) || 0, group: g, daysOverdue: daysOverdue(ct, asOf),
       hasCollateral: ct.hasCollateral, collateralValue: ct.collateralValue,
+      collateralType: ct.collateralType || null,
+      loanTerm: ct.loanTerm || null,
+      loanPurpose: ct.loanPurpose || null,
     });
   }
   // Cùng một công thức với dashboard, dùng TSBĐ đã đối chiếu ở trên.
