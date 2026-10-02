@@ -3,7 +3,7 @@ import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
-import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor, escapeHtml } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
 import { barChartSvg, monthlyComboChartSvg, compositionDonutHtml } from '../../components/charts.js';
@@ -223,13 +223,25 @@ function compositionCode(value, tab) {
   return code;
 }
 
+function compositionRows(m) {
+  return (m.live
+    ? visibleContracts().filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan')
+    : (Array.isArray(m.contractsDetail) ? m.contractsDetail : []))
+    .filter((row) => Number(row.balance) > 0);
+}
+
+/** Dùng cùng quy tắc phân loại cho biểu đồ và danh sách khi bấm vào từng mục. */
+function compositionBucket(row, tab) {
+  const code = compositionCode(row[COMPOSITION_OPTIONS[tab].field], tab);
+  if (tab === 'collateral' && !COMPOSITION_OPTIONS.collateral.categories.some((c) => c.code === code)) return 'KCDB';
+  return COMPOSITION_OPTIONS[tab].categories.some((c) => c.code === code) ? code : 'unknown';
+}
+
 /** Các bản chốt cũ có thể chưa lưu mã phân loại; không suy diễn loại TSBĐ
  * cho phần dư nợ thiếu cả chi tiết hợp đồng. */
 function compositionData(m, tab) {
   const option = COMPOSITION_OPTIONS[tab];
-  const rows = m.live
-    ? visibleContracts().filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan')
-    : (Array.isArray(m.contractsDetail) ? m.contractsDetail : []);
+  const rows = compositionRows(m);
   const byCode = new Map(option.categories.map((c) => [c.code, { value: 0, count: 0 }]));
   const unknownBucket = { value: 0, count: 0 };
   let detailTotal = 0;
@@ -239,9 +251,7 @@ function compositionData(m, tab) {
     if (!balance) continue;
     detailTotal += balance;
     totalCount += 1;
-    const code = compositionCode(row[option.field], tab);
-    // Mọi mã AB ngoài 01/02/04/06, kể cả mã trống, thuộc nhóm không có TSBĐ.
-    const bucket = tab === 'collateral' && !byCode.has(code) ? 'KCDB' : code;
+    const bucket = compositionBucket(row, tab);
     const item = byCode.get(bucket) || unknownBucket;
     item.value += balance;
     item.count += 1;
@@ -253,8 +263,8 @@ function compositionData(m, tab) {
   const countComplete = missingBalance < 1;
   const items = option.categories
     .filter((c) => byCode.get(c.code).value > 0)
-    .map((c) => ({ label: c.label, color: c.color, ...byCode.get(c.code) }));
-  if (unknownBucket.value > 0 && tab !== 'collateral') items.push({ ...COMPOSITION_UNKNOWN, ...unknownBucket, countKnown: !missingBalance });
+    .map((c) => ({ code: c.code, label: c.label, color: c.color, ...byCode.get(c.code) }));
+  if (unknownBucket.value > 0 && tab !== 'collateral') items.push({ code: 'unknown', ...COMPOSITION_UNKNOWN, ...unknownBucket, countKnown: !missingBalance });
   return { items, total, totalCount, countComplete };
 }
 
@@ -282,6 +292,43 @@ function compositionPanelHtml(m) {
     ${activeCompositionTab === 'collateral' && !countComplete
       ? ''
       : compositionDonutHtml({ items, total, totalCount, metric, countComplete })}`;
+}
+
+function openCompositionCategoryModal(m, tab, code) {
+  const item = compositionData(m, tab).items.find((entry) => entry.code === code);
+  if (!item) return;
+  const rows = compositionRows(m).filter((row) => compositionBucket(row, tab) === code);
+  const { isStaff } = currentRoles();
+  const rowHtml = rows.map((row, index) => {
+    const customer = m.live ? S.getCustomer(row.customerId) : null;
+    const name = m.live ? customer?.name : row.name;
+    const address = m.live
+      ? ([customer?.xom, customer?.thon, customer?.tinh].filter(Boolean).join(', ') || customer?.address)
+      : row.address;
+    return `<div class="list-row" ${m.live ? `data-composition-row="${index}" style="cursor:pointer"` : ''}>
+      <div class="row-main">
+        <div class="row-title">${escapeHtml(name || '—')}</div>
+        <div class="row-sub">${row.code ? `HĐTD ${escapeHtml(row.code)} · ` : ''}${escapeHtml(address || 'Chưa có địa bàn')}</div>
+      </div>
+      <div class="row-end"><b class="amount">${formatVND(Number(row.balance) || 0)}</b></div>
+    </div>`;
+  }).join('');
+  openModal({
+    title: item.label,
+    bodyHtml: `<div class="text-sm text-muted mb-12">${monthLabelWithNote(m)} · ${formatNumber(rows.length)} món vay · Dư nợ <b>${formatVND(rows.reduce((sum, row) => sum + (Number(row.balance) || 0), 0))}</b></div>
+      ${!m.live ? '<p class="text-sm text-muted mb-8">Danh sách đã lưu của tháng này.</p>' : ''}
+      ${!m.live && !compositionData(m, tab).countComplete ? '<p class="text-sm mb-8" style="color:var(--warning)">Bản chốt này thiếu chi tiết một số hợp đồng; danh sách chỉ gồm các món vay có chi tiết đã lưu.</p>' : ''}
+      ${rowHtml || emptyState({ iconName: 'search', title: 'Chưa có danh sách chi tiết', message: 'Bản chốt cũ chưa lưu chi tiết các món vay thuộc mục này.' })}`,
+    onMount(sheet) {
+      if (!m.live) return;
+      sheet.querySelectorAll('[data-composition-row]').forEach((element) => {
+        element.addEventListener('click', () => {
+          const contract = rows[Number(element.dataset.compositionRow)];
+          if (contract) openContractView(contract.customerId, contract, { readOnly: isStaff });
+        });
+      });
+    },
+  });
 }
 
 function bindCompositionTabs(root) {
@@ -313,6 +360,14 @@ function bindCompositionTabs(root) {
     });
   });
   root.querySelector('#composition-slot')?.addEventListener('click', (event) => {
+    const category = event.target.closest('[data-composition-category]');
+    if (category) {
+      const { months } = buildDebtDashboardData();
+      const ym = root.querySelector('#nhom-no-slot')?.dataset.ym;
+      const m = months.find((item) => item.yearMonth === ym) || months[months.length - 1];
+      if (m) openCompositionCategoryModal(m, activeCompositionTab, category.dataset.compositionCategory);
+      return;
+    }
     const button = event.target.closest('[data-composition-metric]');
     if (!button || button.disabled) return;
     activeCompositionMetric = button.dataset.compositionMetric;
@@ -320,6 +375,13 @@ function bindCompositionTabs(root) {
     const ym = root.querySelector('#nhom-no-slot')?.dataset.ym;
     const m = months.find((item) => item.yearMonth === ym) || months[months.length - 1];
     if (m) root.querySelector('#composition-slot').innerHTML = compositionPanelHtml(m);
+  });
+  root.querySelector('#composition-slot')?.addEventListener('keydown', (event) => {
+    if (!['Enter', ' '].includes(event.key)) return;
+    const category = event.target.closest('svg [data-composition-category]');
+    if (!category) return;
+    event.preventDefault();
+    category.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
 }
 
