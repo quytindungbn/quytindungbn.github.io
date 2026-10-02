@@ -645,8 +645,11 @@ svg { display: block; }
 .composition-legend-item {
   display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 2px 8px;
   align-items: start; border-bottom: 1px solid var(--border); padding: 6px 0;
-  font-size: 12px;
+  width: 100%; background: transparent; border-top: 0; border-left: 0; border-right: 0;
+  text-align: left; font: inherit; font-size: 12px; cursor: pointer;
 }
+.composition-legend-item:hover .composition-legend-name { color: var(--color-primary); text-decoration: underline; }
+.composition-legend-item:focus-visible, .composition-donut-svg [data-composition-category]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .composition-legend-dot { grid-column: 1; grid-row: 1; width: 9px; height: 9px; border-radius: 3px; margin-top: 3px; }
 .composition-legend-name { grid-column: 2; grid-row: 1; min-width: 0; color: var(--text); }
 .composition-legend-value { grid-column: 2; grid-row: 2; color: var(--text-muted); font-size: 11px; }
