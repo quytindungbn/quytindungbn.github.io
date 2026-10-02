@@ -91,7 +91,8 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     const label = percent(measure(item), denominator);
     const arc = `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="${item.color}" stroke-width="28"
       stroke-dasharray="${length.toFixed(4)} ${circumference.toFixed(4)}" stroke-dashoffset="${(-offset).toFixed(4)}"
-      transform="rotate(-90 ${centerX} ${centerY})"><title>${item.label}: ${byCount ? `${formatNumber(item.count)} món vay` : formatVND(item.value)} (${label})</title></circle>`;
+      transform="rotate(-90 ${centerX} ${centerY})" data-composition-category="${item.code}" role="button" tabindex="0"
+      aria-label="Xem danh sách ${item.label}" style="cursor:pointer"><title>${item.label}: ${byCount ? `${formatNumber(item.count)} món vay` : formatVND(item.value)} (${label})</title></circle>`;
     if (share >= 0.08) {
       const x = centerX + radius * Math.cos(angle);
       const y = centerY + radius * Math.sin(angle);
@@ -124,11 +125,11 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
       ? `<strong>${formatNumber(item.count)}</strong>`
       : 'Chưa rõ số món vay';
     return `
-    <div class="composition-legend-item">
+    <button type="button" class="composition-legend-item" data-composition-category="${item.code}" aria-label="Xem danh sách ${item.label}">
       <span class="composition-legend-dot" style="background:${item.color}" aria-hidden="true"></span>
       <span class="composition-legend-name">${item.label}</span>
       <span class="composition-legend-value">Dư nợ: <strong>${formatVND(item.value)}</strong><br>Số món vay: ${countText}</span>
-    </div>`;
+    </button>`;
   }).join('');
   return `
     <div class="composition-content">
