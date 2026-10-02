@@ -67,16 +67,16 @@ export function barChartSvg({ items, aspect = 2.1 }) {
 }
 
 /** Tỷ trọng theo dư nợ hoặc số món vay của đúng tháng đang xem. */
-export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'balance', countComplete = true }) {
+export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'balance', countComplete = true, tab = 'purpose' }) {
   if (!(total > 0)) {
     return '<p class="text-sm text-muted" style="padding:12px 0">Chưa có dư nợ để tính tỷ trọng.</p>';
   }
   const byCount = metric === 'count' && countComplete && totalCount > 0;
   const denominator = byCount ? totalCount : total;
   const measure = (item) => byCount ? item.count : item.value;
-  const centerX = 110;
-  const centerY = 95;
-  const radius = 53;
+  const centerX = 145;
+  const centerY = 120;
+  const radius = 65;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
   const percent = (value, base) => {
@@ -89,7 +89,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     const share = measure(item) / denominator;
     const angle = -Math.PI / 2 + (offset + length / 2) / radius;
     const label = percent(measure(item), denominator);
-    const arc = `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="${item.color}" stroke-width="28"
+    const arc = `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="${item.color}" stroke-width="30"
       stroke-dasharray="${length.toFixed(4)} ${circumference.toFixed(4)}" stroke-dashoffset="${(-offset).toFixed(4)}"
       transform="rotate(-90 ${centerX} ${centerY})" data-composition-category="${item.code}" role="button" tabindex="0"
       aria-label="Xem danh sách ${item.label}" style="cursor:pointer"><title>${item.label}: ${byCount ? `${formatNumber(item.count)} món vay` : formatVND(item.value)} (${label})</title></circle>`;
@@ -99,10 +99,10 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
       // Chữ tối trên lát màu sáng, chữ trắng trên lát màu đậm.
       const rgb = /^#([\da-f]{6})$/i.exec(item.color)?.[1];
       const brightness = rgb ? (0.299 * parseInt(rgb.slice(0, 2), 16) + 0.587 * parseInt(rgb.slice(2, 4), 16) + 0.114 * parseInt(rgb.slice(4, 6), 16)) : 0;
-      outsideLabels.push({ inside: true, html: `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="${brightness > 155 ? '#17212b' : '#fff'}" style="pointer-events:none">${label}</text>` });
+      outsideLabels.push({ inside: true, html: `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="800" fill="${brightness > 155 ? '#17212b' : '#fff'}" style="pointer-events:none">${label}</text>` });
     } else if (share > 0) {
       outsideLabels.push({ inside: false, right: Math.cos(angle) >= 0,
-        x: centerX + 69 * Math.cos(angle), y: centerY + 69 * Math.sin(angle), label });
+        x: centerX + 82 * Math.cos(angle), y: centerY + 82 * Math.sin(angle), label });
     }
     offset += length;
     return arc;
@@ -110,36 +110,54 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
   for (const right of [false, true]) {
     const side = outsideLabels.filter((item) => !item.inside && item.right === right).sort((a, b) => a.y - b.y);
     side.forEach((item, i) => {
-      item.labelY = Math.max(12 + i * 13, Math.min(178 - (side.length - i - 1) * 13, item.y));
+      const minY = i ? side[i - 1].labelY + 16 : 12;
+      const maxY = 228 - (side.length - i - 1) * 16;
+      item.labelY = Math.max(minY, Math.min(maxY, item.y));
     });
   }
   const shareLabels = outsideLabels.map((item) => {
     if (item.inside) return item.html;
-    const lineX = item.right ? 182 : 38;
-    const textX = item.right ? 187 : 33;
+    const lineX = item.right ? 236 : 54;
+    const textX = item.right ? 241 : 49;
     return `<polyline points="${item.x.toFixed(1)},${item.y.toFixed(1)} ${lineX},${item.labelY.toFixed(1)}" fill="none" stroke="var(--text-muted)" stroke-width="1" />
-      <text x="${textX}" y="${item.labelY.toFixed(1)}" text-anchor="${item.right ? 'start' : 'end'}" dominant-baseline="middle" font-size="9" font-weight="700" fill="var(--text)">${item.label}</text>`;
+      <text x="${textX}" y="${item.labelY.toFixed(1)}" text-anchor="${item.right ? 'start' : 'end'}" dominant-baseline="middle" font-size="10" font-weight="800" fill="var(--text)">${item.label}</text>`;
   }).join('');
-  const legend = items.map((item) => {
+  const legendItem = (item) => {
     const countText = countComplete || item.countKnown !== false
       ? `<strong>${formatNumber(item.count)}</strong>`
       : 'Chưa rõ số món vay';
+    const share = percent(measure(item), denominator);
     return `
     <button type="button" class="composition-legend-item" data-composition-category="${item.code}" aria-label="Xem danh sách ${item.label}">
       <span class="composition-legend-dot" style="background:${item.color}" aria-hidden="true"></span>
-      <span class="composition-legend-name">${item.label}</span>
+      <span class="composition-legend-title"><span class="composition-legend-name">${item.label}</span><strong class="composition-legend-share">${share}</strong></span>
       <span class="composition-legend-value">Dư nợ: <strong>${formatVND(item.value)}</strong><br>Số món vay: ${countText}</span>
     </button>`;
-  }).join('');
+  };
+  const legend = tab === 'collateral' ? (() => {
+    const secured = items.filter((item) => item.code !== 'KCDB');
+    const unsecured = items.find((item) => item.code === 'KCDB');
+    const securedTotal = secured.reduce((sum, item) => sum + measure(item), 0);
+    return `<div class="composition-collateral-grid">
+      <section class="composition-collateral-group" aria-label="Có tài sản bảo đảm">
+        <div class="composition-collateral-heading"><span>Có tài sản bảo đảm</span><strong>${percent(securedTotal, denominator)}</strong></div>
+        ${secured.length ? secured.map(legendItem).join('') : '<p class="composition-collateral-empty">Chưa có món vay</p>'}
+      </section>
+      <section class="composition-collateral-group" aria-label="Không có tài sản bảo đảm">
+        <div class="composition-collateral-heading"><span>Không có tài sản bảo đảm</span><strong>${percent(measure(unsecured || { value: 0, count: 0 }), denominator)}</strong></div>
+        ${unsecured ? legendItem(unsecured) : '<p class="composition-collateral-empty">Chưa có món vay</p>'}
+      </section>
+    </div>`;
+  })() : items.map(legendItem).join('');
   return `
     <div class="composition-content">
-      <svg class="composition-donut-svg" viewBox="0 0 220 190" role="img" aria-label="Biểu đồ tỷ trọng ${byCount ? 'số món vay' : 'dư nợ'}">
-        <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="var(--surface-alt)" stroke-width="28"></circle>
+      <svg class="composition-donut-svg" viewBox="0 0 290 240" role="img" aria-label="Biểu đồ tỷ trọng ${byCount ? 'số món vay' : 'dư nợ'}">
+        <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="var(--surface-alt)" stroke-width="30"></circle>
         ${arcs}
         ${shareLabels}
         <text x="${centerX}" y="${centerY}" text-anchor="middle" dominant-baseline="middle" font-size="12" font-weight="700" fill="var(--text)">${byCount ? 'Số món vay' : 'Dư nợ'}</text>
       </svg>
-      <div class="composition-legend">${legend}</div>
+      <div class="composition-legend${tab === 'collateral' ? ' composition-legend--collateral' : ''}">${legend}</div>
     </div>`;
 }
 
