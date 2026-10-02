@@ -1632,6 +1632,13 @@ Deno.serve(async (req) => {
       ? body.rows.map((row: any) => ({ ...(row || {}), code: String(row?.code || '').trim() })) : [];
     const fullSync = !!body.fullSync;
     if (!rows.length || rows.length > 5000) return json({ ok: false, reason: 'File không có hợp đồng hoặc vượt quá 5.000 dòng.' }, 400);
+    if (rows.some((row: any) => row.balance == null || !Number.isFinite(Number(row.balance)) || Number(row.balance) < 0)) {
+      return json({ ok: false, reason: 'File có dư nợ trống, âm hoặc không hợp lệ; chưa thay đổi dữ liệu.' }, 400);
+    }
+    // Dòng dư nợ 0 là khoản đã tất toán: không tạo lại hợp đồng. Với file số 1,
+    // danh sách còn dư nợ là nguồn sự thật để xóa cả hợp đồng cũ vừa tất toán.
+    const activeRows = rows.filter((row: any) => (Number(row.balance) || 0) > 0);
+    if (fullSync && !activeRows.length) return json({ ok: false, reason: 'File không có hợp đồng còn dư nợ; chưa đồng bộ để tránh xóa nhầm toàn bộ dữ liệu.' }, 400);
     if (fullSync) {
       const codes = new Set<string>();
       for (const row of rows) {
@@ -1671,7 +1678,7 @@ Deno.serve(async (req) => {
     const customerByCccd = new Map((allCustomers || []).map((c: any) => [c.cccd, c]));
     const contractByCode = new Map((allContracts || []).filter((c: any) => c.code).map((c: any) => [c.code, c]));
     if (fullSync) {
-      const requestedCodes = new Set(rows.map((row: any) => String(row.code).trim()));
+      const requestedCodes = new Set(activeRows.map((row: any) => String(row.code).trim()));
       const existingCodes = new Set<string>();
       for (const ct of allContracts || []) {
         if (!requestedCodes.has(ct.code)) continue;
@@ -1696,6 +1703,7 @@ Deno.serve(async (req) => {
     const existingCustomerUpserts: Record<string, unknown>[] = [];
     const contractUpserts: Record<string, unknown>[] = [];
     const touchedContractIds = new Set<string>();
+    const settledContractIds = new Set<string>();
     const usedCodes = new Set<string>();
     // 1 khách hàng có thể xuất hiện ở NHIỀU dòng (mỗi dòng 1 hợp đồng) — GHI
     // hồ sơ khách hàng CHỈ SAU KHI xử lý xong hết các dòng (dùng touchedCccds
@@ -1711,6 +1719,14 @@ Deno.serve(async (req) => {
     for (const row of rows) {
       const cccd = String(row.cccd || '').trim();
       if (!cccd || !/^\d{9,12}$/.test(cccd)) { result.skipped++; continue; }
+      if ((Number(row.balance) || 0) <= 0) {
+        // Dán tay một dòng dư nợ 0 cũng xóa đúng hợp đồng đã có, nhưng chỉ
+        // khi CCCD của dòng đó trùng với chủ sở hữu để tránh xóa nhầm.
+        const existing = row.code ? contractByCode.get(row.code) : null;
+        const owner = customerByCccd.get(cccd);
+        if (existing && owner?.id === existing.customer_id) settledContractIds.add(existing.id);
+        continue;
+      }
       touchedCccds.add(cccd);
 
       let cust: any = customerByCccd.get(cccd);
@@ -1826,10 +1842,11 @@ Deno.serve(async (req) => {
       if (error) return json({ ok: false, reason: 'Lỗi ghi hợp đồng; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
 
-    if (fullSync) {
-      const toDeleteIds = (allContracts || []).filter((c: any) => !touchedContractIds.has(c.id)).map((c: any) => c.id);
-      if (toDeleteIds.length) {
-        // Trước khi xóa hợp đồng không còn trong file, tự CHUYỂN lựa chọn
+    const toDeleteIds = fullSync
+      ? (allContracts || []).filter((c: any) => !touchedContractIds.has(c.id)).map((c: any) => c.id)
+      : [...settledContractIds];
+    if (toDeleteIds.length) {
+        // Trước khi xóa hợp đồng không còn dư nợ, tự CHUYỂN lựa chọn
         // Tầng 2 "Gửi tin tự động" (nếu có) đang gắn với hợp đồng đó sang
         // hợp đồng CÒN LẠI của CÙNG khách hàng, khi khách vẫn còn vay (VD:
         // tất toán hợp đồng cũ, mở hợp đồng mới khác số — vẫn là 1 khoản
@@ -1844,11 +1861,15 @@ Deno.serve(async (req) => {
         if (orphanEntries && orphanEntries.length) {
           const { data: existingAutoRows } = await admin.from('zalo_auto_send_list').select('contract_id');
           const alreadyInAuto = new Set((existingAutoRows || []).map((r: any) => r.contract_id));
-          // Trạng thái CUỐI CÙNG của mọi hợp đồng sau lượt sync này —
-          // contractUpsertsDeduped gồm cả hợp đồng cũ được cập nhật lẫn hợp
-          // đồng mới tạo trong đúng lượt import này.
+          // Trạng thái CUỐI CÙNG sau lượt nhập. Dán tay chỉ thay một phần
+          // danh sách nên vẫn tính cả các hợp đồng cũ chưa được cập nhật.
+          const remainingContracts = new Map<string, any>();
+          if (!fullSync) for (const ct of allContracts || []) {
+            if (!toDeleteIds.includes(ct.id)) remainingContracts.set(ct.id, ct);
+          }
+          for (const ct of contractUpsertsDeduped) remainingContracts.set((ct as any).id, ct);
           const remainingByCustomer = new Map<string, string[]>();
-          for (const cr of contractUpsertsDeduped) {
+          for (const cr of remainingContracts.values()) {
             const cid = (cr as any).id as string;
             if (alreadyInAuto.has(cid)) continue; // đã có Tầng 2 riêng, không ghi đè lên
             if ((Number((cr as any).balance) || 0) <= 0) continue; // còn lại nhưng đã tất toán -> không phải nơi để chuyển vào
@@ -1864,10 +1885,17 @@ Deno.serve(async (req) => {
             if (!migErr) { alreadyInAuto.add(candidates[0]); result.zaloAutoSendMigrated++; }
           }
         }
+        // Nhật ký đã gửi là lịch sử, không được mất theo ON DELETE CASCADE
+        // của contracts. Hai cột contract_id đều cho phép NULL.
+        for (const table of ['notification_log', 'zalo_send_log'] as const) {
+          const { error: logError } = await admin.from(table).update({ contract_id: null }).in('contract_id', toDeleteIds);
+          if (logError) return json({ ok: false, reason: `Không giữ được lịch sử ${table}; chưa xóa hợp đồng: ${logError.message}` }, 500);
+        }
         const { error } = await admin.from('contracts').delete().in('id', toDeleteIds);
-        if (error) return json({ ok: false, reason: 'Lỗi xóa hợp đồng đã rời file chính: ' + error.message }, 500);
+        if (error) return json({ ok: false, reason: 'Lỗi xóa hợp đồng đã tất toán hoặc rời file chính: ' + error.message }, 500);
         result.deletedContracts = toDeleteIds.length;
-      }
+    }
+    if (fullSync || toDeleteIds.length) {
       const { data: remaining, error: remainingError } = await readAll('contracts');
       if (remainingError) return json({ ok: false, reason: 'Không kiểm tra được hợp đồng còn lại; chưa dọn hồ sơ khách hàng.' }, 500);
       const balByCust = new Map<string, number>();
