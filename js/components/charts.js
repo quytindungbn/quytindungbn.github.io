@@ -66,7 +66,7 @@ export function barChartSvg({ items, aspect = 2.1 }) {
     </div>`;
 }
 
-/** Tỷ trọng theo dư nợ hoặc số khoản vay của đúng tháng đang xem. */
+/** Tỷ trọng theo dư nợ hoặc số món vay của đúng tháng đang xem. */
 export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'balance', countComplete = true }) {
   if (!(total > 0)) {
     return '<p class="text-sm text-muted" style="padding:12px 0">Chưa có dư nợ để tính tỷ trọng.</p>';
@@ -74,40 +74,69 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
   const byCount = metric === 'count' && countComplete && totalCount > 0;
   const denominator = byCount ? totalCount : total;
   const measure = (item) => byCount ? item.count : item.value;
-  const radius = 46;
+  const centerX = 110;
+  const centerY = 95;
+  const radius = 53;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
   const percent = (value, base) => {
     const p = base > 0 ? value / base * 100 : 0;
     return p > 0 && p < 0.05 ? '<0,1%' : `${p.toFixed(1).replace('.', ',')}%`;
   };
+  const outsideLabels = [];
   const arcs = items.map((item) => {
     const length = Math.max(0, measure(item) / denominator * circumference);
-    const arc = `<circle cx="60" cy="60" r="${radius}" fill="none" stroke="${item.color}" stroke-width="15"
+    const share = measure(item) / denominator;
+    const angle = -Math.PI / 2 + (offset + length / 2) / radius;
+    const label = percent(measure(item), denominator);
+    const arc = `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="${item.color}" stroke-width="28"
       stroke-dasharray="${length.toFixed(4)} ${circumference.toFixed(4)}" stroke-dashoffset="${(-offset).toFixed(4)}"
-      transform="rotate(-90 60 60)"><title>${item.label}: ${byCount ? `${formatNumber(item.count)} khoản vay` : formatVND(item.value)} (${percent(measure(item), denominator)})</title></circle>`;
+      transform="rotate(-90 ${centerX} ${centerY})"><title>${item.label}: ${byCount ? `${formatNumber(item.count)} món vay` : formatVND(item.value)} (${label})</title></circle>`;
+    if (share >= 0.08) {
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      // Chữ tối trên lát màu sáng, chữ trắng trên lát màu đậm.
+      const rgb = /^#([\da-f]{6})$/i.exec(item.color)?.[1];
+      const brightness = rgb ? (0.299 * parseInt(rgb.slice(0, 2), 16) + 0.587 * parseInt(rgb.slice(2, 4), 16) + 0.114 * parseInt(rgb.slice(4, 6), 16)) : 0;
+      outsideLabels.push({ inside: true, html: `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="${brightness > 155 ? '#17212b' : '#fff'}" style="pointer-events:none">${label}</text>` });
+    } else if (share > 0) {
+      outsideLabels.push({ inside: false, right: Math.cos(angle) >= 0,
+        x: centerX + 69 * Math.cos(angle), y: centerY + 69 * Math.sin(angle), label });
+    }
     offset += length;
     return arc;
   }).join('');
+  for (const right of [false, true]) {
+    const side = outsideLabels.filter((item) => !item.inside && item.right === right).sort((a, b) => a.y - b.y);
+    side.forEach((item, i) => {
+      item.labelY = Math.max(12 + i * 13, Math.min(178 - (side.length - i - 1) * 13, item.y));
+    });
+  }
+  const shareLabels = outsideLabels.map((item) => {
+    if (item.inside) return item.html;
+    const lineX = item.right ? 182 : 38;
+    const textX = item.right ? 187 : 33;
+    return `<polyline points="${item.x.toFixed(1)},${item.y.toFixed(1)} ${lineX},${item.labelY.toFixed(1)}" fill="none" stroke="var(--text-muted)" stroke-width="1" />
+      <text x="${textX}" y="${item.labelY.toFixed(1)}" text-anchor="${item.right ? 'start' : 'end'}" dominant-baseline="middle" font-size="9" font-weight="700" fill="var(--text)">${item.label}</text>`;
+  }).join('');
   const legend = items.map((item) => {
     const countText = countComplete || item.countKnown !== false
-      ? `${formatNumber(item.count)} khoản vay${countComplete ? ` · ${percent(item.count, totalCount)}` : ''}`
-      : 'Chưa rõ số khoản vay';
+      ? `<strong>${formatNumber(item.count)}</strong>`
+      : 'Chưa rõ số món vay';
     return `
     <div class="composition-legend-item">
       <span class="composition-legend-dot" style="background:${item.color}" aria-hidden="true"></span>
       <span class="composition-legend-name">${item.label}</span>
-      <strong>${percent(measure(item), denominator)}</strong>
-      <span class="composition-legend-value">Dư nợ: ${formatVND(item.value)} · ${percent(item.value, total)}<br>Số khoản vay: ${countText}</span>
+      <span class="composition-legend-value">Dư nợ: <strong>${formatVND(item.value)}</strong><br>Số món vay: ${countText}</span>
     </div>`;
   }).join('');
   return `
     <div class="composition-content">
-      <svg class="composition-donut-svg" viewBox="0 0 120 120" role="img" aria-label="Biểu đồ tỷ trọng ${byCount ? 'số khoản vay' : 'dư nợ'}">
-        <circle cx="60" cy="60" r="${radius}" fill="none" stroke="var(--surface-alt)" stroke-width="15"></circle>
+      <svg class="composition-donut-svg" viewBox="0 0 220 190" role="img" aria-label="Biểu đồ tỷ trọng ${byCount ? 'số món vay' : 'dư nợ'}">
+        <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="var(--surface-alt)" stroke-width="28"></circle>
         ${arcs}
-        <text x="60" y="58" text-anchor="middle" font-size="19" font-weight="800" fill="var(--text)">100%</text>
-        <text x="60" y="73" text-anchor="middle" font-size="10" fill="var(--text-muted)">${byCount ? 'khoản vay' : 'dư nợ'}</text>
+        ${shareLabels}
+        <text x="${centerX}" y="${centerY}" text-anchor="middle" dominant-baseline="middle" font-size="12" font-weight="700" fill="var(--text)">${byCount ? 'Số món vay' : 'Dư nợ'}</text>
       </svg>
       <div class="composition-legend">${legend}</div>
     </div>`;
