@@ -6,6 +6,7 @@ import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
+import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xlsxLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 
 export function renderHeader(headerEl) {
@@ -919,16 +920,23 @@ function openImportModal() {
     bodyHtml: `
       <p class="text-sm text-muted mb-8">
         Chọn file Excel sổ theo dõi vay bạn đang dùng (<b>.xls</b> hoặc <b>.xlsx</b>) — hỗ trợ <b>2 loại mẫu</b>, tự nhận diện đúng loại, không cần chọn:<br/>
-        <b>1. Mẫu sao kê hợp đồng tín dụng</b> (file in ra từ phần mềm nghiệp vụ, có dòng "STT" ở đầu bảng) — tự tìm đúng cột theo TÊN cột, không quan tâm thứ tự/có thêm cột khác cũng được, chỉ cần có đủ các cột: <b>${REPORT_TEMPLATE_COLUMNS}</b>. Các dòng "cộng dồn theo loại vay"/"Tổng cộng"/chữ ký ở cuối file tự động bị bỏ qua, không tính nhầm thành hợp đồng.<br/>
+        <b>1. File số 1 (dữ liệu chính)</b>: lấy đầy đủ thông tin hợp đồng, giá trị TSBĐ ở cột T, loại vay ở W, mục đích vay ở AA và loại TSBĐ ở AB. Nếu chưa có số khế ước thì dùng Số HĐTD. Hỗ trợ cả mẫu sao kê hợp đồng tín dụng có dòng "STT" (các cột: <b>${REPORT_TEMPLATE_COLUMNS}</b>).<br/>
         <b>2. Mẫu phẳng cũ</b> (đúng thứ tự cột, không có dòng "STT"): <b>${REQUIRED_COLUMNS}</b>.
       </p>
-      <p class="text-sm text-muted mb-8">Cột nào thiếu dữ liệu ở 1 dòng vẫn nhập được — hệ thống tự tính/tự sinh (mã hợp đồng, ngày đến hạn...). <b class="text-danger">Tải file lên = danh sách hợp đồng đầy đủ hiện tại</b>: hợp đồng nào đang có trong hệ thống mà không còn trong file này sẽ tự động bị xóa để luôn khớp đúng file mới nhất (khách hết hợp đồng và chưa có tài khoản Use sẽ dọn hồ sơ luôn). Khách hàng <b>hoàn toàn mới</b> (CCCD chưa từng có) sẽ được <b>tự động cấp tài khoản Use</b> (mật khẩu tự sinh, hiện ra sau khi nhập). Khách <b>đã có sẵn</b> hồ sơ/tài khoản thì Excel <b>không đụng gì</b> đến tên/SĐT/địa chỉ/tài khoản của họ — chỉ cập nhật hợp đồng.</p>
+      <p class="text-sm text-muted mb-8">Cột nào thiếu dữ liệu ở 1 dòng vẫn nhập được — hệ thống tự tính/tự sinh (mã hợp đồng, ngày đến hạn...). <b class="text-danger">Tải file số 1 = danh sách hợp đồng đầy đủ hiện tại</b>: hợp đồng nào đang có trong hệ thống mà không còn trong file này sẽ tự động bị xóa để luôn khớp đúng file mới nhất (khách hết hợp đồng và chưa có tài khoản Use sẽ dọn hồ sơ luôn). Khách hàng <b>hoàn toàn mới</b> (CCCD chưa từng có) sẽ được <b>tự động cấp tài khoản Use</b> (mật khẩu tự sinh, hiện ra sau khi nhập). Khách <b>đã có sẵn</b> hồ sơ/tài khoản sẽ được cập nhật tên, số điện thoại và địa chỉ nếu file số 1 có dữ liệu; tài khoản và mật khẩu được giữ nguyên.</p>
       <div class="field">
         <input type="file" id="file-input" accept=".xls,.xlsx"/>
-        <div class="field-hint">Đọc trực tiếp trong trình duyệt, hỗ trợ cả file .xls (Excel 97-2003) lẫn .xlsx — không cần chuyển đổi định dạng trước, không cần thư viện ngoài.</div>
+        <div class="field-hint">Chọn file số 1 trước. Đọc trực tiếp trong trình duyệt; hỗ trợ .xls và .xlsx.</div>
       </div>
-      <button class="btn btn-primary btn-block mt-8" id="btn-upload-file" disabled>${icon('upload', 'icon-sm')} Tải lên</button>
+      <button class="btn btn-primary btn-block mt-8" id="btn-upload-file" disabled>${icon('upload', 'icon-sm')} Tải file số 1</button>
       <div id="import-result"></div>
+      <div class="field mt-16">
+        <label for="file-input-2" class="fw-700 text-sm">File số 2 — bổ sung số khế ước và phân kỳ trả nợ</label>
+        <input type="file" id="file-input-2" accept=".xls,.xlsx"/>
+        <div class="field-hint">Có thể tải sau file số 1 hoặc ở tháng sau. Chỉ cập nhật hợp đồng khớp Số HĐTD; không xóa hợp đồng và không thay dữ liệu chính.</div>
+      </div>
+      <button class="btn btn-outline btn-block mt-8" id="btn-upload-file-2" disabled>${icon('upload', 'icon-sm')} Bổ sung file số 2</button>
+      <div id="supplement-result"></div>
       <details class="mt-16">
         <summary class="text-sm fw-700" style="cursor:pointer">Hoặc dán dữ liệu thủ công (copy từ Excel)</summary>
         <div class="field-hint mb-8">Dán tay chỉ thêm/cập nhật — KHÔNG xóa hợp đồng nào khác, khác với tải file.</div>
@@ -940,6 +948,9 @@ function openImportModal() {
       const resultEl = sheet.querySelector('#import-result');
       const fileInput = sheet.querySelector('#file-input');
       const uploadBtn = sheet.querySelector('#btn-upload-file');
+      const supplementInput = sheet.querySelector('#file-input-2');
+      const supplementBtn = sheet.querySelector('#btn-upload-file-2');
+      const supplementResultEl = sheet.querySelector('#supplement-result');
 
       // Chỉ lo việc nhập + hiện kết quả + thông báo — KHÔNG đụng vào trạng
       // thái nút bấm (nút "Tải lên" và nút "Nhập từ dữ liệu đã dán" tự quản
@@ -950,7 +961,7 @@ function openImportModal() {
         const res = await S.importFromPastedTable(tsvText, { fullSync });
         resultEl.innerHTML = `
           <div class="card card-pad mt-16" style="background:var(--surface-alt)">
-            <div class="text-sm mb-8">✅ Đã nhập xong — ${res.newProfiles} khách hàng mới · ${res.existingCustomers} khách đã có sẵn (giữ nguyên) · ${res.contracts} hợp đồng</div>
+            <div class="text-sm mb-8">✅ Đã nhập xong — ${res.newProfiles} khách hàng mới · ${res.existingCustomers} khách đã có sẵn được cập nhật · ${res.contracts} hợp đồng</div>
             ${res.deletedContracts ? `<div class="text-sm mb-8" style="color:var(--warning)">${icon('alert', 'icon-sm')} Đã xóa ${res.deletedContracts} hợp đồng không còn trong file này</div>` : ''}
             ${res.zaloAutoSendMigrated ? `<div class="text-sm mb-8" style="color:var(--success)">${icon('message', 'icon-sm')} Đã tự chuyển ${res.zaloAutoSendMigrated} lựa chọn "Gửi tin tự động" sang hợp đồng mới của cùng khách (khách vẫn còn vay, chỉ đổi số hợp đồng)</div>` : ''}
             ${res.deletedCustomers ? `<div class="text-sm mb-8" style="color:var(--warning)">${icon('alert', 'icon-sm')} Đã dọn ${res.deletedCustomers} hồ sơ không còn hợp đồng nào (chưa có tài khoản Use)</div>` : ''}
@@ -958,7 +969,7 @@ function openImportModal() {
               <div class="fw-700 text-sm mb-6">Tài khoản Use mới tự tạo (gửi cho khách hàng):</div>
               ${res.newAccounts.map((a) => `<div class="oc-line"><span>${a.name} (${a.cccd})</span><b>${a.tempPassword}</b></div>`).join('')}
             ` : ''}
-            ${res.errors.length ? `<div class="text-sm text-danger mt-8">${res.errors.slice(0, 5).join('<br/>')}</div>` : ''}
+            ${res.errors.length ? `<div class="text-sm text-danger mt-8">${res.errors.slice(0, 5).map(escapeHtml).join('<br/>')}</div>` : ''}
           </div>
         `;
         resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -976,14 +987,20 @@ function openImportModal() {
         const file = fileInput.files[0];
         if (!file) return;
         uploadBtn.disabled = true;
+        supplementBtn.disabled = true;
         uploadBtn.textContent = 'Đang đọc file...';
         let rows;
         try {
-          rows = remapReportTemplateRows(await readExcelFirstSheet(file));
+          const rawRows = await readExcelFirstSheet(file);
+          if (isSupplementReportRows(rawRows)) {
+            throw new Error('Đây là file số 2. Hãy chọn ở mục “Bổ sung file số 2” để không thay thế dữ liệu chính.');
+          }
+          rows = remapReportTemplateRows(rawRows);
         } catch (err) {
           toast('Không đọc được file: ' + (err.message || ''), 'error');
           uploadBtn.innerHTML = uploadBtnIdleHtml;
           uploadBtn.disabled = !fileInput.files[0];
+          supplementBtn.disabled = !supplementInput.files[0];
           return;
         }
         uploadBtn.textContent = 'Đang xử lý...';
@@ -993,6 +1010,38 @@ function openImportModal() {
           toast(err.message || 'Có lỗi khi nhập dữ liệu', 'error');
         } finally {
           uploadBtn.innerHTML = uploadBtnIdleHtml;
+          uploadBtn.disabled = !fileInput.files[0];
+          supplementBtn.disabled = !supplementInput.files[0];
+        }
+      });
+
+      supplementInput.addEventListener('change', () => {
+        supplementBtn.disabled = !supplementInput.files[0];
+      });
+      const supplementBtnIdleHtml = supplementBtn.innerHTML;
+      supplementBtn.addEventListener('click', async () => {
+        const file = supplementInput.files[0];
+        if (!file) return;
+        supplementBtn.disabled = true;
+        uploadBtn.disabled = true;
+        supplementBtn.textContent = 'Đang đọc file số 2...';
+        try {
+          const rows = parseSupplementReportRows(await readExcelFirstSheet(file));
+          supplementBtn.textContent = 'Đang bổ sung...';
+          const res = await S.importSupplementRows(rows);
+          supplementResultEl.innerHTML = `<div class="card card-pad mt-16" style="background:var(--surface-alt)">
+            <div class="text-sm">✅ Đã bổ sung ${res.updated} hợp đồng.</div>
+            ${res.unmatched ? `<div class="text-sm mt-8">${res.unmatched} Số HĐ không khớp hoặc đã tất toán nên không cập nhật.</div>` : ''}
+            ${res.emptySchedules ? `<div class="text-sm mt-8" style="color:var(--warning)">${res.emptySchedules} dòng trong file số 2 không có số tiền phân kỳ; lịch cũ của những hợp đồng khớp mã đã được xóa.</div>` : ''}
+            ${res.errors.length ? `<div class="text-sm text-danger mt-8">${res.errors.slice(0, 5).map(escapeHtml).join('<br/>')}</div>` : ''}
+          </div>`;
+          toast('Đã bổ sung file số 2', 'success');
+          window.__qtdRedrawCustomers?.();
+        } catch (err) {
+          toast(err.message || 'Có lỗi khi bổ sung file số 2', 'error');
+        } finally {
+          supplementBtn.innerHTML = supplementBtnIdleHtml;
+          supplementBtn.disabled = !supplementInput.files[0];
           uploadBtn.disabled = !fileInput.files[0];
         }
       });

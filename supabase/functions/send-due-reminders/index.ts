@@ -252,6 +252,15 @@ function debtGroup(contract: any, asOf: Date): number | null {
 const SPECIFIC_PROVISION_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
 /** Tỷ lệ dự phòng CHUNG, áp dụng trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
 const GENERAL_PROVISION_RATE = 0.0075;
+/** Khấu trừ TSBĐ theo mã; tài sản giữ tạm và ô tô không được khấu trừ. */
+function collateralDeductionRate(ct: any): number {
+  if (!ct.has_collateral) return 0;
+  const type = String(ct.collateral_type || '').trim().toUpperCase();
+  if (type === '01' || type === '02') return 0.5;
+  if (type === '06') return 1;
+  if (type) return 0;
+  return 0.5; // giữ số liệu hợp đồng cũ chưa phân loại
+}
 
 /** Ngày cuối tháng trước theo giờ Việt Nam, độc lập múi giờ của Edge Function. */
 function previousMonthEndInVietnam(now: Date): Date | null {
@@ -275,15 +284,27 @@ function previousMonthEndInVietnam(now: Date): Date | null {
  * tháng thay vì luôn tính SỐNG như trước, để xem lại lịch sử vẫn đúng dù
  * TSBĐ/dư nợ sau này có đổi tiếp.
  */
-async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: Date): Promise<void> {
+async function captureMonthlySnapshot(adminClient: any, asOf: Date): Promise<void> {
   // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — chốt kèm luôn,
   // KHÔNG chỉ tổng theo nhóm, để xem lại lịch sử vẫn tra được đúng danh sách
   // của đúng tháng đó (trước đây chỉ có tổng, xem lại tháng cũ chỉ hiện
   // được danh sách HIỆN TẠI, dễ hiểu nhầm là khớp đúng tháng đang xem).
   // `contracts` không có sẵn tên/địa chỉ khách hàng (ở bảng `customers`
   // riêng) — tự dò thêm 1 lượt.
-  const { data: customers, error: customersError } = await adminClient.from('customers').select('id, name, thon, xom, tinh, address');
-  if (customersError) throw new Error(`Không đọc được khách hàng để chốt tháng: ${customersError.message}`);
+  async function readAll(table: 'contracts' | 'customers', columns: string): Promise<any[]> {
+    const rows: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await adminClient.from(table).select(columns).order('id').range(from, from + 999);
+      if (error) throw new Error(`Không đọc được ${table} để chốt tháng: ${error.message}`);
+      rows.push(...(data || []));
+      if ((data || []).length < 1000) return rows;
+    }
+  }
+  // Lượt quét gửi tin hàng ngày có thể bị giới hạn 1.000 dòng; chốt tháng
+  // phải tự đọc đủ toàn bộ hợp đồng/khách hàng để biểu đồ và dự phòng khớp.
+  const [snapshotContracts, customers] = await Promise.all([
+    readAll('contracts', '*'), readAll('customers', 'id, name, thon, xom, tinh, address'),
+  ]);
   const custMap = new Map<string, any>((customers || []).map((c: any) => [c.id, c]));
 
   const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
@@ -292,7 +313,7 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
   let generalBase = 0;
   let specificProvision = 0;
   const contractsDetail: any[] = [];
-  for (const ct of contracts) {
+  for (const ct of snapshotContracts) {
     const g = debtGroup(ct, asOf);
     if (g === null) continue;
     const balance = Number(ct.balance) || 0;
@@ -302,7 +323,7 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
     if (g <= 4) generalBase += balance;
     const rate = SPECIFIC_PROVISION_RATE[g];
     if (rate) {
-      const deductible = ct.has_collateral ? (Number(ct.collateral_value) || 0) * 0.5 : 0;
+      const deductible = (Number(ct.collateral_value) || 0) * collateralDeductionRate(ct);
       specificProvision += Math.max(0, balance - deductible) * rate;
     }
     const cust = custMap.get(ct.customer_id);
@@ -314,6 +335,9 @@ async function captureMonthlySnapshot(adminClient: any, contracts: any[], asOf: 
       daysOverdue: daysOverdue(ct, asOf),
       hasCollateral: !!ct.has_collateral,
       collateralValue: Number(ct.collateral_value) || 0,
+      collateralType: ct.collateral_type || null,
+      loanTerm: ct.loan_term || null,
+      loanPurpose: ct.loan_purpose || null,
     });
   }
   const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
@@ -877,7 +901,7 @@ Deno.serve(async (req) => {
     try {
       const monthEnd = previousMonthEndInVietnam(now);
       if (monthEnd) {
-        await captureMonthlySnapshot(admin, contracts || [], monthEnd);
+        await captureMonthlySnapshot(admin, monthEnd);
         console.info('Đã chốt số liệu tháng:', toLocalISODate(monthEnd));
       }
     } catch (e) {
@@ -897,7 +921,7 @@ Deno.serve(async (req) => {
   // vô hại nếu chạy lại nhiều lần — có thể xoá hẳn đoạn này sau khi đã chốt xong.
   try {
     const { data: aug2026 } = await admin.from('monthly_snapshots').select('year_month').eq('year_month', '2026-08').maybeSingle();
-    if (!aug2026) await captureMonthlySnapshot(admin, contracts || [], new Date(2026, 7, 31));
+    if (!aug2026) await captureMonthlySnapshot(admin, new Date(2026, 7, 31));
   } catch (e) {
     console.error('Lỗi chốt bù tháng 08/2026:', e);
   }

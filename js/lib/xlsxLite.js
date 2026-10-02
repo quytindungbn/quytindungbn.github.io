@@ -184,6 +184,7 @@ const REPORT_TEMPLATE_HEADER_MAP = {
 // trường cố định, installmentSchedule — nếu có cột "Phân kỳ năm..." — luôn
 // là cột cuối, xem bên dưới).
 const REPORT_TEMPLATE_FIELD_ORDER = ['code', 'name', 'address', 'cccd', 'phone', 'disbursedDate', 'dueDate', 'interestPaidUntil', 'principal', 'balance', 'interestRate', 'agreementCode'];
+const REPORT_TEMPLATE_REQUIRED_FIELDS = REPORT_TEMPLATE_FIELD_ORDER.filter((field) => field !== 'agreementCode');
 // "Phân kỳ năm 2026", "Phân kỳ năm 2027"... — dò theo MẪU tên cột (không
 // liệt kê cứng danh sách năm), vì file các năm sau có thể thêm cột mới
 // (2031, 2032... "và miết tới", theo đúng yêu cầu) mà không cần sửa code.
@@ -191,6 +192,95 @@ const INSTALLMENT_COLUMN_RE = /^phân kỳ năm (\d{4})$/;
 
 function normalizeHeaderCell(v) {
   return String(v ?? '').trim().toLowerCase();
+}
+
+// Sổ theo dõi vay (file số 1) có hàng tiêu đề riêng, không có cột STT. B là
+// Số HĐTD; W/AA/AB là mã nghiệp vụ nhưng tiêu đề cũng chỉ là chữ cái cột.
+const PRIMARY_REPORT_FIELDS = {
+  code: 'số hđtd', name: 'người nhận nợ', address: 'địa chỉ',
+  cccd: 'số cmnd/cccd', phone: 'số di động',
+  disbursedDate: 'ngày nhận nợ', dueDate: 'ngày đáo hạn',
+  interestPaidUntil: 'thu lãi đến ngày', principal: 'số tiền giải ngân',
+  balance: ['sô dư', 'số dư'], interestRate: 'lãi suất',
+};
+
+function remapPrimaryLoanRows(rows) {
+  const headerIdx = rows.findIndex((row) => {
+    const h = (row || []).map(normalizeHeaderCell);
+    return h.includes('số hđtd') && h.includes('số cmnd/cccd') && h.includes('người nhận nợ');
+  });
+  if (headerIdx < 0) return null;
+  const header = rows[headerIdx].map(normalizeHeaderCell);
+  const colMap = {};
+  for (const [field, label] of Object.entries(PRIMARY_REPORT_FIELDS)) {
+    const labels = Array.isArray(label) ? label : [label];
+    const idx = header.findIndex((cell) => labels.includes(cell));
+    if (idx < 0) throw new Error(`File số 1 thiếu cột "${labels[0]}".`);
+    colMap[field] = idx;
+  }
+  // T/W/AA/AB được người dùng định nghĩa theo VỊ TRÍ cột, không theo nhãn.
+  if (!['giá trị tsđb', 'giá trị tsbđ'].includes(header[19]) || header[22] !== 'w' || header[26] !== 'aa' || header[27] !== 'ab') {
+    throw new Error('File số 1 đã thay đổi vị trí cột T/W/AA/AB; hãy kiểm tra đúng mẫu trước khi tải lên.');
+  }
+  const out = [];
+  for (let rowIdx = headerIdx + 1; rowIdx < rows.length; rowIdx++) {
+    const row = rows[rowIdx] || [];
+    const code = String(row?.[colMap.code] ?? '').trim();
+    const cccd = String(row?.[colMap.cccd] ?? '').trim().replace(/\s/g, '');
+    if (!code && !cccd) continue;
+    if (!code || !/^\d{9,12}$/.test(cccd)) {
+      throw new Error(`File số 1 có dòng thiếu Số HĐTD hoặc CCCD hợp lệ (hàng ${rowIdx + 1}). Không thể đồng bộ toàn bộ.`);
+    }
+    const line = REPORT_TEMPLATE_REQUIRED_FIELDS.map((field) => String(row[colMap[field]] ?? '').trim());
+    line.push('', ''); // agreementCode, installmentSchedule: file số 2 bổ sung sau.
+    line.push(String(row[19] ?? '').trim(), String(row[27] ?? '').trim(),
+      String(row[22] ?? '').trim(), String(row[26] ?? '').trim());
+    out.push(line);
+  }
+  if (!out.length) throw new Error('File số 1 không có hợp đồng hợp lệ.');
+  return out;
+}
+
+function supplementHeaderIndex(rows) {
+  return rows.findIndex((row) => {
+    const h = (row || []).map(normalizeHeaderCell);
+    return h[7] === 'số hđ' && h[8] === 'mã khế ước' && h.some((cell) => INSTALLMENT_COLUMN_RE.test(cell));
+  });
+}
+
+export function isSupplementReportRows(rows) {
+  return supplementHeaderIndex(rows) >= 0;
+}
+
+/** File số 2 chỉ bổ sung khế ước và phân kỳ, tuyệt đối không đồng bộ toàn bộ. */
+export function parseSupplementReportRows(rows) {
+  const headerIdx = supplementHeaderIndex(rows);
+  if (headerIdx < 0) throw new Error('File số 2 thiếu hàng tiêu đề Số HĐ, Mã khế ước hoặc Phân kỳ năm.');
+  const header = rows[headerIdx].map(normalizeHeaderCell);
+  const installmentCols = [];
+  for (let idx = 0; idx < header.length; idx++) {
+    const match = header[idx].match(INSTALLMENT_COLUMN_RE);
+    if (match) installmentCols.push([match[1], idx]);
+  }
+  const out = [];
+  const seenCodes = new Set();
+  for (const row of rows.slice(headerIdx + 1)) {
+    const code = String(row?.[7] ?? '').trim();
+    if (!code) continue;
+    // Mã HĐ có thể chứa '/' hoặc '.'; nhận dòng hợp đồng qua CCCD cột E.
+    const cccd = String(row?.[4] ?? '').trim().replace(/\s/g, '');
+    if (!/^\d{9,12}$/.test(cccd)) continue;
+    if (seenCodes.has(code)) throw new Error(`File số 2 có Số HĐ ${code} bị trùng.`);
+    seenCodes.add(code);
+    const schedule = {};
+    for (const [year, idx] of installmentCols) {
+      const value = String(row[idx] ?? '').trim();
+      if (value) schedule[year] = value;
+    }
+    out.push({ code, agreementCode: String(row[8] ?? '').trim(), installmentSchedule: schedule });
+  }
+  if (!out.length) throw new Error('File số 2 không có hợp đồng hợp lệ.');
+  return out;
 }
 
 /**
@@ -222,6 +312,8 @@ function normalizeHeaderCell(v) {
  * ai vẫn đang dùng mẫu cũ, không bắt buộc phải đổi ngay.
  */
 export function remapReportTemplateRows(rows) {
+  const primary = remapPrimaryLoanRows(rows);
+  if (primary) return primary;
   let headerRowIdx = -1;
   let colMap = null;
   let installmentCols = null; // { '2026': colIdx, '2027': colIdx, ... } hoặc null nếu file không có cột nào
@@ -231,12 +323,13 @@ export function remapReportTemplateRows(rows) {
     if (!normalized.includes('stt')) continue;
     const map = {};
     let foundAll = true;
-    for (const field of REPORT_TEMPLATE_FIELD_ORDER) {
+    for (const field of REPORT_TEMPLATE_REQUIRED_FIELDS) {
       const idx = normalized.indexOf(REPORT_TEMPLATE_HEADER_MAP[field]);
       if (idx === -1) { foundAll = false; break; }
       map[field] = idx;
     }
     if (!foundAll) continue;
+    map.agreementCode = normalized.indexOf(REPORT_TEMPLATE_HEADER_MAP.agreementCode);
     headerRowIdx = i;
     colMap = map;
     const ik = {};
@@ -257,7 +350,7 @@ export function remapReportTemplateRows(rows) {
     // CCCD hợp lệ ở đúng cột này — loại thẳng, không phải hợp đồng thật.
     if (!/^\d{9,12}$/.test(cccd)) continue;
     const line = REPORT_TEMPLATE_FIELD_ORDER.map((field) => {
-      const v = row[colMap[field]];
+      const v = colMap[field] >= 0 ? row[colMap[field]] : '';
       return v == null ? '' : String(v).trim();
     });
     if (installmentCols) {
