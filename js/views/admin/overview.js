@@ -179,7 +179,7 @@ const GROUP_COLORS = { 1: 'var(--success)', 2: 'var(--warning)', 3: '#f0a29c', 4
 
 const COMPOSITION_OPTIONS = {
   purpose: {
-    label: 'Phân theo mục đích vay', field: 'loanPurpose',
+    label: 'Mục đích vay', field: 'loanPurpose',
     categories: [
       { code: '01', label: 'Vay tiêu dùng', color: '#0f766e' },
       { code: '04', label: 'Vay sản xuất kinh doanh', color: '#2563eb' },
@@ -223,8 +223,8 @@ function compositionCode(value, tab) {
   return code;
 }
 
-/** Các bản chốt cũ có thể chưa lưu mã phân loại; phần thiếu được tính vào
- * “Khác / chưa xác định” để tổng tỷ trọng vẫn bằng 100%, không suy diễn KCDB. */
+/** Các bản chốt cũ có thể chưa lưu mã phân loại; không suy diễn loại TSBĐ
+ * cho phần dư nợ thiếu cả chi tiết hợp đồng. */
 function compositionData(m, tab) {
   const option = COMPOSITION_OPTIONS[tab];
   const rows = m.live
@@ -240,9 +240,8 @@ function compositionData(m, tab) {
     detailTotal += balance;
     totalCount += 1;
     const code = compositionCode(row[option.field], tab);
-    // Mã AB khác 01/02/04/06 (kể cả KCDB, 08, 11) thuộc nhóm không có TSBĐ.
-    // Riêng mã trống trong bản chốt cũ là thiếu dữ liệu, không thể suy diễn.
-    const bucket = tab === 'collateral' && code && !byCode.has(code) ? 'KCDB' : code;
+    // Mọi mã AB ngoài 01/02/04/06, kể cả mã trống, thuộc nhóm không có TSBĐ.
+    const bucket = tab === 'collateral' && !byCode.has(code) ? 'KCDB' : code;
     const item = byCode.get(bucket) || unknownBucket;
     item.value += balance;
     item.count += 1;
@@ -255,7 +254,7 @@ function compositionData(m, tab) {
   const items = option.categories
     .filter((c) => byCode.get(c.code).value > 0)
     .map((c) => ({ label: c.label, color: c.color, ...byCode.get(c.code) }));
-  if (unknownBucket.value > 0) items.push({ ...COMPOSITION_UNKNOWN, ...unknownBucket, countKnown: !missingBalance });
+  if (unknownBucket.value > 0 && tab !== 'collateral') items.push({ ...COMPOSITION_UNKNOWN, ...unknownBucket, countKnown: !missingBalance });
   return { items, total, totalCount, countComplete };
 }
 
@@ -272,13 +271,17 @@ function compositionPanelHtml(m) {
   const { items, total, totalCount, countComplete } = compositionData(m, activeCompositionTab);
   const metric = countComplete ? activeCompositionMetric : 'balance';
   return `<div class="composition-total">${monthLabelWithNote(m)} · Tổng dư nợ <strong>${formatVND(total)}</strong>
-    · Số khoản vay <strong>${countComplete ? formatNumber(totalCount) : 'Chưa có dữ liệu'}</strong></div>
+    · Số món vay <strong>${countComplete ? formatNumber(totalCount) : 'Chưa có dữ liệu'}</strong></div>
     <div class="composition-metrics" role="group" aria-label="Chọn thước đo tỷ trọng">
       <button type="button" data-composition-metric="balance" aria-pressed="${metric === 'balance'}" class="${metric === 'balance' ? 'active' : ''}">Theo dư nợ</button>
-      <button type="button" data-composition-metric="count" aria-pressed="${metric === 'count'}" class="${metric === 'count' ? 'active' : ''}" ${countComplete ? '' : 'disabled title="Tháng này chưa lưu đủ chi tiết hợp đồng"'}>Theo số khoản vay</button>
+      <button type="button" data-composition-metric="count" aria-pressed="${metric === 'count'}" class="${metric === 'count' ? 'active' : ''}" ${countComplete ? '' : 'disabled title="Tháng này chưa lưu đủ chi tiết hợp đồng"'}>Theo số món vay</button>
     </div>
-    ${!countComplete ? '<p class="composition-note">Bản chốt cũ chưa có đủ chi tiết hợp đồng. Nạp lại file của tháng này để xem số khoản vay và tỷ trọng theo số khoản vay.</p>' : ''}
-    ${compositionDonutHtml({ items, total, totalCount, metric, countComplete })}`;
+    ${!countComplete ? `<p class="composition-note">${activeCompositionTab === 'collateral'
+      ? 'Bản chốt cũ chưa đủ chi tiết hợp đồng để phân loại tài sản bảo đảm. Nạp lại file của tháng này để xem biểu đồ.'
+      : 'Bản chốt cũ chưa có đủ chi tiết hợp đồng. Nạp lại file của tháng này để xem số món vay và tỷ trọng theo số món vay.'}</p>` : ''}
+    ${activeCompositionTab === 'collateral' && !countComplete
+      ? ''
+      : compositionDonutHtml({ items, total, totalCount, metric, countComplete })}`;
 }
 
 function bindCompositionTabs(root) {
@@ -602,7 +605,7 @@ function debtDashboardHtml() {
       <div id="trend-chart-slot">${monthlyComboChartSvg({ months, selectedYm: initial.yearMonth })}</div>
 
       <section class="composition-section" aria-labelledby="composition-heading">
-        <h3 id="composition-heading" style="font-size:13.5px;margin-bottom:10px">Tỷ trọng dư nợ và số khoản vay</h3>
+        <h3 id="composition-heading" style="font-size:13.5px;margin-bottom:10px">Tỷ trọng dư nợ và số món vay</h3>
         ${compositionTabsHtml()}
         <div id="composition-slot" role="tabpanel" aria-labelledby="composition-tab-${activeCompositionTab}">
           ${compositionPanelHtml(initial)}
