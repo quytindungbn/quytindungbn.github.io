@@ -420,6 +420,16 @@ function debtGroupZalo(contract: any, asOf: Date): number | null {
 const PROVISION_SPECIFIC_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
 /** Tỷ lệ dự phòng CHUNG, áp trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
 const PROVISION_GENERAL_RATE = 0.0075;
+/** Tỷ lệ khấu trừ TSBĐ do quỹ quy định. Mã khác là tài sản giữ tạm, không được khấu trừ. */
+function collateralDeductionRate(ct: any): number {
+  if (!ct.has_collateral) return 0;
+  const type = String(ct.collateral_type || '').trim().toUpperCase();
+  if (type === '01' || type === '02') return 0.5;
+  if (type === '06') return 1;
+  if (type) return 0;
+  // Hợp đồng cũ chưa được phân loại: giữ cách tính 50% đang áp dụng.
+  return 0.5;
+}
 function formatDateVNZalo(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -1179,7 +1189,7 @@ Deno.serve(async (req) => {
   // đổi vai trò/đổi quyền/cấp lại mật khẩu) — nhân viên có canManageUsers
   // chỉ được quản lý Use khách hàng, không được quản lý Use Quản trị viên.
   const SUPER_ONLY_TYPES = [
-    'update-customer-profile', 'delete-contract', 'import', 'update-staff-role',
+    'update-customer-profile', 'delete-contract', 'import', 'import-supplement', 'update-staff-role',
     'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff', 'force-logout-staff',
     'update-staff-name',
     // Dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu toàn quỹ, mục 10.46
@@ -1227,11 +1237,21 @@ Deno.serve(async (req) => {
   // tháng chỉ cập nhật đúng 1 dòng, không tạo trùng. Xem mục 10.46 docs. =====
   if (body.type === 'capture-monthly-snapshot') {
     const now = new Date();
-    const { data: allContracts, error: ctErr } = await admin.from('contracts').select('*');
-    if (ctErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    async function readAllForSnapshot(table: 'contracts' | 'customers', columns: string) {
+      const rows: any[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await admin.from(table).select(columns).order('id').range(from, from + 999);
+        if (error) return { data: null, error };
+        rows.push(...(data || []));
+        if ((data || []).length < 1000) return { data: rows, error: null };
+      }
+    }
+    const [{ data: allContracts, error: ctErr }, { data: customers, error: customersError }] = await Promise.all([
+      readAllForSnapshot('contracts', '*'), readAllForSnapshot('customers', 'id, name, thon, xom, tinh, address'),
+    ]);
+    if (ctErr || customersError) return json({ ok: false, reason: 'Không đọc đủ dữ liệu để chốt tháng; chưa lưu số liệu.' }, 500);
     // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — Y HỆT
     // captureMonthlySnapshot() trong send-due-reminders/index.ts.
-    const { data: customers } = await admin.from('customers').select('id, name, thon, xom, tinh, address');
     const custMap = new Map<string, any>((customers || []).map((c: any) => [c.id, c]));
     const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
     let totalBalance = 0;
@@ -1254,7 +1274,7 @@ Deno.serve(async (req) => {
       if (g <= 4) generalBase += balance;
       const rate = PROVISION_SPECIFIC_RATE[g];
       if (rate) {
-        const deductible = ct.has_collateral ? (Number(ct.collateral_value) || 0) * 0.5 : 0;
+        const deductible = (Number(ct.collateral_value) || 0) * collateralDeductionRate(ct);
         specificProvision += Math.max(0, balance - deductible) * rate;
       }
       const cust = custMap.get(ct.customer_id);
@@ -1266,6 +1286,9 @@ Deno.serve(async (req) => {
         daysOverdue: daysOverdueZalo(ct, now),
         hasCollateral: !!ct.has_collateral,
         collateralValue: Number(ct.collateral_value) || 0,
+        collateralType: ct.collateral_type || null,
+        loanTerm: ct.loan_term || null,
+        loanPurpose: ct.loan_purpose || null,
       });
     }
     const badDebtBalance = groupBalances['3'] + groupBalances['4'] + groupBalances['5'];
@@ -1566,9 +1589,63 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
+  // File số 2 chỉ bổ sung mã khế ước và phân kỳ, không đồng bộ/xóa hợp đồng.
+  if (body.type === 'import-supplement') {
+    const incoming = Array.isArray(body.rows) ? body.rows : [];
+    if (!incoming.length || incoming.length > 5000) {
+      return json({ ok: false, reason: 'File bổ sung không có hợp đồng hoặc vượt quá 5.000 dòng.' }, 400);
+    }
+    const seen = new Set<string>();
+    const rows: { code: string; agreementCode: string | null; installmentSchedule: Record<string, number> }[] = [];
+    for (const raw of incoming) {
+      const code = String(raw?.code || '').trim();
+      const agreementCode = String(raw?.agreementCode || '').trim() || null;
+      const schedule = raw?.installmentSchedule;
+      if (!code || seen.has(code) || (schedule != null && (typeof schedule !== 'object' || Array.isArray(schedule)))) {
+        return json({ ok: false, reason: 'File bổ sung có số HĐTD trống, trùng hoặc phân kỳ không hợp lệ.' }, 400);
+      }
+      seen.add(code);
+      const installments: Record<string, number> = {};
+      for (const [year, amount] of Object.entries(schedule || {})) {
+        const value = Number(amount);
+        if (!/^\d{4}$/.test(year) || !Number.isFinite(value) || value < 0) {
+          return json({ ok: false, reason: `Phân kỳ không hợp lệ ở hợp đồng ${code}.` }, 400);
+        }
+        if (value > 0) installments[year] = value;
+      }
+      // Lịch {} trong file số 2 là cập nhật thành "không còn phân kỳ"; khác
+      // với tháng không tải file số 2, khi đó RPC hoàn toàn không được gọi.
+      rows.push({ code, agreementCode, installmentSchedule: installments });
+    }
+    // Một RPC giao dịch duy nhất chỉ UPDATE hai cột bổ sung trên hợp đồng còn dư nợ.
+    const { data, error } = await admin.rpc('apply_contract_supplement', { p_rows: rows });
+    if (error) return json({ ok: false, reason: `Không lưu được file bổ sung: ${error.message}` }, 500);
+    const updated = Number(data?.updated) || 0;
+    const unmatched = Number(data?.unmatched) || 0;
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import-supplement',
+      `Bổ sung khế ước và phân kỳ: **${updated} hợp đồng**${unmatched ? `, **${unmatched} dòng** không khớp hoặc đã tất toán` : ''}`);
+    return json({ ok: true, updated, unmatched, errors: [] });
+  }
+
   if (body.type === 'import') {
-    const rows = Array.isArray(body.rows) ? body.rows : [];
+    const rows = Array.isArray(body.rows)
+      ? body.rows.map((row: any) => ({ ...(row || {}), code: String(row?.code || '').trim() })) : [];
     const fullSync = !!body.fullSync;
+    if (!rows.length || rows.length > 5000) return json({ ok: false, reason: 'File không có hợp đồng hoặc vượt quá 5.000 dòng.' }, 400);
+    if (fullSync) {
+      const codes = new Set<string>();
+      for (const row of rows) {
+        const code = String(row?.code || '').trim();
+        const cccd = String(row?.cccd || '').trim();
+        if (!code || !/^\d{9,12}$/.test(cccd) || codes.has(code)) {
+          return json({ ok: false, reason: 'File chính có số HĐTD/CCCD trống, không hợp lệ hoặc số HĐTD bị trùng; chưa thay đổi dữ liệu.' }, 400);
+        }
+        codes.add(code);
+      }
+    }
+    // Chặn trước mọi thao tác ghi nếu migration chưa được chạy trên Supabase.
+    const { error: schemaError } = await admin.from('contracts').select('id, collateral_type, loan_term, loan_purpose').limit(1);
+    if (schemaError) return json({ ok: false, reason: 'Chưa cập nhật cấu trúc bảng contracts trên Supabase; chưa thay đổi dữ liệu.' }, 500);
     const result = {
       newProfiles: 0, existingCustomers: 0, contracts: 0,
       deletedContracts: 0, deletedCustomers: 0, skipped: 0, zaloAutoSendMigrated: 0,
@@ -1576,10 +1653,34 @@ Deno.serve(async (req) => {
       errors: [] as string[],
     };
 
-    const { data: allCustomers } = await admin.from('customers').select('*');
-    const { data: allContracts } = await admin.from('contracts').select('*');
+    // PostgREST giới hạn số dòng mỗi lượt đọc; phải phân trang trước fullSync
+    // để không bỏ sót hợp đồng đang có khi quỹ vượt mốc 1.000 hợp đồng.
+    async function readAll(table: 'customers' | 'contracts') {
+      const all: any[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await admin.from(table).select('*').order('id').range(from, from + 999);
+        if (error) return { data: null, error };
+        all.push(...(data || []));
+        if ((data || []).length < 1000) return { data: all, error: null };
+      }
+    }
+    const [{ data: allCustomers, error: customersError }, { data: allContracts, error: contractsError }] = await Promise.all([
+      readAll('customers'), readAll('contracts'),
+    ]);
+    if (customersError || contractsError) return json({ ok: false, reason: 'Không đọc được dữ liệu hiện có; chưa thay đổi dữ liệu.' }, 500);
     const customerByCccd = new Map((allCustomers || []).map((c: any) => [c.cccd, c]));
     const contractByCode = new Map((allContracts || []).filter((c: any) => c.code).map((c: any) => [c.code, c]));
+    if (fullSync) {
+      const requestedCodes = new Set(rows.map((row: any) => String(row.code).trim()));
+      const existingCodes = new Set<string>();
+      for (const ct of allContracts || []) {
+        if (!requestedCodes.has(ct.code)) continue;
+        if (existingCodes.has(ct.code)) {
+          return json({ ok: false, reason: 'Cơ sở dữ liệu có số HĐTD trùng; chưa thay đổi dữ liệu. Cần xử lý trùng trước khi nhập lại.' }, 409);
+        }
+        existingCodes.add(ct.code);
+      }
+    }
 
     // Tách riêng 2 mảng cho khách MỚI và khách ĐÃ CÓ SẴN — không gộp chung 1
     // upsert() duy nhất, vì khi ghi hàng loạt, PostgREST tự động lấy HỢP các
@@ -1639,6 +1740,9 @@ Deno.serve(async (req) => {
       const disbursed = row.disbursedDate || new Date().toISOString().slice(0, 10);
       const bal = Number(row.balance) || 0;
       let ct: any = row.code ? contractByCode.get(row.code) : null;
+      if (ct && ct.customer_id !== cust.id) {
+        return json({ ok: false, reason: `Số HĐTD ${row.code} đang thuộc CCCD khác; chưa thay đổi dữ liệu. Hãy kiểm tra lại file.` }, 409);
+      }
       let code = row.code || (ct ? ct.code : null);
       if (!code) {
         do { code = `HD-${cccd}-${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 4)}`; }
@@ -1647,6 +1751,14 @@ Deno.serve(async (req) => {
       usedCodes.add(code);
 
       const contractId = ct ? ct.id : genId('hd');
+      const hasCollateralType = Object.prototype.hasOwnProperty.call(row, 'collateralType');
+      const collateralType = hasCollateralType ? String(row.collateralType || '').trim().toUpperCase() || null : (ct?.collateral_type || null);
+      const hasCollateral = hasCollateralType ? ['01', '02', '04', '06'].includes(collateralType || '') : !!ct?.has_collateral;
+      // Giữ nguyên giá trị cột T để đối chiếu, kể cả mã tài sản giữ tạm 08/11
+      // được xếp vào "Không có TSBĐ" và không được khấu trừ khi tính dự phòng.
+      const collateralValue = hasCollateralType ? Math.max(0, Number(row.collateralValue) || 0) : (Number(ct?.collateral_value) || 0);
+      const loanTerm = Object.prototype.hasOwnProperty.call(row, 'loanTerm') ? (row.loanTerm || null) : (ct?.loan_term || null);
+      const loanPurpose = Object.prototype.hasOwnProperty.call(row, 'loanPurpose') ? (row.loanPurpose || null) : (ct?.loan_purpose || null);
       const contractRow = {
         id: contractId, customer_id: cust.id, code,
         principal: row.principal != null && row.principal !== '' ? Number(row.principal) || 0 : bal,
@@ -1655,12 +1767,18 @@ Deno.serve(async (req) => {
         interest_rate: row.interestRate != null && row.interestRate !== '' ? Number(row.interestRate) || 0 : (ct ? ct.interest_rate : 0),
         balance: bal,
         interest_paid_until: row.interestPaidUntil || disbursed,
-        // 2 cột MỚI — chỉ có giá trị khi nhập từ "mẫu báo cáo" mới (xem
-        // remapReportTemplateRows() ở js/lib/xlsxLite.js), mẫu phẳng/dán tay
-        // cũ luôn null, KHÔNG ảnh hưởng gì tới cách hiển thị/tính toán hiện
-        // có (chỉ ghi nhận, chưa dùng ở đâu khác — đúng yêu cầu).
-        agreement_code: row.agreementCode || null,
-        installment_schedule: row.installmentSchedule && Object.keys(row.installmentSchedule).length ? row.installmentSchedule : null,
+        // File chính là nguồn số liệu dư nợ/TSBĐ/phân loại. File bổ sung chỉ
+        // điền khế ước và phân kỳ; hai trường đó được giữ qua các lần nhập
+        // file chính cho tới khi dư nợ về 0 hoặc hợp đồng rời danh sách.
+        has_collateral: hasCollateral,
+        collateral_value: collateralValue,
+        collateral_type: collateralType,
+        loan_term: loanTerm,
+        loan_purpose: loanPurpose,
+        agreement_code: bal > 0 ? (row.agreementCode || ct?.agreement_code || code) : code,
+        installment_schedule: bal > 0
+          ? (row.installmentSchedule && Object.keys(row.installmentSchedule).length ? row.installmentSchedule : ct?.installment_schedule || null)
+          : null,
       };
       contractByCode.set(code, contractRow);
       contractUpserts.push(contractRow);
@@ -1697,15 +1815,15 @@ Deno.serve(async (req) => {
 
     if (newCustomerUpserts.length) {
       const { error } = await admin.from('customers').upsert(newCustomerUpserts, { onConflict: 'id' });
-      if (error) result.errors.push('Lỗi ghi hồ sơ khách hàng mới: ' + error.message);
+      if (error) return json({ ok: false, reason: 'Lỗi ghi hồ sơ khách hàng mới; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
     if (existingCustomerUpserts.length) {
       const { error } = await admin.from('customers').upsert(existingCustomerUpserts, { onConflict: 'id' });
-      if (error) result.errors.push('Lỗi cập nhật hồ sơ khách hàng: ' + error.message);
+      if (error) return json({ ok: false, reason: 'Lỗi cập nhật hồ sơ khách hàng; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
     if (contractUpsertsDeduped.length) {
       const { error } = await admin.from('contracts').upsert(contractUpsertsDeduped, { onConflict: 'id' });
-      if (error) result.errors.push('Lỗi ghi hợp đồng: ' + error.message);
+      if (error) return json({ ok: false, reason: 'Lỗi ghi hợp đồng; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
 
     if (fullSync) {
@@ -1747,12 +1865,15 @@ Deno.serve(async (req) => {
           }
         }
         const { error } = await admin.from('contracts').delete().in('id', toDeleteIds);
-        if (!error) result.deletedContracts = toDeleteIds.length;
+        if (error) return json({ ok: false, reason: 'Lỗi xóa hợp đồng đã rời file chính: ' + error.message }, 500);
+        result.deletedContracts = toDeleteIds.length;
       }
-      const { data: remaining } = await admin.from('contracts').select('customer_id, balance');
+      const { data: remaining, error: remainingError } = await readAll('contracts');
+      if (remainingError) return json({ ok: false, reason: 'Không kiểm tra được hợp đồng còn lại; chưa dọn hồ sơ khách hàng.' }, 500);
       const balByCust = new Map<string, number>();
       for (const c of remaining || []) balByCust.set(c.customer_id, (balByCust.get(c.customer_id) || 0) + (Number(c.balance) || 0));
-      const { data: custNow } = await admin.from('customers').select('id, salt, hash');
+      const { data: custNow, error: custNowError } = await readAll('customers');
+      if (custNowError) return json({ ok: false, reason: 'Không kiểm tra được hồ sơ; chưa dọn hồ sơ khách hàng.' }, 500);
       const pruneIds = (custNow || []).filter((c: any) => (balByCust.get(c.id) || 0) <= 0 && !(c.salt && c.hash)).map((c: any) => c.id);
       if (pruneIds.length) {
         const { error } = await admin.from('customers').delete().in('id', pruneIds);
