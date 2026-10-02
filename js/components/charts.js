@@ -14,7 +14,7 @@
 // nên LUÔN kèm max-width (khớp cỡ 1 màn hình điện thoại) ở mọi chỗ dùng
 // width:100%, để trên máy tính chỉ đứng yên ở đúng cỡ đã vừa mắt trên điện
 // thoại, không phóng to thêm theo khung chứa.
-import { formatVND, formatCompact } from '../utils.js';
+import { formatVND, formatCompact, formatNumber } from '../utils.js';
 
 const VB_W = 400; // "px logic" chiều ngang — chỉ là đơn vị nội bộ của viewBox, KHÔNG phải px thật (SVG tự co giãn đều theo khung chứa thật).
 
@@ -63,6 +63,53 @@ export function barChartSvg({ items, aspect = 2.1 }) {
         ${barsHtml}
       </svg>
       <div style="display:flex;margin-top:8px">${labels}</div>
+    </div>`;
+}
+
+/** Tỷ trọng theo dư nợ hoặc số khoản vay của đúng tháng đang xem. */
+export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'balance', countComplete = true }) {
+  if (!(total > 0)) {
+    return '<p class="text-sm text-muted" style="padding:12px 0">Chưa có dư nợ để tính tỷ trọng.</p>';
+  }
+  const byCount = metric === 'count' && countComplete && totalCount > 0;
+  const denominator = byCount ? totalCount : total;
+  const measure = (item) => byCount ? item.count : item.value;
+  const radius = 46;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const percent = (value, base) => {
+    const p = base > 0 ? value / base * 100 : 0;
+    return p > 0 && p < 0.05 ? '<0,1%' : `${p.toFixed(1).replace('.', ',')}%`;
+  };
+  const arcs = items.map((item) => {
+    const length = Math.max(0, measure(item) / denominator * circumference);
+    const arc = `<circle cx="60" cy="60" r="${radius}" fill="none" stroke="${item.color}" stroke-width="15"
+      stroke-dasharray="${length.toFixed(4)} ${circumference.toFixed(4)}" stroke-dashoffset="${(-offset).toFixed(4)}"
+      transform="rotate(-90 60 60)"><title>${item.label}: ${byCount ? `${formatNumber(item.count)} khoản vay` : formatVND(item.value)} (${percent(measure(item), denominator)})</title></circle>`;
+    offset += length;
+    return arc;
+  }).join('');
+  const legend = items.map((item) => {
+    const countText = countComplete || item.countKnown !== false
+      ? `${formatNumber(item.count)} khoản vay${countComplete ? ` · ${percent(item.count, totalCount)}` : ''}`
+      : 'Chưa rõ số khoản vay';
+    return `
+    <div class="composition-legend-item">
+      <span class="composition-legend-dot" style="background:${item.color}" aria-hidden="true"></span>
+      <span class="composition-legend-name">${item.label}</span>
+      <strong>${percent(measure(item), denominator)}</strong>
+      <span class="composition-legend-value">Dư nợ: ${formatVND(item.value)} · ${percent(item.value, total)}<br>Số khoản vay: ${countText}</span>
+    </div>`;
+  }).join('');
+  return `
+    <div class="composition-content">
+      <svg class="composition-donut-svg" viewBox="0 0 120 120" role="img" aria-label="Biểu đồ tỷ trọng ${byCount ? 'số khoản vay' : 'dư nợ'}">
+        <circle cx="60" cy="60" r="${radius}" fill="none" stroke="var(--surface-alt)" stroke-width="15"></circle>
+        ${arcs}
+        <text x="60" y="58" text-anchor="middle" font-size="19" font-weight="800" fill="var(--text)">100%</text>
+        <text x="60" y="73" text-anchor="middle" font-size="10" fill="var(--text-muted)">${byCount ? 'khoản vay' : 'dư nợ'}</text>
+      </svg>
+      <div class="composition-legend">${legend}</div>
     </div>`;
 }
 
