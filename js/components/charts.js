@@ -83,6 +83,10 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     const p = base > 0 ? value / base * 100 : 0;
     return p > 0 && p < 0.05 ? '<0,1%' : `${p.toFixed(1).replace('.', ',')}%`;
   };
+  // Chỉ đưa nhãn ra ngoài khi độ dài cung không đủ cho chính chuỗi phần trăm.
+  // Chữ số, dấu phẩy và dấu % có bề rộng khác nhau ở cỡ chữ 10px hiện tại.
+  const labelWidth = (label) => [...label].reduce((width, char) =>
+    width + (char === ',' ? 3 : char === '%' ? 8 : char === '<' ? 6 : 5.6), 0);
   const outsideLabels = [];
   const arcs = items.map((item) => {
     const length = Math.max(0, measure(item) / denominator * circumference);
@@ -93,7 +97,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
       stroke-dasharray="${length.toFixed(4)} ${circumference.toFixed(4)}" stroke-dashoffset="${(-offset).toFixed(4)}"
       transform="rotate(-90 ${centerX} ${centerY})" data-composition-category="${item.code}" role="button" tabindex="0"
       aria-label="Xem danh sách ${item.label}" style="cursor:pointer"><title>${item.label}: ${byCount ? `${formatNumber(item.count)} món vay` : formatVND(item.value)} (${label})</title></circle>`;
-    if (share >= 0.08) {
+    if (share > 0 && length >= labelWidth(label) + 4) {
       const x = centerX + radius * Math.cos(angle);
       const y = centerY + radius * Math.sin(angle);
       // Chữ tối trên lát màu sáng, chữ trắng trên lát màu đậm.
@@ -138,9 +142,10 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     const secured = items.filter((item) => item.code !== 'KCDB');
     const unsecured = items.find((item) => item.code === 'KCDB');
     const securedTotal = secured.reduce((sum, item) => sum + measure(item), 0);
+    const securedCount = secured.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
     return `<div class="composition-collateral-grid">
       <section class="composition-collateral-group" aria-label="Có tài sản bảo đảm">
-        <div class="composition-collateral-heading"><span>Có tài sản bảo đảm</span><strong>${percent(securedTotal, denominator)}</strong></div>
+        <div class="composition-collateral-heading"><span>Có tài sản bảo đảm (số món: ${formatNumber(securedCount)})</span><strong>${percent(securedTotal, denominator)}</strong></div>
         ${secured.length ? secured.map(legendItem).join('') : '<p class="composition-collateral-empty">Chưa có món vay</p>'}
       </section>
       <section class="composition-collateral-group" aria-label="Không có tài sản bảo đảm">
