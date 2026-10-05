@@ -100,10 +100,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     if (share > 0 && length >= labelWidth(label) + 4) {
       const x = centerX + radius * Math.cos(angle);
       const y = centerY + radius * Math.sin(angle);
-      // Chữ tối trên lát màu sáng, chữ trắng trên lát màu đậm.
-      const rgb = /^#([\da-f]{6})$/i.exec(item.color)?.[1];
-      const brightness = rgb ? (0.299 * parseInt(rgb.slice(0, 2), 16) + 0.587 * parseInt(rgb.slice(2, 4), 16) + 0.114 * parseInt(rgb.slice(4, 6), 16)) : 0;
-      outsideLabels.push({ inside: true, html: `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="800" fill="${brightness > 155 ? '#17212b' : '#fff'}" style="pointer-events:none">${label}</text>` });
+      outsideLabels.push({ inside: true, html: `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="800" fill="#fff" style="pointer-events:none">${label}</text>` });
     } else if (share > 0) {
       outsideLabels.push({ inside: false, right: Math.cos(angle) >= 0,
         x: centerX + 100 * Math.cos(angle), y: centerY + 100 * Math.sin(angle), label });
@@ -124,7 +121,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     const lineX = item.right ? 247 : 43;
     const textX = item.right ? 252 : 38;
     return `<polyline points="${item.x.toFixed(1)},${item.y.toFixed(1)} ${lineX},${item.labelY.toFixed(1)}" fill="none" stroke="var(--text-muted)" stroke-width="1" />
-      <text x="${textX}" y="${item.labelY.toFixed(1)}" text-anchor="${item.right ? 'start' : 'end'}" dominant-baseline="middle" font-size="10" font-weight="800" fill="var(--text)">${item.label}</text>`;
+      <text x="${textX}" y="${item.labelY.toFixed(1)}" text-anchor="${item.right ? 'start' : 'end'}" dominant-baseline="middle" font-size="10" font-weight="800" fill="#000">${item.label}</text>`;
   }).join('');
   const legendItem = (item) => {
     const countText = countComplete || item.countKnown !== false
