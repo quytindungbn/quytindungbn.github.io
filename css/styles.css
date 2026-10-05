@@ -765,7 +765,7 @@ svg { display: block; }
   .bs-profit-details > div { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .bs-profit-details > div > :last-child { grid-column:1 / -1; justify-self:end; }
   .bs-profit-details .bs-profit-head > :last-child { display:none; }
-  .bs-profit-details > div:not(.bs-profit-head) > :last-child::before { content:'Trong tháng: '; font-weight:600; }
+  .bs-profit-details > div:not(.bs-profit-head) > :last-child::before { content:'Tăng/giảm: '; font-weight:600; }
 }
 
 /* utility */
