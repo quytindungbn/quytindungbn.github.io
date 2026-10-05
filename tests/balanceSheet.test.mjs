@@ -66,3 +66,31 @@ test('tách vốn điều lệ và các quỹ, giữ phần vốn chủ sở h�
   });
   assert.equal(parseBalanceSheetRows(sample()).end.equityParts, null);
 });
+
+test('lợi nhuận = doanh thu trừ chi phí; TSCĐ trừ hao mòn và tách góp vốn', () => {
+  const rows = sample();
+  const set = (code, dr, cr) => {
+    const row = rows.find((item) => item[1] === code);
+    row[2] = row[6] = dr;
+    row[3] = row[7] = cr;
+  };
+  set('1', 160, 0);
+  set('13', 60, 0);
+  set('3', 85, 0);
+  set('4', 0, 285);
+  set('7', 0, 100);
+  set('8', 40, 0);
+  rows.push(['', '301', 100, 0, 0, 0, 100, 0]);
+  rows.push(['', '305', 0, 20, 0, 0, 0, 20]);
+  rows.push(['', '344', 5, 0, 0, 0, 5, 0]);
+  const { start, end } = parseBalanceSheetRows(rows);
+  assert.equal(end.revenue, 100);
+  assert.equal(end.expenses, 40);
+  assert.equal(end.profit, 60);
+  assert.equal(end.fixedAssetsGross, 100);
+  assert.equal(end.accumulatedDepreciation, 20);
+  assert.equal(end.fixedAssetsNet, 80);
+  assert.equal(end.capitalContribution, 5);
+  assert.equal(end.fixedCapital, 85);
+  assert.equal(start.fixedAssetsNet, 80);
+});
