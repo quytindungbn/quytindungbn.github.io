@@ -30,7 +30,7 @@ function managementRow(label, key, start, end, yearOpening, { total = false, chi
   const name = `<span>${label}:</span> <strong>${money(end[key])}</strong>`;
   return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''}">
     <div class="bs-management-name">${profitDetail ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>` : name}</div>
-    <div class="bs-management-value" data-label="Trong tháng">${change(end[key], start[key])}</div>
+    <div class="bs-management-value" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
     <div class="bs-management-value" data-label="Từ đầu năm">${noYear ? '<span class="text-muted">—</span>' : change(end[key], yearOpening?.[key])}</div>
   </div>`;
 }
@@ -42,7 +42,7 @@ function equityPartRow(label, key, report, yearOpening) {
 
 function managementSection(title, rows) {
   return `<section class="card bs-management-section"><h4>${title}</h4>
-    <div class="bs-management-head"><span>Chỉ tiêu · số cuối kỳ</span><span>Trong tháng</span><span>Từ đầu năm</span></div>
+    <div class="bs-management-head"><span>Chỉ tiêu · số cuối kỳ</span><span>Tăng/giảm</span><span>Từ đầu năm</span></div>
     ${rows}</section>`;
 }
 
@@ -157,7 +157,7 @@ function showProfitDetails(report) {
   openModal({
     title: `Doanh thu – Chi phí · ${monthName(report.year_month)}`,
     bodyHtml: `<div class="bs-profit-details">
-      <div class="bs-profit-head"><span>Chỉ tiêu</span><span>Lũy kế cuối kỳ</span><span>Trong tháng</span></div>
+      <div class="bs-profit-head"><span>Chỉ tiêu</span><span>Lũy kế cuối kỳ</span><span>Tăng/giảm</span></div>
       <div><span>Doanh thu</span><strong>${money(end.revenue)}</strong>${change(end.revenue, start.revenue)}</div>
       <div><span>Chi phí</span><strong>${money(end.expenses)}</strong>${change(end.expenses, start.expenses)}</div>
       <div class="bs-profit-total"><span>Lợi nhuận lũy kế</span><strong>${money(end.profit)}</strong>${change(end.profit, start.profit)}</div>
