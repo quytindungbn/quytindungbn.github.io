@@ -27,9 +27,10 @@ function change(current, base) {
 }
 
 function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false } = {}) {
-  const name = `<span>${label}:</span> <strong>${money(end[key])}</strong>`;
+  const name = `${label}:`;
   return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''}">
     <div class="bs-management-name">${profitDetail ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>` : name}</div>
+    <div class="bs-management-end"><strong>${money(end[key])}</strong></div>
     <div class="bs-management-value" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
     <div class="bs-management-value" data-label="Từ đầu năm">${noYear ? '<span class="text-muted">—</span>' : change(end[key], yearOpening?.[key])}</div>
   </div>`;
@@ -42,7 +43,7 @@ function equityPartRow(label, key, report, yearOpening) {
 
 function managementSection(title, rows) {
   return `<section class="card bs-management-section"><h4>${title}</h4>
-    <div class="bs-management-head"><span>Chỉ tiêu · số cuối kỳ</span><span>Tăng/giảm</span><span>Từ đầu năm</span></div>
+    <div class="bs-management-head"><span>Chỉ tiêu</span><span>Cuối kỳ</span><span>Tăng/giảm</span><span>Từ đầu năm</span></div>
     ${rows}</section>`;
 }
 
@@ -110,12 +111,12 @@ function trendChart(list) {
     const points = shown.map((r, i) => `${x(i)},${y(Number(r.figures.end[s.key]))}`).join(' ');
     return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${shown.map((r, i) => `<circle cx="${x(i)}" cy="${y(Number(r.figures.end[s.key]))}" r="5" fill="${s.color}"><title>${monthName(r.year_month)} · ${s.label}: ${money(r.figures.end[s.key])}</title></circle>`).join('')}`;
   }).join('');
-  const labels = shown.map((r, i) => `<text x="${x(i)}" y="215" text-anchor="middle" font-size="11" fill="#64748b">${Number(r.year_month.slice(5))}/${r.year_month.slice(2, 4)}</text>`).join('');
+  const labels = shown.map((r, i) => `<text x="${x(i)}" y="217" text-anchor="middle" font-size="14" font-weight="700" fill="#475569">${Number(r.year_month.slice(5))}/${r.year_month.slice(2, 4)}</text>`).join('');
   return `<div class="bs-chart-scroll"><svg viewBox="0 0 680 230" role="img" aria-label="Biến động tổng tài sản và tiền gửi khách hàng theo tháng">${lines}${plots}${labels}</svg></div>
     <div class="bs-chart-legend"><span><i style="background:#087d6a"></i>Tổng tài sản</span><span><i style="background:#2f69d9"></i>Tiền gửi khách hàng</span></div>`;
 }
 
-function composition(items, total, centerLabel) {
+function composition(items, total, centerLabel, { grossShares = false } = {}) {
   const chartTotal = items.reduce((sum, [, value]) => sum + Math.max(0, value), 0) || 1;
   let offset = 0;
   const stops = items.map(([, value, color]) => {
@@ -123,19 +124,21 @@ function composition(items, total, centerLabel) {
     offset += Math.max(0, value) / chartTotal * 100;
     return `${color} ${start}% ${offset}%`;
   }).join(',');
+  const percentageBase = grossShares ? chartTotal : total;
   return `<div class="bs-composition"><div class="bs-donut" style="background:conic-gradient(${stops})"><div>${formatCompact(total)}<small>${centerLabel}</small></div></div>
-    <div class="bs-composition-list">${items.map(([label, value, color]) => `<div><span><i style="background:${color}"></i>${label}</span><strong>${total ? (value / total * 100).toFixed(1).replace('.', ',') + '%' : '—'}</strong><small>${money(value)}</small></div>`).join('')}</div></div>
-    ${items.some(([, value]) => value < 0) ? '<p class="bs-chart-note">Khoản âm hiển thị trong danh sách, không vẽ thành lát trên biểu đồ.</p>' : ''}`;
+    <div class="bs-composition-list">${items.map(([label, value, color]) => `<div class="${value < 0 ? 'bs-composition-deduction' : ''}"><span><i style="background:${color}"></i>${label}</span><strong>${percentageBase ? (value / percentageBase * 100).toFixed(1).replace('.', ',') + '%' : '—'}</strong><small>${money(value)}</small></div>`).join('')}</div></div>
+    ${grossShares ? '<p class="bs-chart-note">Các lát biểu đồ tính trên tài sản trước dự phòng. Dự phòng được trừ riêng để ra Tổng tài sản.</p>' : items.some(([, value]) => value < 0) ? '<p class="bs-chart-note">Khoản âm hiển thị trong danh sách, không vẽ thành lát trên biểu đồ.</p>' : ''}`;
 }
 
 function assetComposition(figures) {
   return composition([
-    ['Dư nợ sau dự phòng', figures.loanNet, '#087d6a'],
+    ['Dư nợ cho vay', figures.grossLoans, '#087d6a'],
+    ['Dự phòng rủi ro (trừ)', -(figures.generalProvision + figures.specificProvision), '#c04343'],
     ['Tiền gửi tại TCTD', figures.tctdDeposits, '#2f69d9'],
     ['Lãi, phí phải thu', figures.accruedReceivables, '#e69910'],
     ['Tiền mặt', figures.cash, '#b066c6'],
     ['TSCĐ, góp vốn và tài sản khác', figures.fixedCapital + figures.internalReceivables + figures.otherAssets, '#8996a8'],
-  ], figures.assets, 'Tổng tài sản');
+  ], figures.assets, 'Tổng tài sản', { grossShares: true });
 }
 
 function fundingComposition(figures) {
@@ -202,9 +205,9 @@ function draw(contentEl) {
       ${stat('Tiền gửi tại TCTD', end.tctdDeposits, start.tctdDeposits, 'c-orange')}
       ${stat('Lợi nhuận lũy kế', end.profit, start.profit, 'c-pink', true)}
     </div>
-    <div class="card card-pad bs-section"><h3>Biến động</h3>${trendChart(reports)}</div>
-    <div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản cuối kỳ</h3>${assetComposition(end)}</div>
-      <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn cuối kỳ</h3>${fundingComposition(end)}</div></div>
+    <div class="card card-pad bs-section bs-trend-section"><h3>Biến động</h3>${trendChart(reports)}</div>
+    <div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
+      <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div>
     <div class="bs-management bs-section"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3><span>${yearOpening ? `So với đầu kỳ tháng 01/${report.year_month.slice(0, 4)}` : `Chưa có kỳ 01/${report.year_month.slice(0, 4)} để so sánh từ đầu năm`}</span></div>
       ${managementSection('Tài sản', `
         ${managementRow('Tiền mặt tại đơn vị', 'cash', start, end, yearStart)}
