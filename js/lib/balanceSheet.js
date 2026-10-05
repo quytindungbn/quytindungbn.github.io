@@ -66,6 +66,13 @@ export function parseBalanceSheetRows(rows) {
     const customerDeposits = credit('423');
     const interestPayable = credit('49');
     const equity = credit('6');
+    const equityParts = ['601', '611', '612', '613'].every((code) => accounts.has(code)) ? {
+      charterCapital: credit('601'),
+      supplementaryReserve: credit('611'),
+      developmentReserve: credit('612'),
+      financialReserve: credit('613'),
+    } : null;
+    if (equityParts) equityParts.otherEquity = equity - Object.values(equityParts).reduce((sum, value) => sum + value, 0);
     const profit = credit('7') - debit('8');
     const otherLiabilities = liabilities - customerDeposits - interestPayable - equity - profit;
     if (otherAssets < 0 || otherLiabilities < 0) throw new Error('Các khoản mục chi tiết vượt tổng tài sản hoặc nguồn vốn.');
@@ -73,7 +80,7 @@ export function parseBalanceSheetRows(rows) {
       nhHtxDemand, nhHtxTerm, otherTctdDemand, liquidity: cash + tctdDeposits,
       grossLoans, generalProvision, specificProvision, loanNet, fixedCapital,
       internalReceivables, accruedReceivables, otherAssets, customerDeposits,
-      interestPayable, equity, profit, otherLiabilities };
+      interestPayable, equity, equityParts, profit, otherLiabilities };
   };
   return { ...period, start: metrics('start'), end: metrics('end') };
 }
