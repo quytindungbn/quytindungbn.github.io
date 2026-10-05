@@ -59,7 +59,11 @@ export function parseBalanceSheetRows(rows) {
     const nhHtxTerm = debit('13121');
     const otherTctdDemand = debit('13119');
     const loanNet = grossLoans - generalProvision - specificProvision;
-    const fixedCapital = debit('301') - credit('305') + debit('344');
+    const fixedAssetsGross = debit('301');
+    const accumulatedDepreciation = credit('305');
+    const fixedAssetsNet = fixedAssetsGross - accumulatedDepreciation;
+    const capitalContribution = debit('344');
+    const fixedCapital = fixedAssetsNet + capitalContribution;
     const internalReceivables = debit('361');
     const accruedReceivables = debit('391') + debit('394');
     const otherAssets = assets - cash - tctdDeposits - loanNet - fixedCapital - internalReceivables - accruedReceivables;
@@ -73,14 +77,17 @@ export function parseBalanceSheetRows(rows) {
       financialReserve: credit('613'),
     } : null;
     if (equityParts) equityParts.otherEquity = equity - Object.values(equityParts).reduce((sum, value) => sum + value, 0);
-    const profit = credit('7') - debit('8');
+    const revenue = credit('7');
+    const expenses = debit('8');
+    const profit = revenue - expenses;
     const otherLiabilities = liabilities - customerDeposits - interestPayable - equity - profit;
     if (otherAssets < 0 || otherLiabilities < 0) throw new Error('Các khoản mục chi tiết vượt tổng tài sản hoặc nguồn vốn.');
     return { assets, liabilities, cash, tctdDeposits, tctdDemand, tctdTerm,
       nhHtxDemand, nhHtxTerm, otherTctdDemand, liquidity: cash + tctdDeposits,
       grossLoans, generalProvision, specificProvision, loanNet, fixedCapital,
+      fixedAssetsGross, accumulatedDepreciation, fixedAssetsNet, capitalContribution,
       internalReceivables, accruedReceivables, otherAssets, customerDeposits,
-      interestPayable, equity, equityParts, profit, otherLiabilities };
+      interestPayable, equity, equityParts, revenue, expenses, profit, otherLiabilities };
   };
   return { ...period, start: metrics('start'), end: metrics('end') };
 }
