@@ -706,6 +706,14 @@ svg { display: block; }
 .bs-composition-list span { min-width:0; }
 .bs-composition-list strong { text-align:right; }
 .bs-composition-list small { grid-column:1 / -1; color:var(--text-muted); padding-left:16px; }
+.bs-chart-note { margin:10px 0 0; color:var(--text-muted); font-size:11px; }
+.bs-stat-clickable { border:0; width:100%; text-align:left; font:inherit; cursor:pointer; }
+.bs-stat-clickable:hover, .bs-stat-clickable:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
+.bs-stat-more { font-size:11px; font-weight:700; text-decoration:underline; text-underline-offset:2px; }
+.bs-profit-details > div { display:grid; grid-template-columns:minmax(0,1fr) repeat(2,minmax(0,1.2fr)); gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); font-size:12px; }
+.bs-profit-details > div > :not(:first-child) { text-align:right; }
+.bs-profit-details .bs-profit-head { color:var(--text-muted); font-weight:700; font-size:11px; }
+.bs-profit-details .bs-profit-total { font-weight:800; background:#e8f5f1; padding:10px; border-radius:8px; }
 .bs-table-wrap { width:100%; overflow-x:auto; }
 .bs-table { width:100%; min-width:670px; border-collapse:collapse; font-size:12.5px; font-variant-numeric:tabular-nums; }
 .bs-table th, .bs-table td { padding:9px 8px; border-bottom:1px solid var(--border-strong); }
@@ -725,12 +733,15 @@ svg { display: block; }
 .bs-management-title span { font-size:12px; color:var(--text-muted); }
 .bs-management-section { overflow:hidden; margin-bottom:14px; }
 .bs-management-section h4 { margin:0; padding:13px 16px; font-size:14px; color:var(--text); background:var(--surface-alt); border-bottom:1px solid var(--border-strong); }
-.bs-management-head, .bs-management-row { display:grid; grid-template-columns:minmax(185px,1.4fr) repeat(3,minmax(0,1fr)); gap:12px; align-items:center; padding:10px 16px; }
+.bs-management-head, .bs-management-row { display:grid; grid-template-columns:minmax(260px,1.6fr) repeat(2,minmax(0,1fr)); gap:12px; align-items:center; padding:10px 16px; }
 .bs-management-head { font-size:11px; font-weight:750; color:var(--text-muted); border-bottom:1px solid var(--border-strong); }
 .bs-management-head span:not(:first-child) { text-align:right; }
 .bs-management-row { border-bottom:1px solid var(--border); font-size:12px; }
 .bs-management-row:last-child { border-bottom:0; }
 .bs-management-name { font-weight:650; }
+.bs-management-name strong { font-weight:800; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.bs-management-link { border:0; padding:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+.bs-management-link:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
 .bs-management-child { background:var(--surface-alt); color:var(--text-muted); }
 .bs-management-child .bs-management-name { font-weight:500; padding-left:12px; }
 .bs-management-value { text-align:right; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
@@ -751,6 +762,10 @@ svg { display: block; }
   .bs-management-value { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:3px 0; }
   .bs-management-value::before { content:attr(data-label); color:var(--text-muted); font-size:11px; font-weight:600; flex:none; }
   .bs-management-child .bs-management-name { padding-left:0; }
+  .bs-profit-details > div { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .bs-profit-details > div > :last-child { grid-column:1 / -1; justify-self:end; }
+  .bs-profit-details .bs-profit-head > :last-child { display:none; }
+  .bs-profit-details > div:not(.bs-profit-head) > :last-child::before { content:'Trong tháng: '; font-weight:600; }
 }
 
 /* utility */
