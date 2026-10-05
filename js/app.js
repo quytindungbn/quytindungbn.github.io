@@ -63,6 +63,8 @@ let shellKey = null;
 // trang này nhưng có dữ liệu mới" (chỉ nên vẽ lại danh sách, giữ nguyên mọi
 // bộ lọc/ô đang gõ — xem renderApp() và refresh() của từng view bên dưới).
 let lastRoutePath = null;
+const balanceSheetPath = '#/admin/can-doi-ke-toan';
+let balanceSheetScrollY = 0;
 // "Chữ ký" của người đang đăng nhập lần render() gần nhất (role:id, hoặc
 // null nếu chưa đăng nhập) — dùng để phát hiện đúng lúc ĐỔI NGƯỜI (đăng
 // xuất, đăng nhập tài khoản khác, hết phiên) để reset bộ lọc/tìm kiếm của
@@ -109,6 +111,8 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
     AdminZaloOA.resetFilters?.();
     AdminSupport.resetFilters?.();
     AdminLogs.resetFilters?.();
+    balanceSheetScrollY = 0;
+    if (lastRoutePath === balanceSheetPath) lastRoutePath = null;
     lastSessionKey = curSessionKey;
     dataOnly = false;
   }
@@ -145,6 +149,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   const canManageZaloOA = session.role === 'admin' ? S.canManageZaloOA(session.id) : false;
   const canViewBalanceSheet = session.role === 'admin' ? S.canViewBalanceSheet(session.id) : false;
   const { path, query } = splitHash();
+  if (lastRoutePath === balanceSheetPath && path !== balanceSheetPath) balanceSheetScrollY = window.scrollY;
   const routes = session.role === 'admin' ? adminRoutes : customerRoutes;
   const defaultPath = session.role === 'admin' ? '#/admin' : '#/';
   let match = matchRoute(path, routes);
@@ -182,10 +187,14 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
 
   clearFabs();
   filterEl.innerHTML = '';
-  if (scrollTop) window.scrollTo(0, 0);
+  const returningToBalanceSheet = path === balanceSheetPath && lastRoutePath !== balanceSheetPath;
+  if (scrollTop && !returningToBalanceSheet) window.scrollTo(0, 0);
 
   if (match.view.renderHeader) match.view.renderHeader(headerEl, match.params);
   match.view.render(contentEl, filterEl, match.params, query);
+  if (returningToBalanceSheet) requestAnimationFrame(() => {
+    if (splitHash().path === balanceSheetPath) window.scrollTo(0, balanceSheetScrollY);
+  });
   // Ghi Nhật ký sử dụng mỗi lần THẬT SỰ chuyển sang 1 trang khác (so path
   // với lastRoutePath — path không đổi thì không ghi lại, tránh spam lúc
   // renderApp() gọi lại nhiều lần trên CÙNG 1 trang vì có dữ liệu mới/đổi
