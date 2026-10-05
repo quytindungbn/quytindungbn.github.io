@@ -664,7 +664,7 @@ svg { display: block; }
 .composition-legend-value strong { color: var(--text); font-weight: 700; }
 @media (min-width: 641px) {
   .composition-legend:not(.composition-legend--collateral) .composition-legend-item {
-    border: 1px solid var(--border); border-radius: 10px; background: var(--surface-alt);
+    border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-alt);
     padding: 10px 12px; align-content: start;
   }
 }
