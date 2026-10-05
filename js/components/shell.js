@@ -33,6 +33,9 @@ export const ADMIN_NAV_MANAGE_USERS = [
 export const ADMIN_NAV_MANAGE_ZALO_OA = [
   { path: '#/admin/zalo-oa', label: 'Quản lý OA', shortLabel: 'Quản lý OA', icon: 'send' },
 ];
+export const ADMIN_NAV_BALANCE_SHEET = [
+  { path: '#/admin/can-doi-ke-toan', label: 'Cân đối kế toán', shortLabel: 'Cân đối', icon: 'chart' },
+];
 export const ADMIN_NAV_SUPER_ONLY = [
   { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings' },
   // "Nhật ký" ghi lại các thao tác quan trọng của MỌI quản trị viên/nhân
@@ -100,12 +103,12 @@ function profileBlockHtml(info) {
   `;
 }
 
-export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA) {
+export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA, canViewBalanceSheet = false) {
   // "Quản lý OA" đặt NGAY SAU 3 mục chính (ADMIN_NAV) — cùng nhóm "chính",
   // KHÔNG còn xếp sau "Quản lý User" như trước (vẫn giữ nguyên điều kiện
   // canManageZaloOA, chỉ đổi VỊ TRÍ trong danh sách menu).
   const nav = role === 'admin'
-    ? [...ADMIN_NAV, ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
+    ? [...ADMIN_NAV, ...(canViewBalanceSheet ? ADMIN_NAV_BALANCE_SHEET : []), ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
     : CUSTOMER_NAV;
   root.innerHTML = `
     <div class="app-shell">

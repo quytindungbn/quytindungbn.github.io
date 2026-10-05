@@ -1827,6 +1827,7 @@ function mapAdminRow(row) {
     // quyền kiểm soát được từng nhân viên muốn cho gửi OA hay không, độc lập
     // với việc có cho quản lý Use hay không. Xem canManageZaloOA() bên dưới.
     canManageZaloOA: !!row.can_manage_zalo_oa,
+    canViewBalanceSheet: !!row.can_view_balance_sheet,
     salt: row.salt, hash: row.hash, mustChangePassword: !!row.must_change_password,
     forceLogoutAt: row.force_logout_at || null, createdAt: row.created_at,
   };
@@ -1849,6 +1850,10 @@ export function canManageZaloOA(id) {
   const a = getAdmin(id);
   return !!a && (a.role === 'super' || !!a.canManageZaloOA);
 }
+export function canViewBalanceSheet(id) {
+  const a = getAdmin(id);
+  return !!a && (a.role === 'super' || !!a.canViewBalanceSheet);
+}
 
 /**
  * Tạo tài khoản quản trị (role 'super' toàn quyền hoặc 'staff' chỉ xem) —
@@ -1862,10 +1867,10 @@ export function canManageZaloOA(id) {
  * cùng cơ chế với activateCustomerAccount() ở trên (qua Edge Function
  * "create-account", chỉ admin role='super' gọi được).
  */
-export async function addStaffAdmin({ username, name, password, role, allowedThon, allowedXom, canManageUsers: canManage }) {
+export async function addStaffAdmin({ username, name, password, role, allowedThon, allowedXom, canManageUsers: canManage, canViewBalanceSheet: canViewBalance }) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, {
-    type: 'staff', username, name, password, role, allowedThon, allowedXom, canManageUsers: !!canManage,
+    type: 'staff', username, name, password, role, allowedThon, allowedXom, canManageUsers: !!canManage, canViewBalanceSheet: !!canViewBalance,
   });
   if (!res.ok) throw new Error(res.reason || 'Không tạo được tài khoản.');
   const sb = getSupabaseClient(session.sbToken);
@@ -1877,19 +1882,20 @@ export async function addStaffAdmin({ username, name, password, role, allowedTho
   return { staff, tempPassword: res.tempPassword };
 }
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
-export async function updateStaffPermissions(id, allowedThon, allowedXom, canManage, canManageZalo) {
+export async function updateStaffPermissions(id, allowedThon, allowedXom, canManage, canManageZalo, canViewBalance) {
   const a = getAdmin(id);
   if (!a || a.role !== 'staff') return;
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, {
     type: 'update-staff-permissions', staffId: id, allowedThon, allowedXom,
-    canManageUsers: !!canManage, canManageZaloOA: !!canManageZalo,
+    canManageUsers: !!canManage, canManageZaloOA: !!canManageZalo, canViewBalanceSheet: !!canViewBalance,
   });
   if (!res.ok) throw new Error(res.reason || 'Không cập nhật được quyền xem.');
   a.allowedThon = Array.isArray(allowedThon) ? allowedThon : [];
   a.allowedXom = Array.isArray(allowedXom) ? allowedXom : [];
   a.canManageUsers = !!canManage;
   a.canManageZaloOA = !!canManageZalo;
+  a.canViewBalanceSheet = !!canViewBalance;
   notify();
 }
 /**

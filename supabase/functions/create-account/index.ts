@@ -1452,6 +1452,7 @@ Deno.serve(async (req) => {
       allowed_thon: finalRole === 'staff' && Array.isArray(body.allowedThon) ? body.allowedThon : [],
       allowed_xom: finalRole === 'staff' && Array.isArray(body.allowedXom) ? body.allowedXom : [],
       can_manage_users: finalRole === 'staff' ? !!body.canManageUsers : false,
+      can_view_balance_sheet: finalRole === 'staff' ? !!body.canViewBalanceSheet : false,
       salt: cred.salt, hash: cred.hash, must_change_password: true,
     });
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
@@ -1568,6 +1569,7 @@ Deno.serve(async (req) => {
       allowed_xom: Array.isArray(body.allowedXom) ? body.allowedXom : [],
       can_manage_users: !!body.canManageUsers,
       can_manage_zalo_oa: !!body.canManageZaloOA,
+      can_view_balance_sheet: !!body.canViewBalanceSheet,
     }).eq('id', staffId).eq('role', 'staff').select('name, username').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'update-staff-permissions', `Sửa quyền tài khoản "**${updated?.name || updated?.username || staffId}**"`);

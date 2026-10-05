@@ -163,7 +163,7 @@ function adminRowHtml(a) {
     <div class="list-row" data-open-admin="${a.id}" style="cursor:pointer">
       <div class="row-thumb" style="background:${colorFor(a.id)}">${initials(a.name)}</div>
       <div class="row-main">
-        <div class="row-title">${a.name} <span class="badge ${a.role === 'super' ? 'badge-purple' : 'badge-green'}">Quản trị viên · ${roleLabel}</span>${a.role === 'staff' && a.canManageUsers ? ' <span class="badge badge-blue">+ Quản lý User</span>' : ''}${a.role === 'staff' && a.canManageZaloOA ? ' <span class="badge badge-blue">+ Quản lý OA</span>' : ''}</div>
+        <div class="row-title">${a.name} <span class="badge ${a.role === 'super' ? 'badge-purple' : 'badge-green'}">Quản trị viên · ${roleLabel}</span>${a.role === 'staff' && a.canManageUsers ? ' <span class="badge badge-blue">+ Quản lý User</span>' : ''}${a.role === 'staff' && a.canManageZaloOA ? ' <span class="badge badge-blue">+ Quản lý OA</span>' : ''}${a.role === 'staff' && a.canViewBalanceSheet ? ' <span class="badge badge-blue">+ Cân đối kế toán</span>' : ''}</div>
         <div class="row-sub">@${a.username}${a.role === 'staff' ? ' · Xem được: ' + permissionSummary(a) : ''}</div>
       </div>
     </div>`;
@@ -252,6 +252,7 @@ function adminPermissionSectionHtml(admin, tree, isSelf = false) {
   // ra giữa chừng" nghiêm trọng như Quản lý User (không đang đứng sẵn ở đó
   // lúc sửa quyền này).
   const zaloChecked = admin.canManageZaloOA ? 'checked' : '';
+  const balanceChecked = admin.canViewBalanceSheet ? 'checked' : '';
   return `
     <div class="section-head mt-16"><h2 style="font-size:14px">Địa bàn được xem</h2></div>
     <form id="perm-form">
@@ -268,6 +269,11 @@ function adminPermissionSectionHtml(admin, tree, isSelf = false) {
         Cho phép quản lý gửi tin Zalo OA
       </label>
       <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý OA" — thêm/bớt khách hàng vào danh sách gửi Zalo tự động, gửi tay, xem log gửi tin — CHỈ trong đúng Thôn/Xóm được gán ở trên.</div>
+      <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
+        <input type="checkbox" name="canViewBalanceSheet" ${balanceChecked}/>
+        Cho phép xem Cân đối kế toán
+      </label>
+      <div class="field-hint">Số liệu toàn quỹ; nhân viên được cấp quyền chỉ xem, không thể nạp file.</div>
     </form>
   `;
 }
@@ -390,7 +396,8 @@ function openAdminDetail(admin, tree, contentEl) {
               // false, tự xóa quyền của chính mình).
               const canManage = isSelf ? admin.canManageUsers : fd.get('canManageUsers') === 'on';
               const canManageZalo = fd.get('canManageZaloOA') === 'on';
-              await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), canManage, canManageZalo);
+              const canViewBalance = fd.get('canViewBalanceSheet') === 'on';
+              await S.updateStaffPermissions(admin.id, fd.getAll('thon'), fd.getAll('xom'), canManage, canManageZalo, canViewBalance);
             }
             toast('Đã lưu quyền', 'success');
             closeFn();
@@ -511,6 +518,11 @@ function openCreateUserModal(tree, contentEl) {
                 Cho phép quản lý User
               </label>
               <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền).</div>
+              <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
+                <input type="checkbox" name="canViewBalanceSheet"/>
+                Cho phép xem Cân đối kế toán
+              </label>
+              <div class="field-hint">Chỉ xem số liệu toàn quỹ; quyền nạp file vẫn dành riêng cho quản trị viên toàn quyền.</div>
             </div>
             ` : `<p class="field-hint">Quản trị viên toàn quyền xem được mọi địa bàn và truy cập Cài đặt, Quản lý User.</p>`}
           </form>
@@ -555,6 +567,7 @@ function openCreateUserModal(tree, contentEl) {
               username: fd.get('username'), name: fd.get('name'), password: fd.get('password'),
               role: adminRole, allowedThon: fd.getAll('thon'), allowedXom: fd.getAll('xom'),
               canManageUsers: fd.get('canManageUsers') === 'on',
+              canViewBalanceSheet: fd.get('canViewBalanceSheet') === 'on',
             });
             closeFn();
             toast('Đã tạo quản trị viên', 'success');

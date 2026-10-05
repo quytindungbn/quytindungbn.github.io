@@ -1,5 +1,5 @@
 import * as S from './state.js';
-import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
+import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
@@ -19,6 +19,7 @@ import * as AdminStaff from './views/admin/staff.js';
 import * as AdminZaloOA from './views/admin/zaloOA.js';
 import * as AdminSupport from './views/admin/support.js';
 import * as AdminLogs from './views/admin/logs.js';
+import * as AdminBalanceSheet from './views/admin/balanceSheet.js';
 
 const customerRoutes = [
   { re: /^#\/$/, view: Dashboard },
@@ -43,6 +44,7 @@ const adminRoutes = [
   { re: /^#\/admin\/nhat-ky$/, view: AdminLogs, superOnly: true },
   { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, requiresManageZaloOA: true },
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
+  { re: /^#\/admin\/can-doi-ke-toan$/, view: AdminBalanceSheet, requiresViewBalanceSheet: true },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];
 
@@ -50,7 +52,7 @@ const adminRoutes = [
 // trang thật sự (xem renderApp() bên dưới), khỏi phải ghi cứng lại 1 danh
 // sách riêng — lấy thẳng từ đúng label đang hiện trên menu.
 const NAV_LABEL_MAP = Object.fromEntries(
-  [...ADMIN_NAV, ...ADMIN_NAV_MANAGE_ZALO_OA, ...ADMIN_NAV_MANAGE_USERS, ...ADMIN_NAV_SUPER_ONLY].map((item) => [item.path, item.label])
+  [...ADMIN_NAV, ...ADMIN_NAV_BALANCE_SHEET, ...ADMIN_NAV_MANAGE_ZALO_OA, ...ADMIN_NAV_MANAGE_USERS, ...ADMIN_NAV_SUPER_ONLY].map((item) => [item.path, item.label])
 );
 NAV_LABEL_MAP['#/doi-mat-khau'] = 'Đổi mật khẩu'; // có route nhưng không nằm trong menu chính (link riêng ở sidebar)
 
@@ -86,7 +88,7 @@ function matchRoute(path, routes) {
     if (m) {
       const params = {};
       (r.params || []).forEach((name, i) => { params[name] = decodeURIComponent(m[i + 1]); });
-      return { view: r.view, params, superOnly: !!r.superOnly, requiresManageUsers: !!r.requiresManageUsers, requiresManageZaloOA: !!r.requiresManageZaloOA };
+      return { view: r.view, params, superOnly: !!r.superOnly, requiresManageUsers: !!r.requiresManageUsers, requiresManageZaloOA: !!r.requiresManageZaloOA, requiresViewBalanceSheet: !!r.requiresViewBalanceSheet };
     }
   }
   return null;
@@ -141,19 +143,20 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   const isSuper = session.role === 'admin' ? S.isSuperAdmin(session.id) : false;
   const canManageUsers = session.role === 'admin' ? S.canManageUsers(session.id) : false;
   const canManageZaloOA = session.role === 'admin' ? S.canManageZaloOA(session.id) : false;
+  const canViewBalanceSheet = session.role === 'admin' ? S.canViewBalanceSheet(session.id) : false;
   const { path, query } = splitHash();
   const routes = session.role === 'admin' ? adminRoutes : customerRoutes;
   const defaultPath = session.role === 'admin' ? '#/admin' : '#/';
   let match = matchRoute(path, routes);
-  if (!match || (match.superOnly && !isSuper) || (match.requiresManageUsers && !canManageUsers) || (match.requiresManageZaloOA && !canManageZaloOA)) {
+  if (!match || (match.superOnly && !isSuper) || (match.requiresManageUsers && !canManageUsers) || (match.requiresManageZaloOA && !canManageZaloOA) || (match.requiresViewBalanceSheet && !canViewBalanceSheet)) {
     // Trang không hợp lệ / không đủ quyền với vai trò hiện tại -> về trang mặc định
     if (location.hash !== defaultPath) { location.hash = defaultPath; return; }
     match = matchRoute(defaultPath, routes);
   }
 
-  const newShellKey = session.role + ':' + isSuper + ':' + canManageUsers + ':' + canManageZaloOA;
+  const newShellKey = session.role + ':' + isSuper + ':' + canManageUsers + ':' + canManageZaloOA + ':' + canViewBalanceSheet;
   if (shellKey !== newShellKey) {
-    buildShell(root, session.role, isSuper, canManageUsers, canManageZaloOA);
+    buildShell(root, session.role, isSuper, canManageUsers, canManageZaloOA, canViewBalanceSheet);
     shellKey = newShellKey;
   }
   document.getElementById('brand-name').textContent = S.getOrg().shortName;
