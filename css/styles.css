@@ -662,6 +662,12 @@ svg { display: block; }
 .composition-legend-share { color: var(--color-primary); white-space: nowrap; font-weight: 800; }
 .composition-legend-value { grid-column: 2; grid-row: 2; color: var(--text-muted); font-size: 11px; }
 .composition-legend-value strong { color: var(--text); font-weight: 700; }
+@media (min-width: 641px) {
+  .composition-legend:not(.composition-legend--collateral) .composition-legend-item {
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface-alt);
+    padding: 10px 12px; align-content: start;
+  }
+}
 @media (max-width: 900px) {
   .composition-content { flex-direction: column; align-items: stretch; gap: 10px; }
   .composition-donut-svg { align-self: center; }
