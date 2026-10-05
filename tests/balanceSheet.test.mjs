@@ -51,3 +51,18 @@ test('chặn kỳ không đủ tháng và tài khoản trùng', () => {
   duplicate[26] = ['', '423', 0, 1, 0, 0, 0, 1];
   assert.throws(() => parseBalanceSheetRows(duplicate), /nhiều lần/);
 });
+
+test('tách vốn điều lệ và các quỹ, giữ phần vốn chủ sở hữu khác', () => {
+  const rows = sample();
+  const account = (index, code, credit) => { rows[index] = ['', code, 0, credit, 0, 0, 0, credit]; };
+  account(26, '601', 40);
+  account(27, '611', 10);
+  account(28, '612', 20);
+  account(29, '613', 5);
+  const report = parseBalanceSheetRows(rows);
+  assert.deepEqual(report.end.equityParts, {
+    charterCapital: 40, supplementaryReserve: 10,
+    developmentReserve: 20, financialReserve: 5, otherEquity: 5,
+  });
+  assert.equal(parseBalanceSheetRows(sample()).end.equityParts, null);
+});
