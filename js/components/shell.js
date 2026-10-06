@@ -15,11 +15,9 @@ export const CUSTOMER_NAV = [
 export const ADMIN_NAV = [
   { path: '#/admin', label: 'Tổng quan', shortLabel: 'Tổng quan', icon: 'chart' },
   { path: '#/admin/khach-hang', label: 'Khách hàng & Hợp đồng', shortLabel: 'Khách hàng', icon: 'users' },
-  // "Hỗ trợ" GỘP 2 mục cũ ("Yêu cầu tư vấn" + "Hỗ trợ" chat) thành 1, hiện
-  // dưới dạng 2 tab trong CÙNG trang (xem js/views/admin/support.js) — luôn
-  // hiện cho MỌI quản trị viên (không riêng gì canManageUsers, giữ đúng
-  // phạm vi cũ của "Yêu cầu tư vấn"); tab con "Hỗ trợ" (chat) bên trong mới
-  // cần canManageUsers, tự ẩn/hiện ngay trong trang đó.
+];
+// "Hỗ trợ" gồm hai tab trong cùng trang; luôn hiện cho mọi quản trị viên.
+export const ADMIN_NAV_SUPPORT = [
   { path: '#/admin/ho-tro', label: 'Hỗ trợ', shortLabel: 'Hỗ trợ', icon: 'message' },
 ];
 // "Quản lý User" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được
@@ -46,13 +44,7 @@ export const ADMIN_NAV_SUPER_ONLY = [
   // thật sự.
   { path: '#/admin/nhat-ky', label: 'Nhật ký', shortLabel: 'Nhật ký', icon: 'clock' },
 ];
-// Số mục tối đa hiện trực tiếp trên thanh menu dưới (mobile) — còn lại gộp vào "Thêm"
-// để không bị lệch/chồng chữ khi có nhiều mục (đặc biệt tài khoản quản trị toàn quyền).
-// Nâng từ 3 lên 4 để "Quản lý OA" (nếu có quyền) cũng hiện TRỰC TIẾP ở đây —
-// trước đó dù đã dời lên đứng cùng nhóm 3 mục chính trong buildShell(), thanh
-// menu dưới vẫn chỉ lấy đúng 3 mục đầu (chưa tới lượt OA) nên không thấy gì
-// đổi trên điện thoại. Tài khoản không có quyền OA thì nav chỉ có 3 mục như
-// cũ, không bị ảnh hưởng gì (slice(0,4) trên mảng 3 phần tử vẫn ra đủ 3).
+// Bốn mục đầu hiện trực tiếp trên điện thoại; các mục sau nằm trong "Thêm".
 const BOTTOM_NAV_MAX_DIRECT = 4;
 
 function matchPath(navPath, current) {
@@ -104,11 +96,10 @@ function profileBlockHtml(info) {
 }
 
 export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA, canViewBalanceSheet = false) {
-  // "Quản lý OA" đặt NGAY SAU 3 mục chính (ADMIN_NAV) — cùng nhóm "chính",
-  // KHÔNG còn xếp sau "Quản lý User" như trước (vẫn giữ nguyên điều kiện
-  // canManageZaloOA, chỉ đổi VỊ TRÍ trong danh sách menu).
+  // Giữ nguyên quyền truy cập; chỉ sắp thứ tự: Tổng quan, Khách hàng,
+  // Quản trị, Quản lý OA, Hỗ trợ, Quản lý User, rồi Cài đặt/Nhật ký.
   const nav = role === 'admin'
-    ? [...ADMIN_NAV, ...(canViewBalanceSheet ? ADMIN_NAV_BALANCE_SHEET : []), ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
+    ? [...ADMIN_NAV, ...(canViewBalanceSheet ? ADMIN_NAV_BALANCE_SHEET : []), ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...ADMIN_NAV_SUPPORT, ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
     : CUSTOMER_NAV;
   root.innerHTML = `
     <div class="app-shell">
@@ -186,9 +177,10 @@ function renderBottomNav(nav) {
   const el = document.getElementById('bottom-nav');
   const direct = nav.slice(0, BOTTOM_NAV_MAX_DIRECT);
   const overflow = [...nav.slice(BOTTOM_NAV_MAX_DIRECT), CHANGE_PW_ITEM];
+  const supportInMore = overflow.some((item) => item.path === '#/admin/ho-tro');
   // Luôn còn ít nhất "Đổi mật khẩu" trong "Thêm" nên nút Thêm luôn hiện trên mobile.
   el.innerHTML = direct.map((item) => `<a href="${item.path}" data-path="${item.path}">${icon(item.icon)}<span>${item.shortLabel || item.label}</span>${unreadBadgeHtml(item.path, 'bottom-nav-badge')}</a>`).join('')
-    + `<button class="more-btn" id="btn-more-bottom">${icon('more')}<span>Thêm</span></button>`;
+    + `<button class="more-btn" id="btn-more-bottom" ${supportInMore ? 'data-support-overflow="true"' : ''}>${icon('more')}<span>Thêm</span>${supportInMore ? unreadBadgeHtml('#/admin/ho-tro', 'bottom-nav-badge') : ''}</button>`;
   const moreBtn = document.getElementById('btn-more-bottom');
   if (moreBtn) moreBtn.addEventListener('click', () => openMoreSheet(overflow));
 }
@@ -280,7 +272,7 @@ export function renderChatFab(session) {
 }
 
 /**
- * Cập nhật lại chấm đỏ số tin CHƯA ĐỌC ở mục menu "Hỗ trợ" (sidebar desktop)
+ * Cập nhật lại chấm đỏ số tin CHƯA ĐỌC ở mục menu "Hỗ trợ" và nút "Thêm"
  * — mục này chỉ được DỰNG LẠI (renderSidebarNav) lúc buildShell() chạy (đổi
  * role/quyền), không phải mỗi lần render() như renderChatFab, nên cần hàm
  * riêng gọi lại ở MỌI lần renderApp() (xem app.js) để số luôn đúng theo dữ
@@ -288,14 +280,14 @@ export function renderChatFab(session) {
  */
 export function renderSupportNavBadge() {
   const unread = totalSupportUnread();
-  // Cả sidebar (desktop) LẪN thanh dưới (mobile, "Hỗ trợ" giờ luôn đủ chỗ
-  // hiện trực tiếp — xem BOTTOM_NAV_MAX_DIRECT) đều có thể có mục này cùng
-  // lúc — cập nhật hết, mỗi nơi dùng đúng class riêng của nó.
-  document.querySelectorAll('a[data-path="#/admin/ho-tro"]').forEach((a) => {
-    const cls = a.closest('#bottom-nav') ? 'bottom-nav-badge' : 'nav-badge';
-    let badge = a.querySelector(`.${cls}`);
+  const targets = [...document.querySelectorAll('a[data-path="#/admin/ho-tro"]')];
+  const moreBtn = document.querySelector('#btn-more-bottom[data-support-overflow="true"]');
+  if (moreBtn) targets.push(moreBtn);
+  targets.forEach((item) => {
+    const cls = item.closest('#bottom-nav') ? 'bottom-nav-badge' : 'nav-badge';
+    let badge = item.querySelector(`.${cls}`);
     if (!unread) { if (badge) badge.remove(); return; }
-    if (!badge) { badge = document.createElement('span'); badge.className = cls; a.appendChild(badge); }
+    if (!badge) { badge = document.createElement('span'); badge.className = cls; item.appendChild(badge); }
     badge.textContent = unread > 99 ? '99+' : String(unread);
   });
 }
