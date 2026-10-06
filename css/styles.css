@@ -678,7 +678,7 @@ svg { display: block; }
   .composition-collateral-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Cân đối kế toán: bảng số liệu và biểu đồ riêng, co giãn trên điện thoại. */
+/* Quản trị: bảng số liệu và biểu đồ riêng, co giãn trên điện thoại. */
 .bs-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
 .bs-toolbar h2 { margin:0 0 4px; font-size:20px; }
 .bs-toolbar p { margin:0; }
@@ -689,12 +689,14 @@ svg { display: block; }
 .bs-stats { margin-bottom:16px; }
 .bs-stat-value { font-size:clamp(14px, 1.45vw, 19px) !important; overflow-wrap:anywhere; }
 .bs-two-col { display:grid; grid-template-columns:minmax(0, 1.15fr) minmax(0, 1fr); gap:14px; margin-bottom:14px; }
+.bs-two-col > .card { border:2px solid #9aada8; }
 .bs-section { min-width:0; margin-bottom:14px; }
 .bs-trend-section { max-width:740px; margin-left:auto; margin-right:auto; }
 .bs-section h3 { margin:0 0 12px; font-size:16px; }
 .bs-section p { line-height:1.5; }
 .bs-chart-scroll { overflow-x:auto; }
 .bs-chart-scroll svg { display:block; width:100%; min-width:450px; }
+.bs-chart-scroll .bs-trend-mobile { display:none; }
 .bs-chart-legend { display:flex; flex-wrap:wrap; gap:16px; margin-top:8px; font-size:12px; color:var(--text-muted); }
 .bs-chart-legend span, .bs-composition-list span { display:flex; align-items:center; gap:7px; }
 .bs-chart-legend i, .bs-composition-list i { display:inline-block; width:9px; height:9px; border-radius:50%; flex:none; }
@@ -746,7 +748,7 @@ svg { display: block; }
 .bs-management-link { border:0; padding:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
 .bs-management-link:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
 .bs-management-child { background:var(--surface-alt); color:var(--text-muted); }
-.bs-management-child .bs-management-name { font-weight:500; padding-left:12px; }
+.bs-management-child .bs-management-name { font-weight:500; padding-left:32px; }
 .bs-management-value { text-align:right; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .bs-management-total { background:#e8f5f1; font-weight:800; }
 .bs-management-total .bs-management-name { font-weight:800; }
@@ -756,8 +758,22 @@ svg { display: block; }
 .bs-match { color:#087d6a; font-weight:700; }
 .bs-balance-note { margin:12px 0 0; color:#087d6a; font-size:12px; }
 .bs-warning { background:#fff7e6; color:#875800; padding:10px; border-radius:8px; font-size:12px; }
+.bs-overprovision { color:#875800; font-weight:700; }
+.bs-provision-alert { border-left:3px solid #d18d16; margin:8px 0; }
+.bs-provision-shortfall { color:#a92322; background:#fff0ef; border-color:var(--danger); }
 @media (max-width:1100px) { .bs-two-col { grid-template-columns:1fr; } }
-@media (max-width:600px) { .bs-composition { flex-direction:column; align-items:stretch; } .bs-donut { align-self:center; width:200px; } .bs-toolbar-actions { width:100%; } }
+@media (max-width:600px) {
+  .bs-composition { flex-direction:column; align-items:stretch; }
+  .bs-donut { align-self:center; width:200px; }
+  .bs-toolbar-actions { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:end; gap:6px; width:100%; }
+  .bs-month-select { min-width:0; }
+  .bs-month-select select { width:100%; padding:0 5px; font-size:11px; }
+  .bs-toolbar-actions .btn { min-height:38px; padding:6px 8px; font-size:11px; }
+  .bs-trend-section { padding:12px 6px; }
+  .bs-chart-scroll { overflow:hidden; }
+  .bs-chart-scroll .bs-trend-desktop { display:none; }
+  .bs-chart-scroll .bs-trend-mobile { display:block; min-width:0; }
+}
 @media (max-width:860px) {
   .bs-management-head { display:none; }
   .bs-management-row { grid-template-columns:minmax(0,1fr) auto; gap:5px 10px; padding:11px 14px; }
@@ -765,7 +781,7 @@ svg { display: block; }
   .bs-management-end { align-self:start; }
   .bs-management-value { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:3px 0; }
   .bs-management-value::before { content:attr(data-label); color:var(--text-muted); font-size:11px; font-weight:600; flex:none; }
-  .bs-management-child .bs-management-name { padding-left:0; }
+  .bs-management-child .bs-management-name { padding-left:22px; }
   .bs-profit-details > div { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .bs-profit-details > div > :last-child { grid-column:1 / -1; justify-self:end; }
   .bs-profit-details .bs-profit-head > :last-child { display:none; }
