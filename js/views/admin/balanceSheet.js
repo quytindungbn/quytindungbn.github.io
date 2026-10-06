@@ -4,7 +4,7 @@ import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
-import { compareBalance, yearOpeningReport, provisionDifference, nextProvisionDeadline } from '../../lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, formatCompact } from '../../utils.js';
 
@@ -26,10 +26,10 @@ function change(current, base) {
   return `<span class="bs-change ${tone}"><strong>${signed(result.amount)}</strong><small>${result.percent == null ? '—' : percent(result.percent)}</small></span>`;
 }
 
-function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false } = {}) {
+function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, ordinal = null } = {}) {
   const name = `${label}:`;
   return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''}">
-    <div class="bs-management-name">${profitDetail ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>` : name}</div>
+    <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${profitDetail ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>` : name}</div>
     <div class="bs-management-end"><strong>${money(end[key])}</strong></div>
     <div class="bs-management-value" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
     <div class="bs-management-value" data-label="Từ đầu năm">${noYear ? '<span class="text-muted">—</span>' : change(end[key], yearOpening?.[key])}</div>
@@ -53,11 +53,38 @@ function roman(index) {
 }
 
 function numberedManagementRows(items, start, end, yearOpening) {
-  return items.map((item, index) => managementRow(`${roman(index + 1)}. ${item.label}`, item.key,
-    start, end, yearOpening, item.options) +
+  return items.map((item, index) => managementRow(item.label, item.key,
+    start, end, yearOpening, { ...item.options, ordinal: roman(index + 1) }) +
     (item.children || []).map(([label, key]) => managementRow(`↳ ${label}`, key,
       start, end, yearOpening, { child: true })).join('') +
     (item.detailHtml || '')).join('');
+}
+
+const ratioFormat = (value, suffix) => Number.isFinite(value)
+  ? `${new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(value)}${suffix}` : '—';
+
+function ratiosSection(end) {
+  const ratios = managementRatios(end);
+  if (!ratios) return '';
+  const depositsWarning = ratios.depositCapital == null ? 'Chưa đủ số liệu để đánh giá giới hạn tiền gửi.'
+    : ratios.depositCapital > 20 ? 'Vượt giới hạn 20 lần; cần giảm tiền gửi nhận hoặc tăng vốn chủ sở hữu.'
+      : ratios.depositCapital >= 18 ? 'Gần giới hạn 20 lần; cần theo dõi quy mô huy động và vốn chủ sở hữu.'
+        : 'Trong giới hạn 20 lần.';
+  const loanWarning = ratios.loanDeposit == null ? 'Chưa đủ số liệu để đánh giá cơ cấu vốn.'
+    : ratios.loanDeposit > 100 ? 'Dư nợ lớn hơn tiền gửi khách hàng; cần đánh giá nguồn vốn bù đắp và thanh khoản.'
+      : 'Theo dõi cùng xu hướng tiền gửi và khả năng thanh khoản.';
+  const profitWarning = Number(end.profit) < 0 ? 'Lợi nhuận lũy kế âm; cần rà soát doanh thu và chi phí.'
+    : 'Đối chiếu xu hướng sinh lời qua các kỳ đã nạp.';
+  const tile = (label, value, detail, advice, alert = false) => `<article class="bs-ratio-card ${alert ? 'bs-ratio-alert' : ''}">
+    <div class="bs-ratio-head"><h4>${label}</h4><strong>${value}</strong></div>
+    <p class="bs-ratio-detail">${detail}</p><p class="bs-ratio-advice">${advice}</p></article>`;
+  return `<section class="bs-ratios bs-section"><div class="bs-management-title"><h3>Chỉ số quản trị</h3><span>Lũy kế từ đầu năm · không quy đổi năm</span></div>
+    <div class="bs-ratio-grid">
+      ${tile('ROE', ratioFormat(ratios.roe, '%'), 'Lợi nhuận lũy kế / vốn chủ sở hữu cuối kỳ', profitWarning, Number(end.profit) < 0)}
+      ${tile('ROA', ratioFormat(ratios.roa, '%'), 'Lợi nhuận lũy kế / tổng tài sản cuối kỳ', profitWarning, Number(end.profit) < 0)}
+      ${tile('Cho vay / tiền gửi', ratioFormat(ratios.loanDeposit, '%'), 'Dư nợ cho vay / tiền gửi khách hàng', loanWarning, ratios.loanDeposit > 100)}
+      ${tile('Tiền gửi / vốn chủ sở hữu', ratioFormat(ratios.depositCapital, ' lần'), `Tiền gửi khách hàng / vốn chủ sở hữu. Vốn chủ sở hữu: <strong>${ratios.ownCapital == null ? '—' : money(ratios.ownCapital)}</strong> (vốn hiện có + lợi nhuận lũy kế)`, depositsWarning, ratios.depositCapital > 20)}
+    </div><p class="bs-chart-note">ROA và ROE dùng lợi nhuận lũy kế và số dư cuối kỳ của tháng được chọn; đây là tỷ lệ quản trị tạm tính, chưa dùng tài sản/vốn bình quân hoặc lợi nhuận sau thuế.</p></section>`;
 }
 
 export function renderHeader(headerEl) {
@@ -271,6 +298,7 @@ function draw(contentEl) {
       ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, yearStart)}
         ${managementRow('Tổng nguồn vốn', 'liabilities', start, end, yearStart, { total: true })}`)}
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
+    ${ratiosSection(end)}
     ${provisionComparison(report)}`}`;
   contentEl.querySelector('#bs-month')?.addEventListener('change', (event) => {
     selectedMonth = event.target.value;
