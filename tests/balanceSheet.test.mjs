@@ -43,13 +43,48 @@ test('chặn file không cân đối và dự phòng sai tài khoản con', () =
   assert.throws(() => parseBalanceSheetRows(wrongProvision), /không khớp/);
 });
 
-test('chặn kỳ không đủ tháng và tài khoản trùng', () => {
-  const partial = sample();
-  partial[4][0] = 'Từ ngày 01/09/2026 đến ngày 29/09/2026';
-  assert.throws(() => parseBalanceSheetRows(partial), /trọn một tháng/);
+test('nhận báo cáo hằng ngày, chặn kỳ sai tháng và tài khoản trùng', () => {
+  const daily = sample();
+  daily[4][0] = 'Từ ngày 01/09/2026 đến ngày 29/09/2026';
+  assert.equal(parseBalanceSheetRows(daily).periodEnd, '2026-09-29');
+  daily[4][0] = 'Từ ngày 01/09/2026 đến ngày 01/10/2026';
+  assert.throws(() => parseBalanceSheetRows(daily), /cùng tháng/);
   const duplicate = sample();
   duplicate[26] = ['', '423', 0, 1, 0, 0, 0, 1];
   assert.throws(() => parseBalanceSheetRows(duplicate), /nhiều lần/);
+});
+
+test('tài khoản dự phòng không phát sinh được coi là 0, tài khoản cho vay mới được tính', () => {
+  const rows = sample();
+  rows[18] = []; // tháng này không có 2191
+  rows[17][3] = rows[17][7] = 15;
+  rows[14][3] = rows[14][7] = 15;
+  rows[23][3] = rows[23][7] = 85;
+  const withoutSpecific = parseBalanceSheetRows(rows);
+  assert.equal(withoutSpecific.end.specificProvision, 0);
+  assert.equal(withoutSpecific.end.generalProvision, 15);
+  assert.equal(withoutSpecific.end.assets, 285);
+
+  rows[26] = ['', '213', 10, 0, 0, 0, 10, 0];
+  rows[15][2] = rows[15][6] = 200;
+  rows[14][2] = rows[14][6] = 210;
+  rows[23][3] = rows[23][7] = 95;
+  const withNewLoan = parseBalanceSheetRows(rows);
+  assert.equal(withNewLoan.end.grossLoans, 210);
+  assert.equal(withNewLoan.end.loanNet, 195);
+});
+
+test('tài khoản dự phòng mới vẫn được trừ trong tổng, không lặp dòng tài khoản con', () => {
+  const rows = sample();
+  rows[14][3] = rows[14][7] = 23;
+  rows[17][3] = rows[17][7] = 23;
+  rows[23][3] = rows[23][7] = 77;
+  rows[26] = ['', '2193', 0, 3, 0, 0, 0, 3];
+  const report = parseBalanceSheetRows(rows);
+  assert.equal(report.end.totalProvision, 23);
+  assert.equal(report.end.otherProvision, 3);
+  assert.equal(report.end.loanNet, 177);
+  assert.equal(report.end.assets, 277);
 });
 
 test('tách vốn điều lệ và các quỹ, giữ phần vốn chủ sở hữu khác', () => {
@@ -65,6 +100,8 @@ test('tách vốn điều lệ và các quỹ, giữ phần vốn chủ sở h�
     developmentReserve: 20, financialReserve: 5, otherEquity: 5,
   });
   assert.equal(parseBalanceSheetRows(sample()).end.equityParts, null);
+  rows[27] = []; // một quỹ không phát sinh, vẫn giữ các khoản mục còn lại
+  assert.equal(parseBalanceSheetRows(rows).end.equityParts.supplementaryReserve, 0);
 });
 
 test('lợi nhuận = doanh thu trừ chi phí; TSCĐ trừ hao mòn và tách góp vốn', () => {
