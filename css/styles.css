@@ -735,7 +735,7 @@ svg { display: block; }
 .bs-management-title { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:4px 0 12px; }
 .bs-management-title h3 { margin:0; font-size:17px; }
 .bs-management-title span { font-size:12px; color:var(--text-muted); }
-.bs-management-section { overflow:hidden; margin-bottom:14px; }
+.bs-management-section { overflow:hidden; margin-bottom:14px; border:2px solid #9aada8; }
 .bs-management-section h4 { margin:0; padding:13px 16px; font-size:14px; color:var(--text); background:var(--surface-alt); border-bottom:1px solid var(--border-strong); }
 .bs-management-head, .bs-management-row { display:grid; grid-template-columns:minmax(190px,1.3fr) minmax(140px,1fr) repeat(2,minmax(135px,1fr)); gap:12px; align-items:center; padding:10px 16px; }
 .bs-management-head { font-size:11px; font-weight:750; color:var(--text-muted); border-bottom:1px solid var(--border-strong); }
