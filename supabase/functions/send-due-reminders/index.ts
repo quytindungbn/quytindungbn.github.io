@@ -248,7 +248,7 @@ function debtGroup(contract: any, asOf: Date): number | null {
   return 5;
 }
 
-/** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 (Nhóm 1 = 0%, không trích) — Y HỆT SPECIFIC_PROVISION_RATE trong js/state.js. */
+/** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 (Nhóm 1 = 0%, không trích) — Y HỆT SPECIFIC_PROVISION_RATE trong js/lib/collateral.js. */
 const SPECIFIC_PROVISION_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
 /** Tỷ lệ dự phòng CHUNG, áp dụng trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
 const GENERAL_PROVISION_RATE = 0.0075;
@@ -328,6 +328,7 @@ async function captureMonthlySnapshot(adminClient: any, asOf: Date): Promise<voi
     }
     const cust = custMap.get(ct.customer_id);
     contractsDetail.push({
+      code: ct.code || null,
       name: cust?.name || null,
       address: (cust && [cust.thon, cust.xom, cust.tinh].filter(Boolean).join(', ')) || cust?.address || null,
       balance,
