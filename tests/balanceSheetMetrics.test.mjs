@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareBalance, yearOpeningReport } from '../js/lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, provisionDifference, nextProvisionDeadline } from '../js/lib/balanceSheetMetrics.js';
 
 test('biến động dùng số gốc tuyệt đối và không tạo tỷ lệ giả khi gốc bằng 0', () => {
   assert.deepEqual(compareBalance(70_147_510_875, 70_726_277_233), {
@@ -22,4 +22,13 @@ test('mốc từ đầu năm là số đầu kỳ tháng 01 cùng năm', () => {
   assert.equal(yearOpeningReport(reports, '2026-09'), january);
   assert.equal(compareBalance(65, yearOpeningReport(reports, '2026-09').figures.start.assets).amount, -15);
   assert.equal(yearOpeningReport(reports, '2025-12'), null);
+});
+
+test('dự phòng lấy bảng cân đối trừ phải trích và hạn ngày 07 tháng sau kể cả qua năm', () => {
+  assert.equal(provisionDifference(120, 100), 20);
+  assert.equal(provisionDifference(80, 100), -20);
+  assert.equal(provisionDifference(100, 100), 0);
+  assert.equal(provisionDifference(100, undefined), null);
+  assert.equal(nextProvisionDeadline('2026-09'), '07/10/2026');
+  assert.equal(nextProvisionDeadline('2026-12'), '07/01/2027');
 });
