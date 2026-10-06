@@ -4,7 +4,7 @@ import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
-import { compareBalance, yearOpeningReport } from '../../lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, provisionDifference, nextProvisionDeadline } from '../../lib/balanceSheetMetrics.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, formatCompact } from '../../utils.js';
 
@@ -47,8 +47,21 @@ function managementSection(title, rows) {
     ${rows}</section>`;
 }
 
+function roman(index) {
+  const numerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  return numerals[index - 1] || String(index);
+}
+
+function numberedManagementRows(items, start, end, yearOpening) {
+  return items.map((item, index) => managementRow(`${roman(index + 1)}. ${item.label}`, item.key,
+    start, end, yearOpening, item.options) +
+    (item.children || []).map(([label, key]) => managementRow(`↳ ${label}`, key,
+      start, end, yearOpening, { child: true })).join('') +
+    (item.detailHtml || '')).join('');
+}
+
 export function renderHeader(headerEl) {
-  headerEl.innerHTML = pageHeader({ title: 'Cân đối kế toán' });
+  headerEl.innerHTML = pageHeader({ title: 'Quản trị' });
 }
 
 function makeClient() {
@@ -88,15 +101,13 @@ function stat(label, value, startValue, color, clickable = false) {
   return `<${tag} ${clickable ? 'type="button" id="bs-profit-details" aria-label="Xem Doanh thu và Chi phí"' : ''} class="stat-tile ${color} ${clickable ? 'bs-stat-clickable' : ''}"><span class="stat-label">${label}</span><span class="stat-value bs-stat-value">${money(value)}</span><span class="stat-trend">${change(value, startValue)}</span>${clickable ? '<span class="bs-stat-more">Xem Doanh thu – Chi phí ›</span>' : ''}</${tag}>`;
 }
 
-function trendChart(list) {
-  if (!list.length) return '<p class="text-muted text-sm">Chưa có tháng nào để vẽ biểu đồ.</p>';
-  const shown = list.slice(-12);
-  const values = shown.flatMap((r) => [Number(r.figures.end.assets), Number(r.figures.end.customerDeposits)]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const base = Math.max(0, min - (max - min || max * 0.05) * 0.35);
-  const span = Math.max(1, max - base);
-  const left = 58, right = 645, top = 22, bottom = 190;
+function trendSvg(shown, base, span, mobile) {
+  const width = mobile ? 320 : 680;
+  const height = mobile ? 190 : 230;
+  const left = mobile ? 42 : 58;
+  const right = mobile ? 306 : 645;
+  const top = mobile ? 18 : 22;
+  const bottom = mobile ? 150 : 190;
   const x = (i) => shown.length === 1 ? (left + right) / 2 : left + (right - left) * i / (shown.length - 1);
   const y = (v) => bottom - (v - base) / span * (bottom - top);
   const series = [
@@ -105,14 +116,25 @@ function trendChart(list) {
   ];
   const lines = [0, 0.5, 1].map((p) => {
     const yy = bottom - (bottom - top) * p;
-    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - 8}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#64748b">${formatCompact(base + span * p)}</text>`;
+    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text>`;
   }).join('');
   const plots = series.map((s) => {
     const points = shown.map((r, i) => `${x(i)},${y(Number(r.figures.end[s.key]))}`).join(' ');
-    return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${shown.map((r, i) => `<circle cx="${x(i)}" cy="${y(Number(r.figures.end[s.key]))}" r="5" fill="${s.color}"><title>${monthName(r.year_month)} · ${s.label}: ${money(r.figures.end[s.key])}</title></circle>`).join('')}`;
+    return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="${mobile ? 2.5 : 3}" stroke-linecap="round" stroke-linejoin="round"/>${shown.map((r, i) => `<circle cx="${x(i)}" cy="${y(Number(r.figures.end[s.key]))}" r="${mobile ? 3.5 : 5}" fill="${s.color}"><title>${monthName(r.year_month)} · ${s.label}: ${money(r.figures.end[s.key])}</title></circle>`).join('')}`;
   }).join('');
-  const labels = shown.map((r, i) => `<text x="${x(i)}" y="217" text-anchor="middle" font-size="14" font-weight="700" fill="#475569">${Number(r.year_month.slice(5))}/${r.year_month.slice(2, 4)}</text>`).join('');
-  return `<div class="bs-chart-scroll"><svg viewBox="0 0 680 230" role="img" aria-label="Biến động tổng tài sản và tiền gửi khách hàng theo tháng">${lines}${plots}${labels}</svg></div>
+  const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 177 : 217}" text-anchor="middle" font-size="${mobile ? 10 : 14}" font-weight="700" fill="#475569">${Number(r.year_month.slice(5))}/${r.year_month.slice(2, 4)}</text>`).join('');
+  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Biến động tổng tài sản và tiền gửi khách hàng trong tối đa 12 tháng đã nạp">${lines}${plots}${labels}</svg>`;
+}
+
+function trendChart(list) {
+  if (!list.length) return '<p class="text-muted text-sm">Chưa có tháng nào để vẽ biểu đồ.</p>';
+  const shown = list.slice(-12);
+  const values = shown.flatMap((r) => [Number(r.figures.end.assets), Number(r.figures.end.customerDeposits)]);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const base = Math.max(0, min - (max - min || max * 0.05) * 0.35);
+  const span = Math.max(1, max - base);
+  return `<div class="bs-chart-scroll">${trendSvg(shown, base, span, false)}${trendSvg(shown, base, span, true)}</div>
     <div class="bs-chart-legend"><span><i style="background:#087d6a"></i>Tổng tài sản</span><span><i style="background:#2f69d9"></i>Tiền gửi khách hàng</span></div>`;
 }
 
@@ -137,7 +159,7 @@ function assetComposition(figures) {
     ['Tiền gửi tại TCTD', figures.tctdDeposits, '#2f69d9'],
     ['Lãi, phí phải thu', figures.accruedReceivables, '#e69910'],
     ['Tiền mặt', figures.cash, '#b066c6'],
-    ['TSCĐ, góp vốn và tài sản khác', figures.fixedCapital + figures.internalReceivables + figures.otherAssets, '#8996a8'],
+    ['TSCĐ, vốn góp NHHTX và tài sản khác', figures.fixedCapital + figures.internalReceivables + figures.otherAssets, '#8996a8'],
   ], figures.assets, 'Tổng tài sản', { grossShares: true });
 }
 
@@ -171,16 +193,26 @@ function showProfitDetails(report) {
 function provisionComparison(report) {
   const snap = S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month);
   const end = report.figures.end;
+  const differentDate = snap?.snapshotDate && snap.snapshotDate !== report.period_end;
+  const deadline = nextProvisionDeadline(report.year_month);
+  const provisions = [
+    ['Dự phòng chung', end.generalProvision, snap?.generalProvision],
+    ['Dự phòng cụ thể', end.specificProvision, snap?.specificProvision],
+  ];
   const compare = (label, fileValue, appValue) => {
-    const available = Number.isFinite(appValue);
-    const gap = available ? appValue - fileValue : null;
-    return `<tr><th scope="row">${label}</th><td>${money(fileValue)}</td><td>${available ? money(appValue) : 'Chưa có số liệu'}</td><td class="${gap == null ? '' : gap === 0 ? 'bs-match' : 'bs-negative'}">${gap == null ? '—' : signed(gap)}</td></tr>`;
+    const gap = provisionDifference(fileValue, appValue);
+    return `<tr><th scope="row">${label}</th><td>${money(fileValue)}</td><td>${Number.isFinite(appValue) ? money(appValue) : 'Chưa có số liệu'}</td><td class="${gap == null ? '' : gap === 0 ? 'bs-match' : gap > 0 ? 'bs-overprovision' : 'bs-negative'}">${gap == null ? '—' : signed(gap)}</td></tr>`;
   };
+  const alerts = differentDate ? '' : provisions.map(([label, fileValue, appValue]) => {
+    const gap = provisionDifference(fileValue, appValue);
+    if (gap > 0) return `<p class="bs-warning bs-provision-alert">${label} dư ${money(gap)} so với mức phải trích; cần hoàn nhập phần dư.</p>`;
+    if (gap < 0) return `<p class="bs-warning bs-provision-alert bs-provision-shortfall">${label} thiếu ${money(-gap)}; cần trích bổ sung trong 07 ngày đầu tháng sau, chậm nhất ngày ${deadline}.</p>`;
+    return '';
+  }).join('');
   return `<div class="card card-pad bs-section"><h3>Trích lập dự phòng</h3>
-    ${snap?.snapshotDate && snap.snapshotDate !== report.period_end ? `<p class="bs-warning">Ngày chốt trên app (${escapeHtml(snap.snapshotDate)}) khác ngày cuối kỳ của file (${escapeHtml(report.period_end)}); chỉ dùng số chênh lệch để tham khảo.</p>` : ''}
-    <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch</th></tr></thead><tbody>
-      ${compare('Dự phòng chung', end.generalProvision, snap?.generalProvision)}
-      ${compare('Dự phòng cụ thể', end.specificProvision, snap?.specificProvision)}
+    ${differentDate ? `<p class="bs-warning">Ngày chốt trên app (${escapeHtml(snap.snapshotDate)}) khác ngày cuối kỳ của file (${escapeHtml(report.period_end)}); cần đối chiếu cùng ngày trước khi hoàn nhập hoặc trích bổ sung.</p>` : alerts}
+    <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch (BCĐ − Phải trích)</th></tr></thead><tbody>
+      ${provisions.map(([label, fileValue, appValue]) => compare(label, fileValue, appValue)).join('')}
       ${compare('Tổng dự phòng', end.generalProvision + end.specificProvision,
         Number.isFinite(snap?.generalProvision) && Number.isFinite(snap?.specificProvision) ? snap.generalProvision + snap.specificProvision : null)}
     </tbody></table></div></div>`;
@@ -194,10 +226,35 @@ function draw(contentEl) {
   const yearOpening = report ? yearOpeningReport(reports, report.year_month) : null;
   const yearStart = yearOpening?.figures.start;
   const equityParts = end?.equityParts;
-  contentEl.innerHTML = `<div class="bs-toolbar"><h2>Cân đối kế toán theo tháng</h2>
+  const assetItems = report ? [
+    { label: 'Tiền mặt tại đơn vị', key: 'cash' },
+    { label: 'Tiền gửi tại các TCTD', key: 'tctdDeposits', children: [['Không kỳ hạn', 'tctdDemand'], ['Có kỳ hạn', 'tctdTerm']] },
+    { label: 'Dư nợ cho vay', key: 'grossLoans', children: [['Dự phòng chung', 'generalProvision'], ['Dự phòng cụ thể', 'specificProvision']] },
+    ...(Number.isFinite(end.fixedAssetsNet) && Number.isFinite(end.capitalContribution)
+      ? [{ label: 'TSCĐ sau hao mòn', key: 'fixedAssetsNet' }, { label: 'Vốn góp NHHTX', key: 'capitalContribution' }]
+      : [{ label: 'TSCĐ ròng và vốn góp NHHTX', key: 'fixedCapital' }]),
+    { label: 'Phải thu nội bộ', key: 'internalReceivables' },
+    { label: 'Lãi và phí phải thu', key: 'accruedReceivables' },
+    ...(end.otherAssets || start.otherAssets ? [{ label: 'Tài sản khác', key: 'otherAssets' }] : []),
+  ] : [];
+  const equityDetails = equityParts ? `
+    ${equityPartRow('↳ Vốn điều lệ', 'charterCapital', report, yearStart)}
+    ${equityPartRow('↳ Quỹ dự trữ bổ sung vốn điều lệ', 'supplementaryReserve', report, yearStart)}
+    ${equityPartRow('↳ Quỹ đầu tư phát triển', 'developmentReserve', report, yearStart)}
+    ${equityPartRow('↳ Quỹ dự phòng tài chính', 'financialReserve', report, yearStart)}
+    ${equityParts.otherEquity || start.equityParts?.otherEquity ? equityPartRow('↳ Vốn chủ sở hữu khác', 'otherEquity', report, yearStart) : ''}`
+    : '<p class="bs-management-hint">Cần nạp lại file kỳ này để hiển thị vốn điều lệ và các quỹ.</p>';
+  const fundingItems = report ? [
+    { label: 'Tiền gửi khách hàng', key: 'customerDeposits' },
+    { label: 'Lãi và phí phải trả', key: 'interestPayable' },
+    { label: 'Nợ phải trả khác', key: 'otherLiabilities' },
+    { label: 'Vốn chủ sở hữu', key: 'equity', detailHtml: equityDetails },
+    { label: 'Lợi nhuận lũy kế', key: 'profit', options: { noYear: true, profitDetail: true } },
+  ] : [];
+  contentEl.innerHTML = `<div class="bs-toolbar"><h2>Số liệu quản trị theo tháng</h2>
     <div class="bs-toolbar-actions">${reports.length ? `<label class="bs-month-select">Kỳ báo cáo <select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${monthName(r.year_month)}</option>`).join('')}</select></label>` : ''}
     <button class="btn btn-outline" id="bs-refresh" type="button">Làm mới</button>
-    ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp bảng cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" hidden>' : ''}</div></div>
+    ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" hidden>' : ''}</div></div>
     ${!report ? `<div class="card card-pad"><p>Chưa có bảng cân đối nào. Quản trị viên toàn quyền có thể nạp file .xls hoặc .xlsx của từng tháng.</p></div>` : `
     <div class="grid-4 bs-stats">
       ${stat('Tổng tài sản', end.assets, start.assets, 'c-green')}
@@ -209,33 +266,9 @@ function draw(contentEl) {
     <div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
       <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div>
     <div class="bs-management bs-section"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3><span>${yearOpening ? `So với đầu kỳ tháng 01/${report.year_month.slice(0, 4)}` : `Chưa có kỳ 01/${report.year_month.slice(0, 4)} để so sánh từ đầu năm`}</span></div>
-      ${managementSection('Tài sản', `
-        ${managementRow('Tiền mặt tại đơn vị', 'cash', start, end, yearStart)}
-        ${managementRow('Tiền gửi tại các TCTD', 'tctdDeposits', start, end, yearStart)}
-        ${managementRow('↳ Không kỳ hạn', 'tctdDemand', start, end, yearStart, { child: true })}
-        ${managementRow('↳ Có kỳ hạn', 'tctdTerm', start, end, yearStart, { child: true })}
-        ${managementRow('Dư nợ cho vay', 'grossLoans', start, end, yearStart)}
-        ${managementRow('↳ Dự phòng chung', 'generalProvision', start, end, yearStart, { child: true })}
-        ${managementRow('↳ Dự phòng cụ thể', 'specificProvision', start, end, yearStart, { child: true })}
-        ${Number.isFinite(end.fixedAssetsNet) && Number.isFinite(end.capitalContribution) ? `
-          ${managementRow('TSCĐ sau hao mòn', 'fixedAssetsNet', start, end, yearStart)}
-          ${managementRow('Góp vốn', 'capitalContribution', start, end, yearStart)}` : managementRow('TSCĐ ròng và góp vốn', 'fixedCapital', start, end, yearStart)}
-        ${managementRow('Phải thu nội bộ', 'internalReceivables', start, end, yearStart)}
-        ${managementRow('Lãi và phí phải thu', 'accruedReceivables', start, end, yearStart)}
-        ${end.otherAssets || start.otherAssets ? managementRow('Tài sản khác', 'otherAssets', start, end, yearStart) : ''}
+      ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart)}
         ${managementRow('Tổng tài sản', 'assets', start, end, yearStart, { total: true })}`)}
-      ${managementSection('Nguồn vốn', `
-        ${managementRow('Tiền gửi khách hàng', 'customerDeposits', start, end, yearStart)}
-        ${managementRow('Lãi và phí phải trả', 'interestPayable', start, end, yearStart)}
-        ${managementRow('Nợ phải trả khác', 'otherLiabilities', start, end, yearStart)}
-        ${managementRow('Vốn chủ sở hữu', 'equity', start, end, yearStart)}
-        ${equityParts ? `
-          ${equityPartRow('↳ Vốn điều lệ', 'charterCapital', report, yearStart)}
-          ${equityPartRow('↳ Quỹ dự trữ bổ sung vốn điều lệ', 'supplementaryReserve', report, yearStart)}
-          ${equityPartRow('↳ Quỹ đầu tư phát triển', 'developmentReserve', report, yearStart)}
-          ${equityPartRow('↳ Quỹ dự phòng tài chính', 'financialReserve', report, yearStart)}
-          ${equityParts.otherEquity || start.equityParts?.otherEquity ? equityPartRow('↳ Vốn chủ sở hữu khác', 'otherEquity', report, yearStart) : ''}` : '<p class="bs-management-hint">Cần nạp lại file kỳ này để hiển thị vốn điều lệ và các quỹ.</p>'}
-        ${managementRow('Lợi nhuận lũy kế', 'profit', start, end, yearStart, { noYear: true, profitDetail: true })}
+      ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, yearStart)}
         ${managementRow('Tổng nguồn vốn', 'liabilities', start, end, yearStart, { total: true })}`)}
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
     ${provisionComparison(report)}`}`;
