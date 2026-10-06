@@ -1,7 +1,5 @@
 // Bảng cân đối tài khoản A01/QTDCS: C/D = dư đầu kỳ Nợ/Có, G/H = dư cuối kỳ.
 // Chỉ lấy mã tài khoản ở cột B; không cộng các dòng con vào dòng cha lần nữa.
-const REQUIRED = ['1', '2', '3', '4', '6', '7', '8', '101', '13', '211', '212', '219', '2191', '2192', '423'];
-
 function amount(value, row, column) {
   if (value == null || value === '') return 0;
   const n = typeof value === 'number' ? value : Number(String(value).replace(/[,.\s]/g, ''));
@@ -18,8 +16,8 @@ function periodFromRows(rows) {
   const end = new Date(Date.UTC(ey, em - 1, ed));
   if (start.getUTCFullYear() !== sy || start.getUTCMonth() !== sm - 1 || start.getUTCDate() !== sd ||
       end.getUTCFullYear() !== ey || end.getUTCMonth() !== em - 1 || end.getUTCDate() !== ed ||
-      sy !== ey || sm !== em || sd !== 1 || ed !== new Date(Date.UTC(ey, em, 0)).getUTCDate()) {
-    throw new Error('File phải ghi đúng trọn một tháng, từ ngày 01 đến ngày cuối tháng.');
+      sy !== ey || sm !== em || sd !== 1 || end < start) {
+    throw new Error('File phải ghi từ ngày 01 đến một ngày hợp lệ trong cùng tháng.');
   }
   return { yearMonth: `${ey}-${String(em).padStart(2, '0')}`, periodEnd: end.toISOString().slice(0, 10) };
 }
@@ -38,18 +36,46 @@ export function parseBalanceSheetRows(rows) {
       endDr: amount(row[6], index + 1, 'G'), endCr: amount(row[7], index + 1, 'H'),
     });
   }
-  for (const code of REQUIRED) if (!accounts.has(code)) throw new Error(`Thiếu tài khoản ${code} trong file.`);
+  if (![...accounts.keys()].some((code) => /^[123]/.test(code)) ||
+      ![...accounts.keys()].some((code) => /^[45678]/.test(code))) {
+    throw new Error('File không có đủ tài khoản tài sản và nguồn vốn để kiểm tra cân đối.');
+  }
+  // Nếu tài khoản cha không xuất hiện, cộng các tài khoản con gần nhất đang có.
+  // Tài khoản không phát sinh trong kỳ được coi là 0, không phải lỗi thiếu cột.
+  const account = (code) => {
+    if (accounts.has(code)) return accounts.get(code);
+    const children = [...accounts.keys()].filter((child) => child.startsWith(code) && child.length > code.length);
+    const roots = children.filter((child) => !children.some((parent) =>
+      parent.length < child.length && child.startsWith(parent)));
+    if (!roots.length) return null;
+    return roots.reduce((sum, child) => {
+      const row = accounts.get(child);
+      return {
+        startDr: sum.startDr + row.startDr, startCr: sum.startCr + row.startCr,
+        endDr: sum.endDr + row.endDr, endCr: sum.endCr + row.endCr,
+      };
+    }, { startDr: 0, startCr: 0, endDr: 0, endCr: 0 });
+  };
   const metrics = (prefix) => {
-    const debit = (code) => { const a = accounts.get(code); return a ? a[`${prefix}Dr`] - a[`${prefix}Cr`] : 0; };
-    const credit = (code) => -debit(code);
+    const debit = (code) => { const a = account(code); return a ? a[`${prefix}Dr`] - a[`${prefix}Cr`] : 0; };
+    const credit = (code) => {
+      const value = -debit(code);
+      return value === 0 ? 0 : value;
+    };
     const assets = debit('1') + debit('2') + debit('3');
     const liabilities = credit('4') + credit('5') + credit('6') + credit('7') - debit('8');
+    const totalProvision = credit('219');
     const generalProvision = credit('2192');
     const specificProvision = credit('2191');
-    const grossLoans = debit('211') + debit('212');
+    const otherProvision = totalProvision - generalProvision - specificProvision;
+    const loanPrefixes = [...new Set([...accounts.keys()]
+      .filter((code) => /^21[0-8]/.test(code)).map((code) => code.slice(0, 3)))];
+    const grossLoans = loanPrefixes.length
+      ? loanPrefixes.reduce((sum, code) => sum + debit(code), 0)
+      : debit('21') + totalProvision;
     if (assets !== liabilities) throw new Error(`Số dư ${prefix === 'start' ? 'đầu' : 'cuối'} kỳ lệch ${Math.abs(assets - liabilities).toLocaleString('vi-VN')} đồng giữa tài sản và nguồn vốn.`);
-    if (credit('219') !== generalProvision + specificProvision || debit('2') !== grossLoans - credit('219')) {
-      throw new Error('Tài khoản 2/219/2191/2192 không khớp; cần kiểm tra số dư dự phòng.');
+    if (otherProvision < 0 || grossLoans < totalProvision) {
+      throw new Error('Tài khoản 219 và các tài khoản dự phòng con không khớp; cần kiểm tra số dư dự phòng.');
     }
     const cash = debit('101');
     const tctdDeposits = debit('13');
@@ -58,7 +84,7 @@ export function parseBalanceSheetRows(rows) {
     const nhHtxDemand = debit('1311101');
     const nhHtxTerm = debit('13121');
     const otherTctdDemand = debit('13119');
-    const loanNet = grossLoans - generalProvision - specificProvision;
+    const loanNet = grossLoans - totalProvision;
     const fixedAssetsGross = debit('301');
     const accumulatedDepreciation = credit('305');
     const fixedAssetsNet = fixedAssetsGross - accumulatedDepreciation;
@@ -70,7 +96,7 @@ export function parseBalanceSheetRows(rows) {
     const customerDeposits = credit('423');
     const interestPayable = credit('49');
     const equity = credit('6');
-    const equityParts = ['601', '611', '612', '613'].every((code) => accounts.has(code)) ? {
+    const equityParts = ['601', '611', '612', '613'].some((code) => account(code)) ? {
       charterCapital: credit('601'),
       supplementaryReserve: credit('611'),
       developmentReserve: credit('612'),
@@ -84,7 +110,7 @@ export function parseBalanceSheetRows(rows) {
     if (otherAssets < 0 || otherLiabilities < 0) throw new Error('Các khoản mục chi tiết vượt tổng tài sản hoặc nguồn vốn.');
     return { assets, liabilities, cash, tctdDeposits, tctdDemand, tctdTerm,
       nhHtxDemand, nhHtxTerm, otherTctdDemand, liquidity: cash + tctdDeposits,
-      grossLoans, generalProvision, specificProvision, loanNet, fixedCapital,
+      grossLoans, totalProvision, generalProvision, specificProvision, otherProvision, loanNet, fixedCapital,
       fixedAssetsGross, accumulatedDepreciation, fixedAssetsNet, capitalContribution,
       internalReceivables, accruedReceivables, otherAssets, customerDeposits,
       interestPayable, equity, equityParts, revenue, expenses, profit, otherLiabilities };
