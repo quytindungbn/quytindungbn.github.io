@@ -15,6 +15,8 @@ let hasLoaded = false;
 let requestId = 0;
 
 const monthName = (ym) => `Tháng ${Number(ym.slice(5))}/${ym.slice(0, 4)}`;
+const reportDate = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso || '')
+  ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—';
 const money = (value) => formatVND(value || 0);
 const signed = (value) => `${value > 0 ? '+' : ''}${formatNumber(value)} ₫`;
 const percent = (value) => `${value > 0 ? '+' : ''}${new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(value)}%`;
@@ -72,18 +74,18 @@ function ratiosSection(end) {
         : 'Trong giới hạn 20 lần.';
   const loanWarning = ratios.loanDeposit == null ? 'Chưa đủ số liệu để đánh giá cơ cấu vốn.'
     : ratios.loanDeposit > 100 ? 'Dư nợ lớn hơn tiền gửi khách hàng; cần đánh giá nguồn vốn bù đắp và thanh khoản.'
-      : 'Theo dõi cùng xu hướng tiền gửi và khả năng thanh khoản.';
+      : '';
   const profitWarning = Number(end.profit) < 0 ? 'Lợi nhuận lũy kế âm; cần rà soát doanh thu và chi phí.'
-    : 'Đối chiếu xu hướng sinh lời qua các kỳ đã nạp.';
+    : '';
   const tile = (label, value, detail, advice, alert = false) => `<article class="bs-ratio-card ${alert ? 'bs-ratio-alert' : ''}">
     <div class="bs-ratio-head"><h4>${label}</h4><strong>${value}</strong></div>
-    <p class="bs-ratio-detail">${detail}</p><p class="bs-ratio-advice">${advice}</p></article>`;
+    <p class="bs-ratio-detail">${detail}</p>${advice ? `<p class="bs-ratio-advice">${advice}</p>` : ''}</article>`;
   return `<section class="bs-ratios bs-section"><div class="bs-management-title"><h3>Chỉ số quản trị</h3><span>Lũy kế từ đầu năm · không quy đổi năm</span></div>
     <div class="bs-ratio-grid">
-      ${tile('ROE', ratioFormat(ratios.roe, '%'), 'Lợi nhuận lũy kế / vốn chủ sở hữu cuối kỳ', profitWarning, Number(end.profit) < 0)}
-      ${tile('ROA', ratioFormat(ratios.roa, '%'), 'Lợi nhuận lũy kế / tổng tài sản cuối kỳ', profitWarning, Number(end.profit) < 0)}
+      ${tile('ROE', ratioFormat(ratios.roe, '%'), 'Lợi nhuận lũy kế / vốn chủ sở hữu', profitWarning, Number(end.profit) < 0)}
+      ${tile('ROA', ratioFormat(ratios.roa, '%'), 'Lợi nhuận lũy kế / tổng tài sản', profitWarning, Number(end.profit) < 0)}
       ${tile('Cho vay / tiền gửi', ratioFormat(ratios.loanDeposit, '%'), 'Dư nợ cho vay / tiền gửi khách hàng', loanWarning, ratios.loanDeposit > 100)}
-      ${tile('Tiền gửi / vốn chủ sở hữu', ratioFormat(ratios.depositCapital, ' lần'), `Tiền gửi khách hàng / vốn chủ sở hữu. Vốn chủ sở hữu: <strong>${ratios.ownCapital == null ? '—' : money(ratios.ownCapital)}</strong> (vốn hiện có + lợi nhuận lũy kế)`, depositsWarning, ratios.depositCapital > 20)}
+      ${tile('Tiền gửi / vốn chủ sở hữu', ratioFormat(ratios.depositCapital, ' lần'), 'Tiền gửi khách hàng / vốn chủ sở hữu', depositsWarning, ratios.depositCapital > 20)}
     </div><p class="bs-chart-note">ROA và ROE dùng lợi nhuận lũy kế và số dư cuối kỳ của tháng được chọn; đây là tỷ lệ quản trị tạm tính, chưa dùng tài sản/vốn bình quân hoặc lợi nhuận sau thuế.</p></section>`;
 }
 
@@ -176,13 +178,13 @@ function composition(items, total, centerLabel, { grossShares = false } = {}) {
   const percentageBase = grossShares ? chartTotal : total;
   return `<div class="bs-composition"><div class="bs-donut" style="background:conic-gradient(${stops})"><div>${formatCompact(total)}<small>${centerLabel}</small></div></div>
     <div class="bs-composition-list">${items.map(([label, value, color]) => `<div class="${value < 0 ? 'bs-composition-deduction' : ''}"><span><i style="background:${color}"></i>${label}</span><strong>${percentageBase ? (value / percentageBase * 100).toFixed(1).replace('.', ',') + '%' : '—'}</strong><small>${money(value)}</small></div>`).join('')}</div></div>
-    ${grossShares ? '<p class="bs-chart-note">Các lát biểu đồ tính trên tài sản trước dự phòng. Dự phòng được trừ riêng để ra Tổng tài sản.</p>' : items.some(([, value]) => value < 0) ? '<p class="bs-chart-note">Khoản âm hiển thị trong danh sách, không vẽ thành lát trên biểu đồ.</p>' : ''}`;
+    ${!grossShares && items.some(([, value]) => value < 0) ? '<p class="bs-chart-note">Khoản âm hiển thị trong danh sách, không vẽ thành lát trên biểu đồ.</p>' : ''}`;
 }
 
 function assetComposition(figures) {
   return composition([
     ['Dư nợ cho vay', figures.grossLoans, '#087d6a'],
-    ['Dự phòng rủi ro (trừ)', -(figures.generalProvision + figures.specificProvision), '#c04343'],
+    ['Dự phòng rủi ro (trừ)', -(figures.totalProvision ?? figures.generalProvision + figures.specificProvision), '#c04343'],
     ['Tiền gửi tại TCTD', figures.tctdDeposits, '#2f69d9'],
     ['Lãi, phí phải thu', figures.accruedReceivables, '#e69910'],
     ['Tiền mặt', figures.cash, '#b066c6'],
@@ -237,10 +239,10 @@ function provisionComparison(report) {
     return '';
   }).join('');
   return `<div class="card card-pad bs-section"><h3>Trích lập dự phòng</h3>
-    ${differentDate ? `<p class="bs-warning">Ngày chốt trên app (${escapeHtml(snap.snapshotDate)}) khác ngày cuối kỳ của file (${escapeHtml(report.period_end)}); cần đối chiếu cùng ngày trước khi hoàn nhập hoặc trích bổ sung.</p>` : alerts}
-    <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch (BCĐ − Phải trích)</th></tr></thead><tbody>
+    ${differentDate ? `<p class="bs-warning">Ngày chốt trên app (${escapeHtml(snap.snapshotDate)}) khác ngày số liệu của file (${escapeHtml(report.period_end)}); cần đối chiếu cùng ngày trước khi hoàn nhập hoặc trích bổ sung.</p>` : alerts}
+    <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch</th></tr></thead><tbody>
       ${provisions.map(([label, fileValue, appValue]) => compare(label, fileValue, appValue)).join('')}
-      ${compare('Tổng dự phòng', end.generalProvision + end.specificProvision,
+      ${compare('Tổng dự phòng', end.totalProvision ?? end.generalProvision + end.specificProvision,
         Number.isFinite(snap?.generalProvision) && Number.isFinite(snap?.specificProvision) ? snap.generalProvision + snap.specificProvision : null)}
     </tbody></table></div></div>`;
 }
@@ -278,7 +280,7 @@ function draw(contentEl) {
     { label: 'Vốn chủ sở hữu', key: 'equity', detailHtml: equityDetails },
     { label: 'Lợi nhuận lũy kế', key: 'profit', options: { noYear: true, profitDetail: true } },
   ] : [];
-  contentEl.innerHTML = `<div class="bs-toolbar"><h2>Số liệu quản trị theo tháng</h2>
+  contentEl.innerHTML = `<div class="bs-toolbar"><div><h2>Số liệu quản trị theo tháng</h2>${report ? `<p class="bs-source">Số liệu đến ngày: <strong>${reportDate(report.period_end)}</strong></p>` : ''}</div>
     <div class="bs-toolbar-actions">${reports.length ? `<label class="bs-month-select">Kỳ báo cáo <select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${monthName(r.year_month)}</option>`).join('')}</select></label>` : ''}
     <button class="btn btn-outline" id="bs-refresh" type="button">Làm mới</button>
     ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" hidden>' : ''}</div></div>
@@ -324,6 +326,7 @@ async function previewImport(file, contentEl) {
     openModal({
       title: `Kiểm tra ${monthName(parsed.yearMonth)}`,
       bodyHtml: `<p>File: <strong>${escapeHtml(file.name)}</strong></p>
+        <p>Số liệu đến ngày: <strong>${reportDate(parsed.periodEnd)}</strong></p>
         <div class="oc-line"><span>Tổng tài sản đầu kỳ</span><b>${money(parsed.start.assets)}</b></div>
         <div class="oc-line"><span>Tổng tài sản cuối kỳ</span><b>${money(parsed.end.assets)}</b></div>
         <div class="oc-line"><span>Dự phòng chung cuối kỳ</span><b>${money(parsed.end.generalProvision)}</b></div>
