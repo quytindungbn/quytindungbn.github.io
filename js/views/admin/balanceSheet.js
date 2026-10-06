@@ -14,7 +14,7 @@ let loadedFor = null;
 let hasLoaded = false;
 let requestId = 0;
 
-const monthName = (ym) => `Tháng ${Number(ym.slice(5))}/${ym.slice(0, 4)}`;
+const monthName = (ym) => `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)}`;
 const reportDate = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso || '')
   ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—';
 const money = (value) => formatVND(value || 0);
@@ -25,12 +25,12 @@ function change(current, base) {
   const result = compareBalance(current, base);
   if (!result) return '<span class="text-muted">—</span>';
   const tone = result.amount < 0 ? 'bs-negative' : result.amount > 0 ? 'bs-positive' : '';
-  return `<span class="bs-change ${tone}"><strong>${signed(result.amount)}</strong><small>${result.percent == null ? '—' : percent(result.percent)}</small></span>`;
+  return `<span class="bs-change ${tone}"><strong>${signed(result.amount)}</strong><small><span class="bs-change-separator" aria-hidden="true">|</span>${result.percent == null ? '—' : percent(result.percent)}</small></span>`;
 }
 
 function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, ordinal = null } = {}) {
   const name = `${label}:`;
-  return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''}">
+  return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${ordinal ? 'bs-management-numbered' : ''}">
     <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${profitDetail ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>` : name}</div>
     <div class="bs-management-end"><strong>${money(end[key])}</strong></div>
     <div class="bs-management-value" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
@@ -130,41 +130,79 @@ function stat(label, value, startValue, color, clickable = false) {
   return `<${tag} ${clickable ? 'type="button" id="bs-profit-details" aria-label="Xem Doanh thu và Chi phí"' : ''} class="stat-tile ${color} ${clickable ? 'bs-stat-clickable' : ''}"><span class="stat-label">${label}</span><span class="stat-value bs-stat-value">${money(value)}</span><span class="stat-trend">${change(value, startValue)}</span>${clickable ? '<span class="bs-stat-more">Xem Doanh thu – Chi phí ›</span>' : ''}</${tag}>`;
 }
 
-function trendSvg(shown, base, span, mobile) {
-  const width = mobile ? 320 : 680;
-  const height = mobile ? 190 : 230;
-  const left = mobile ? 42 : 58;
-  const right = mobile ? 306 : 645;
-  const top = mobile ? 18 : 22;
-  const bottom = mobile ? 150 : 190;
+const trendSeries = [
+  { key: 'assets', label: 'Tổng tài sản', color: '#087d6a' },
+  { key: 'customerDeposits', label: 'Tiền gửi khách hàng', color: '#2f69d9' },
+  { key: 'grossLoans', label: 'Dư nợ cho vay', color: '#d97706' },
+  { key: 'profit', label: 'Lợi nhuận', color: '#8b46b8', rightAxis: true },
+];
+
+function trendMonthDetail(report) {
+  return `<strong>${monthName(report.year_month)}</strong><div>${trendSeries.map((s) =>
+    `<span><i style="background:${s.color}"></i>${s.label}: <b>${money(report.figures.end[s.key])}</b></span>`).join('')}</div>`;
+}
+
+function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
+  const width = mobile ? 320 : 1120;
+  const height = mobile ? 215 : 330;
+  const left = mobile ? 45 : 80;
+  const right = mobile ? 265 : 1020;
+  const top = mobile ? 20 : 24;
+  const bottom = mobile ? 170 : 278;
   const x = (i) => shown.length === 1 ? (left + right) / 2 : left + (right - left) * i / (shown.length - 1);
   const y = (v) => bottom - (v - base) / span * (bottom - top);
-  const series = [
-    { key: 'assets', label: 'Tổng tài sản', color: '#087d6a' },
-    { key: 'customerDeposits', label: 'Tiền gửi khách hàng', color: '#2f69d9' },
-  ];
+  const profitY = (v) => bottom - (v - profitBase) / profitSpan * (bottom - top);
   const lines = [0, 0.5, 1].map((p) => {
     const yy = bottom - (bottom - top) * p;
-    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text>`;
+    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text><text x="${right + 7}" y="${yy + 4}" font-size="${mobile ? 8 : 11}" fill="#8b46b8">${formatCompact(profitBase + profitSpan * p)}</text>`;
   }).join('');
-  const plots = series.map((s) => {
-    const points = shown.map((r, i) => `${x(i)},${y(Number(r.figures.end[s.key]))}`).join(' ');
-    return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="${mobile ? 2.5 : 3}" stroke-linecap="round" stroke-linejoin="round"/>${shown.map((r, i) => `<circle cx="${x(i)}" cy="${y(Number(r.figures.end[s.key]))}" r="${mobile ? 3.5 : 5}" fill="${s.color}"><title>${monthName(r.year_month)} · ${s.label}: ${money(r.figures.end[s.key])}</title></circle>`).join('')}`;
+  const plots = trendSeries.map((s) => {
+    const pointY = s.rightAxis ? profitY : y;
+    const points = shown.map((r, i) => `${x(i)},${pointY(Number(r.figures.end[s.key]) || 0)}`).join(' ');
+    return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="${mobile ? 2 : 3}" ${s.rightAxis ? 'stroke-dasharray="7 4"' : ''} stroke-linecap="round" stroke-linejoin="round"/>${shown.map((r, i) => {
+      const cx = x(i), cy = pointY(Number(r.figures.end[s.key]) || 0);
+      return `<g class="bs-trend-point" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(r.figures.end[s.key])}"><circle cx="${cx}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${cx}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/><title>${monthName(r.year_month)} · ${s.label}: ${money(r.figures.end[s.key])}</title></g>`;
+    }).join('')}`;
   }).join('');
-  const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 177 : 217}" text-anchor="middle" font-size="${mobile ? 10 : 14}" font-weight="700" fill="#475569">${Number(r.year_month.slice(5))}/${r.year_month.slice(2, 4)}</text>`).join('');
-  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Biến động tổng tài sản và tiền gửi khách hàng trong tối đa 12 tháng đã nạp">${lines}${plots}${labels}</svg>`;
+  const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 200 : 314}" text-anchor="middle" font-size="${mobile ? 9 : 13}" font-weight="700" fill="#475569">${r.year_month.slice(5, 7)}${mobile ? '' : `/${r.year_month.slice(2, 4)}`}</text>`).join('');
+  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Biến động tổng tài sản, tiền gửi, dư nợ và lợi nhuận trong tối đa 12 tháng đã nạp">${lines}${plots}${labels}</svg>`;
 }
 
 function trendChart(list) {
   if (!list.length) return '<p class="text-muted text-sm">Chưa có tháng nào để vẽ biểu đồ.</p>';
   const shown = list.slice(-12);
-  const values = shown.flatMap((r) => [Number(r.figures.end.assets), Number(r.figures.end.customerDeposits)]);
+  const values = shown.flatMap((r) => [Number(r.figures.end.assets), Number(r.figures.end.customerDeposits), Number(r.figures.end.grossLoans) || 0]);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const base = Math.max(0, min - (max - min || max * 0.05) * 0.35);
   const span = Math.max(1, max - base);
-  return `<div class="bs-chart-scroll">${trendSvg(shown, base, span, false)}${trendSvg(shown, base, span, true)}</div>
-    <div class="bs-chart-legend"><span><i style="background:#087d6a"></i>Tổng tài sản</span><span><i style="background:#2f69d9"></i>Tiền gửi khách hàng</span></div>`;
+  const profits = shown.map((r) => Number(r.figures.end.profit) || 0);
+  const profitBase = Math.min(0, ...profits) * 1.15;
+  const profitTop = Math.max(0, ...profits) * 1.15 || 1;
+  const profitSpan = Math.max(1, profitTop - profitBase);
+  const selected = shown.find((r) => r.year_month === selectedMonth) || shown.at(-1);
+  return `<div class="bs-chart-scroll">${trendSvg(shown, base, span, profitBase, profitSpan, false)}${trendSvg(shown, base, span, profitBase, profitSpan, true)}</div>
+    <div class="bs-chart-legend">${trendSeries.map((s) => `<span><i style="background:${s.color}"></i>${s.label}${s.rightAxis ? ' (trục phải)' : ''}</span>`).join('')}</div>
+    <div class="bs-trend-detail" id="bs-trend-detail" aria-live="polite">${trendMonthDetail(selected)}</div>`;
+}
+
+function bindTrendPoints(root) {
+  const chart = root.querySelector('.bs-chart-scroll');
+  const detail = root.querySelector('#bs-trend-detail');
+  if (!chart || !detail) return;
+  const show = (target) => {
+    const point = target?.closest?.('[data-trend-month]');
+    if (!point) return;
+    const report = reports.find((r) => r.year_month === point.dataset.trendMonth);
+    if (!report || detail.dataset.month === report.year_month) return;
+    detail.dataset.month = report.year_month;
+    detail.innerHTML = trendMonthDetail(report);
+    chart.querySelectorAll('[data-trend-month]').forEach((el) =>
+      el.classList.toggle('is-active', el.dataset.trendMonth === report.year_month));
+  };
+  chart.addEventListener('pointerover', (event) => show(event.target));
+  chart.addEventListener('click', (event) => show(event.target));
+  chart.addEventListener('focusin', (event) => show(event.target));
 }
 
 function composition(items, total, centerLabel, { grossShares = false } = {}) {
@@ -306,6 +344,7 @@ function draw(contentEl) {
     selectedMonth = event.target.value;
     draw(contentEl);
   });
+  bindTrendPoints(contentEl);
   contentEl.querySelector('#bs-profit-details')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelector('[data-profit-details]')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { hasLoaded = false; render(contentEl); });
