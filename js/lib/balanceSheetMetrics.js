@@ -20,3 +20,24 @@ export function nextProvisionDeadline(yearMonth) {
   const nextMonth = month === 12 ? 1 : month + 1;
   return `07/${String(nextMonth).padStart(2, '0')}/${month === 12 ? year + 1 : year}`;
 }
+
+/** Tỷ số lũy kế theo số dư cuối kỳ; lợi nhuận đã được cộng vào vốn chủ sở hữu. */
+export function managementRatios(end) {
+  if (!end) return null;
+  const profit = Number(end.profit);
+  const equity = Number(end.equity);
+  const assets = Number(end.assets);
+  const loans = Number(end.grossLoans);
+  const deposits = Number(end.customerDeposits);
+  const ownCapital = Number.isFinite(equity) && Number.isFinite(profit) ? equity + profit : null;
+  const divide = (numerator, denominator, scale = 1) =>
+    Number.isFinite(numerator) && Number.isFinite(denominator) && denominator > 0
+      ? numerator / denominator * scale : null;
+  return {
+    ownCapital,
+    roe: divide(profit, ownCapital, 100),
+    roa: divide(profit, assets, 100),
+    loanDeposit: divide(loans, deposits, 100),
+    depositCapital: divide(deposits, ownCapital),
+  };
+}
