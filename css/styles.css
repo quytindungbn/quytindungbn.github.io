@@ -794,6 +794,7 @@ svg { display: block; }
   .bs-management-value { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:3px 0; }
   .bs-management-value::before { content:attr(data-label); color:var(--text-muted); font-size:11px; font-weight:600; flex:none; }
   .bs-management-child .bs-management-name { padding-left:22px; }
+  .bs-management-child .bs-management-value { padding-left:22px; }
   .bs-profit-details > div { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .bs-profit-details > div > :last-child { grid-column:1 / -1; justify-self:end; }
   .bs-profit-details .bs-profit-head > :last-child { display:none; }
