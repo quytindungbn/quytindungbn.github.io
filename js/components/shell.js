@@ -34,7 +34,7 @@ export const ADMIN_NAV_MANAGE_ZALO_OA = [
   { path: '#/admin/zalo-oa', label: 'Quản lý OA', shortLabel: 'Quản lý OA', icon: 'send' },
 ];
 export const ADMIN_NAV_BALANCE_SHEET = [
-  { path: '#/admin/can-doi-ke-toan', label: 'Cân đối kế toán', shortLabel: 'Cân đối', icon: 'chart' },
+  { path: '#/admin/can-doi-ke-toan', label: 'Quản trị', shortLabel: 'Quản trị', icon: 'chart' },
 ];
 export const ADMIN_NAV_SUPER_ONLY = [
   { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings' },
