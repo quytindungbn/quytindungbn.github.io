@@ -11,6 +11,7 @@
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween } from './utils.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
+import { specificProvisionForLoan } from './lib/collateral.js';
 
 export const STORAGE_KEY = 'qtd_demo_v3';
 
@@ -620,8 +621,8 @@ const GENERAL_PROVISION_RATE = 0.0075;
  * - Dự phòng CHUNG = 0,75% × tổng dư nợ Nhóm 1-4 (không tính Nhóm 5).
  * - Dự phòng CỤ THỂ = với TỪNG hợp đồng ở Nhóm 2-5: tỷ lệ theo nhóm (2=5%,
  *   3=20%, 4=50%, 5=100%) × PHẦN DƯ NỢ CÒN LẠI sau khấu trừ TSBĐ:
- *   đất 01/02 = 50% giá trị; sổ tiết kiệm 06 = 100%; xe 04 và các mã
- *   chưa được quy định = 0%. Hợp đồng cũ chưa có mã loại giữ hệ số 50%.
+ *   đất 01/02 = 50% giá trị; ô tô 04 = 30%; sổ tiết kiệm 06 = 100%.
+ *   Các mã khác hoặc thiếu mã = không có TSBĐ được khấu trừ.
  */
 export function provisionSummary(contracts, asOf = new Date()) {
   let generalBase = 0;
@@ -633,43 +634,9 @@ export function provisionSummary(contracts, asOf = new Date()) {
     if (g <= 4) generalBase += balance;
     const rate = SPECIFIC_PROVISION_RATE[g];
     if (!rate) continue;
-    const type = String(ct.collateralType || '').trim().toUpperCase();
-    // Hợp đồng cũ chưa phân loại giữ hệ số 50% như trước; mã khác 01/02/04/06
-    // được xem như không có TSBĐ để khấu trừ.
-    const factor = type === '01' || type === '02' ? 0.5
-      : type === '06' ? 1
-        : type ? 0 : (ct.hasCollateral ? 0.5 : 0);
-    const deductible = ct.hasCollateral ? (Number(ct.collateralValue) || 0) * factor : 0;
-    specificProvision += Math.max(0, balance - deductible) * rate;
+    specificProvision += specificProvisionForLoan(ct, rate);
   }
   return { generalProvision: generalBase * GENERAL_PROVISION_RATE, specificProvision };
-}
-
-/**
- * Super admin tích/nhập "Có TSBĐ" + giá trị cho 1 hợp đồng — dùng tính "Dự
- * phòng cụ thể phải trích" (provisionSummary() ở trên). CHỈ super admin gọi
- * được — RLS chặn admin thường ("super admin updates collateral" trên
- * `contracts`, xem mục docs/supabase-migration.md). Tích/bỏ tích được tự do,
- * không giới hạn.
- */
-export async function setContractCollateral(contractId, { hasCollateral, collateralValue }) {
-  const ct = state.contracts.find((c) => c.id === contractId);
-  if (!ct) throw new Error('Không tìm thấy hợp đồng.');
-  const session = getSession();
-  const sb = getSupabaseClient(session?.sbToken);
-  const recognizedType = ['01', '02', '04', '06'].includes(ct.collateralType);
-  const patch = {
-    has_collateral: !!hasCollateral,
-    collateral_value: hasCollateral ? (Number(collateralValue) || 0) : 0,
-    collateral_type: hasCollateral ? (recognizedType ? ct.collateralType : null) : 'KCDB',
-  };
-  const { error } = await sb.from('contracts').update(patch).eq('id', contractId);
-  if (error) throw new Error('Không lưu được TSBĐ, thử lại sau.');
-  ct.hasCollateral = patch.has_collateral;
-  ct.collateralValue = patch.collateral_value;
-  ct.collateralType = patch.collateral_type;
-  notify();
-  logAdminAction('update-contract-collateral', { contractId });
 }
 
 /**
@@ -855,11 +822,8 @@ function mapContractRow(row) {
     // computeInstallmentPlan() (xem hàm đó bên dưới).
     agreementCode: row.agreement_code || null,
     installmentSchedule: row.installment_schedule || null,
-    // Tài sản bảo đảm (TSBĐ) — dùng tính "Dự phòng cụ thể phải trích" ở
-    // dashboard "Tổng quan" (xem overview.js debtGroupHtml()/setContractCollateral()
-    // bên dưới) — KHÔNG liên quan tới đợt nhập Excel nào, chỉ super admin tự
-    // tích/nhập tay từng hợp đồng qua danh sách "Dư nợ theo nhóm nợ".
-    hasCollateral: !!row.has_collateral,
+    // TSBĐ từ cột T/AB file số 1; chỉ mã 01/02/04/06 được xem là có TSBĐ.
+    hasCollateral: !!row.has_collateral && ['01', '02', '04', '06'].includes(row.collateral_type),
     collateralValue: Number(row.collateral_value) || 0,
     collateralType: row.collateral_type || null,
     loanTerm: row.loan_term || null,
@@ -1494,9 +1458,8 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
     contracts.push(row);
   }
   if (!contracts.length) throw new Error('Không đọc được hợp đồng nào từ file — kiểm tra lại đúng mẫu chưa.');
-  // Mẫu Excel không có TSBĐ. Dùng TSBĐ đã khai báo trên hợp đồng đang dùng
-  // nếu Số HĐTD khớp chính xác; áp dụng cả cho file của tháng trước ngày nhập
-  // TSBĐ, theo quy tắc nghiệp vụ của quỹ. Không sửa hợp đồng đang dùng.
+  // File có cột T/AB là nguồn TSBĐ của chính kỳ đó. File cũ thiếu các cột
+  // này dùng dữ liệu hợp đồng hiện tại theo Số HĐTD như quy tắc kế thừa.
   const currentByCode = new Map();
   const ambiguousCodes = new Set();
   for (const current of state.contracts || []) {
@@ -1515,18 +1478,16 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
     if (ambiguousCodes.has(code) || (current?.hasCollateral && importedCollateralCodes.has(code))) {
       throw new Error(`Số HĐTD ${code} bị trùng nên không thể xác định TSBĐ cho từng dòng. Hãy kiểm tra lại trước khi lưu.`);
     }
-    if (current) {
-      // Hợp đồng đang dùng là nguồn TSBĐ ưu tiên, kể cả với tháng lịch sử.
-      ct.hasCollateral = !!current.hasCollateral;
+    if (current && ct.collateralType == null) {
+      ct.hasCollateral = !!current.hasCollateral && ['01', '02', '04', '06'].includes(current.collateralType);
       ct.collateralValue = Number(current.collateralValue) || 0;
       ct.collateralType = current.collateralType || null;
-      ct.loanTerm = ct.loanTerm || current.loanTerm || null;
-      ct.loanPurpose = ct.loanPurpose || current.loanPurpose || null;
     } else {
-      // Nếu file lịch sử có sẵn cột T/AB thì vẫn tính từ chính file đó.
       ct.hasCollateral = ['01', '02', '04', '06'].includes(ct.collateralType);
       ct.collateralValue = Number(ct.collateralValue) || 0;
     }
+    ct.loanTerm = ct.loanTerm || current?.loanTerm || null;
+    ct.loanPurpose = ct.loanPurpose || current?.loanPurpose || null;
     if (ct.hasCollateral) {
       importedCollateralCodes.add(code);
       collateralMatchedCount++;
