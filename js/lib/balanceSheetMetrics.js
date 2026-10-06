@@ -18,5 +18,5 @@ export function nextProvisionDeadline(yearMonth) {
   const year = Number(yearMonth.slice(0, 4));
   const month = Number(yearMonth.slice(5));
   const nextMonth = month === 12 ? 1 : month + 1;
-  return `10/${String(nextMonth).padStart(2, '0')}/${month === 12 ? year + 1 : year}`;
+  return `07/${String(nextMonth).padStart(2, '0')}/${month === 12 ? year + 1 : year}`;
 }
