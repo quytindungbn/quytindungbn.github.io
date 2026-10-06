@@ -742,7 +742,8 @@ svg { display: block; }
 .bs-management-head span:not(:first-child) { text-align:right; }
 .bs-management-row { border-bottom:1px solid var(--border); font-size:12px; }
 .bs-management-row:last-child { border-bottom:0; }
-.bs-management-name { font-weight:650; }
+.bs-management-name { display:flex; align-items:center; gap:8px; font-weight:650; }
+.bs-roman { display:inline-flex; flex:0 0 30px; align-items:center; justify-content:center; min-height:25px; padding:2px 4px; border:1px solid #8eaaa1; border-radius:5px; background:#e8f5f1; color:#075b4e; font-weight:800; font-size:12px; line-height:1; }
 .bs-management-end { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .bs-management-end strong { font-weight:800; }
 .bs-management-link { border:0; padding:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
@@ -761,8 +762,19 @@ svg { display: block; }
 .bs-overprovision { color:#875800; font-weight:700; }
 .bs-provision-alert { border-left:3px solid #d18d16; margin:8px 0; }
 .bs-provision-shortfall { color:#a92322; background:#fff0ef; border-color:var(--danger); }
+.bs-ratio-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.bs-ratio-card { min-width:0; padding:15px; border:1.5px solid #9aada8; border-radius:10px; background:var(--surface); }
+.bs-ratio-alert { border-color:#c9483d; background:#fff8f6; }
+.bs-ratio-head { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:5px; }
+.bs-ratio-head h4 { margin:0; font-size:13px; }
+.bs-ratio-head strong { color:#075b4e; font-size:20px; font-variant-numeric:tabular-nums; }
+.bs-ratio-detail, .bs-ratio-advice { margin:9px 0 0; font-size:11.5px; line-height:1.45; }
+.bs-ratio-detail { color:var(--text-muted); }
+.bs-ratio-advice { font-weight:650; }
+@media (max-width:1100px) { .bs-ratio-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:1100px) { .bs-two-col { grid-template-columns:1fr; } }
 @media (max-width:600px) {
+  .bs-ratio-grid { grid-template-columns:minmax(0,1fr); }
   .bs-composition { flex-direction:column; align-items:stretch; }
   .bs-donut { align-self:center; width:200px; }
   .bs-toolbar-actions { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:end; gap:6px; width:100%; }
