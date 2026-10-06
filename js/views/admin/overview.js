@@ -8,11 +8,12 @@ import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../l
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
 import { barChartSvg, monthlyComboChartSvg, compositionDonutHtml } from '../../components/charts.js';
 import { openContractView, openCustomerDetail } from './customers.js';
+import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
 
-/** "2026-08" -> "Th8/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
+/** "2026-08" -> "Th08/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
 function monthLabel(yearMonth) {
   const [y, m] = String(yearMonth).split('-');
-  return `Th${Number(m)}/${y.slice(2)}`;
+  return `Th${m}/${y.slice(2)}`;
 }
 function formatPercent(n) {
   return `${n.toFixed(1).replace('.', ',')}%`;
@@ -146,6 +147,7 @@ export function render(contentEl) {
   // "Biến động hàng tháng" để CHUYỂN cả "Dư nợ theo nhóm nợ" lẫn "Tổng hợp
   // tăng giảm" sang đúng tháng đó (xem selectMonth()) — không tải lại trang.
   bindNhomNoClicks(contentEl);
+  bindSpecificProvision(contentEl);
   bindMonthClicks(contentEl);
   bindMonthSelector(contentEl);
   bindCompositionTabs(contentEl);
@@ -412,11 +414,67 @@ function provisionForMonth(m) {
 }
 /** 2 dòng "Dự phòng chung/cụ thể phải trích" — chỉ chữ, không bỏ trong khung. `null` (xem provisionForMonth()) hiện "—" kèm ghi chú thay vì 0đ dễ hiểu nhầm là ĐÃ tính ra đúng 0. */
 function provisionRowsHtml(provision) {
-  const row = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border)';
   const val = (n) => (n != null ? formatVND(n) : '<span class="text-muted" style="font-weight:400;font-size:12px">— chưa có dữ liệu</span>');
   return `
-    <div style="${row}"><span class="text-sm text-muted">Dự phòng chung phải trích</span><b style="font-size:13.5px">${val(provision.generalProvision)}</b></div>
-    <div style="${row}"><span class="text-sm text-muted">Dự phòng cụ thể phải trích</span><b style="font-size:13.5px">${val(provision.specificProvision)}</b></div>`;
+    <div class="provision-row"><span class="text-sm text-muted">Dự phòng chung phải trích</span><b>${val(provision.generalProvision)}</b></div>
+    <button type="button" class="provision-row provision-detail-button" id="specific-provision-detail" aria-label="Xem cách tính dự phòng cụ thể từng món vay"><span class="text-sm text-muted">Dự phòng cụ thể phải trích <span aria-hidden="true">›</span></span><b>${val(provision.specificProvision)}</b></button>`;
+}
+
+function openSpecificProvisionModal(month) {
+  const stored = provisionForMonth(month).specificProvision;
+  const historical = !month.live;
+  const source = historical ? month.contractsDetail : visibleContracts().map((ct) => ({
+    ...ct, group: S.debtGroup(ct, new Date()),
+    name: S.getCustomer(ct.customerId)?.name || ct.name || '—',
+  }));
+  if (stored == null || !Array.isArray(source) || (historical && !source.length && stored > 0)) {
+    openModal({ title: `Dự phòng cụ thể · ${month.label}`, bodyHtml: '<p class="text-muted">Kỳ này chưa lưu chi tiết từng món vay để đối chiếu. Hãy nạp lại dữ liệu của đúng tháng nếu cần xem cách tính.</p>' });
+    return;
+  }
+  const items = source.filter((ct) => Number(ct.balance) > 0 && SPECIFIC_PROVISION_RATE[Number(ct.group)])
+    .map((ct) => ({ ct, calc: specificProvisionCalculation(ct, SPECIFIC_PROVISION_RATE[Number(ct.group)]) }))
+    .sort((a, b) => b.calc.amount - a.calc.amount);
+  const total = items.reduce((sum, item) => sum + item.calc.amount, 0);
+  const collateralName = { '01': 'Quyền sử dụng đất chính chủ', '02': 'Quyền sử dụng đất bên thứ 3', '04': 'Xe ô tô chính chủ', '06': 'Sổ tiết kiệm' };
+  const cards = items.map(({ ct, calc }) => {
+    const code = escapeHtml(ct.code || 'Chưa lưu số HĐTD');
+    const name = escapeHtml(ct.name || '—');
+    const eligible = calc.factor > 0;
+    const asset = eligible ? `${collateralName[ct.collateralType] || 'Tài sản bảo đảm'}: ${formatVND(calc.value)} × ${formatPercent(calc.factor * 100)}` : 'Không có tài sản bảo đảm được khấu trừ';
+    return `<article class="provision-loan" data-provision-loan>
+      <div class="provision-loan-head"><div><strong>${name}</strong><small>HĐTD ${code}</small></div><span>Nhóm ${ct.group} · ${formatPercent(calc.rate * 100)}</span></div>
+      <div class="provision-loan-grid"><span>Dư nợ</span><b>${formatVND(calc.balance)}</b><span>TSBĐ</span><b>${asset}</b><span>Giá trị khấu trừ</span><b>${formatVND(calc.deduction)}</b><span>Cơ sở tính</span><b>max(0; ${formatVND(calc.balance)} − ${formatVND(calc.deduction)}) = ${formatVND(calc.base)}</b><span>Phải trích</span><b class="provision-loan-amount">${formatVND(calc.amount)}</b></div>
+    </article>`;
+  }).join('');
+  openModal({
+    title: `Dự phòng cụ thể · ${month.label}`,
+    sheetClass: 'provision-detail-sheet',
+    bodyHtml: `<div class="provision-summary"><span>${items.length} món vay thuộc nhóm 2–5</span><strong>${formatVND(stored)}</strong></div>
+      ${historical ? '<p class="text-sm text-muted">Chi tiết theo dữ liệu đã lưu của tháng này.</p>' : '<p class="text-sm text-muted">Chi tiết tính theo dữ liệu hiện tại.</p>'}
+      ${Math.abs(total - stored) > 1 ? `<p class="bs-warning">Tổng chi tiết ${formatVND(total)} khác số đã lưu ${formatVND(stored)}; cần kiểm tra lại dữ liệu của kỳ này.</p>` : ''}
+      ${items.length ? `<input class="provision-search" type="search" placeholder="Tìm tên hoặc số HĐTD" aria-label="Tìm món vay trong chi tiết dự phòng"><div class="provision-loan-list">${cards}</div><p class="provision-no-results" hidden>Không tìm thấy món vay phù hợp.</p>` : '<p class="text-muted">Không có món vay nhóm 2–5 cần tính dự phòng cụ thể.</p>'}`,
+    onMount(sheet) {
+      const input = sheet.querySelector('.provision-search');
+      input?.addEventListener('input', () => {
+        const query = input.value.trim().toLocaleLowerCase('vi-VN');
+        let count = 0;
+        sheet.querySelectorAll('[data-provision-loan]').forEach((card) => {
+          const matches = card.querySelector('.provision-loan-head').textContent.toLocaleLowerCase('vi-VN').includes(query);
+          card.hidden = !matches;
+          if (matches) count++;
+        });
+        sheet.querySelector('.provision-no-results').hidden = count > 0;
+      });
+    },
+  });
+}
+
+function bindSpecificProvision(root) {
+  root.querySelector('#specific-provision-detail')?.addEventListener('click', () => {
+    const ym = root.querySelector('#nhom-no-slot')?.dataset.ym;
+    const month = buildDebtDashboardData().months.find((m) => m.yearMonth === ym);
+    if (month) openSpecificProvisionModal(month);
+  });
 }
 /**
  * Dashboard "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng
@@ -827,6 +885,7 @@ function selectMonth(root, ym) {
   const sel = root.querySelector('#month-select');
   if (sel) sel.value = ym;
   bindNhomNoClicks(root);
+  bindSpecificProvision(root);
   bindMonthClicks(root);
 }
 

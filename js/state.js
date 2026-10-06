@@ -11,7 +11,7 @@
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween } from './utils.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
-import { specificProvisionForLoan } from './lib/collateral.js';
+import { specificProvisionForLoan, SPECIFIC_PROVISION_RATE } from './lib/collateral.js';
 
 export const STORAGE_KEY = 'qtd_demo_v3';
 
@@ -609,7 +609,6 @@ export function debtGroupSummary(contracts, asOf = new Date()) {
 }
 
 /** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 (Nhóm 1 = 0%, không trích) — Thông tư 02/2013 NHNN, đúng số quỹ đang áp dụng. */
-const SPECIFIC_PROVISION_RATE = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
 /** Tỷ lệ dự phòng CHUNG, áp dụng trên tổng dư nợ Nhóm 1-4 (không tính Nhóm 5). */
 const GENERAL_PROVISION_RATE = 0.0075;
 
