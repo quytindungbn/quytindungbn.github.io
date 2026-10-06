@@ -944,7 +944,8 @@ function openDebtGroupModal(g, isStaff, m) {
 
 /** TSBĐ chỉ đọc từ cột T/AB của file số 1 hoặc dữ liệu đã chốt. */
 function tsbdRowHtml(ct) {
-  return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${ct.hasCollateral ? `Có TSBĐ: <b>${formatVND(ct.collateralValue)}</b>` : 'Không có tài sản bảo đảm'}</div>`;
+  const hasEligibleCollateral = ct.hasCollateral && ['01', '02', '04', '06'].includes(ct.collateralType);
+  return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${hasEligibleCollateral ? `Có TSBĐ: <b>${formatVND(ct.collateralValue)}</b>` : 'Không có tài sản bảo đảm'}</div>`;
 }
 
 /**
