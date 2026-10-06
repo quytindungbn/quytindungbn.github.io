@@ -163,7 +163,7 @@ function adminRowHtml(a) {
     <div class="list-row" data-open-admin="${a.id}" style="cursor:pointer">
       <div class="row-thumb" style="background:${colorFor(a.id)}">${initials(a.name)}</div>
       <div class="row-main">
-        <div class="row-title">${a.name} <span class="badge ${a.role === 'super' ? 'badge-purple' : 'badge-green'}">Quản trị viên · ${roleLabel}</span>${a.role === 'staff' && a.canManageUsers ? ' <span class="badge badge-blue">+ Quản lý User</span>' : ''}${a.role === 'staff' && a.canManageZaloOA ? ' <span class="badge badge-blue">+ Quản lý OA</span>' : ''}${a.role === 'staff' && a.canViewBalanceSheet ? ' <span class="badge badge-blue">+ Cân đối kế toán</span>' : ''}</div>
+        <div class="row-title">${a.name} <span class="badge ${a.role === 'super' ? 'badge-purple' : 'badge-green'}">Quản trị viên · ${roleLabel}</span>${a.role === 'staff' && a.canManageUsers ? ' <span class="badge badge-blue">+ Quản lý User</span>' : ''}${a.role === 'staff' && a.canManageZaloOA ? ' <span class="badge badge-blue">+ Quản lý OA</span>' : ''}${a.role === 'staff' && a.canViewBalanceSheet ? ' <span class="badge badge-blue">+ Quản trị</span>' : ''}</div>
         <div class="row-sub">@${a.username}${a.role === 'staff' ? ' · Xem được: ' + permissionSummary(a) : ''}</div>
       </div>
     </div>`;
@@ -271,7 +271,7 @@ function adminPermissionSectionHtml(admin, tree, isSelf = false) {
       <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý OA" — thêm/bớt khách hàng vào danh sách gửi Zalo tự động, gửi tay, xem log gửi tin — CHỈ trong đúng Thôn/Xóm được gán ở trên.</div>
       <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
         <input type="checkbox" name="canViewBalanceSheet" ${balanceChecked}/>
-        Cho phép xem Cân đối kế toán
+        Cho phép xem mục Quản trị
       </label>
       <div class="field-hint">Số liệu toàn quỹ; nhân viên được cấp quyền chỉ xem, không thể nạp file.</div>
     </form>
@@ -520,7 +520,7 @@ function openCreateUserModal(tree, contentEl) {
               <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền).</div>
               <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
                 <input type="checkbox" name="canViewBalanceSheet"/>
-                Cho phép xem Cân đối kế toán
+                Cho phép xem mục Quản trị
               </label>
               <div class="field-hint">Chỉ xem số liệu toàn quỹ; quyền nạp file vẫn dành riêng cho quản trị viên toàn quyền.</div>
             </div>
