@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareBalance, yearOpeningReport, provisionDifference, nextProvisionDeadline } from '../js/lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, provisionDifference, nextProvisionDeadline, managementRatios } from '../js/lib/balanceSheetMetrics.js';
 
 test('biến động dùng số gốc tuyệt đối và không tạo tỷ lệ giả khi gốc bằng 0', () => {
   assert.deepEqual(compareBalance(70_147_510_875, 70_726_277_233), {
@@ -31,4 +31,14 @@ test('dự phòng lấy bảng cân đối trừ phải trích và hạn ngày 0
   assert.equal(provisionDifference(100, undefined), null);
   assert.equal(nextProvisionDeadline('2026-09'), '07/10/2026');
   assert.equal(nextProvisionDeadline('2026-12'), '07/01/2027');
+});
+
+test('chỉ số quản trị dùng lợi nhuận lũy kế và vốn chủ sở hữu gồm lợi nhuận', () => {
+  const ratios = managementRatios({ profit: 400, equity: 3600, assets: 8000, grossLoans: 5000, customerDeposits: 6000 });
+  assert.equal(ratios.ownCapital, 4000);
+  assert.equal(ratios.roe, 10);
+  assert.equal(ratios.roa, 5);
+  assert.equal(ratios.loanDeposit, 5000 / 6000 * 100);
+  assert.equal(ratios.depositCapital, 1.5);
+  assert.equal(managementRatios({ profit: 1, equity: -1, assets: 0, grossLoans: 1, customerDeposits: 0 }).depositCapital, null);
 });
