@@ -252,14 +252,14 @@ function debtGroup(contract: any, asOf: Date): number | null {
 const SPECIFIC_PROVISION_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
 /** Tỷ lệ dự phòng CHUNG, áp dụng trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
 const GENERAL_PROVISION_RATE = 0.0075;
-/** Khấu trừ TSBĐ theo mã; tài sản giữ tạm và ô tô không được khấu trừ. */
+/** Khấu trừ TSBĐ theo mã; mã khác và thiếu mã không được khấu trừ. */
 function collateralDeductionRate(ct: any): number {
   if (!ct.has_collateral) return 0;
   const type = String(ct.collateral_type || '').trim().toUpperCase();
   if (type === '01' || type === '02') return 0.5;
+  if (type === '04') return 0.3;
   if (type === '06') return 1;
-  if (type) return 0;
-  return 0.5; // giữ số liệu hợp đồng cũ chưa phân loại
+  return 0;
 }
 
 /** Ngày cuối tháng trước theo giờ Việt Nam, độc lập múi giờ của Edge Function. */

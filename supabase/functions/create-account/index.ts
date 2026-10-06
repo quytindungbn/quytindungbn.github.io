@@ -425,10 +425,9 @@ function collateralDeductionRate(ct: any): number {
   if (!ct.has_collateral) return 0;
   const type = String(ct.collateral_type || '').trim().toUpperCase();
   if (type === '01' || type === '02') return 0.5;
+  if (type === '04') return 0.3;
   if (type === '06') return 1;
-  if (type) return 0;
-  // Hợp đồng cũ chưa được phân loại: giữ cách tính 50% đang áp dụng.
-  return 0.5;
+  return 0;
 }
 function formatDateVNZalo(iso: string): string {
   const d = new Date(iso);

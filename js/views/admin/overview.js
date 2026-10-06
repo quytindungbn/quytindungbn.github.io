@@ -169,11 +169,11 @@ export function render(contentEl) {
 function bindNhomNoClicks(root) {
   const slot = root.querySelector('#nhom-no-slot');
   if (!slot) return;
-  const { isStaff, isSuper } = currentRoles();
+  const { isStaff } = currentRoles();
   const { months } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === slot.dataset.ym) || months[months.length - 1];
   slot.querySelectorAll('[data-id]').forEach((el) => {
-    el.addEventListener('click', () => openDebtGroupModal(Number(el.dataset.id), isStaff, isSuper, m));
+    el.addEventListener('click', () => openDebtGroupModal(Number(el.dataset.id), isStaff, m));
   });
 }
 
@@ -418,13 +418,6 @@ function provisionRowsHtml(provision) {
     <div style="${row}"><span class="text-sm text-muted">Dự phòng chung phải trích</span><b style="font-size:13.5px">${val(provision.generalProvision)}</b></div>
     <div style="${row}"><span class="text-sm text-muted">Dự phòng cụ thể phải trích</span><b style="font-size:13.5px">${val(provision.specificProvision)}</b></div>`;
 }
-/** Vẽ lại 2 dòng Dự phòng ngay sau khi lưu TSBĐ trong modal (openDebtGroupModal) — CHỈ sửa được TSBĐ khi đang xem tháng SỐNG (xem tsbdRowHtml()/showTsbd), nên luôn tính lại SỐNG ở đây. KHÔNG đụng tới "Dư nợ theo nhóm nợ" (TSBĐ không đổi số dư từng nhóm, chỉ đổi số tiền phải trích). */
-function refreshProvisionSlot() {
-  const provision = S.provisionSummary(visibleContracts(), new Date());
-  const slot = document.getElementById('provision-slot');
-  if (slot) slot.innerHTML = provisionRowsHtml(provision);
-}
-
 /**
  * Dashboard "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng
  * giảm" — LUÔN hiện cho MỌI quản trị viên (staff lẫn super), dưới 4 ô thống
@@ -779,7 +772,7 @@ function openImportHistoricalModal() {
             <div class="text-sm mb-4">Nợ xấu <b style="color:var(--danger)">${formatVND(preview.summary.badDebtBalance)}</b> (${formatPercent(preview.summary.badDebtRatio)}) · Lãi phải thu <b style="color:var(--purple)">${formatVND(preview.summary.interestReceivable)}</b></div>
             <div class="text-sm text-muted mb-4">Nhóm 1: ${formatVND(g[1])} · Nhóm 2: ${formatVND(g[2])} · Nhóm 3: ${formatVND(g[3])} · Nhóm 4: ${formatVND(g[4])} · Nhóm 5: ${formatVND(g[5])}</div>
             <div class="text-sm mb-4">Dự phòng chung <b>${formatVND(preview.generalProvision)}</b> · Dự phòng cụ thể <b>${formatVND(preview.specificProvision)}</b></div>
-            <div class="text-sm text-muted mb-8">Số HĐ được áp TSBĐ: ${preview.collateralMatchedCount} (kể cả tháng trước khi nhập TSBĐ); ${preview.collateralUnmatchedCount} hợp đồng còn lại tính chưa có TSBĐ.</div>
+            <div class="text-sm text-muted mb-8">Số HĐ được áp TSBĐ: ${preview.collateralMatchedCount}; ${preview.collateralUnmatchedCount} hợp đồng còn lại không có tài sản bảo đảm.</div>
             ${preview.parseErrors.length ? `<div class="text-sm text-danger mb-8">${preview.parseErrors.slice(0, 5).join('<br/>')}</div>` : ''}
             <button class="btn btn-primary btn-block" id="btn-hist-confirm">Xác nhận lưu</button>
           </div>
@@ -870,7 +863,7 @@ function deltaChip(p, { mode = null } = {}) {
  * đang xem. Dùng ĐÚNG phạm vi được phép xem của phiên đang đăng nhập
  * (visibleContracts() — super = toàn quỹ, staff = trong Thôn/Xóm được gán).
  */
-function openDebtGroupModal(g, isStaff, isSuper, m) {
+function openDebtGroupModal(g, isStaff, m) {
   const color = GROUP_COLORS[g];
   // TSBĐ (tài sản bảo đảm) chỉ có ý nghĩa với Nhóm 2-5 (Nhóm 1 = 0% dự phòng
   // cụ thể, xem S.provisionSummary()) — Nhóm 1 giữ đúng danh sách gọn như cũ.
@@ -902,7 +895,7 @@ function openDebtGroupModal(g, isStaff, isSuper, m) {
             <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${d.address || 'Chưa có địa bàn'}</span>
             <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(d.balance)}</b>
           </div>
-          ${showTsbd ? `<div class="text-sm text-muted" style="margin-top:2px">${d.hasCollateral ? `Có TSBĐ: ${formatVND(d.collateralValue)}` : 'Chưa có TSBĐ'}</div>` : ''}
+          ${showTsbd ? `<div class="text-sm text-muted" style="margin-top:2px">${d.hasCollateral && ['01', '02', '04', '06'].includes(d.collateralType) ? `Có TSBĐ: ${formatVND(d.collateralValue)}` : 'Không có tài sản bảo đảm'}</div>` : ''}
         </div>`).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Nhóm này hiện đang trống.' })}
     `;
   } else {
@@ -928,7 +921,7 @@ function openDebtGroupModal(g, isStaff, isSuper, m) {
             <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(ct.balance)}</b>
           </div>
           ${installmentHintHtml(ct)}
-          ${showTsbd ? tsbdRowHtml(ct, isSuper) : ''}
+          ${showTsbd ? tsbdRowHtml(ct) : ''}
         </div>`;
       }).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Nhóm này hiện đang trống.' })}
     `;
@@ -941,79 +934,17 @@ function openDebtGroupModal(g, isStaff, isSuper, m) {
       if (historicalList) return; // danh sách đông cứng của tháng đã chốt — chỉ xem, không click-through/sửa TSBĐ được.
       sheet.querySelectorAll('[data-view-ct]').forEach((row) => {
         row.addEventListener('click', (e) => {
-          if (e.target.closest('[data-tsbd-wrap]')) return; // bấm vào ô TSBĐ thì đừng mở chi tiết hợp đồng
           const ct = S.getContract(row.dataset.viewCt);
           openContractView(ct.customerId, ct, { readOnly: isStaff });
         });
       });
-      if (isSuper && showTsbd) bindTsbdInputs(sheet);
     },
   });
 }
 
-/**
- * Ô "Có TSBĐ" + giá trị TSBĐ trong danh sách hợp đồng theo nhóm — dùng tính
- * "Dự phòng cụ thể phải trích" (xem S.provisionSummary() ở state.js). CHỈ
- * super admin (editable=true) tích/sửa được — nhân viên thường CHỈ XEM, đúng
- * yêu cầu "chỉ tài khoản admin mới có chức năng này còn tất cả tk quản trị
- * đều xem được dữ liệu". Tích/bỏ tích được tự do (không khóa lại) — đúng
- * yêu cầu. Giá trị nhập vào tự ngăn cách hàng nghìn bằng dấu chấm lúc gõ
- * (VD "4.000.000") cho dễ đọc trên điện thoại — xem bindTsbdInputs().
- */
-function tsbdRowHtml(ct, editable) {
-  if (!editable) {
-    return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${ct.hasCollateral ? `Có TSBĐ: <b>${formatVND(ct.collateralValue)}</b>` : 'Chưa có TSBĐ'}</div>`;
-  }
-  const checked = !!ct.hasCollateral;
-  return `
-    <div data-tsbd-wrap="${ct.id}" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)">
-        <input type="checkbox" data-tsbd-check="${ct.id}" ${checked ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0">
-        <span>Có TSBĐ</span>
-      </label>
-      <input type="text" inputmode="numeric" data-tsbd-value="${ct.id}" placeholder="Giá trị TSBĐ (₫)" value="${checked && ct.collateralValue ? formatNumber(ct.collateralValue) : ''}" ${checked ? '' : 'hidden'} style="margin-top:6px;width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12.5px">
-    </div>`;
-}
-/** Gắn sự kiện cho ô "Có TSBĐ" + giá trị trong modal (chỉ gọi khi isSuper) — tích thì hiện ô nhập, gõ xong rời khỏi ô (blur) mới lưu (tránh lưu 0 lúc chưa kịp gõ); bỏ tích thì xóa hẳn ngay (không khóa lại). Ô nhập tự format thêm dấu chấm ngăn cách hàng nghìn MỖI LẦN gõ (input) — lúc lưu tự bỏ dấu chấm lại thành số thật. Lưu xong gọi refreshProvisionSlot() để "Dự phòng cụ thể phải trích" ở ngoài cập nhật ngay. */
-function bindTsbdInputs(sheet) {
-  sheet.querySelectorAll('[data-tsbd-check]').forEach((cb) => {
-    cb.addEventListener('click', (e) => e.stopPropagation());
-    cb.addEventListener('change', async () => {
-      const ctId = cb.dataset.tsbdCheck;
-      const wrap = sheet.querySelector(`[data-tsbd-wrap="${ctId}"]`);
-      const valueInput = wrap?.querySelector('[data-tsbd-value]');
-      if (cb.checked) {
-        if (valueInput) { valueInput.hidden = false; valueInput.focus(); }
-        return;
-      }
-      try {
-        await S.setContractCollateral(ctId, { hasCollateral: false, collateralValue: 0 });
-        if (valueInput) { valueInput.hidden = true; valueInput.value = ''; }
-        refreshProvisionSlot();
-      } catch (err) {
-        alert(err.message);
-        cb.checked = true;
-        if (valueInput) valueInput.hidden = false;
-      }
-    });
-  });
-  sheet.querySelectorAll('[data-tsbd-value]').forEach((input) => {
-    input.addEventListener('click', (e) => e.stopPropagation());
-    input.addEventListener('input', () => {
-      const digits = input.value.replace(/\D/g, '');
-      input.value = digits ? formatNumber(Number(digits)) : '';
-    });
-    input.addEventListener('blur', async () => {
-      const ctId = input.dataset.tsbdValue;
-      const val = Number(input.value.replace(/\D/g, '')) || 0;
-      try {
-        await S.setContractCollateral(ctId, { hasCollateral: true, collateralValue: val });
-        refreshProvisionSlot();
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-  });
+/** TSBĐ chỉ đọc từ cột T/AB của file số 1 hoặc dữ liệu đã chốt. */
+function tsbdRowHtml(ct) {
+  return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${ct.hasCollateral ? `Có TSBĐ: <b>${formatVND(ct.collateralValue)}</b>` : 'Không có tài sản bảo đảm'}</div>`;
 }
 
 /**
