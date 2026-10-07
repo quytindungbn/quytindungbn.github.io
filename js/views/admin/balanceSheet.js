@@ -267,10 +267,12 @@ function provisionComparison(report) {
   const snapshotProvision = S.provisionFromSnapshot(snap);
   // Cùng nguồn với Tổng quan: bản chốt của tháng được ưu tiên. Khi bản chốt
   // chưa có số dự phòng, dùng số hiện tại của toàn quỹ và nói rõ ngày nguồn.
+  const today = new Date();
   const live = !snapshotProvision && S.isSuperAdmin(S.getSession()?.id)
-    ? S.provisionSummary(S.getState().contracts, new Date()) : null;
+    ? S.provisionSummary(S.getState().contracts, today) : null;
   const app = snapshotProvision || live;
-  const sourceDate = snapshotProvision ? snap.snapshotDate : live ? new Date().toISOString().slice(0, 10) : null;
+  const sourceDate = snapshotProvision ? snap.snapshotDate : live
+    ? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}` : null;
   const differentDate = sourceDate && sourceDate !== report.period_end;
   const deadline = nextProvisionDeadline(report.year_month);
   const provisions = [
