@@ -275,3 +275,40 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
     </div>
     ${scroll ? `<div class="trend-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch">${svgHtml}</div>` : svgHtml}`;
 }
+
+/** Hai trục riêng giữ đường nợ xấu đọc được khi dư nợ lớn hơn nhiều lần. */
+export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceColor = '#087d6a', badDebtColor = '#c04343' }) {
+  if (!months.length) return '<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu.</div>';
+  const renderSvg = (mobile) => {
+    const viewport = mobile ? 330 : 1080;
+    const visible = mobile ? 6 : 12;
+    const left = mobile ? 25 : 45;
+    const step = (viewport - left - 32) / (visible - 1);
+    const width = Math.max(viewport, left + step * (months.length - 1) + 32);
+    const top = 30, bottom = mobile ? 185 : 220, height = mobile ? 220 : 260;
+    const x = (i) => left + i * step;
+    const balances = months.map((m) => Math.max(0, Number(m.balance) || 0));
+    const badDebts = months.map((m) => Math.max(0, Number(m.badDebt) || 0));
+    const maxBalance = Math.max(1, ...balances) * 1.18;
+    const maxBadDebt = Math.max(1, ...badDebts) * 1.25;
+    const y = (v, max) => bottom - Math.max(0, v) / max * (bottom - top);
+    const grid = [0, .5, 1].map((p) => `<line x1="${left}" y1="${bottom - p * (bottom - top)}" x2="${width - 20}" y2="${bottom - p * (bottom - top)}" stroke="#e2e8f0"/>`).join('');
+    const line = (values, max, color, dashed) => `<polyline fill="none" stroke="${color}" stroke-width="${mobile ? 2 : 2.7}" stroke-linecap="round" stroke-linejoin="round" ${dashed ? 'stroke-dasharray="5 3"' : ''} points="${values.map((v, i) => `${x(i)},${y(v, max)}`).join(' ')}"/>`;
+    const dots = months.map((m, i) => {
+      const isLive = m.live;
+      const label = `${m.yearMonth.slice(5, 7)}/${m.yearMonth.slice(2, 4)}`;
+      const balanceY = y(balances[i], maxBalance), badY = y(badDebts[i], maxBadDebt);
+      return `<g data-month="${m.yearMonth}" role="button" tabindex="0" style="cursor:pointer" aria-label="${label}: Dư nợ ${formatVND(balances[i])}, nợ xấu ${formatVND(badDebts[i])}">
+        ${m.yearMonth === selectedYm ? `<rect x="${x(i) - step * .45}" y="${top - 15}" width="${step * .9}" height="${bottom - top + 38}" rx="5" fill="${balanceColor}" fill-opacity=".07"/>` : ''}
+        <circle cx="${x(i)}" cy="${balanceY}" r="${mobile ? 4 : 5}" fill="${balanceColor}" stroke="white" stroke-width="1.5" ${isLive ? 'stroke-dasharray="2 1"' : ''}/>
+        <circle cx="${x(i)}" cy="${badY}" r="${mobile ? 4 : 5}" fill="${badDebtColor}" stroke="white" stroke-width="1.5" ${isLive ? 'stroke-dasharray="2 1"' : ''}/>
+        <text x="${x(i)}" y="${balanceY - 9}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${balanceColor}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTyDong(balances[i])}</text>
+        <text x="${x(i)}" y="${badY + 17}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${badDebtColor}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTyDong(badDebts[i])}</text>
+        <text x="${x(i)}" y="${height - 7}" text-anchor="middle" font-size="${mobile ? 9 : 11}" font-weight="${m.yearMonth === selectedYm ? 700 : 500}" fill="#475569">${label}</text>
+        <circle cx="${x(i)}" cy="${(balanceY + badY) / 2}" r="${Math.max(18, Math.abs(balanceY - badY) / 2 + 7)}" fill="transparent"/>
+        <title>${label}: Dư nợ ${formatVND(balances[i])}; nợ xấu ${formatVND(badDebts[i])}</title></g>`;
+    }).join('');
+    return `<div class="trend-scroll ${mobile ? 'monthly-trend-mobile' : 'monthly-trend-desktop'}"><svg viewBox="0 0 ${width} ${height}" style="width:${months.length > visible ? (width / viewport * 100).toFixed(2) : 100}%;display:block" role="img" aria-label="Biến động dư nợ và nợ xấu theo tháng, đơn vị tỷ đồng">${grid}${line(balances, maxBalance, balanceColor, false)}${line(badDebts, maxBadDebt, badDebtColor, true)}${dots}</svg></div>`;
+  };
+  return `<div class="monthly-trend-note">Đơn vị: tỷ đồng · Kéo ngang để xem các tháng trước</div><div class="monthly-trend-legend"><span><i style="background:${balanceColor}"></i>Dư nợ</span><span><i style="background:${badDebtColor}"></i>Nợ xấu (trục riêng)</span></div>${renderSvg(false)}${renderSvg(true)}`;
+}
