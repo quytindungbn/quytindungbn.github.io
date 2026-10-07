@@ -26,11 +26,11 @@ test('nhãn nợ xấu hiển thị triệu đồng và làm tròn như số ti�
     months: [{ yearMonth: '2026-09', balance: 44_756_443_000, badDebt: 387_977_597 }],
   });
   assert.equal((html.match(/>388tr<\/text>/g) || []).length, 2);
-  assert.match(html, /Dư nợ: tỷ đồng · Nợ xấu: triệu đồng/);
+  assert.match(html, /Dư nợ: tỷ đồng \(trục rút gọn\) · Nợ xấu: triệu đồng \(trục từ 0\)/);
   assert.match(html, /44,76/);
 });
 
-test('mức tăng dư nợ 40 lên 44 tỷ và nợ xấu tăng nhẹ vẫn thấy rõ trên trục riêng', () => {
+test('dư nợ vẫn thấy rõ biến động nhỏ, nợ xấu giữ đúng tỷ lệ với mốc 0', () => {
   const html = monthlyTrendLineChartSvg({ months: [
     { yearMonth: '2025-12', balance: 40_000_000_000, badDebt: 380_000_000 },
     { yearMonth: '2026-09', balance: 44_000_000_000, badDebt: 420_000_000 },
@@ -41,6 +41,32 @@ test('mức tăng dư nợ 40 lên 44 tỷ và nợ xấu tăng nhẹ vẫn th�
     return Math.abs(points[1] - points[0]);
   };
   assert.ok(verticalChange(lines[0]) > 35, 'dư nợ phải thay đổi rõ trên desktop');
-  assert.ok(verticalChange(lines[1]) > 35, 'nợ xấu phải thay đổi rõ trên desktop');
-  assert.match(html, /Trục dọc rút gọn theo từng đường/);
+  assert.ok(verticalChange(lines[1]) < 10, 'nợ xấu tăng nhẹ không được phóng đại');
+  assert.match(html, /Nợ xấu: triệu đồng \(trục từ 0\)/);
+});
+
+test('nợ xấu giảm mạnh hoặc về 0 dốc hơn giảm nhẹ và luôn nằm trong khung', () => {
+  const drop = (lastBadDebt) => {
+    const html = monthlyTrendLineChartSvg({ months: [
+      { yearMonth: '2026-08', balance: 44_000_000_000, badDebt: 500_000_000 },
+      { yearMonth: '2026-09', balance: 44_000_000_000, badDebt: lastBadDebt },
+    ] });
+    // Mỗi khung có đường dư nợ trước, sau đó là đường nợ xấu.
+    return [...html.matchAll(/<polyline[^>]*points="([^"]+)"/g)]
+      .filter((_, i) => i % 2 === 1)
+      .map((line) => line[1].split(' ').map((point) => Number(point.split(',')[1])));
+  };
+  const slight = drop(429_000_000);
+  const steep = drop(100_000_000);
+  const cleared = drop(0);
+  for (let i = 0; i < 2; i++) {
+    const [top, bottom] = i === 0 ? [147, 220] : [125, 185];
+    const change = (points) => Math.abs(points[1] - points[0]);
+    assert.ok(change(slight[i]) < change(steep[i]) / 4);
+    assert.ok(change(steep[i]) < change(cleared[i]));
+    for (const points of [slight[i], steep[i], cleared[i]]) {
+      assert.ok(points.every((y) => y >= top && y <= bottom));
+    }
+    assert.equal(cleared[i][1], bottom, '0 phải nằm ở đáy khung nợ xấu');
+  }
 });
