@@ -772,8 +772,8 @@ svg { display: block; }
 .bs-overprovision { color:#875800; font-weight:700; }
 .bs-provision-alert { border-left:3px solid #d18d16; margin:8px 0; }
 .bs-provision-shortfall { color:#a92322; background:#fff0ef; border-color:var(--danger); }
-.bs-ratio-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:start; }
-.bs-ratio-card { min-width:0; padding:11px 12px; border:1.5px solid #9aada8; border-radius:10px; background:var(--surface); }
+.bs-ratio-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:stretch; }
+.bs-ratio-card { min-width:0; height:100%; box-sizing:border-box; padding:11px 12px; border:1.5px solid #9aada8; border-radius:10px; background:var(--surface); }
 .bs-ratio-alert { border-color:#c9483d; background:#fff8f6; }
 .bs-ratio-head { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:5px; }
 .bs-ratio-head h4 { margin:0; font-size:13px; }
