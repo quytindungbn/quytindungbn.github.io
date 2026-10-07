@@ -2,6 +2,18 @@
 export const SPECIFIC_PROVISION_RATE = Object.freeze({ 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 });
 export const GENERAL_PROVISION_RATE = 0.0075;
 
+/** TSBĐ hợp lệ mới nhất của cùng số HĐTD áp dụng cho kỳ cũ. Không suy diễn
+ * từ khách hàng và không xóa thông tin kỳ cũ khi hợp đồng hiện tại thiếu TSBĐ. */
+export function inheritCurrentCollateral(historical, current) {
+  if (!current?.hasCollateral || !['01', '02', '04', '06'].includes(current.collateralType)) return historical;
+  return {
+    ...historical,
+    hasCollateral: true,
+    collateralType: current.collateralType,
+    collateralValue: Math.max(0, Number(current.collateralValue) || 0),
+  };
+}
+
 export function collateralDeductionFactor(contract) {
   if (!contract?.hasCollateral) return 0;
   const type = String(contract.collateralType || '').trim().toUpperCase();
