@@ -1,12 +1,12 @@
 import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
-import { formatTyDong } from '../../components/charts.js';
+import { formatTrieuDong, formatTyDong } from '../../components/charts.js';
 import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
 import { compareBalance, yearOpeningReport, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
-import { getSupabaseClient } from '../../lib/supabaseClient.js';
+import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, formatCompact } from '../../utils.js';
 
 let reports = [];
@@ -14,6 +14,8 @@ let selectedMonth = null;
 let loadedFor = null;
 let hasLoaded = false;
 let requestId = 0;
+const remoteProvisions = new Map();
+const pendingProvisions = new Set();
 
 const monthName = (ym) => `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)}`;
 const reportDate = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso || '')
@@ -105,11 +107,28 @@ function resetIfChangedUser() {
   selectedMonth = null;
   loadedFor = session?.id;
   hasLoaded = false;
+  remoteProvisions.clear();
+  pendingProvisions.clear();
+}
+
+async function loadRemoteProvision(yearMonth, contentEl) {
+  if (remoteProvisions.has(yearMonth) || pendingProvisions.has(yearMonth)) return;
+  const session = S.getSession();
+  if (!session || !S.canViewBalanceSheet(session.id)) return;
+  pendingProvisions.add(yearMonth);
+  const result = await callCreateAccountFunction(session.sbToken, { type: 'get-management-provision', yearMonth });
+  pendingProvisions.delete(yearMonth);
+  if (loadedFor !== session.id) return;
+  remoteProvisions.set(yearMonth,
+    result.ok && Number.isFinite(result.generalProvision) && Number.isFinite(result.specificProvision)
+      ? { generalProvision: result.generalProvision, specificProvision: result.specificProvision }
+      : { error: true });
+  if (selectedMonth === yearMonth && location.hash.split('?')[0] === '#/admin/can-doi-ke-toan') draw(contentEl);
 }
 
 export async function render(contentEl) {
   resetIfChangedUser();
-  if (hasLoaded) { draw(contentEl); return; }
+  if (hasLoaded) { remoteProvisions.delete(selectedMonth); draw(contentEl); return; }
   const id = ++requestId;
   contentEl.innerHTML = '<div class="card card-pad text-muted">Đang tải bảng cân đối kế toán...</div>';
   const { data, error } = await makeClient().from('balance_sheet_reports')
@@ -158,7 +177,7 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
   const profitY = (v) => bottom - (v - profitBase) / profitSpan * (bottom - top);
   const lines = [0, 0.5, 1].map((p) => {
     const yy = bottom - (bottom - top) * p;
-    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text><text x="${right + 7}" y="${yy + 4}" font-size="${mobile ? 8 : 11}" fill="#8b46b8">${formatCompact(profitBase + profitSpan * p)}</text>`;
+    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text><text x="${right + 7}" y="${yy + 4}" font-size="${mobile ? 8 : 11}" fill="#8b46b8">${formatTrieuDong(profitBase + profitSpan * p)}</text>`;
   }).join('');
   const pointYs = trendSeries.map((s) => shown.map((r) =>
     (s.rightAxis ? profitY : y)(Number(r.figures.end[s.key]) || 0)));
@@ -193,11 +212,11 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
       const value = Number(r.figures.end[s.key]) || 0;
       const cx = x(i), cy = pointYs[seriesIndex][i];
       const { dotX, labelY } = positions[i][seriesIndex];
-      return `<g class="bs-trend-point" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTyDong(value)}</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
+      return `<g class="bs-trend-point" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="2.5" paint-order="stroke">${s.rightAxis ? formatTrieuDong(value) : formatTyDong(value)}</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
     }).join('') };
   });
   const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 200 : 314}" text-anchor="middle" font-size="${mobile ? 9 : 13}" font-weight="700" fill="#475569">${r.year_month.slice(5, 7)}${mobile ? '' : `/${r.year_month.slice(2, 4)}`}</text>`).join('');
-  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" style="width:${shown.length > visible ? (width / viewport * 100).toFixed(2) : 100}%" role="img" aria-label="Biến động tổng tài sản, tiền gửi, dư nợ và lợi nhuận theo các tháng đã nạp, đơn vị tỷ đồng">${lines}${plots.map((plot) => plot.line).join('')}${plots.map((plot) => plot.dots).join('')}${labels}</svg>`;
+  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" style="width:${shown.length > visible ? (width / viewport * 100).toFixed(2) : 100}%" role="img" aria-label="Biến động theo các tháng đã nạp: tổng tài sản, tiền gửi và dư nợ tính bằng tỷ đồng; lợi nhuận tính bằng triệu đồng">${lines}${plots.map((plot) => plot.line).join('')}${plots.map((plot) => plot.dots).join('')}${labels}</svg>`;
 }
 
 function trendChart(list) {
@@ -213,8 +232,8 @@ function trendChart(list) {
   const profitTop = Math.max(0, ...profits) * 1.15 || 1;
   const profitSpan = Math.max(1, profitTop - profitBase);
   const selected = shown.find((r) => r.year_month === selectedMonth) || shown.at(-1);
-  return `<p class="bs-chart-note">Số tại mỗi điểm: tỷ đồng.</p><div class="bs-chart-scroll">${trendSvg(shown, base, span, profitBase, profitSpan, false)}${trendSvg(shown, base, span, profitBase, profitSpan, true)}</div>
-    <div class="bs-chart-legend">${trendSeries.map((s) => `<span><i style="background:${s.color}"></i>${s.label}${s.rightAxis ? ' (trục phải)' : ''}</span>`).join('')}</div>
+  return `<p class="bs-chart-note">Tổng tài sản, tiền gửi, dư nợ: tỷ đồng · Lợi nhuận: triệu đồng.</p><div class="bs-chart-scroll">${trendSvg(shown, base, span, profitBase, profitSpan, false)}${trendSvg(shown, base, span, profitBase, profitSpan, true)}</div>
+    <div class="bs-chart-legend">${trendSeries.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>
     <div class="bs-trend-detail" id="bs-trend-detail" aria-live="polite">${trendMonthDetail(selected)}</div>`;
 }
 
@@ -298,7 +317,8 @@ function provisionComparison(report) {
   const today = new Date();
   const live = !snapshotProvision && S.isSuperAdmin(S.getSession()?.id)
     ? S.provisionSummary(S.getState().contracts, today) : null;
-  const app = snapshotProvision || live;
+  const remote = remoteProvisions.get(report.year_month);
+  const app = snapshotProvision || live || (remote?.error ? null : remote);
   const isOpenMonth = report.year_month === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
     && today.getDate() < new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const deadline = nextProvisionDeadline(report.year_month);
@@ -318,6 +338,7 @@ function provisionComparison(report) {
   }).join('');
   return `<div class="card card-pad bs-section"><h3>Trích lập dự phòng</h3>
     ${isOpenMonth && !snapshotProvision ? '<p class="bs-warning">Chưa có số dự phòng chốt của tháng này.</p>' : ''}
+    ${remote?.error && !app ? '<p class="bs-warning">Không tải được số Phải trích. Bấm Làm mới để thử lại.</p>' : ''}
     ${alerts}
     <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch</th></tr></thead><tbody>
       ${provisions.map(([label, fileValue, appValue]) => compare(label, fileValue, appValue)).join('')}
@@ -383,12 +404,16 @@ function draw(contentEl) {
     ${provisionComparison(report)}`}`;
   contentEl.querySelector('#bs-month')?.addEventListener('change', (event) => {
     selectedMonth = event.target.value;
+    remoteProvisions.delete(selectedMonth);
     draw(contentEl);
   });
+  if (report && !superAdmin && !S.provisionFromSnapshot(S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month))) {
+    void loadRemoteProvision(report.year_month, contentEl);
+  }
   bindTrendPoints(contentEl);
   contentEl.querySelector('#bs-profit-details')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelector('[data-profit-details]')?.addEventListener('click', () => showProfitDetails(report));
-  contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { hasLoaded = false; render(contentEl); });
+  contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { hasLoaded = false; remoteProvisions.clear(); render(contentEl); });
   contentEl.querySelector('#bs-import')?.addEventListener('click', () => contentEl.querySelector('#bs-file')?.click());
   contentEl.querySelector('#bs-file')?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];

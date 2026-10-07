@@ -23,6 +23,11 @@ export function formatTyDong(n) {
   return (Math.round((n || 0) / 1e7) / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',');
 }
 
+/** Số triệu đồng làm tròn đến triệu gần nhất, dùng cho các chuỗi giá trị nhỏ. */
+export function formatTrieuDong(n) {
+  return `${formatNumber(Math.round((Number(n) || 0) / 1e6))}tr`;
+}
+
 /**
  * Biểu đồ cột đứng (dư nợ theo TỪNG NHÓM NỢ) — mỗi cột 1 màu riêng (đã truyền
  * sẵn từ nơi gọi, theo đúng "màu trạng thái": xanh (tốt) -> vàng (cần chú ý)
@@ -308,12 +313,12 @@ export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceCol
         <circle cx="${x(i)}" cy="${balancePointY}" r="${mobile ? 4 : 5}" fill="${balanceColor}" stroke="white" stroke-width="1.5" ${isLive ? 'stroke-dasharray="2 1"' : ''}/>
         <circle cx="${x(i)}" cy="${badPointY}" r="${mobile ? 4 : 5}" fill="${badDebtColor}" stroke="white" stroke-width="1.5" ${isLive ? 'stroke-dasharray="2 1"' : ''}/>
         <text x="${x(i)}" y="${balancePointY - 9}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${balanceColor}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTyDong(balances[i])}</text>
-        <text x="${x(i)}" y="${badPointY - 9}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${badDebtColor}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTyDong(badDebts[i])}</text>
+        <text x="${x(i)}" y="${badPointY - 9}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${badDebtColor}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTrieuDong(badDebts[i])}</text>
         <text x="${x(i)}" y="${height - 7}" text-anchor="middle" font-size="${mobile ? 9 : 11}" font-weight="${m.yearMonth === selectedYm ? 700 : 500}" fill="#475569">${label}</text>
         <rect x="${x(i) - step * .43}" y="${top - 16}" width="${step * .86}" height="${bottom - top + 40}" fill="transparent"/>
         <title>${label}: Dư nợ ${formatVND(balances[i])}; nợ xấu ${formatVND(badDebts[i])}</title></g>`;
     }).join('');
-    return `<div class="trend-scroll ${mobile ? 'monthly-trend-mobile' : 'monthly-trend-desktop'}"><svg viewBox="0 0 ${width} ${height}" style="width:${months.length > visible ? (width / viewport * 100).toFixed(2) : 100}%;display:block" role="img" aria-label="Biến động dư nợ và nợ xấu theo tháng, đơn vị tỷ đồng">${grid}${line(balances, balanceY, balanceColor, false)}${line(badDebts, badY, badDebtColor, true)}${dots}</svg></div>`;
+    return `<div class="trend-scroll ${mobile ? 'monthly-trend-mobile' : 'monthly-trend-desktop'}"><svg viewBox="0 0 ${width} ${height}" style="width:${months.length > visible ? (width / viewport * 100).toFixed(2) : 100}%;display:block" role="img" aria-label="Biến động theo tháng: dư nợ tỷ đồng, nợ xấu triệu đồng">${grid}${line(balances, balanceY, balanceColor, false)}${line(badDebts, badY, badDebtColor, true)}${dots}</svg></div>`;
   };
-  return `<div class="monthly-trend-note">Đơn vị: tỷ đồng · Kéo ngang để xem các tháng trước</div><div class="monthly-trend-legend"><span><i style="background:${balanceColor}"></i>Dư nợ</span><span><i style="background:${badDebtColor}"></i>Nợ xấu (trục riêng)</span></div>${renderSvg(false)}${renderSvg(true)}`;
+  return `<div class="monthly-trend-note">Dư nợ: tỷ đồng · Nợ xấu: triệu đồng · Kéo ngang để xem các tháng trước</div><div class="monthly-trend-legend"><span><i style="background:${balanceColor}"></i>Dư nợ</span><span><i style="background:${badDebtColor}"></i>Nợ xấu (trục riêng)</span></div>${renderSvg(false)}${renderSvg(true)}`;
 }
