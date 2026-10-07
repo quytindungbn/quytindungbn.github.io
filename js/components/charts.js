@@ -305,7 +305,7 @@ export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceCol
         <text x="${x(i)}" y="${balanceY - 9}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${balanceColor}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTyDong(balances[i])}</text>
         <text x="${x(i)}" y="${badY + 17}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${badDebtColor}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTyDong(badDebts[i])}</text>
         <text x="${x(i)}" y="${height - 7}" text-anchor="middle" font-size="${mobile ? 9 : 11}" font-weight="${m.yearMonth === selectedYm ? 700 : 500}" fill="#475569">${label}</text>
-        <circle cx="${x(i)}" cy="${(balanceY + badY) / 2}" r="${Math.max(18, Math.abs(balanceY - badY) / 2 + 7)}" fill="transparent"/>
+        <rect x="${x(i) - step * .43}" y="${top - 16}" width="${step * .86}" height="${bottom - top + 40}" fill="transparent"/>
         <title>${label}: Dư nợ ${formatVND(balances[i])}; nợ xấu ${formatVND(badDebts[i])}</title></g>`;
     }).join('');
     return `<div class="trend-scroll ${mobile ? 'monthly-trend-mobile' : 'monthly-trend-desktop'}"><svg viewBox="0 0 ${width} ${height}" style="width:${months.length > visible ? (width / viewport * 100).toFixed(2) : 100}%;display:block" role="img" aria-label="Biến động dư nợ và nợ xấu theo tháng, đơn vị tỷ đồng">${grid}${line(balances, maxBalance, balanceColor, false)}${line(badDebts, maxBadDebt, badDebtColor, true)}${dots}</svg></div>`;
