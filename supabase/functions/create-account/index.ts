@@ -429,6 +429,70 @@ function collateralDeductionRate(ct: any): number {
   if (type === '06') return 1;
   return 0;
 }
+
+/** Đồng bộ TSBĐ theo đúng HĐTD vào chi tiết các tháng đã chốt. Giữ nguyên
+ * dư nợ/nhóm nợ/ngày chốt của từng tháng; chỉ tính lại dự phòng cụ thể khi
+ * chi tiết hợp đồng cộng khớp với số dư của bản chốt. */
+async function syncHistoricalCollateral(admin: any): Promise<{ updated: number; error?: string }> {
+  const readAll = async (table: string, columns: string) => {
+    const rows: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin.from(table).select(columns).order(table === 'contracts' ? 'id' : 'year_month').range(from, from + 999);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if ((data || []).length < 1000) return rows;
+    }
+  };
+  try {
+    const contracts = await readAll('contracts', 'id, code, has_collateral, collateral_type, collateral_value');
+    const snapshots = await readAll('monthly_snapshots', 'year_month, total_balance, contracts_detail');
+    const byCode = new Map<string, any>(), duplicateCodes = new Set<string>();
+    for (const ct of contracts) {
+      const code = String(ct.code || '').trim();
+      if (!code) continue;
+      if (byCode.has(code)) duplicateCodes.add(code);
+      else byCode.set(code, ct);
+    }
+    let updated = 0;
+    for (const snap of snapshots) {
+      const detail = snap.contracts_detail;
+      if (!Array.isArray(detail) || !detail.length) continue;
+      const total = detail.reduce((sum: number, row: any) => sum + (Number(row.balance) || 0), 0);
+      if (Math.abs(total - (Number(snap.total_balance) || 0)) > 1) continue;
+      const seen = new Set<string>(), duplicates = new Set<string>();
+      for (const row of detail) {
+        const code = String(row.code || '').trim();
+        if (!code) continue;
+        if (seen.has(code)) duplicates.add(code);
+        seen.add(code);
+      }
+      let changed = false;
+      const next = detail.map((row: any) => {
+        const code = String(row.code || '').trim();
+        const current = byCode.get(code);
+        if (!code || duplicateCodes.has(code) || duplicates.has(code) || !current?.has_collateral ||
+          !['01', '02', '04', '06'].includes(current.collateral_type)) return row;
+        const value = Math.max(0, Number(current.collateral_value) || 0);
+        if (row.hasCollateral === true && row.collateralType === current.collateral_type && Number(row.collateralValue) === value) return row;
+        changed = true;
+        return { ...row, hasCollateral: true, collateralType: current.collateral_type, collateralValue: value };
+      });
+      if (!changed) continue;
+      const specific = next.reduce((sum: number, row: any) => {
+        const rate = PROVISION_SPECIFIC_RATE[Number(row.group)] || 0;
+        const factor = collateralDeductionRate({ has_collateral: row.hasCollateral, collateral_type: row.collateralType });
+        return sum + Math.max(0, (Number(row.balance) || 0) - (Number(row.collateralValue) || 0) * factor) * rate;
+      }, 0);
+      const { error } = await admin.from('monthly_snapshots').update({ contracts_detail: next, specific_provision: specific })
+        .eq('year_month', snap.year_month);
+      if (error) throw error;
+      updated++;
+    }
+    return { updated };
+  } catch (error) {
+    return { updated: 0, error: String((error as Error)?.message || error) };
+  }
+}
 function formatDateVNZalo(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -1246,7 +1310,7 @@ Deno.serve(async (req) => {
     // Dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu toàn quỹ, mục 10.46
     // docs) — số liệu tài chính TOÀN QUỸ, chỉ super mới chốt/xem được, y hệt
     // trang "Nhật ký" (activity_log) đã CHỈ dành riêng cho super từ trước.
-    'capture-monthly-snapshot',
+    'capture-monthly-snapshot', 'sync-historical-collateral',
     // "Nạp dữ liệu cũ" (mục 10.51 docs) — ghi số liệu TÀI CHÍNH TOÀN QUỸ của
     // 1 tháng ĐÃ QUA vào monthly_snapshots, y hệt lý do capture-monthly-snapshot ở trên.
     'import-historical-snapshot',
@@ -1257,6 +1321,13 @@ Deno.serve(async (req) => {
   // Các "type" còn lại (quản lý Use khách hàng) cần ít nhất canManageUsers.
   if (!canManageUsers) {
     return json({ ok: false, reason: 'Bạn không có quyền thực hiện thao tác này — liên hệ quản trị viên toàn quyền để được cấp quyền "Quản lý User".' }, 403);
+  }
+
+  if (body.type === 'sync-historical-collateral') {
+    const result = await syncHistoricalCollateral(admin);
+    return result.error
+      ? json({ ok: false, reason: 'Không đồng bộ được TSBĐ các tháng cũ: ' + result.error }, 500)
+      : json({ ok: true, updated: result.updated });
   }
 
   // ===== type: 'update-staff-role' — CHỈ super — đổi vai trò Toàn quyền <->
@@ -1330,6 +1401,7 @@ Deno.serve(async (req) => {
       }
       const cust = custMap.get(ct.customer_id);
       contractsDetail.push({
+        code: ct.code || null,
         name: cust?.name || null,
         address: (cust && [cust.thon, cust.xom, cust.tinh].filter(Boolean).join(', ')) || cust?.address || null,
         balance,
@@ -1894,6 +1966,11 @@ Deno.serve(async (req) => {
       const { error } = await admin.from('contracts').upsert(contractUpsertsDeduped, { onConflict: 'id' });
       if (error) return json({ ok: false, reason: 'Lỗi ghi hợp đồng; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
+
+    // Ghi TSBĐ mới vào lịch sử trước khi dọn hợp đồng đã tất toán. Những kỳ
+    // không có chi tiết đầy đủ được giữ nguyên để tránh tính sai dự phòng.
+    const historySync = await syncHistoricalCollateral(admin);
+    if (historySync.error) result.errors.push('Chưa đồng bộ TSBĐ lịch sử: ' + historySync.error);
 
     const toDeleteIds = fullSync
       ? (allContracts || []).filter((c: any) => !touchedContractIds.has(c.id)).map((c: any) => c.id)
