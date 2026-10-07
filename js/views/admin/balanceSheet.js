@@ -319,8 +319,10 @@ function provisionComparison(report) {
     ? S.provisionSummary(S.getState().contracts, today) : null;
   const remote = remoteProvisions.get(report.year_month);
   const app = snapshotProvision || live || (remote?.error ? null : remote);
-  const isOpenMonth = report.year_month === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-    && today.getDate() < new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const isUnclosedMonth = report.year_month >= currentMonth;
+  // Chỉ yêu cầu bút toán sau khi tháng đã kết thúc và có bản chốt của đúng tháng.
+  const canRecommendAdjustment = report.year_month < currentMonth && !!snapshotProvision;
   const deadline = nextProvisionDeadline(report.year_month);
   const provisions = [
     ['Dự phòng chung', end.generalProvision, app?.generalProvision],
@@ -330,16 +332,15 @@ function provisionComparison(report) {
     const gap = provisionDifference(fileValue, appValue);
     return `<tr><th scope="row">${label}</th><td>${money(fileValue)}</td><td>${Number.isFinite(appValue) ? money(appValue) : 'Chưa có số liệu'}</td><td class="${gap == null ? '' : gap === 0 ? 'bs-match' : gap > 0 ? 'bs-overprovision' : 'bs-negative'}">${gap == null ? '—' : signed(gap)}</td></tr>`;
   };
-  const alerts = provisions.map(([label, fileValue, appValue]) => {
+  const alerts = canRecommendAdjustment ? provisions.map(([label, fileValue, appValue]) => {
     const gap = provisionDifference(fileValue, appValue);
-    if (gap > 0) return `<p class="bs-warning bs-provision-alert">${label} dư ${money(gap)} so với mức phải trích; cần hoàn nhập phần dư.</p>`;
-    if (gap < 0) return `<p class="bs-warning bs-provision-alert bs-provision-shortfall">${label} thiếu ${money(-gap)}; cần trích bổ sung trong 07 ngày đầu tháng sau, chậm nhất ngày ${deadline}.</p>`;
+    if (gap > 0) return `<p>${label} dư <strong>${money(gap)}</strong> so với mức phải trích; cần hoàn nhập phần dư.</p>`;
+    if (gap < 0) return `<p>${label} thiếu <strong>${money(-gap)}</strong>; cần trích bổ sung trong 07 ngày đầu tháng sau, chậm nhất ngày ${deadline}.</p>`;
     return '';
-  }).join('');
-  return `<div class="card card-pad bs-section"><h3>Trích lập dự phòng</h3>
-    ${isOpenMonth && !snapshotProvision ? '<p class="bs-warning">Chưa có số dự phòng chốt của tháng này.</p>' : ''}
+  }).join('') : '';
+  return `<div class="card card-pad bs-section bs-provision-section"><h3>Trích lập dự phòng${isUnclosedMonth ? ' <span class="bs-provision-pending">(Chưa chốt số liệu tháng này)</span>' : ''}</h3>
     ${remote?.error && !app ? '<p class="bs-warning">Không tải được số Phải trích. Bấm Làm mới để thử lại.</p>' : ''}
-    ${alerts}
+    ${alerts ? `<div class="bs-provision-alerts" role="status">${alerts}</div>` : ''}
     <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch</th></tr></thead><tbody>
       ${provisions.map(([label, fileValue, appValue]) => compare(label, fileValue, appValue)).join('')}
       ${compare('Tổng dự phòng', end.totalProvision ?? end.generalProvision + end.specificProvision,
