@@ -158,3 +158,29 @@ test('chi tiết TK 36 cấp 3 và các nguồn nợ khác khớp số tổng, k
   assert.equal(end.accountDetails.internalReceivables[0].name, 'Tạm ứng nghiệp vụ');
   assert.equal(end.accountDetails.otherLiabilities[0].name, 'Thuế phải nộp');
 });
+
+test('TK 484 tách 4841/4842; TK 461 và 469 tách hết tài khoản con', () => {
+  const rows = sample();
+  const set = (index, name, code, dr, cr) => {
+    rows[index] = [name, code, dr, cr, 0, 0, dr, cr];
+  };
+  set(11, 'Tài sản', '1', 120, 0);
+  set(12, 'Tiền mặt', '101', 120, 0);
+  set(21, 'Phải trả', '4', 0, 220);
+  set(26, 'Phải trả nội bộ', '46', 0, 15);
+  set(27, 'Lợi tức vốn góp', '461', 0, 7);
+  set(28, 'Phải trả khác', '469', 0, 8);
+  set(29, 'Tài sản nợ khác', '48', 0, 5);
+  rows.push(['Quỹ khác', '484', 0, 5, 0, 0, 0, 5]);
+  rows.push(['Quỹ khen thưởng', '4841', 0, 2, 0, 0, 0, 2]);
+  rows.push(['Quỹ phúc lợi', '4842', 0, 3, 0, 0, 0, 3]);
+  rows.push(['Lợi tức vốn góp', '461.01', 0, 5, 0, 0, 0, 5]);
+  rows.push(['Phải trả nội bộ khác', '461.02', 0, 2, 0, 0, 0, 2]);
+  rows.push(['Lợi tức theo mẫu cũ', '469.01', 0, 8, 0, 0, 0, 8]);
+  const end = parseBalanceSheetRows(rows).end;
+  assert.equal(end.otherLiabilities, 20);
+  assert.deepEqual(end.accountDetails.otherLiabilities.map(({ code, balance }) => [code, balance]), [
+    ['461.01', 5], ['461.02', 2], ['469.01', 8], ['4841', 2], ['4842', 3],
+  ]);
+  assert.equal(end.accountDetails.otherLiabilities.reduce((sum, row) => sum + row.balance, 0), 20);
+});
