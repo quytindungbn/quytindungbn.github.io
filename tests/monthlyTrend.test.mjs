@@ -29,3 +29,18 @@ test('nhãn nợ xấu hiển thị triệu đồng và làm tròn như số ti�
   assert.match(html, /Dư nợ: tỷ đồng · Nợ xấu: triệu đồng/);
   assert.match(html, /44,76/);
 });
+
+test('mức tăng dư nợ 40 lên 44 tỷ và nợ xấu tăng nhẹ vẫn thấy rõ trên trục riêng', () => {
+  const html = monthlyTrendLineChartSvg({ months: [
+    { yearMonth: '2025-12', balance: 40_000_000_000, badDebt: 380_000_000 },
+    { yearMonth: '2026-09', balance: 44_000_000_000, badDebt: 420_000_000 },
+  ] });
+  const lines = [...html.matchAll(/<polyline[^>]*points="([^"]+)"/g)];
+  const verticalChange = (line) => {
+    const points = line[1].split(' ').map((point) => Number(point.split(',')[1]));
+    return Math.abs(points[1] - points[0]);
+  };
+  assert.ok(verticalChange(lines[0]) > 35, 'dư nợ phải thay đổi rõ trên desktop');
+  assert.ok(verticalChange(lines[1]) > 35, 'nợ xấu phải thay đổi rõ trên desktop');
+  assert.match(html, /Trục dọc rút gọn theo từng đường/);
+});
