@@ -32,6 +32,7 @@ export function parseBalanceSheetRows(rows) {
     if (!/^\d+(?:\.\d+)?$/.test(code)) continue;
     if (accounts.has(code)) throw new Error(`Mã tài khoản ${code} xuất hiện nhiều lần.`);
     accounts.set(code, {
+      name: String(row?.[0] ?? '').trim(),
       startDr: amount(row[2], index + 1, 'C'), startCr: amount(row[3], index + 1, 'D'),
       endDr: amount(row[6], index + 1, 'G'), endCr: amount(row[7], index + 1, 'H'),
     });
@@ -62,6 +63,26 @@ export function parseBalanceSheetRows(rows) {
       const value = -debit(code);
       return value === 0 ? 0 : value;
     };
+    // Chọn tài khoản chi tiết nhất tới cấp yêu cầu; không cộng lại dòng cha.
+    const breakdown = (prefixes, level, balance, total, excluded = []) => {
+      const candidates = new Set([...accounts.keys()]
+        .map((code) => code.split('.')[0])
+        .filter((code) => /^\d+$/.test(code) && prefixes.some((root) => code.startsWith(root)))
+        .map((code) => code.slice(0, Math.min(code.length, level))));
+      const codes = [...candidates].filter((code) =>
+        ![...candidates].some((child) => child.length > code.length && child.startsWith(code)));
+      const lines = codes.filter((code) => !excluded.some((root) => code.startsWith(root)))
+        .sort().map((code) => ({
+          code, name: accounts.get(code)?.name || '', balance: balance(code),
+          incomplete: code.length < level,
+        })).filter((line) => line.balance !== 0);
+      const remainder = total - lines.reduce((sum, line) => sum + line.balance, 0);
+      if (remainder) lines.push({
+        code: prefixes.join('/'), name: 'Phần chưa có tài khoản chi tiết trong file',
+        balance: remainder, residual: true,
+      });
+      return lines;
+    };
     const assets = debit('1') + debit('2') + debit('3');
     const liabilities = credit('4') + credit('5') + credit('6') + credit('7') - debit('8');
     const totalProvision = credit('219');
@@ -90,7 +111,7 @@ export function parseBalanceSheetRows(rows) {
     const fixedAssetsNet = fixedAssetsGross - accumulatedDepreciation;
     const capitalContribution = debit('344');
     const fixedCapital = fixedAssetsNet + capitalContribution;
-    const internalReceivables = debit('361');
+    const internalReceivables = debit('36');
     const accruedReceivables = debit('391') + debit('394');
     const otherAssets = assets - cash - tctdDeposits - loanNet - fixedCapital - internalReceivables - accruedReceivables;
     const customerDeposits = credit('423');
@@ -108,12 +129,16 @@ export function parseBalanceSheetRows(rows) {
     const profit = revenue - expenses;
     const otherLiabilities = liabilities - customerDeposits - interestPayable - equity - profit;
     if (otherAssets < 0 || otherLiabilities < 0) throw new Error('Các khoản mục chi tiết vượt tổng tài sản hoặc nguồn vốn.');
+    const accountDetails = {
+      internalReceivables: breakdown(['36'], 4, debit, internalReceivables),
+      otherLiabilities: breakdown(['4', '5'], 3, credit, otherLiabilities, ['423', '49']),
+    };
     return { assets, liabilities, cash, tctdDeposits, tctdDemand, tctdTerm,
       nhHtxDemand, nhHtxTerm, otherTctdDemand, liquidity: cash + tctdDeposits,
       grossLoans, totalProvision, generalProvision, specificProvision, otherProvision, loanNet, fixedCapital,
       fixedAssetsGross, accumulatedDepreciation, fixedAssetsNet, capitalContribution,
       internalReceivables, accruedReceivables, otherAssets, customerDeposits,
-      interestPayable, equity, equityParts, revenue, expenses, profit, otherLiabilities };
+      interestPayable, equity, equityParts, revenue, expenses, profit, otherLiabilities, accountDetails };
   };
   return { ...period, start: metrics('start'), end: metrics('end') };
 }
