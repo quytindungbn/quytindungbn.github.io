@@ -1,5 +1,6 @@
 import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
+import { formatTyDong } from '../../components/charts.js';
 import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
@@ -159,16 +160,44 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
     const yy = bottom - (bottom - top) * p;
     return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text><text x="${right + 7}" y="${yy + 4}" font-size="${mobile ? 8 : 11}" fill="#8b46b8">${formatCompact(profitBase + profitSpan * p)}</text>`;
   }).join('');
-  const plots = trendSeries.map((s) => {
+  const pointYs = trendSeries.map((s) => shown.map((r) =>
+    (s.rightAxis ? profitY : y)(Number(r.figures.end[s.key]) || 0)));
+  const positions = shown.map((_, monthIndex) => {
+    const points = trendSeries.map((_, seriesIndex) => ({ seriesIndex, rawY: pointYs[seriesIndex][monthIndex] }))
+      .sort((a, b) => a.rawY - b.rawY);
+    const minGap = mobile ? 17 : 21;
+    const labelTop = top + 12;
+    const labelBottom = bottom - 5;
+    points.forEach((point, index) => {
+      point.labelY = Math.max(index ? points[index - 1].labelY + minGap : labelTop, point.rawY - 10);
+    });
+    const overflow = Math.max(0, points.at(-1).labelY - labelBottom);
+    points.forEach((point) => { point.labelY -= overflow; });
+    for (let index = points.length - 2; index >= 0; index--) {
+      points[index].labelY = Math.min(points[index].labelY, points[index + 1].labelY - minGap);
+    }
+    const indexed = [];
+    points.forEach((point, index) => {
+      const coincident = points.filter((other) => Math.abs(other.rawY - point.rawY) < 13);
+      indexed[point.seriesIndex] = {
+        labelY: point.labelY,
+        dotX: x(monthIndex) + (coincident.length > 1 ? (coincident.indexOf(point) - (coincident.length - 1) / 2) * (mobile ? 10 : 12) : 0),
+      };
+    });
+    return indexed;
+  });
+  const plots = trendSeries.map((s, seriesIndex) => {
     const pointY = s.rightAxis ? profitY : y;
     const points = shown.map((r, i) => `${x(i)},${pointY(Number(r.figures.end[s.key]) || 0)}`).join(' ');
-    return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="${mobile ? 2 : 3}" ${s.rightAxis ? 'stroke-dasharray="7 4"' : ''} stroke-linecap="round" stroke-linejoin="round"/>${shown.map((r, i) => {
-      const cx = x(i), cy = pointY(Number(r.figures.end[s.key]) || 0);
-      return `<g class="bs-trend-point" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(r.figures.end[s.key])}"><circle cx="${cx}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${cx}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/><title>${monthName(r.year_month)} · ${s.label}: ${money(r.figures.end[s.key])}</title></g>`;
-    }).join('')}`;
-  }).join('');
+    return { line: `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="${mobile ? 2 : 3}" ${s.rightAxis ? 'stroke-dasharray="7 4"' : ''} stroke-linecap="round" stroke-linejoin="round"/>`, dots: shown.map((r, i) => {
+      const value = Number(r.figures.end[s.key]) || 0;
+      const cx = x(i), cy = pointYs[seriesIndex][i];
+      const { dotX, labelY } = positions[i][seriesIndex];
+      return `<g class="bs-trend-point" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="2.5" paint-order="stroke">${formatTyDong(value)}</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
+    }).join('') };
+  });
   const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 200 : 314}" text-anchor="middle" font-size="${mobile ? 9 : 13}" font-weight="700" fill="#475569">${r.year_month.slice(5, 7)}${mobile ? '' : `/${r.year_month.slice(2, 4)}`}</text>`).join('');
-  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" style="width:${shown.length > visible ? (width / viewport * 100).toFixed(2) : 100}%" role="img" aria-label="Biến động tổng tài sản, tiền gửi, dư nợ và lợi nhuận theo các tháng đã nạp">${lines}${plots}${labels}</svg>`;
+  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" style="width:${shown.length > visible ? (width / viewport * 100).toFixed(2) : 100}%" role="img" aria-label="Biến động tổng tài sản, tiền gửi, dư nợ và lợi nhuận theo các tháng đã nạp, đơn vị tỷ đồng">${lines}${plots.map((plot) => plot.line).join('')}${plots.map((plot) => plot.dots).join('')}${labels}</svg>`;
 }
 
 function trendChart(list) {
@@ -184,7 +213,7 @@ function trendChart(list) {
   const profitTop = Math.max(0, ...profits) * 1.15 || 1;
   const profitSpan = Math.max(1, profitTop - profitBase);
   const selected = shown.find((r) => r.year_month === selectedMonth) || shown.at(-1);
-  return `<div class="bs-chart-scroll">${trendSvg(shown, base, span, profitBase, profitSpan, false)}${trendSvg(shown, base, span, profitBase, profitSpan, true)}</div>
+  return `<p class="bs-chart-note">Số tại mỗi điểm: tỷ đồng.</p><div class="bs-chart-scroll">${trendSvg(shown, base, span, profitBase, profitSpan, false)}${trendSvg(shown, base, span, profitBase, profitSpan, true)}</div>
     <div class="bs-chart-legend">${trendSeries.map((s) => `<span><i style="background:${s.color}"></i>${s.label}${s.rightAxis ? ' (trục phải)' : ''}</span>`).join('')}</div>
     <div class="bs-trend-detail" id="bs-trend-detail" aria-live="polite">${trendMonthDetail(selected)}</div>`;
 }
@@ -265,15 +294,13 @@ function provisionComparison(report) {
   const snap = S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month);
   const end = report.figures.end;
   const snapshotProvision = S.provisionFromSnapshot(snap);
-  // Cùng nguồn với Tổng quan: bản chốt của tháng được ưu tiên. Khi bản chốt
-  // chưa có số dự phòng, dùng số hiện tại của toàn quỹ và nói rõ ngày nguồn.
+  // Cùng nguồn với Tổng quan: bản chốt của tháng được ưu tiên.
   const today = new Date();
   const live = !snapshotProvision && S.isSuperAdmin(S.getSession()?.id)
     ? S.provisionSummary(S.getState().contracts, today) : null;
   const app = snapshotProvision || live;
-  const sourceDate = snapshotProvision ? snap.snapshotDate : live
-    ? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}` : null;
-  const differentDate = sourceDate && sourceDate !== report.period_end;
+  const isOpenMonth = report.year_month === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+    && today.getDate() < new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const deadline = nextProvisionDeadline(report.year_month);
   const provisions = [
     ['Dự phòng chung', end.generalProvision, app?.generalProvision],
@@ -290,9 +317,7 @@ function provisionComparison(report) {
     return '';
   }).join('');
   return `<div class="card card-pad bs-section"><h3>Trích lập dự phòng</h3>
-    ${live ? '<p class="bs-warning">Chưa có số dự phòng chốt của tháng này; cột Phải trích đang lấy từ Tổng quan theo dữ liệu hiện tại của toàn quỹ. Khi có bản chốt đúng tháng, số này sẽ được thay thế.</p>' : ''}
-    ${snapshotProvision && !Number.isFinite(snap.generalProvision) ? '<p class="bs-source">Số Phải trích được tính lại từ chi tiết hợp đồng đã lưu của kỳ này.</p>' : ''}
-    ${differentDate ? `<p class="bs-source">Ngày số liệu Phải trích: ${reportDate(sourceDate)} · Ngày file cân đối: ${reportDate(report.period_end)}. Chênh lệch được tính theo hai nguồn đang có.</p>` : ''}
+    ${isOpenMonth && !snapshotProvision ? '<p class="bs-warning">Chưa có số dự phòng chốt của tháng này.</p>' : ''}
     ${alerts}
     <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch</th></tr></thead><tbody>
       ${provisions.map(([label, fileValue, appValue]) => compare(label, fileValue, appValue)).join('')}
