@@ -131,3 +131,30 @@ test('lợi nhuận = doanh thu trừ chi phí; TSCĐ trừ hao mòn và tách g
   assert.equal(end.fixedCapital, 85);
   assert.equal(start.fixedAssetsNet, 80);
 });
+
+test('chi tiết TK 36 cấp 3 và các nguồn nợ khác khớp số tổng, không cộng trùng tài khoản cha', () => {
+  const rows = sample();
+  const set = (index, name, code, dr, cr) => {
+    rows[index] = [name, code, dr, cr, 0, 0, dr, cr];
+  };
+  set(20, 'Tài sản khác', '3', 15, 0);
+  set(21, 'Các khoản phải trả', '4', 0, 215);
+  set(26, 'Các khoản phải thu nội bộ', '36', 10, 0);
+  set(27, 'Tạm ứng nghiệp vụ', '3612', 6, 0);
+  set(28, 'Phải thu nội bộ khác', '3621', 4, 0);
+  set(29, 'Lãi phải thu', '391', 5, 0);
+  rows.push(['Chi tiết tạm ứng', '3612.01', 6, 0, 0, 0, 6, 0]);
+  rows.push(['Các khoản phải trả bên ngoài', '45', 0, 10, 0, 0, 0, 10]);
+  rows.push(['Thuế phải nộp', '453', 0, 7, 0, 0, 0, 7]);
+  rows.push(['Phải trả khác', '459', 0, 3, 0, 0, 0, 3]);
+  rows.push(['Lãi và phí phải trả', '49', 0, 5, 0, 0, 0, 5]);
+  const { end } = parseBalanceSheetRows(rows);
+  assert.equal(end.internalReceivables, 10);
+  assert.equal(end.otherLiabilities, 10);
+  assert.deepEqual(end.accountDetails.internalReceivables.map(({ code, balance }) => [code, balance]),
+    [['3612', 6], ['3621', 4]]);
+  assert.deepEqual(end.accountDetails.otherLiabilities.map(({ code, balance }) => [code, balance]),
+    [['453', 7], ['459', 3]]);
+  assert.equal(end.accountDetails.internalReceivables[0].name, 'Tạm ứng nghiệp vụ');
+  assert.equal(end.accountDetails.otherLiabilities[0].name, 'Thuế phải nộp');
+});
