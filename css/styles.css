@@ -729,6 +729,15 @@ svg { display: block; }
 .bs-profit-details > div > :not(:first-child) { text-align:right; }
 .bs-profit-details .bs-profit-head { color:var(--text-muted); font-weight:700; font-size:11px; }
 .bs-profit-details .bs-profit-total { font-weight:800; background:#e8f5f1; padding:10px; border-radius:8px; }
+.bs-account-period { margin:0 0 10px; color:var(--text-muted); font-size:12px; }
+.bs-account-list { border:1px solid var(--border-strong); border-radius:9px; overflow:hidden; }
+.bs-account-columns { display:flex; justify-content:space-between; gap:10px; padding:8px 12px; background:var(--surface-alt); color:var(--text-muted); font-size:11px; font-weight:750; border-bottom:1px solid var(--border-strong); }
+.bs-account-line { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--border); font-size:12px; }
+.bs-account-line:last-child { border-bottom:0; }
+.bs-account-line > div { min-width:0; display:grid; gap:3px; }
+.bs-account-line span { color:var(--text-muted); overflow-wrap:anywhere; }
+.bs-account-line b { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.bs-account-total { background:#e8f5f1; font-weight:800; }
 .bs-table-wrap { width:100%; overflow-x:auto; }
 .bs-table { width:100%; min-width:670px; border-collapse:collapse; font-size:12.5px; font-variant-numeric:tabular-nums; }
 .bs-table th, .bs-table td { padding:9px 8px; border-bottom:1px solid var(--border-strong); }
@@ -847,6 +856,8 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
   .bs-profit-details > div > :last-child { grid-column:1 / -1; justify-self:end; }
   .bs-profit-details .bs-profit-head > :last-child { display:none; }
   .bs-profit-details > div:not(.bs-profit-head) > :last-child::before { content:'Tăng/giảm: '; font-weight:600; }
+  .bs-account-line { padding:10px; gap:7px; }
+  .bs-account-line b { font-size:11px; }
 }
 
 /* utility */
