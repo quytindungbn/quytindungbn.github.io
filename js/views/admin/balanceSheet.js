@@ -31,10 +31,15 @@ function change(current, base) {
   return `<span class="bs-change ${tone}"><strong>${signed(result.amount)}</strong><small><span class="bs-change-separator" aria-hidden="true">|</span>${result.percent == null ? '—' : percent(result.percent)}</small></span>`;
 }
 
-function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, ordinal = null } = {}) {
+function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, accountDetail = null, ordinal = null } = {}) {
   const name = `${label}:`;
+  const detailButton = profitDetail
+    ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>`
+    : accountDetail
+      ? `<button type="button" class="bs-management-link" data-account-details="${accountDetail}" aria-label="Xem chi tiết tài khoản ${label}">${name}</button>`
+      : name;
   return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${ordinal ? 'bs-management-numbered' : ''}">
-    <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${profitDetail ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>` : name}</div>
+    <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${detailButton}</div>
     <div class="bs-management-end"><strong>${money(end[key])}</strong></div>
     <div class="bs-management-value" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
     <div class="bs-management-value" data-label="Từ đầu năm">${noYear ? '<span class="text-muted">—</span>' : change(end[key], yearOpening?.[key])}</div>
@@ -309,6 +314,30 @@ function showProfitDetails(report) {
   });
 }
 
+function showAccountDetails(report, key) {
+  const labels = { internalReceivables: 'Phải thu nội bộ', otherLiabilities: 'Nợ phải trả khác' };
+  const label = labels[key];
+  if (!label) return;
+  const end = report.figures.end;
+  const lines = end.accountDetails?.[key];
+  if (!Array.isArray(lines)) {
+    openModal({ title: label, bodyHtml: '<p class="text-muted">Kỳ này được nạp trước khi ứng dụng lưu chi tiết tài khoản. Vui lòng nạp lại file A01 của đúng tháng để xem từng tài khoản và số dư.</p>' });
+    return;
+  }
+  openModal({
+    title: `${label} · ${monthName(report.year_month)}`,
+    bodyHtml: `<p class="bs-account-period">Số dư đến ngày ${reportDate(report.period_end)}</p>
+      <div class="bs-account-list">
+        <div class="bs-account-columns"><span>Tài khoản</span><span>Số dư cuối kỳ</span></div>
+        ${lines.length ? lines.map((line) => `<div class="bs-account-line">
+          <div><strong>${line.residual ? 'Phần chưa tách' : `TK ${escapeHtml(String(line.code || ''))}${line.incomplete ? ' (chưa đủ cấp)' : ''}`}</strong>${line.name ? `<span>${escapeHtml(String(line.name))}</span>` : ''}</div>
+          <b>${money(Number(line.balance) || 0)}</b>
+        </div>`).join('') : '<p class="text-muted">Không có số dư cuối kỳ.</p>'}
+        <div class="bs-account-line bs-account-total"><div><strong>Tổng ${label}</strong></div><b>${money(end[key])}</b></div>
+      </div>`,
+  });
+}
+
 function provisionComparison(report) {
   const snap = S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month);
   const end = report.figures.end;
@@ -363,7 +392,7 @@ function draw(contentEl) {
     ...(Number.isFinite(end.fixedAssetsNet) && Number.isFinite(end.capitalContribution)
       ? [{ label: 'TSCĐ sau hao mòn', key: 'fixedAssetsNet' }, { label: 'Vốn góp NHHTX', key: 'capitalContribution' }]
       : [{ label: 'TSCĐ ròng và vốn góp NHHTX', key: 'fixedCapital' }]),
-    { label: 'Phải thu nội bộ', key: 'internalReceivables' },
+    { label: 'Phải thu nội bộ', key: 'internalReceivables', options: { accountDetail: 'internalReceivables' } },
     { label: 'Lãi và phí phải thu', key: 'accruedReceivables' },
     ...(end.otherAssets || start.otherAssets ? [{ label: 'Tài sản khác', key: 'otherAssets' }] : []),
   ] : [];
@@ -377,7 +406,7 @@ function draw(contentEl) {
   const fundingItems = report ? [
     { label: 'Tiền gửi khách hàng', key: 'customerDeposits' },
     { label: 'Lãi và phí phải trả', key: 'interestPayable' },
-    { label: 'Nợ phải trả khác', key: 'otherLiabilities' },
+    { label: 'Nợ phải trả khác', key: 'otherLiabilities', options: { accountDetail: 'otherLiabilities' } },
     { label: 'Vốn chủ sở hữu', key: 'equity', detailHtml: equityDetails },
     { label: 'Lợi nhuận lũy kế', key: 'profit', options: { noYear: true, profitDetail: true } },
   ] : [];
@@ -414,6 +443,9 @@ function draw(contentEl) {
   bindTrendPoints(contentEl);
   contentEl.querySelector('#bs-profit-details')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelector('[data-profit-details]')?.addEventListener('click', () => showProfitDetails(report));
+  contentEl.querySelectorAll('[data-account-details]').forEach((button) => {
+    button.addEventListener('click', () => showAccountDetails(report, button.dataset.accountDetails));
+  });
   contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { hasLoaded = false; remoteProvisions.clear(); render(contentEl); });
   contentEl.querySelector('#bs-import')?.addEventListener('click', () => contentEl.querySelector('#bs-file')?.click());
   contentEl.querySelector('#bs-file')?.addEventListener('change', async (event) => {
