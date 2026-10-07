@@ -11,7 +11,7 @@
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween } from './utils.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
-import { specificProvisionForLoan, SPECIFIC_PROVISION_RATE, GENERAL_PROVISION_RATE } from './lib/collateral.js';
+import { specificProvisionForLoan, SPECIFIC_PROVISION_RATE, GENERAL_PROVISION_RATE, inheritCurrentCollateral } from './lib/collateral.js';
 export { GENERAL_PROVISION_RATE, provisionFromSnapshot } from './lib/collateral.js';
 
 export const STORAGE_KEY = 'qtd_demo_v3';
@@ -1456,8 +1456,7 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
     contracts.push(row);
   }
   if (!contracts.length) throw new Error('Không đọc được hợp đồng nào từ file — kiểm tra lại đúng mẫu chưa.');
-  // File có cột T/AB là nguồn TSBĐ của chính kỳ đó. File cũ thiếu các cột
-  // này dùng dữ liệu hợp đồng hiện tại theo Số HĐTD như quy tắc kế thừa.
+  // TSBĐ mới nhất của đúng Số HĐTD được áp ngược cho các kỳ cũ.
   const currentByCode = new Map();
   const ambiguousCodes = new Set();
   for (const current of state.contracts || []) {
@@ -1476,14 +1475,9 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
     if (ambiguousCodes.has(code) || (current?.hasCollateral && importedCollateralCodes.has(code))) {
       throw new Error(`Số HĐTD ${code} bị trùng nên không thể xác định TSBĐ cho từng dòng. Hãy kiểm tra lại trước khi lưu.`);
     }
-    if (current && ct.collateralType == null) {
-      ct.hasCollateral = !!current.hasCollateral && ['01', '02', '04', '06'].includes(current.collateralType);
-      ct.collateralValue = Number(current.collateralValue) || 0;
-      ct.collateralType = current.collateralType || null;
-    } else {
-      ct.hasCollateral = ['01', '02', '04', '06'].includes(ct.collateralType);
-      ct.collateralValue = Number(ct.collateralValue) || 0;
-    }
+    ct.hasCollateral = ['01', '02', '04', '06'].includes(ct.collateralType);
+    ct.collateralValue = Number(ct.collateralValue) || 0;
+    Object.assign(ct, inheritCurrentCollateral(ct, current));
     ct.loanTerm = ct.loanTerm || current?.loanTerm || null;
     ct.loanPurpose = ct.loanPurpose || current?.loanPurpose || null;
     if (ct.hasCollateral) {
@@ -1562,7 +1556,26 @@ export async function loginAdmin(username, password) {
   const res = await callLoginFunction({ role: 'admin', identifier: username, password });
   if (!res.ok) return { ok: false, reason: res.reason };
   await loadAdminSessionData(res.token);
+  await syncHistoricalCollateralOnce(res.token, res.id);
   return { ok: true, adminId: res.id, mustChangePassword: !!res.mustChangePassword, sbToken: res.token };
+}
+
+let historicalCollateralSyncedFor = null;
+async function syncHistoricalCollateralOnce(token, adminId) {
+  if (!isSuperAdmin(adminId) || historicalCollateralSyncedFor === adminId) return;
+  historicalCollateralSyncedFor = adminId;
+  try {
+    const res = await callCreateAccountFunction(token, { type: 'sync-historical-collateral' });
+    if (!res.ok) { historicalCollateralSyncedFor = null; return; }
+    if (res.updated > 0) {
+      const { data, error } = await getSupabaseClient(token).from('monthly_snapshots').select('*').order('year_month');
+      if (error) throw error;
+      state.monthlySnapshots = (data || []).map(mapMonthlySnapshotRow);
+    }
+  } catch (error) {
+    historicalCollateralSyncedFor = null;
+    console.warn('Chưa đồng bộ được TSBĐ lịch sử, sẽ thử lại.', error);
+  }
 }
 
 /**
@@ -1594,6 +1607,7 @@ export async function refreshSessionData() {
   try {
     if (session.role === 'admin') await loadAdminSessionData(session.sbToken);
     else await loadCustomerSessionData(session.id, session.sbToken);
+    if (session.role === 'admin') await syncHistoricalCollateralOnce(session.sbToken, session.id);
   } catch (e) {
     console.warn('Không tự làm mới được dữ liệu, sẽ thử lại ở lần sau.', e);
     return;

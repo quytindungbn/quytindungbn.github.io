@@ -16,6 +16,9 @@ const COLLATERAL_NAMES = Object.freeze({
   '04': 'Xe ô tô chính chủ',
   '06': 'Sổ tiết kiệm',
 });
+// Chỉ tồn tại trong phiên trang hiện tại. Mở ứng dụng mới sẽ chọn tháng mới nhất.
+let selectedDashboardMonth = null;
+export function resetSelection() { selectedDashboardMonth = null; }
 
 function collateralDescription(contract) {
   const name = contract.hasCollateral && COLLATERAL_NAMES[contract.collateralType];
@@ -166,6 +169,15 @@ export function render(contentEl) {
   scrollTrendChartToEnd(contentEl);
   contentEl.querySelector('#btn-monthly-detail')?.addEventListener('click', openMonthlyDetailModal);
   contentEl.querySelector('#btn-import-historical')?.addEventListener('click', openImportHistoricalModal);
+}
+
+/** Làm mới dữ liệu nền mà không đổi tháng hay vị trí biểu đồ đang xem. */
+export function refresh(contentEl) {
+  const scrollPositions = [...contentEl.querySelectorAll('#trend-chart-slot .trend-scroll')].map((el) => el.scrollLeft);
+  render(contentEl);
+  contentEl.querySelectorAll('#trend-chart-slot .trend-scroll').forEach((el, index) => {
+    if (scrollPositions[index] != null) el.scrollLeft = scrollPositions[index];
+  });
 }
 
 /**
@@ -743,7 +755,7 @@ function monthSelectorHtml(months, selectedYm, isSuper) {
 function debtDashboardHtml() {
   const { isSuper } = currentRoles();
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
-  const initial = months[months.length - 1];
+  const initial = months.find((m) => m.yearMonth === selectedDashboardMonth) || months[months.length - 1];
   const provision = provisionForMonth(initial);
 
   return `
@@ -901,6 +913,7 @@ function selectMonth(root, ym) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === ym);
   if (!m) return;
+  selectedDashboardMonth = m.yearMonth;
   const nhomNoSlot = root.querySelector('#nhom-no-slot');
   nhomNoSlot.dataset.ym = m.yearMonth;
   nhomNoSlot.innerHTML = nhomNoBarHtml(m);

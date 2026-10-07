@@ -111,6 +111,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
     AdminZaloOA.resetFilters?.();
     AdminSupport.resetFilters?.();
     AdminLogs.resetFilters?.();
+    AdminOverview.resetSelection?.();
     balanceSheetScrollY = 0;
     if (lastRoutePath === balanceSheetPath) lastRoutePath = null;
     lastSessionKey = curSessionKey;

@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { provisionFromSnapshot } from '../js/lib/collateral.js';
+import { provisionFromSnapshot, inheritCurrentCollateral, specificProvisionForLoan } from '../js/lib/collateral.js';
+
+test('TSBĐ mới áp ngược cho món vay cũ, giữ dư nợ và nhóm nợ của kỳ cũ', () => {
+  const oldLoan = { code: 'HD-01', balance: 700_000_000, group: 2, hasCollateral: false, collateralValue: 0 };
+  const matched = inheritCurrentCollateral(oldLoan,
+    { code: 'HD-01', hasCollateral: true, collateralType: '02', collateralValue: 1_000_000_000 });
+  assert.equal(matched.balance, 700_000_000);
+  assert.equal(matched.group, 2);
+  assert.equal(specificProvisionForLoan(matched, 0.05), 10_000_000);
+  assert.equal(specificProvisionForLoan(oldLoan, 0.05), 35_000_000);
+  assert.deepEqual(inheritCurrentCollateral(oldLoan, null), oldLoan);
+});
 
 test('bản chốt có số dự phòng dùng đúng số đã lưu', () => {
   assert.deepEqual(provisionFromSnapshot({ generalProvision: 125, specificProvision: 50 }),

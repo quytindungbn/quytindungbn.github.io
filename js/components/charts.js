@@ -294,13 +294,19 @@ export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceCol
     const x = (i) => left + i * step;
     const balances = months.map((m) => Math.max(0, Number(m.balance) || 0));
     const badDebts = months.map((m) => Math.max(0, Number(m.badDebt) || 0));
-    const maxBalance = Math.max(1, ...balances) * 1.18;
-    const maxBadDebt = Math.max(1, ...badDebts) * 1.25;
     // Mỗi trục riêng nằm trong một vùng dọc để hai đường không che nhau.
     const balanceBottom = mobile ? 99 : 113;
     const badTop = mobile ? 125 : 147;
-    const balanceY = (v) => balanceBottom - Math.max(0, v) / maxBalance * (balanceBottom - top);
-    const badY = (v) => bottom - Math.max(0, v) / maxBadDebt * (bottom - badTop);
+    // Trục bắt đầu gần mức thấp nhất quan sát được để thấy rõ biến động nhỏ.
+    // Số tiền tuyệt đối vẫn ghi cạnh từng điểm, tránh hiểu nhầm tỷ lệ tăng.
+    const scaledY = (values, laneTop, laneBottom) => {
+      const min = Math.min(...values), max = Math.max(...values);
+      const padding = Math.max((max - min) * .25, max * .02, 1);
+      const floor = Math.max(0, min - padding), span = max + padding - floor;
+      return (value) => laneBottom - (value - floor) / span * (laneBottom - laneTop);
+    };
+    const balanceY = scaledY(balances, top, balanceBottom);
+    const badY = scaledY(badDebts, badTop, bottom);
     const grid = [balanceBottom, (balanceBottom + badTop) / 2, bottom]
       .map((yy) => `<line x1="${left}" y1="${yy}" x2="${width - 20}" y2="${yy}" stroke="#e2e8f0"/>`).join('');
     const line = (values, pointY, color, dashed) => `<polyline fill="none" stroke="${color}" stroke-width="${mobile ? 2 : 2.7}" stroke-linecap="round" stroke-linejoin="round" ${dashed ? 'stroke-dasharray="5 3"' : ''} points="${values.map((v, i) => `${x(i)},${pointY(v)}`).join(' ')}"/>`;
@@ -320,5 +326,5 @@ export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceCol
     }).join('');
     return `<div class="trend-scroll ${mobile ? 'monthly-trend-mobile' : 'monthly-trend-desktop'}"><svg viewBox="0 0 ${width} ${height}" style="width:${months.length > visible ? (width / viewport * 100).toFixed(2) : 100}%;display:block" role="img" aria-label="Biến động theo tháng: dư nợ tỷ đồng, nợ xấu triệu đồng">${grid}${line(balances, balanceY, balanceColor, false)}${line(badDebts, badY, badDebtColor, true)}${dots}</svg></div>`;
   };
-  return `<div class="monthly-trend-note">Dư nợ: tỷ đồng · Nợ xấu: triệu đồng · Kéo ngang để xem các tháng trước</div><div class="monthly-trend-legend"><span><i style="background:${balanceColor}"></i>Dư nợ</span><span><i style="background:${badDebtColor}"></i>Nợ xấu (trục riêng)</span></div>${renderSvg(false)}${renderSvg(true)}`;
+  return `<div class="monthly-trend-note">Dư nợ: tỷ đồng · Nợ xấu: triệu đồng · Trục dọc rút gọn theo từng đường · Kéo ngang để xem các tháng trước</div><div class="monthly-trend-legend"><span><i style="background:${balanceColor}"></i>Dư nợ</span><span><i style="background:${badDebtColor}"></i>Nợ xấu (trục riêng)</span></div>${renderSvg(false)}${renderSvg(true)}`;
 }
