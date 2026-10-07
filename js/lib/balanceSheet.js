@@ -83,6 +83,22 @@ export function parseBalanceSheetRows(rows) {
       });
       return lines;
     };
+    const expandDetail = (lines, parentCode, childCodes) => {
+      const index = lines.findIndex((line) => line.code === parentCode);
+      if (index < 0) return;
+      const existing = childCodes.filter((code) => [...accounts.keys()].some((key) => key === code || key.startsWith(code + '.')));
+      if (!existing.length) { lines[index].incomplete = true; return; }
+      const parentBalance = lines[index].balance;
+      const children = existing.map((code) => ({
+        code, name: accounts.get(code)?.name || '', balance: credit(code),
+      })).filter((line) => line.balance !== 0);
+      const remainder = parentBalance - children.reduce((sum, line) => sum + line.balance, 0);
+      if (remainder) children.push({
+        code: parentCode, name: `Phần TK ${parentCode} chưa có tài khoản con trong file`,
+        balance: remainder, residual: true,
+      });
+      lines.splice(index, 1, ...children);
+    };
     const assets = debit('1') + debit('2') + debit('3');
     const liabilities = credit('4') + credit('5') + credit('6') + credit('7') - debit('8');
     const totalProvision = credit('219');
@@ -133,6 +149,14 @@ export function parseBalanceSheetRows(rows) {
       internalReceivables: breakdown(['36'], 4, debit, internalReceivables),
       otherLiabilities: breakdown(['4', '5'], 3, credit, otherLiabilities, ['423', '49']),
     };
+    expandDetail(accountDetails.otherLiabilities, '484', ['4841', '4842']);
+    const accountCodes = [...accounts.keys()];
+    // Một số mẫu A01 dùng 469.01 cho lợi tức vốn góp; xử lý như nhánh 461.
+    for (const parentCode of ['461', '469']) {
+      const children = accountCodes.filter((code) => code.startsWith(parentCode) && code.length > parentCode.length &&
+        !accountCodes.some((child) => child.length > code.length && child.startsWith(code))).sort();
+      expandDetail(accountDetails.otherLiabilities, parentCode, children);
+    }
     return { assets, liabilities, cash, tctdDeposits, tctdDemand, tctdTerm,
       nhHtxDemand, nhHtxTerm, otherTctdDemand, liquidity: cash + tctdDeposits,
       grossLoans, totalProvision, generalProvision, specificProvision, otherProvision, loanNet, fixedCapital,
