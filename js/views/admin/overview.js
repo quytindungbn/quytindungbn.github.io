@@ -6,9 +6,21 @@ import { emptyState, statusBadge, installmentHintHtml } from '../../components/u
 import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor, escapeHtml } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
-import { barChartSvg, monthlyComboChartSvg, compositionDonutHtml } from '../../components/charts.js';
+import { barChartSvg, monthlyTrendLineChartSvg, compositionDonutHtml } from '../../components/charts.js';
 import { openContractView, openCustomerDetail } from './customers.js';
 import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
+
+const COLLATERAL_NAMES = Object.freeze({
+  '01': 'Quyền sử dụng đất chính chủ',
+  '02': 'Quyền sử dụng đất bên thứ 3',
+  '04': 'Xe ô tô chính chủ',
+  '06': 'Sổ tiết kiệm',
+});
+
+function collateralDescription(contract) {
+  const name = contract.hasCollateral && COLLATERAL_NAMES[contract.collateralType];
+  return name ? `${name}: ${formatVND(contract.collateralValue)}` : 'Không có tài sản bảo đảm';
+}
 
 /** "2026-08" -> "Th08/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
 function monthLabel(yearMonth) {
@@ -147,7 +159,7 @@ export function render(contentEl) {
   // "Biến động hàng tháng" để CHUYỂN cả "Dư nợ theo nhóm nợ" lẫn "Tổng hợp
   // tăng giảm" sang đúng tháng đó (xem selectMonth()) — không tải lại trang.
   bindNhomNoClicks(contentEl);
-  bindSpecificProvision(contentEl);
+  bindProvisionDetails(contentEl);
   bindMonthClicks(contentEl);
   bindMonthSelector(contentEl);
   bindCompositionTabs(contentEl);
@@ -410,14 +422,33 @@ function nhomNoBarHtml(m) {
  */
 function provisionForMonth(m) {
   if (m.live) return S.provisionSummary(visibleContracts(), new Date());
-  return { generalProvision: m.generalProvision, specificProvision: m.specificProvision };
+  return S.provisionFromSnapshot({ ...m, totalBalance: m.balance })
+    || { generalProvision: null, specificProvision: null };
 }
 /** 2 dòng "Dự phòng chung/cụ thể phải trích" — chỉ chữ, không bỏ trong khung. `null` (xem provisionForMonth()) hiện "—" kèm ghi chú thay vì 0đ dễ hiểu nhầm là ĐÃ tính ra đúng 0. */
 function provisionRowsHtml(provision) {
   const val = (n) => (n != null ? formatVND(n) : '<span class="text-muted" style="font-weight:400;font-size:12px">— chưa có dữ liệu</span>');
   return `
-    <div class="provision-row"><span class="text-sm text-muted">Dự phòng chung phải trích</span><b>${val(provision.generalProvision)}</b></div>
+    <button type="button" class="provision-row provision-detail-button" id="general-provision-detail" aria-label="Xem cách tính dự phòng chung"><span class="text-sm text-muted">Dự phòng chung phải trích <span aria-hidden="true">›</span></span><b>${val(provision.generalProvision)}</b></button>
     <button type="button" class="provision-row provision-detail-button" id="specific-provision-detail" aria-label="Xem cách tính dự phòng cụ thể từng món vay"><span class="text-sm text-muted">Dự phòng cụ thể phải trích <span aria-hidden="true">›</span></span><b>${val(provision.specificProvision)}</b></button>`;
+}
+
+function openGeneralProvisionModal(month) {
+  const balances = [1, 2, 3, 4].map((group) => ({ group, balance: Number(month.groupBalances?.[group]) || 0 }));
+  const base = balances.reduce((sum, row) => sum + row.balance, 0);
+  const calculated = base * S.GENERAL_PROVISION_RATE;
+  const stored = provisionForMonth(month).generalProvision;
+  openModal({
+    title: `Dự phòng chung · ${month.label}`,
+    sheetClass: 'provision-detail-sheet',
+    bodyHtml: `<p class="text-sm text-muted">${month.live ? 'Dữ liệu hiện tại.' : 'Dữ liệu đã lưu của tháng này.'}</p>
+      <div class="provision-loan-grid">${balances.map((row) => `<span>Nhóm nợ ${row.group}</span><b>${formatVND(row.balance)}</b>`).join('')}
+        <span>Dư nợ nhóm 1–4</span><b>${formatVND(base)}</b>
+        <span>Tỷ lệ</span><b>0,75%</b>
+        <span>Phải trích</span><b class="provision-loan-amount">${formatVND(base)} × 0,75% = ${formatVND(calculated)}</b>
+      </div>
+      ${stored != null && Math.abs(calculated - stored) > 1 ? `<p class="bs-warning">Số tính từ chi tiết ${formatVND(calculated)} khác số đã lưu ${formatVND(stored)}; cần kiểm tra dữ liệu kỳ này.</p>` : ''}`,
+  });
 }
 
 function openSpecificProvisionModal(month) {
@@ -435,15 +466,14 @@ function openSpecificProvisionModal(month) {
     .map((ct) => ({ ct, calc: specificProvisionCalculation(ct, SPECIFIC_PROVISION_RATE[Number(ct.group)]) }))
     .sort((a, b) => b.calc.amount - a.calc.amount);
   const total = items.reduce((sum, item) => sum + item.calc.amount, 0);
-  const collateralName = { '01': 'Quyền sử dụng đất chính chủ', '02': 'Quyền sử dụng đất bên thứ 3', '04': 'Xe ô tô chính chủ', '06': 'Sổ tiết kiệm' };
   const cards = items.map(({ ct, calc }) => {
     const code = escapeHtml(ct.code || 'Chưa lưu số HĐTD');
     const name = escapeHtml(ct.name || '—');
     const eligible = calc.factor > 0;
-    const asset = eligible ? `${collateralName[ct.collateralType] || 'Tài sản bảo đảm'}: ${formatVND(calc.value)} × ${formatPercent(calc.factor * 100)}` : 'Không có tài sản bảo đảm được khấu trừ';
+    const asset = collateralDescription(ct);
     return `<article class="provision-loan" data-provision-loan>
       <div class="provision-loan-head"><div><strong>${name}</strong><small>HĐTD ${code}</small></div><span>Nhóm ${ct.group} · ${formatPercent(calc.rate * 100)}</span></div>
-      <div class="provision-loan-grid"><span>Dư nợ</span><b>${formatVND(calc.balance)}</b><span>TSBĐ</span><b>${asset}</b><span>Giá trị khấu trừ</span><b>${formatVND(calc.deduction)}</b><span>Cơ sở tính</span><b>max(0; ${formatVND(calc.balance)} − ${formatVND(calc.deduction)}) = ${formatVND(calc.base)}</b><span>Phải trích</span><b class="provision-loan-amount">${formatVND(calc.amount)}</b></div>
+      <div class="provision-loan-grid"><span>Dư nợ</span><b>${formatVND(calc.balance)}</b><span>TSBĐ</span><b>${asset}</b>${eligible ? `<span>Tỷ lệ khấu trừ</span><b>${formatPercent(calc.factor * 100)}</b><span>Giá trị khấu trừ</span><b>${formatVND(calc.deduction)}</b><span>Cơ sở tính</span><b>max(0; ${formatVND(calc.balance)} − ${formatVND(calc.deduction)}) = ${formatVND(calc.base)}</b>` : ''}<span>Phải trích</span><b class="provision-loan-amount">${formatVND(calc.amount)}</b></div>
     </article>`;
   }).join('');
   openModal({
@@ -469,10 +499,17 @@ function openSpecificProvisionModal(month) {
   });
 }
 
-function bindSpecificProvision(root) {
-  root.querySelector('#specific-provision-detail')?.addEventListener('click', () => {
+function bindProvisionDetails(root) {
+  const selectedMonth = () => {
     const ym = root.querySelector('#nhom-no-slot')?.dataset.ym;
-    const month = buildDebtDashboardData().months.find((m) => m.yearMonth === ym);
+    return buildDebtDashboardData().months.find((m) => m.yearMonth === ym);
+  };
+  root.querySelector('#general-provision-detail')?.addEventListener('click', () => {
+    const month = selectedMonth();
+    if (month) openGeneralProvisionModal(month);
+  });
+  root.querySelector('#specific-provision-detail')?.addEventListener('click', () => {
+    const month = selectedMonth();
     if (month) openSpecificProvisionModal(month);
   });
 }
@@ -717,7 +754,7 @@ function debtDashboardHtml() {
       <div id="month-selector-slot">${monthSelectorHtml(months, initial.yearMonth, isSuper)}</div>
 
       <h3 style="font-size:13.5px;margin-bottom:10px" class="mt-24">Biến động hàng tháng</h3>
-      <div id="trend-chart-slot">${monthlyComboChartSvg({ months, selectedYm: initial.yearMonth })}</div>
+      <div id="trend-chart-slot">${monthlyTrendLineChartSvg({ months, selectedYm: initial.yearMonth })}</div>
 
       <section class="composition-section" aria-labelledby="composition-heading">
         <h3 id="composition-heading" style="font-size:13.5px;margin-bottom:10px">Tỷ trọng dư nợ và số món vay</h3>
@@ -857,8 +894,7 @@ function openImportHistoricalModal() {
 }
 /** Tự cuộn khối "Biến động hàng tháng" (nếu có cuộn ngang — quá 7 tháng, xem monthlyComboChartSvg()) về SÁT MÉP PHẢI ngay sau khi vẽ — LUÔN thấy đúng tháng MỚI NHẤT trước tiên, không phải kéo từ tháng đầu tiên bên trái mới tới được tháng mới nhất. CHỈ gọi lúc mới vào trang (render() đầu) — bấm chọn 1 tháng khác (selectMonth(), kể cả bấm thẳng vào 1 cột trong biểu đồ) KHÔNG được tự kéo lại về mép phải, giữ nguyên đúng vị trí đang cuộn để không giật ngược ngay dưới ngón tay vừa bấm. */
 function scrollTrendChartToEnd(root) {
-  const scrollEl = root.querySelector('#trend-chart-slot .trend-scroll');
-  if (scrollEl) scrollEl.scrollLeft = scrollEl.scrollWidth;
+  root.querySelectorAll('#trend-chart-slot .trend-scroll').forEach((el) => { el.scrollLeft = el.scrollWidth; });
 }
 /** Chuyển "Dư nợ theo nhóm nợ" + "Dự phòng" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn) — GIỮ NGUYÊN vị trí đang cuộn ngang (nếu có), không tự kéo về mép nào cả, xem scrollTrendChartToEnd(). */
 function selectMonth(root, ym) {
@@ -875,17 +911,13 @@ function selectMonth(root, ym) {
   // Đổi trend-chart-slot.innerHTML sẽ làm mất luôn vị trí cuộn ngang cũ (nếu
   // khối trước đó có cuộn) — LƯU LẠI trước, đặt lại ĐÚNG vị trí đó sau khi
   // vẽ xong, thay vì gọi scrollTrendChartToEnd() (chỉ dùng lúc mới vào trang).
-  const oldScrollEl = root.querySelector('#trend-chart-slot .trend-scroll');
-  const oldScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : null;
-  root.querySelector('#trend-chart-slot').innerHTML = monthlyComboChartSvg({ months, selectedYm: ym });
-  if (oldScrollLeft !== null) {
-    const newScrollEl = root.querySelector('#trend-chart-slot .trend-scroll');
-    if (newScrollEl) newScrollEl.scrollLeft = oldScrollLeft;
-  }
+  const oldScrollLeft = [...root.querySelectorAll('#trend-chart-slot .trend-scroll')].map((el) => el.scrollLeft);
+  root.querySelector('#trend-chart-slot').innerHTML = monthlyTrendLineChartSvg({ months, selectedYm: ym });
+  root.querySelectorAll('#trend-chart-slot .trend-scroll').forEach((el, i) => { el.scrollLeft = oldScrollLeft[i] || 0; });
   const sel = root.querySelector('#month-select');
   if (sel) sel.value = ym;
   bindNhomNoClicks(root);
-  bindSpecificProvision(root);
+  bindProvisionDetails(root);
   bindMonthClicks(root);
 }
 
@@ -954,7 +986,7 @@ function openDebtGroupModal(g, isStaff, m) {
             <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${d.address || 'Chưa có địa bàn'}</span>
             <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(d.balance)}</b>
           </div>
-          ${showTsbd ? `<div class="text-sm text-muted" style="margin-top:2px">${d.hasCollateral && ['01', '02', '04', '06'].includes(d.collateralType) ? `Có TSBĐ: ${formatVND(d.collateralValue)}` : 'Không có tài sản bảo đảm'}</div>` : ''}
+          ${showTsbd ? `<div class="text-sm text-muted" style="margin-top:2px">${collateralDescription(d)}</div>` : ''}
         </div>`).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Nhóm này hiện đang trống.' })}
     `;
   } else {
@@ -1003,8 +1035,7 @@ function openDebtGroupModal(g, isStaff, m) {
 
 /** TSBĐ chỉ đọc từ cột T/AB của file số 1 hoặc dữ liệu đã chốt. */
 function tsbdRowHtml(ct) {
-  const hasEligibleCollateral = ct.hasCollateral && ['01', '02', '04', '06'].includes(ct.collateralType);
-  return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${hasEligibleCollateral ? `Có TSBĐ: <b>${formatVND(ct.collateralValue)}</b>` : 'Không có tài sản bảo đảm'}</div>`;
+  return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${collateralDescription(ct)}</div>`;
 }
 
 /**
