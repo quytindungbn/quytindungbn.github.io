@@ -1182,6 +1182,58 @@ Deno.serve(async (req) => {
   // khóa/xóa) — KHÔNG được đụng vào bất kỳ tài khoản QUẢN TRỊ VIÊN nào khác
   // (kể cả 1 nhân viên chỉ xem khác), xem SUPER_ONLY_TYPES ngay dưới đây.
   const canManageUsers = isSuper || callerAdmin.can_manage_users === true;
+  // Chỉ trả về hai số tổng hợp toàn quỹ cho người được xem Quản trị. Không
+  // trả danh sách hợp đồng vì RLS vẫn giới hạn nhân viên theo Thôn/Xóm.
+  if (body.type === 'get-management-provision') {
+    if (!isSuper && callerAdmin.can_view_balance_sheet !== true) {
+      return json({ ok: false, reason: 'Không có quyền xem số liệu Quản trị.' }, 403);
+    }
+    const yearMonth = String(body.yearMonth || '');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(yearMonth)) {
+      return json({ ok: false, reason: 'Tháng không hợp lệ.' }, 400);
+    }
+    const { data: snapshot, error: snapshotError } = await admin.from('monthly_snapshots')
+      .select('total_balance, group_balances, general_provision, specific_provision, contracts_detail')
+      .eq('year_month', yearMonth).maybeSingle();
+    if (snapshotError) return json({ ok: false, reason: 'Không đọc được số dự phòng đã chốt.' }, 500);
+    if (snapshot?.general_provision != null && snapshot?.specific_provision != null) {
+      return json({ ok: true, generalProvision: Number(snapshot.general_provision), specificProvision: Number(snapshot.specific_provision) });
+    }
+    const details = snapshot?.contracts_detail;
+    if (Array.isArray(details) && details.length && snapshot?.group_balances) {
+      const detailBalance = details.reduce((sum: number, ct: any) => sum + (Number(ct.balance) || 0), 0);
+      if (Math.abs(detailBalance - (Number(snapshot.total_balance) || 0)) <= 1) {
+        const generalBase = [1, 2, 3, 4].reduce((sum, group) => sum + (Number(snapshot.group_balances[String(group)]) || 0), 0);
+        const specificProvision = details.reduce((sum: number, ct: any) => {
+          const rate = PROVISION_SPECIFIC_RATE[Number(ct.group)] || 0;
+          const factor = collateralDeductionRate({ has_collateral: ct.hasCollateral, collateral_type: ct.collateralType });
+          return sum + Math.max(0, (Number(ct.balance) || 0) - (Number(ct.collateralValue) || 0) * factor) * rate;
+        }, 0);
+        return json({ ok: true, generalProvision: generalBase * PROVISION_GENERAL_RATE, specificProvision });
+      }
+    }
+    // Chưa có bản chốt đủ dữ liệu: đối chiếu số hiện tại của toàn quỹ như
+    // tài khoản admin toàn quyền, không tính từ mảng hợp đồng đã bị RLS lọc.
+    let generalBase = 0;
+    let specificProvision = 0;
+    const now = new Date();
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin.from('contracts')
+        .select('id, principal, balance, disbursed_date, due_date, installment_schedule, has_collateral, collateral_type, collateral_value')
+        .order('id').range(from, from + 999);
+      if (error) return json({ ok: false, reason: 'Không đọc đủ hợp đồng để tính dự phòng.' }, 500);
+      for (const ct of data || []) {
+        const group = debtGroupZalo(ct, now);
+        if (group === null) continue;
+        const balance = Number(ct.balance) || 0;
+        if (group <= 4) generalBase += balance;
+        const rate = PROVISION_SPECIFIC_RATE[group];
+        if (rate) specificProvision += Math.max(0, balance - (Number(ct.collateral_value) || 0) * collateralDeductionRate(ct)) * rate;
+      }
+      if ((data || []).length < 1000) break;
+    }
+    return json({ ok: true, generalProvision: generalBase * PROVISION_GENERAL_RATE, specificProvision });
+  }
   // Các "type" sau LUÔN bắt buộc đúng quản trị viên toàn quyền, không có
   // ngoại lệ cho canManageUsers — gồm CẢ sửa cấu hình quỹ/nhập hàng loạt LẪN
   // mọi thao tác đụng tới tài khoản Quản trị viên/nhân viên khác (tạo/xóa/
