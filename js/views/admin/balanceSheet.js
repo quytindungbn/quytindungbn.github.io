@@ -233,8 +233,9 @@ function trendChart(list) {
   const base = Math.max(0, min - (max - min || max * 0.05) * 0.35);
   const span = Math.max(1, max - base);
   const profits = shown.map((r) => Number(r.figures.end.profit) || 0);
-  const profitBase = Math.min(0, ...profits) * 1.15;
-  const profitTop = Math.max(0, ...profits) * 1.15 || 1;
+  // Giữ mốc 0 và nới trục lợi nhuận để dao động nhỏ không bị phóng đại.
+  const profitBase = Math.min(0, ...profits) * 2;
+  const profitTop = Math.max(0, ...profits) * 2 || 1;
   const profitSpan = Math.max(1, profitTop - profitBase);
   const selected = shown.find((r) => r.year_month === selectedMonth) || shown.at(-1);
   return `<p class="bs-chart-note">Tổng tài sản, tiền gửi, dư nợ: tỷ đồng · Lợi nhuận: triệu đồng.</p><div class="bs-chart-scroll">${trendSvg(shown, base, span, profitBase, profitSpan, false)}${trendSvg(shown, base, span, profitBase, profitSpan, true)}</div>
