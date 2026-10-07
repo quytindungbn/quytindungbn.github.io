@@ -79,13 +79,13 @@ function ratiosSection(end) {
     : '';
   const tile = (label, value, detail, advice, alert = false) => `<article class="bs-ratio-card ${alert ? 'bs-ratio-alert' : ''}">
     <div class="bs-ratio-head"><h4>${label}</h4><strong>${value}</strong></div>
-    <p class="bs-ratio-detail">${detail}</p>${advice ? `<p class="bs-ratio-advice">${advice}</p>` : ''}</article>`;
+    ${detail ? `<p class="bs-ratio-detail">${detail}</p>` : ''}${advice ? `<p class="bs-ratio-advice">${advice}</p>` : ''}</article>`;
   return `<section class="bs-ratios bs-section"><div class="bs-management-title"><h3>Chỉ số quản trị</h3><span>Lũy kế từ đầu năm · không quy đổi năm</span></div>
     <div class="bs-ratio-grid">
       ${tile('ROE', ratioFormat(ratios.roe, '%'), 'Lợi nhuận lũy kế / vốn chủ sở hữu', profitWarning, Number(end.profit) < 0)}
       ${tile('ROA', ratioFormat(ratios.roa, '%'), 'Lợi nhuận lũy kế / tổng tài sản', profitWarning, Number(end.profit) < 0)}
-      ${tile('Cho vay / tiền gửi', ratioFormat(ratios.loanDeposit, '%'), 'Dư nợ cho vay / tiền gửi khách hàng', loanWarning, ratios.loanDeposit > 100)}
-      ${tile('Tiền gửi / vốn chủ sở hữu', ratioFormat(ratios.depositCapital, ' lần'), 'Tiền gửi khách hàng / vốn chủ sở hữu', depositsWarning, ratios.depositCapital > 20)}
+      ${tile('Cho vay / tiền gửi', ratioFormat(ratios.loanDeposit, '%'), '', loanWarning, ratios.loanDeposit > 100)}
+      ${tile('Tiền gửi / vốn chủ sở hữu', ratioFormat(ratios.depositCapital, ' lần'), '', depositsWarning, ratios.depositCapital > 20)}
     </div><p class="bs-chart-note">ROA và ROE dùng lợi nhuận lũy kế và số dư cuối kỳ của tháng được chọn; đây là tỷ lệ quản trị tạm tính, chưa dùng tài sản/vốn bình quân hoặc lợi nhuận sau thuế.</p></section>`;
 }
 
@@ -143,13 +143,16 @@ function trendMonthDetail(report) {
 }
 
 function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
-  const width = mobile ? 320 : 1120;
+  const viewport = mobile ? 320 : 1120;
+  const visible = mobile ? 6 : 12;
   const height = mobile ? 215 : 330;
   const left = mobile ? 45 : 80;
-  const right = mobile ? 265 : 1020;
+  const step = (viewport - left - (mobile ? 55 : 100)) / (visible - 1);
+  const width = Math.max(viewport, left + step * (shown.length - 1) + (mobile ? 55 : 100));
+  const right = width - (mobile ? 55 : 100);
   const top = mobile ? 20 : 24;
   const bottom = mobile ? 170 : 278;
-  const x = (i) => shown.length === 1 ? (left + right) / 2 : left + (right - left) * i / (shown.length - 1);
+  const x = (i) => left + i * step;
   const y = (v) => bottom - (v - base) / span * (bottom - top);
   const profitY = (v) => bottom - (v - profitBase) / profitSpan * (bottom - top);
   const lines = [0, 0.5, 1].map((p) => {
@@ -165,12 +168,12 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
     }).join('')}`;
   }).join('');
   const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 200 : 314}" text-anchor="middle" font-size="${mobile ? 9 : 13}" font-weight="700" fill="#475569">${r.year_month.slice(5, 7)}${mobile ? '' : `/${r.year_month.slice(2, 4)}`}</text>`).join('');
-  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Biến động tổng tài sản, tiền gửi, dư nợ và lợi nhuận trong tối đa 12 tháng đã nạp">${lines}${plots}${labels}</svg>`;
+  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" style="width:${shown.length > visible ? (width / viewport * 100).toFixed(2) : 100}%" role="img" aria-label="Biến động tổng tài sản, tiền gửi, dư nợ và lợi nhuận theo các tháng đã nạp">${lines}${plots}${labels}</svg>`;
 }
 
 function trendChart(list) {
   if (!list.length) return '<p class="text-muted text-sm">Chưa có tháng nào để vẽ biểu đồ.</p>';
-  const shown = list.slice(-12);
+  const shown = list;
   const values = shown.flatMap((r) => [Number(r.figures.end.assets), Number(r.figures.end.customerDeposits), Number(r.figures.end.grossLoans) || 0]);
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -203,6 +206,7 @@ function bindTrendPoints(root) {
   chart.addEventListener('pointerover', (event) => show(event.target));
   chart.addEventListener('click', (event) => show(event.target));
   chart.addEventListener('focusin', (event) => show(event.target));
+  chart.scrollLeft = chart.scrollWidth;
 }
 
 function composition(items, total, centerLabel, { grossShares = false } = {}) {
@@ -260,28 +264,40 @@ function showProfitDetails(report) {
 function provisionComparison(report) {
   const snap = S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month);
   const end = report.figures.end;
-  const differentDate = snap?.snapshotDate && snap.snapshotDate !== report.period_end;
+  const snapshotProvision = S.provisionFromSnapshot(snap);
+  // Cùng nguồn với Tổng quan: bản chốt của tháng được ưu tiên. Khi bản chốt
+  // chưa có số dự phòng, dùng số hiện tại của toàn quỹ và nói rõ ngày nguồn.
+  const today = new Date();
+  const live = !snapshotProvision && S.isSuperAdmin(S.getSession()?.id)
+    ? S.provisionSummary(S.getState().contracts, today) : null;
+  const app = snapshotProvision || live;
+  const sourceDate = snapshotProvision ? snap.snapshotDate : live
+    ? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}` : null;
+  const differentDate = sourceDate && sourceDate !== report.period_end;
   const deadline = nextProvisionDeadline(report.year_month);
   const provisions = [
-    ['Dự phòng chung', end.generalProvision, snap?.generalProvision],
-    ['Dự phòng cụ thể', end.specificProvision, snap?.specificProvision],
+    ['Dự phòng chung', end.generalProvision, app?.generalProvision],
+    ['Dự phòng cụ thể', end.specificProvision, app?.specificProvision],
   ];
   const compare = (label, fileValue, appValue) => {
     const gap = provisionDifference(fileValue, appValue);
     return `<tr><th scope="row">${label}</th><td>${money(fileValue)}</td><td>${Number.isFinite(appValue) ? money(appValue) : 'Chưa có số liệu'}</td><td class="${gap == null ? '' : gap === 0 ? 'bs-match' : gap > 0 ? 'bs-overprovision' : 'bs-negative'}">${gap == null ? '—' : signed(gap)}</td></tr>`;
   };
-  const alerts = differentDate ? '' : provisions.map(([label, fileValue, appValue]) => {
+  const alerts = provisions.map(([label, fileValue, appValue]) => {
     const gap = provisionDifference(fileValue, appValue);
     if (gap > 0) return `<p class="bs-warning bs-provision-alert">${label} dư ${money(gap)} so với mức phải trích; cần hoàn nhập phần dư.</p>`;
     if (gap < 0) return `<p class="bs-warning bs-provision-alert bs-provision-shortfall">${label} thiếu ${money(-gap)}; cần trích bổ sung trong 07 ngày đầu tháng sau, chậm nhất ngày ${deadline}.</p>`;
     return '';
   }).join('');
   return `<div class="card card-pad bs-section"><h3>Trích lập dự phòng</h3>
-    ${differentDate ? `<p class="bs-warning">Ngày chốt trên app (${escapeHtml(snap.snapshotDate)}) khác ngày số liệu của file (${escapeHtml(report.period_end)}); cần đối chiếu cùng ngày trước khi hoàn nhập hoặc trích bổ sung.</p>` : alerts}
+    ${live ? '<p class="bs-warning">Chưa có số dự phòng chốt của tháng này; cột Phải trích đang lấy từ Tổng quan theo dữ liệu hiện tại của toàn quỹ. Khi có bản chốt đúng tháng, số này sẽ được thay thế.</p>' : ''}
+    ${snapshotProvision && !Number.isFinite(snap.generalProvision) ? '<p class="bs-source">Số Phải trích được tính lại từ chi tiết hợp đồng đã lưu của kỳ này.</p>' : ''}
+    ${differentDate ? `<p class="bs-source">Ngày số liệu Phải trích: ${reportDate(sourceDate)} · Ngày file cân đối: ${reportDate(report.period_end)}. Chênh lệch được tính theo hai nguồn đang có.</p>` : ''}
+    ${alerts}
     <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch</th></tr></thead><tbody>
       ${provisions.map(([label, fileValue, appValue]) => compare(label, fileValue, appValue)).join('')}
       ${compare('Tổng dự phòng', end.totalProvision ?? end.generalProvision + end.specificProvision,
-        Number.isFinite(snap?.generalProvision) && Number.isFinite(snap?.specificProvision) ? snap.generalProvision + snap.specificProvision : null)}
+        Number.isFinite(app?.generalProvision) && Number.isFinite(app?.specificProvision) ? app.generalProvision + app.specificProvision : null)}
     </tbody></table></div></div>`;
 }
 

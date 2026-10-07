@@ -695,7 +695,7 @@ svg { display: block; }
 .bs-section h3 { margin:0 0 12px; font-size:16px; }
 .bs-section p { line-height:1.5; }
 .bs-chart-scroll { overflow-x:auto; }
-.bs-chart-scroll svg { display:block; width:100%; min-width:450px; }
+.bs-chart-scroll svg { display:block; min-width:450px; }
 .bs-chart-scroll .bs-trend-mobile { display:none; }
 .bs-chart-legend { display:flex; flex-wrap:wrap; gap:16px; margin-top:8px; font-size:12px; color:var(--text-muted); }
 .bs-chart-legend span, .bs-composition-list span { display:flex; align-items:center; gap:7px; }
@@ -772,13 +772,19 @@ svg { display: block; }
 .bs-overprovision { color:#875800; font-weight:700; }
 .bs-provision-alert { border-left:3px solid #d18d16; margin:8px 0; }
 .bs-provision-shortfall { color:#a92322; background:#fff0ef; border-color:var(--danger); }
-.bs-ratio-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
-.bs-ratio-card { min-width:0; padding:15px; border:1.5px solid #9aada8; border-radius:10px; background:var(--surface); }
+.bs-ratio-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:start; }
+.bs-ratio-card { min-width:0; padding:11px 12px; border:1.5px solid #9aada8; border-radius:10px; background:var(--surface); }
 .bs-ratio-alert { border-color:#c9483d; background:#fff8f6; }
 .bs-ratio-head { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:5px; }
 .bs-ratio-head h4 { margin:0; font-size:13px; }
-.bs-ratio-head strong { color:#075b4e; font-size:20px; font-variant-numeric:tabular-nums; }
-.bs-ratio-detail, .bs-ratio-advice { margin:9px 0 0; font-size:11.5px; line-height:1.45; }
+.bs-ratio-head strong { color:#075b4e; font-size:18px; font-variant-numeric:tabular-nums; }
+.bs-ratio-detail, .bs-ratio-advice { margin:5px 0 0; font-size:11.5px; line-height:1.35; }
+.monthly-trend-note { font-size:11px; color:var(--text-muted); margin:0 0 5px; }
+.monthly-trend-legend { display:flex; flex-wrap:wrap; gap:14px; margin:0 0 6px; font-size:11px; color:var(--text-muted); }
+.monthly-trend-legend span { display:inline-flex; align-items:center; gap:5px; }
+.monthly-trend-legend i { width:10px; height:10px; border-radius:50%; }
+.trend-scroll { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.monthly-trend-mobile { display:none; }
 .bs-ratio-detail { color:var(--text-muted); }
 .bs-ratio-advice { font-weight:650; }
 .provision-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 0; border-top:1px solid var(--border); }
@@ -811,9 +817,11 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
   .bs-month-select select { width:100%; padding:0 5px; font-size:11px; }
   .bs-toolbar-actions .btn { min-height:38px; padding:6px 8px; font-size:11px; }
   .bs-trend-section { padding:12px 6px; }
-  .bs-chart-scroll { overflow:hidden; }
+  .bs-chart-scroll { overflow-x:auto; }
   .bs-chart-scroll .bs-trend-desktop { display:none; }
   .bs-chart-scroll .bs-trend-mobile { display:block; min-width:0; }
+  .monthly-trend-desktop { display:none; }
+  .monthly-trend-mobile { display:block; }
   .bs-trend-detail { display:block; }
   .bs-trend-detail > div { margin-top:6px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
   .bs-trend-detail span { display:block; }
