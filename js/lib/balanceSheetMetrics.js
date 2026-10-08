@@ -9,6 +9,29 @@ export function yearOpeningReport(reports, yearMonth) {
   return reports.find((report) => report.year_month === `${yearMonth.slice(0, 4)}-01`) || null;
 }
 
+/** Ghép các tài khoản của ba mốc để tài khoản vừa về 0 vẫn hiện mức giảm. */
+export function accountDetailChanges(endLines, startLines, yearLines) {
+  if (!Array.isArray(endLines)) return null;
+  const sources = [endLines, startLines, yearLines];
+  const id = (line) => `${line.code}\u0000${line.residual ? 'residual' : 'account'}`;
+  const maps = sources.map((lines) => Array.isArray(lines)
+    ? new Map(lines.map((line) => [id(line), line])) : null);
+  const details = new Map();
+  for (const lines of sources) {
+    if (!Array.isArray(lines)) continue;
+    for (const line of lines) {
+      const key = id(line);
+      if (!details.has(key)) details.set(key, line);
+    }
+  }
+  return [...details].map(([key, detail]) => ({
+    ...detail,
+    balance: maps[0].get(key)?.balance ?? 0,
+    startBalance: maps[1] ? (maps[1].get(key)?.balance ?? 0) : undefined,
+    yearBalance: maps[2] ? (maps[2].get(key)?.balance ?? 0) : undefined,
+  }));
+}
+
 export function provisionDifference(balance, required) {
   return Number.isFinite(balance) && Number.isFinite(required) ? balance - required : null;
 }
