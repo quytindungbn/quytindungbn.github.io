@@ -31,15 +31,15 @@ function change(current, base) {
   return `<span class="bs-change ${tone}"><strong>${signed(result.amount)}</strong><small><span class="bs-change-separator" aria-hidden="true">|</span>${result.percent == null ? '—' : percent(result.percent)}</small></span>`;
 }
 
-function managementRow(label, key, start, end, yearOpening, { total = false, child = false, nested = false, note = '', noYear = false, profitDetail = false, accountDetail = null, ordinal = null } = {}) {
+function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, accountDetail = null, ordinal = null } = {}) {
   const name = `${label}:`;
   const detailButton = profitDetail
     ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>`
     : accountDetail
       ? `<button type="button" class="bs-management-link" data-account-details="${accountDetail}" aria-label="Xem chi tiết tài khoản ${label}">${name}</button>`
       : name;
-  return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${nested ? 'bs-management-nested' : ''} ${ordinal ? 'bs-management-numbered' : ''}">
-    <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${detailButton}${note ? `<small class="bs-management-note">${note}</small>` : ''}</div>
+  return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${ordinal ? 'bs-management-numbered' : ''}">
+    <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${detailButton}</div>
     <div class="bs-management-end"><strong>${money(end[key])}</strong></div>
     <div class="bs-management-value" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
     <div class="bs-management-value" data-label="Từ đầu năm">${noYear ? '<span class="text-muted">—</span>' : change(end[key], yearOpening?.[key])}</div>
@@ -354,23 +354,6 @@ function showAccountDetails(report, key) {
   });
 }
 
-function equityOtherRows(report, yearStart) {
-  const { start, end } = report.figures;
-  const lines = accountDetailChanges(end.accountDetails?.equityOther, start.accountDetails?.equityOther,
-    yearStart?.accountDetails?.equityOther, historicAccountLines(reports, report.year_month, 'equityOther'));
-  if (!lines) return { html: '', hasHistory: false };
-  return {
-    hasHistory: lines.length > 0,
-    html: lines.map((line) => {
-      const title = line.residual ? 'Phần vốn chưa tách tài khoản'
-        : `${escapeHtml(String(line.name || 'Vốn khác'))} (TK ${escapeHtml(String(line.code || ''))})`;
-      const note = clearedAccountNote(line);
-      return managementRow(`↳ ${title}`, 'balance', { balance: line.startBalance }, line,
-        { balance: line.yearBalance }, { child: true, nested: true, note });
-    }).join(''),
-  };
-}
-
 function provisionComparison(report) {
   const snap = S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month);
   const end = report.figures.end;
@@ -420,7 +403,7 @@ function draw(contentEl) {
   const previousDecember = report ? previousDecemberReport(reports, report.year_month) : null;
   const fundingYearStart = { ...yearStart, equity: previousDecember?.figures?.end?.equity };
   const equityParts = end?.equityParts;
-  const equityOther = report ? equityOtherRows(report, yearStart) : { html: '', hasHistory: false };
+  const hasEquityHistory = report && historicAccountLines(reports, report.year_month, 'equityOther').length > 0;
   const assetItems = report ? [
     { label: 'Tiền mặt tại đơn vị', key: 'cash' },
     { label: 'Tiền gửi tại các TCTD', key: 'tctdDeposits', children: [['Không kỳ hạn', 'tctdDemand'], ['Có kỳ hạn', 'tctdTerm']] },
@@ -439,8 +422,8 @@ function draw(contentEl) {
     ${equityPartRow('↳ Quỹ dự trữ bổ sung vốn điều lệ', 'supplementaryReserve', report, yearStart)}
     ${equityPartRow('↳ Quỹ đầu tư phát triển', 'developmentReserve', report, yearStart)}
     ${equityPartRow('↳ Quỹ dự phòng tài chính', 'financialReserve', report, yearStart)}
-    ${equityParts.otherEquity || start.equityParts?.otherEquity || yearStart?.equityParts?.otherEquity || equityOther.hasHistory
-      ? `${equityPartRow('↳ Vốn chủ sở hữu khác', 'otherEquity', report, yearStart)}${equityOther.html}` : ''}`
+    ${equityParts.otherEquity || start.equityParts?.otherEquity || yearStart?.equityParts?.otherEquity || hasEquityHistory
+      ? equityPartRow('↳ Lợi nhuận chưa phân phối', 'otherEquity', report, yearStart) : ''}`
     : '<p class="bs-management-hint">Cần nạp lại file kỳ này để hiển thị vốn điều lệ và các quỹ.</p>';
   const fundingItems = report ? [
     { label: 'Tiền gửi khách hàng', key: 'customerDeposits' },
