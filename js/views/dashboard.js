@@ -35,11 +35,11 @@ export function render(contentEl) {
     <div class="card card-pad mb-16">
       <div class="text-sm text-muted">Xin chào,</div>
       <div class="fw-700" style="font-size:17px;margin-bottom:14px">${customer.name}</div>
-      <div class="stat-tile c-blue" style="max-width:340px">
+      ${active.length !== 1 ? `<div class="stat-tile c-blue" style="max-width:340px">
         <div class="stat-icon">${icon('wallet', 'icon-sm')}</div>
         <div class="stat-label">Tổng dư nợ hiện tại (${active.length} hợp đồng)</div>
         <div class="stat-value">${formatVND(total)}</div>
-      </div>
+      </div>` : ''}
     </div>
 
     <div class="section-head">
