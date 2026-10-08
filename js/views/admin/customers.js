@@ -202,7 +202,7 @@ export function render(contentEl, filterEl) {
       const nearDueContracts = contractInfos.filter((x) => x.info.level === 'gan_den_han').map((x) => x.ct);
       const hasOverdue = overdueContracts.length > 0;
       const hasNearDue = !hasOverdue && nearDueContracts.length > 0;
-      // Hợp đồng quá hạn/gần đến hạn NHIỀU ngày nhất (đáng chú ý nhất) — hiện kèm số ngày cho dễ nhìn ngay từ danh sách.
+      // Mốc đáng chú ý nhất chỉ dùng để lọc/sắp xếp; mỗi hợp đồng tự hiện trạng thái riêng cạnh mã HĐTD.
       const mostOverdueDays = hasOverdue ? Math.max(...contractInfos.filter((x) => x.info.level === 'qua_han').map((x) => x.info.days)) : 0;
       const mostNearDueDays = hasNearDue ? Math.min(...contractInfos.filter((x) => x.info.level === 'gan_den_han').map((x) => x.info.days)) : 0;
       return { c, contracts, totalBalance, totalInterest, hasOverdue, hasNearDue, mostOverdueDays, mostNearDueDays };
@@ -234,28 +234,26 @@ export function render(contentEl, filterEl) {
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
       ${enriched.length ? `<div class="customer-ledger">
         <div class="customer-ledger-columns" aria-hidden="true">
-          <span>HỢP ĐỒNG</span><span>NGÀY VAY</span><span>ĐẾN HẠN</span><span>DƯ NỢ</span>
-          <span>ĐÃ TRẢ LÃI ĐẾN</span><span>SỐ NGÀY LÃI</span><span>LÃI CỘNG DỒN</span><span>TÌNH TRẠNG</span>
+          <span>HỢP ĐỒNG · TÌNH TRẠNG</span><span>NGÀY VAY</span><span>ĐẾN HẠN</span><span>DƯ NỢ</span>
+          <span>ĐÃ TRẢ LÃI ĐẾN</span><span>SỐ NGÀY LÃI</span><span>LÃI CỘNG DỒN</span>
         </div>
-        ${enriched.map(({ c, contracts, totalBalance, hasOverdue, hasNearDue, mostOverdueDays, mostNearDueDays }) => {
-          const nearDueHighlight = hasNearDue && mostNearDueDays <= S.NEAR_DUE_DAYS;
+        ${enriched.map(({ c, contracts, totalBalance }) => {
           const location = [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn';
+          const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
           return `
             <section class="customer-ledger-group">
-              <button type="button" class="customer-ledger-person" data-id="${c.id}" aria-label="Xem khách hàng ${escapeHtml(c.name)}">
-                <span class="customer-ledger-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}</span>
-                <span class="customer-ledger-identity">
-                  <span class="customer-ledger-name">${escapeHtml(c.name)}
-                    ${hasOverdue ? `<span class="badge badge-red">Quá hạn ${mostOverdueDays} ngày</span>` : ''}
-                    ${hasNearDue ? (nearDueHighlight
-                      ? `<span class="badge badge-yellow">Gần đến hạn ${mostNearDueDays} ngày</span>`
-                      : `<span class="customer-ledger-soft-alert">Gần đến hạn ${mostNearDueDays} ngày</span>`) : ''}
+              <div class="customer-ledger-person">
+                <button type="button" class="customer-ledger-person-main" data-id="${c.id}" aria-label="Xem khách hàng ${escapeHtml(c.name)}">
+                  <span class="customer-ledger-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}</span>
+                  <span class="customer-ledger-identity">
+                    <span class="customer-ledger-name">${escapeHtml(c.name)}</span>
+                    <span class="customer-ledger-address">${escapeHtml(location)}</span>
                   </span>
-                  <span class="customer-ledger-address">${escapeHtml(location)}</span>
-                </span>
-                ${contracts.length > 1 ? `<span class="customer-ledger-total">Tổng dư nợ: <strong>${formatVND(totalBalance)}</strong></span>` : ''}
+                  ${contracts.length > 1 ? `<span class="customer-ledger-total">Tổng dư nợ: <strong>${formatVND(totalBalance)}</strong></span>` : ''}
+                </button>
+                ${dialPhone ? `<a class="customer-ledger-call" href="tel:${escapeHtml(dialPhone)}" aria-label="Gọi ${escapeHtml(c.name)}" title="Gọi ${escapeHtml(c.phone)}">${icon('phone', 'icon-sm')} Gọi</a>` : ''}
                 <span class="customer-ledger-dots">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
-              </button>
+              </div>
               ${contracts.map((ct) => contractLedgerRow(ct)).join('')}
             </section>`;
         }).join('')}
@@ -623,18 +621,17 @@ function contractLedgerRow(ct) {
     ? statusBadge({ badge: 'badge-red', label: `Quá hạn ${info.days} ngày` })
     : info.level === 'gan_den_han'
       ? statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${info.days} ngày` })
-      : statusBadge({ badge: 'badge-blue', label: 'Trong hạn' });
+      : statusBadge({ badge: 'badge-green', label: 'Trong hạn' });
   return `
     <button type="button" class="customer-ledger-contract ${info.level === 'qua_han' ? 'is-overdue' : info.level === 'gan_den_han' ? 'is-near' : ''}"
       data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" aria-label="Xem hợp đồng ${escapeHtml(ct.code)}">
-      <div class="customer-ledger-code"><span>HĐTD ${escapeHtml(ct.code)}</span>${installmentHintHtml(ct)}</div>
+      <div class="customer-ledger-code"><span class="customer-ledger-code-line"><span>HĐTD ${escapeHtml(ct.code)}</span>${status}</span>${installmentHintHtml(ct)}</div>
       <span class="customer-ledger-disbursed">${formatDate(ct.disbursedDate)}</span>
       <span class="customer-ledger-due">${formatDate(ct.dueDate)}</span>
       <span class="customer-ledger-balance">${formatVND(ct.balance)}</span>
       <span class="customer-ledger-paid">${formatDate(ct.interestPaidUntil || ct.disbursedDate)}</span>
-      <span class="customer-ledger-days">${interestDays} ngày</span>
+      <span class="customer-ledger-days"><strong>${interestDays}</strong> ngày</span>
       <span class="customer-ledger-interest">${formatVND(interest)}</span>
-      <span class="customer-ledger-status">${status}</span>
     </button>`;
 }
 
