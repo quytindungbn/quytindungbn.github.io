@@ -132,7 +132,7 @@ export function render(contentEl) {
       </div>
     </div>
 
-    <div id="month-selector-slot" class="card card-pad mb-16">${monthSelectorHtml(dashboardData.months, dashboardMonth.yearMonth, isSuper)}</div>
+    <div id="month-selector-slot" class="card card-pad mb-16 overview-period-picker">${monthSelectorHtml(dashboardData.months, dashboardMonth.yearMonth, isSuper)}</div>
 
     ${debtDashboardHtml(dashboardData, dashboardMonth)}
 
@@ -748,8 +748,8 @@ function monthSelectorHtml(months, selectedYm, isSuper) {
     .map((m) => `<option value="${m.yearMonth}" ${m.yearMonth === selectedYm ? 'selected' : ''}>${monthLabelWithNote(m)}</option>`)
     .join('');
   return `
-    <div class="flex items-center justify-between" style="gap:8px;flex-wrap:wrap">
-      <div class="flex items-center" style="gap:8px">
+    <div class="overview-period-row">
+      <div class="overview-period-controls">
         <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Kỳ báo cáo tháng</label>
         <select id="month-select" class="pill-select" style="max-width:220px">${options}</select>
       </div>
