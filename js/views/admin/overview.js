@@ -60,7 +60,7 @@ function visibleContracts() {
 }
 
 export function render(contentEl) {
-  const { isStaff } = currentRoles();
+  const { isStaff, isSuper } = currentRoles();
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
   const customers = S.listCustomers({ adminId: isStaff ? admin.id : undefined });
@@ -112,6 +112,9 @@ export function render(contentEl) {
     .filter((x) => x.info.level === 'gan_den_han')
     .sort((a, b) => a.info.days - b.info.days)
     .map((x) => x.c);
+  const dashboardData = buildDebtDashboardData();
+  const dashboardMonth = dashboardData.months.find((m) => m.yearMonth === selectedDashboardMonth)
+    || dashboardData.months[dashboardData.months.length - 1];
 
   contentEl.innerHTML = `
     <div class="grid-4 mb-16">
@@ -129,7 +132,9 @@ export function render(contentEl) {
       </div>
     </div>
 
-    ${debtDashboardHtml()}
+    <div id="month-selector-slot" class="card card-pad mb-16">${monthSelectorHtml(dashboardData.months, dashboardMonth.yearMonth, isSuper)}</div>
+
+    ${debtDashboardHtml(dashboardData, dashboardMonth)}
 
     <div class="card card-pad">
       <div class="section-head"><h2>Yêu cầu mới nhất</h2><a href="#/admin/ho-tro?tab=requests" class="link-more">Xem tất cả</a></div>
@@ -727,7 +732,7 @@ function openMonthlyDetailModal() {
 }
 
 /**
- * Nút chọn tháng để xem lại lịch sử, đặt NGAY SAU "Dư nợ theo nhóm nợ" —
+ * Nút chọn tháng để xem lại lịch sử, đặt ngay dưới bốn ô tổng quan —
  * chọn 1 tháng bất kỳ (VD 07/2026) sẽ gọi selectMonth() y hệt như bấm vào
  * cột biểu đồ "Biến động hàng tháng". Danh sách xếp mới nhất trước cho dễ
  * tìm. Kèm nút "Nạp dữ liệu cũ" (CHỈ super, xem openImportHistoricalModal())
@@ -743,19 +748,16 @@ function monthSelectorHtml(months, selectedYm, isSuper) {
     .map((m) => `<option value="${m.yearMonth}" ${m.yearMonth === selectedYm ? 'selected' : ''}>${monthLabelWithNote(m)}</option>`)
     .join('');
   return `
-    <div class="flex items-center justify-between mt-12" style="gap:8px;flex-wrap:wrap">
+    <div class="flex items-center justify-between" style="gap:8px;flex-wrap:wrap">
       <div class="flex items-center" style="gap:8px">
-        <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Xem lại tháng</label>
+        <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Kỳ báo cáo tháng</label>
         <select id="month-select" class="pill-select" style="max-width:220px">${options}</select>
       </div>
       ${isSuper ? `<a href="javascript:void(0)" id="btn-import-historical" class="link-more" style="font-size:11.5px">Nạp dữ liệu cũ</a>` : ''}
     </div>`;
 }
 
-function debtDashboardHtml() {
-  const { isSuper } = currentRoles();
-  const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
-  const initial = months.find((m) => m.yearMonth === selectedDashboardMonth) || months[months.length - 1];
+function debtDashboardHtml({ months, prevMonthOf, yearStartOf }, initial) {
   const provision = provisionForMonth(initial);
 
   return `
@@ -763,8 +765,6 @@ function debtDashboardHtml() {
       <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
       <div id="nhom-no-slot" data-ym="${initial.yearMonth}">${nhomNoBarHtml(initial)}</div>
       <div id="provision-slot" class="mt-16">${provisionRowsHtml(provision)}</div>
-      <div id="month-selector-slot">${monthSelectorHtml(months, initial.yearMonth, isSuper)}</div>
-
       <h3 style="font-size:13.5px;margin-bottom:10px" class="mt-24">Biến động hàng tháng</h3>
       <div id="trend-chart-slot">${monthlyTrendLineChartSvg({ months, selectedYm: initial.yearMonth })}</div>
 
@@ -794,7 +794,7 @@ function bindMonthClicks(root) {
     el.addEventListener('click', () => selectMonth(root, el.dataset.month));
   });
 }
-/** Gắn sự kiện đổi cho nút chọn tháng (ngay sau "Dư nợ theo nhóm nợ") — chọn 1 tháng trong danh sách sẽ chuyển y hệt như bấm vào cột biểu đồ, xem selectMonth(). */
+/** Gắn sự kiện đổi cho nút chọn tháng dưới bốn ô tổng quan; chọn tháng cũng cập nhật các biểu đồ và chi tiết. */
 function bindMonthSelector(root) {
   const sel = root.querySelector('#month-select');
   if (!sel) return;

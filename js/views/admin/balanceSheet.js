@@ -433,7 +433,7 @@ function draw(contentEl) {
     { label: 'Lợi nhuận lũy kế', key: 'profit', options: { noYear: true, profitDetail: true } },
   ] : [];
   contentEl.innerHTML = `<div class="bs-toolbar"><div><h2>Số liệu quản trị theo tháng</h2>${report ? `<p class="bs-source">Số liệu đến ngày: <strong>${reportDate(report.period_end)}</strong></p>` : ''}</div>
-    <div class="bs-toolbar-actions">${reports.length ? `<label class="bs-month-select">Kỳ báo cáo <select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${monthName(r.year_month)}</option>`).join('')}</select></label>` : ''}
+    <div class="bs-toolbar-actions">${reports.length ? `<label class="bs-month-select">Kỳ báo cáo tháng <select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select></label>` : ''}
     <button class="btn btn-outline" id="bs-refresh" type="button">Làm mới</button>
     ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>' : ''}</div></div>
     ${!report ? `<div class="card card-pad"><p>Chưa có bảng cân đối nào. Quản trị viên toàn quyền có thể nạp file .xls hoặc .xlsx của từng tháng.</p></div>` : `
