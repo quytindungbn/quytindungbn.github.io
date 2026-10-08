@@ -9,10 +9,32 @@ export function yearOpeningReport(reports, yearMonth) {
   return reports.find((report) => report.year_month === `${yearMonth.slice(0, 4)}-01`) || null;
 }
 
+export function previousDecemberReport(reports, yearMonth) {
+  if (!/^\d{4}-\d{2}$/.test(yearMonth || '')) return null;
+  return reports.find((report) => report.year_month === `${Number(yearMonth.slice(0, 4)) - 1}-12`) || null;
+}
+
+/** Các tài khoản từng có số dư trong năm, kể cả khi file tháng đang xem đã bỏ tài khoản đó. */
+export function historicAccountLines(reports, yearMonth, key) {
+  if (!/^\d{4}-\d{2}$/.test(yearMonth || '')) return [];
+  const lines = new Map();
+  const id = (line) => `${line.code}\u0000${line.residual ? 'residual' : 'account'}`;
+  for (const report of [...reports].filter((item) => item.year_month?.slice(0, 4) === yearMonth.slice(0, 4)
+    && item.year_month <= yearMonth).sort((a, b) => a.year_month.localeCompare(b.year_month))) {
+    for (const period of ['start', 'end']) {
+      for (const line of report.figures?.[period]?.accountDetails?.[key] || []) {
+        if (!Number.isFinite(line.balance) || line.balance === 0) continue;
+        lines.set(id(line), { ...line, lastBalance: line.balance, lastMonth: report.year_month });
+      }
+    }
+  }
+  return [...lines.values()];
+}
+
 /** Ghép các tài khoản của ba mốc để tài khoản vừa về 0 vẫn hiện mức giảm. */
-export function accountDetailChanges(endLines, startLines, yearLines) {
+export function accountDetailChanges(endLines, startLines, yearLines, historyLines = []) {
   if (!Array.isArray(endLines)) return null;
-  const sources = [endLines, startLines, yearLines];
+  const sources = [endLines, startLines, yearLines, historyLines];
   const id = (line) => `${line.code}\u0000${line.residual ? 'residual' : 'account'}`;
   const maps = sources.map((lines) => Array.isArray(lines)
     ? new Map(lines.map((line) => [id(line), line])) : null);
@@ -29,7 +51,26 @@ export function accountDetailChanges(endLines, startLines, yearLines) {
     balance: maps[0].get(key)?.balance ?? 0,
     startBalance: maps[1] ? (maps[1].get(key)?.balance ?? 0) : undefined,
     yearBalance: maps[2] ? (maps[2].get(key)?.balance ?? 0) : undefined,
+    lastBalance: maps[3]?.get(key)?.lastBalance,
+    lastMonth: maps[3]?.get(key)?.lastMonth,
   }));
+}
+
+/** Trong một lượt nạp, chỉ file có ngày số liệu mới nhất của mỗi tháng được lưu. */
+export function selectLatestBalanceImports(imports) {
+  const byMonth = new Map();
+  const skipped = [];
+  for (const item of imports) {
+    const previous = byMonth.get(item.parsed.yearMonth);
+    if (!previous) { byMonth.set(item.parsed.yearMonth, item); continue; }
+    if (previous.parsed.periodEnd === item.parsed.periodEnd) {
+      throw new Error(`Có hai file cùng kỳ ${item.parsed.yearMonth} và cùng ngày ${item.parsed.periodEnd}. Chỉ chọn một file cho ngày này.`);
+    }
+    const latest = previous.parsed.periodEnd > item.parsed.periodEnd ? previous : item;
+    skipped.push(latest === previous ? item : previous);
+    byMonth.set(item.parsed.yearMonth, latest);
+  }
+  return { selected: [...byMonth.values()].sort((a, b) => a.parsed.yearMonth.localeCompare(b.parsed.yearMonth)), skipped };
 }
 
 export function provisionDifference(balance, required) {

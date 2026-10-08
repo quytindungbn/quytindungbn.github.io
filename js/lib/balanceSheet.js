@@ -148,6 +148,8 @@ export function parseBalanceSheetRows(rows) {
     const accountDetails = {
       internalReceivables: breakdown(['36'], 4, debit, internalReceivables),
       otherLiabilities: breakdown(['4', '5'], 3, credit, otherLiabilities, ['423', '49']),
+      equityOther: breakdown(['6'], 3, credit, equity).filter((line) => line.residual ||
+        (line.code !== '6' && !['601', '611', '612', '613'].some((code) => line.code.startsWith(code)))),
     };
     expandDetail(accountDetails.otherLiabilities, '484', ['4841', '4842']);
     const accountCodes = [...accounts.keys()];
