@@ -771,10 +771,6 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     sheetClass: 'customer-contract-sheet',
     bodyHtml: `
       <div class="customer-contract-view">
-        <div class="customer-contract-intro">
-          <span>${customer ? escapeHtml(customer.name) : 'Khách hàng'}${customer && customer.address ? ` · ${escapeHtml(customer.address)}` : ''}</span>
-          ${statusBadge(info)}
-        </div>
         <div class="customer-contract-metrics">
           <div class="customer-contract-metric is-primary"><span>DƯ NỢ HIỆN TẠI</span><strong>${formatVND(contract.balance)}</strong><small>Số gốc còn phải trả</small></div>
           <div class="customer-contract-metric"><span>LÃI CỘNG DỒN</span><strong>${formatVND(accrued)}</strong><small>Tính đến ${formatDate(new Date())}</small></div>
