@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareBalance, yearOpeningReport, accountDetailChanges, provisionDifference, nextProvisionDeadline, managementRatios } from '../js/lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios } from '../js/lib/balanceSheetMetrics.js';
 
 test('biến động dùng số gốc tuyệt đối và không tạo tỷ lệ giả khi gốc bằng 0', () => {
   assert.deepEqual(compareBalance(70_147_510_875, 70_726_277_233), {
@@ -24,6 +24,15 @@ test('mốc từ đầu năm là số đầu kỳ tháng 01 cùng năm', () => {
   assert.equal(yearOpeningReport(reports, '2025-12'), null);
 });
 
+test('mốc vốn chủ sở hữu mục chính là cuối tháng 12 năm trước', () => {
+  const reports = [
+    { year_month: '2025-12', figures: { end: { equity: 3_800 } } },
+    { year_month: '2026-01', figures: { start: { equity: 3_790 } } },
+  ];
+  assert.equal(compareBalance(4_200, previousDecemberReport(reports, '2026-09').figures.end.equity).amount, 400);
+  assert.equal(previousDecemberReport(reports, '2025-12'), null);
+});
+
 test('chi tiết tài khoản giữ cả mã đã về 0 và phân biệt phần chưa tách', () => {
   const end = [{ code: '3611', balance: 120 }, { code: '484', residual: true, balance: 10 }];
   const start = [{ code: '3611', balance: 100 }, { code: '3612', balance: 50 }, { code: '484', residual: true, balance: 20 }];
@@ -39,6 +48,32 @@ test('chi tiết tài khoản giữ cả mã đã về 0 và phân biệt phần
   assert.equal(compareBalance(lines[2].balance, lines[2].startBalance).percent, -100);
   assert.equal(accountDetailChanges(end, undefined, undefined)[0].startBalance, undefined);
   assert.equal(accountDetailChanges(undefined, start, year), null);
+});
+
+test('tài khoản vốn biến mất khỏi file vẫn hiện số dư gần nhất và mức giảm từ đầu năm', () => {
+  const januaryLine = { code: '69', name: 'Lợi nhuận chưa phân phối', balance: 5 };
+  const reports = [
+    { year_month: '2026-01', figures: { start: { accountDetails: { equityOther: [januaryLine] } }, end: { accountDetails: { equityOther: [januaryLine] } } } },
+    { year_month: '2026-04', figures: { start: { accountDetails: { equityOther: [] } }, end: { accountDetails: { equityOther: [] } } } },
+  ];
+  const history = historicAccountLines(reports, '2026-04', 'equityOther');
+  const [line] = accountDetailChanges([], [], [januaryLine], history);
+  assert.equal(line.name, 'Lợi nhuận chưa phân phối');
+  assert.equal(line.balance, 0);
+  assert.equal(line.lastBalance, 5);
+  assert.equal(line.lastMonth, '2026-01');
+  assert.equal(compareBalance(line.balance, line.yearBalance).percent, -100);
+});
+
+test('nạp nhiều file lấy bản mới nhất từng tháng và chặn hai bản cùng ngày', () => {
+  const file = (name, yearMonth, periodEnd) => ({ file: { name }, parsed: { yearMonth, periodEnd } });
+  const older = file('a.xls', '2026-09', '2026-09-05');
+  const newer = file('b.xls', '2026-09', '2026-09-30');
+  const october = file('c.xls', '2026-10', '2026-10-07');
+  const result = selectLatestBalanceImports([october, older, newer]);
+  assert.deepEqual(result.selected, [newer, october]);
+  assert.deepEqual(result.skipped, [older]);
+  assert.throws(() => selectLatestBalanceImports([newer, file('d.xls', '2026-09', '2026-09-30')]), /cùng ngày/);
 });
 
 test('dự phòng lấy bảng cân đối trừ phải trích và hạn ngày 07 tháng sau kể cả qua năm', () => {

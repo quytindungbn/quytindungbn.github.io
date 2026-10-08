@@ -132,6 +132,27 @@ test('lợi nhuận = doanh thu trừ chi phí; TSCĐ trừ hao mòn và tách g
   assert.equal(start.fixedAssetsNet, 80);
 });
 
+test('vốn chủ sở hữu khác lưu tên tài khoản để còn theo dõi sau khi số dư về 0', () => {
+  const rows = sample();
+  rows[26] = ['Vốn điều lệ', '601', 0, 40, 0, 0, 0, 40];
+  rows[27] = ['Quỹ dự trữ', '611', 0, 10, 0, 0, 0, 10];
+  rows[28] = ['Quỹ đầu tư', '612', 0, 20, 0, 0, 0, 20];
+  rows[29] = ['Quỹ tài chính', '613', 0, 5, 0, 0, 0, 5];
+  rows.push(['Lợi nhuận chưa phân phối', '69', 0, 5, 0, 0, 0, 5]);
+  const january = parseBalanceSheetRows(rows);
+  assert.deepEqual(january.end.accountDetails.equityOther.map(({ code, name, balance }) => [code, name, balance]),
+    [['69', 'Lợi nhuận chưa phân phối', 5]]);
+  const aprilRows = structuredClone(rows);
+  aprilRows[4][0] = 'Từ ngày 01/04/2026 đến ngày 30/04/2026';
+  aprilRows[11][2] = aprilRows[11][6] = 95;
+  aprilRows[12][2] = aprilRows[12][6] = 95;
+  aprilRows[23][3] = aprilRows[23][7] = 75;
+  aprilRows.pop();
+  const april = parseBalanceSheetRows(aprilRows);
+  assert.equal(april.end.equityParts.otherEquity, 0);
+  assert.deepEqual(april.end.accountDetails.equityOther, []);
+});
+
 test('chi tiết TK 36 cấp 3 và các nguồn nợ khác khớp số tổng, không cộng trùng tài khoản cha', () => {
   const rows = sample();
   const set = (index, name, code, dr, cr) => {
