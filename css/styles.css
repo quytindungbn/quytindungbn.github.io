@@ -776,8 +776,6 @@ svg { display: block; }
 .bs-management-link:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
 .bs-management-child { background:var(--surface-alt); color:var(--text-muted); }
 .bs-management-child .bs-management-name { font-weight:500; padding-left:32px; }
-.bs-management-nested .bs-management-name { padding-left:56px; flex-wrap:wrap; }
-.bs-management-note { display:block; flex-basis:100%; color:var(--text-muted); font-size:11px; font-weight:500; line-height:1.35; }
 .bs-management-value { text-align:right; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .bs-management-total { background:#e8f5f1; font-weight:800; }
 .bs-management-total .bs-management-name { font-weight:800; }
@@ -866,7 +864,6 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
   .bs-management-numbered .bs-management-value { padding-left:38px; }
   .bs-management-child .bs-management-name { padding-left:22px; }
   .bs-management-child .bs-management-value { padding-left:22px; }
-  .bs-management-nested .bs-management-name, .bs-management-nested .bs-management-value { padding-left:38px; }
   .bs-profit-details > div { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .bs-profit-details > div > :last-child { grid-column:1 / -1; justify-self:end; }
   .bs-profit-details .bs-profit-head > :last-child { display:none; }
