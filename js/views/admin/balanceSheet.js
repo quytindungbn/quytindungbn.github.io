@@ -5,7 +5,7 @@ import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
-import { compareBalance, yearOpeningReport, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, accountDetailChanges, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
 import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, formatCompact } from '../../utils.js';
 
@@ -319,22 +319,29 @@ function showAccountDetails(report, key) {
   const labels = { internalReceivables: 'Phải thu nội bộ', otherLiabilities: 'Nợ phải trả khác' };
   const label = labels[key];
   if (!label) return;
-  const end = report.figures.end;
-  const lines = end.accountDetails?.[key];
-  if (!Array.isArray(lines)) {
+  const { start, end } = report.figures;
+  const januaryStart = yearOpeningReport(reports, report.year_month)?.figures?.start;
+  const lines = accountDetailChanges(end.accountDetails?.[key], start.accountDetails?.[key], januaryStart?.accountDetails?.[key]);
+  if (!lines) {
     openModal({ title: label, bodyHtml: '<p class="text-muted">Kỳ này được nạp trước khi ứng dụng lưu chi tiết tài khoản. Vui lòng nạp lại file A01 của đúng tháng để xem từng tài khoản và số dư.</p>' });
     return;
   }
   openModal({
     title: `${label} · ${monthName(report.year_month)}`,
+    sheetClass: 'bs-account-sheet',
     bodyHtml: `<p class="bs-account-period">Số dư đến ngày ${reportDate(report.period_end)}</p>
       <div class="bs-account-list">
-        <div class="bs-account-columns"><span>Tài khoản</span><span>Số dư cuối kỳ</span></div>
+        <div class="bs-account-columns"><span>Tài khoản</span><span>Cuối kỳ</span><span>Tăng/giảm</span><span>Từ đầu năm</span></div>
         ${lines.length ? lines.map((line) => `<div class="bs-account-line">
           <div><strong>${line.residual ? 'Phần chưa tách' : `TK ${escapeHtml(String(line.code || ''))}${line.incomplete ? ' (chưa đủ cấp)' : ''}`}</strong>${line.name ? `<span>${escapeHtml(String(line.name))}</span>` : ''}</div>
           <b>${money(Number(line.balance) || 0)}</b>
+          <div class="bs-account-delta" data-label="Tăng/giảm">${change(Number(line.balance) || 0, line.startBalance)}</div>
+          <div class="bs-account-delta" data-label="Từ đầu năm">${change(Number(line.balance) || 0, line.yearBalance)}</div>
         </div>`).join('') : '<p class="text-muted">Không có số dư cuối kỳ.</p>'}
-        <div class="bs-account-line bs-account-total"><div><strong>Tổng ${label}</strong></div><b>${money(end[key])}</b></div>
+        <div class="bs-account-line bs-account-total"><div><strong>Tổng ${label}</strong></div><b>${money(end[key])}</b>
+          <div class="bs-account-delta" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
+          <div class="bs-account-delta" data-label="Từ đầu năm">${change(end[key], januaryStart?.[key])}</div>
+        </div>
       </div>`,
   });
 }
