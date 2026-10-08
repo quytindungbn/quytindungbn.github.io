@@ -635,7 +635,6 @@ function contractLedgerRow(ct) {
       <span class="customer-ledger-days">${interestDays} ngày</span>
       <span class="customer-ledger-interest">${formatVND(interest)}</span>
       <span class="customer-ledger-status">${status}</span>
-      <span class="customer-ledger-mobile-extra">Lãi: ${formatVND(interest)} · ${interestDays} ngày lãi</span>
     </button>`;
 }
 
