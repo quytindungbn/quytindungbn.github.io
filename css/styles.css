@@ -517,7 +517,7 @@ svg { display: block; }
 .customer-ledger-columns,
 .customer-ledger-contract {
   display: grid;
-  grid-template-columns: 23% 10% 10% 12% 12% 9% 11% 13%;
+  grid-template-columns: 28% 10% 10% 15% 13% 10% 14%;
   align-items: center;
   column-gap: 0;
 }
@@ -527,16 +527,19 @@ svg { display: block; }
 .customer-ledger-group + .customer-ledger-group { border-top: 3px solid #b4cabc; }
 .customer-ledger-person {
   width: 100%; display: flex; align-items: center; gap: 9px;
-  border: 0; background: #f1f7f3; text-align: left; padding: 10px 16px;
-  color: var(--text); cursor: pointer;
+  background: #f1f7f3; padding: 10px 16px;
+}
+.customer-ledger-person-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px;
+  border: 0; background: transparent; padding: 0; color: var(--text);
+  text-align: left; cursor: pointer;
 }
 .customer-ledger-person:hover, .customer-ledger-contract:hover { background: #f1f8f4; }
+.customer-ledger-call { display: none; }
 .customer-ledger-avatar { width: 31px; height: 31px; border-radius: 50%; flex: none; display: grid; place-items: center; color: #fff; font-size: 11px; font-weight: 700; }
 .customer-ledger-identity { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .customer-ledger-name { font-size: 13px; font-weight: 700; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.customer-ledger-name .badge { font-size: 10px; }
 .customer-ledger-address { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.customer-ledger-soft-alert { color: var(--warning); font-size: 11px; font-weight: 600; }
 .customer-ledger-total { margin-left: auto; color: var(--text-muted); white-space: nowrap; font-size: 12px; }
 .customer-ledger-total strong { color: var(--color-primary-dark); }
 .customer-ledger-dots { margin-left: 8px; flex: none; }
@@ -545,31 +548,37 @@ svg { display: block; }
   border: 0; border-top: 1px solid var(--border); background: var(--surface);
   color: var(--text); text-align: left; cursor: pointer; font-size: 12px;
 }
-.customer-ledger-code { border-left: 3px solid var(--color-primary); padding-left: 9px; font-weight: 400; font-size: 13px; }
+.customer-ledger-code { border-left: 4px solid #0d6b34; padding-left: 9px; font-weight: 400; font-size: 13px; }
+.customer-ledger-code-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.customer-ledger-code-line .badge { font-size: 10px; }
 .customer-ledger-contract.is-near .customer-ledger-code { border-left-color: var(--warning); }
 .customer-ledger-contract.is-overdue .customer-ledger-code { border-left-color: var(--danger); }
 .customer-ledger-balance { font-weight: 700; }
 .customer-ledger-interest { color: var(--color-primary-dark); font-weight: 700; }
 .customer-ledger-paid { color: var(--text-muted); }
-.customer-ledger-status .badge { font-size: 10px; white-space: nowrap; }
-.customer-ledger-person:focus-visible, .customer-ledger-contract:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.customer-ledger-days strong { color: var(--text); font-weight: 700; }
+.customer-ledger-person-main:focus-visible, .customer-ledger-call:focus-visible, .customer-ledger-contract:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media (max-width: 960px) {
   .customer-ledger-columns, .customer-ledger-group { min-width: 0; }
   .customer-ledger-columns { display: none; }
-  .customer-ledger-person { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 9px 10px; gap: 5px 7px; }
+  .customer-ledger-person { align-items: flex-start; padding: 9px 10px; gap: 7px; }
+  .customer-ledger-person-main { flex-direction: column; align-items: flex-start; gap: 5px; }
+  .customer-ledger-identity { width: 100%; }
   .customer-ledger-avatar { display: none; }
   .customer-ledger-name { font-size: 12px; }
-  .customer-ledger-total { grid-column: 1 / -1; margin-left: 0; font-size: 11px; }
-  .customer-ledger-dots { margin-left: 0; }
+  .customer-ledger-total { margin-left: 0; font-size: 11px; }
+  .customer-ledger-dots { margin-left: 0; padding-top: 8px; }
+  .customer-ledger-call { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface); color: var(--color-primary-dark); font-size: 11px; font-weight: 700; text-decoration: none; white-space: nowrap; }
   .customer-ledger-contract { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; width: calc(100% - 20px); margin: 0 10px; padding: 9px 0; }
   .customer-ledger-code { grid-column: 1; font-size: 12px; }
+  .customer-ledger-code-line .badge { max-width: 100%; white-space: normal; }
   .customer-ledger-balance { grid-column: 2; text-align: right; font-size: 12px; }
   .customer-ledger-contract > .customer-ledger-days { grid-column: 1; padding-left: 12px; color: var(--text-muted); font-size: 11px; }
   .customer-ledger-days::after { content: ' lãi'; }
   .customer-ledger-interest { grid-column: 2; text-align: right; font-size: 11px; font-weight: 700; }
   .customer-ledger-interest::before { content: 'Lãi: '; font-weight: 400; }
   .customer-ledger-contract > span { padding-left: 0; }
-  .customer-ledger-disbursed, .customer-ledger-due, .customer-ledger-paid, .customer-ledger-status { display: none; }
+  .customer-ledger-disbursed, .customer-ledger-due, .customer-ledger-paid { display: none; }
 }
 
 /* Bảng "Kế hoạch trả nợ" (popup) + ô tóm tắt "Kỳ tới" — dùng chung cho trang
