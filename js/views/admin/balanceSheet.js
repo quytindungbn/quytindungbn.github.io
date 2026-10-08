@@ -5,7 +5,7 @@ import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
-import { compareBalance, yearOpeningReport, accountDetailChanges, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
 import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, formatCompact } from '../../utils.js';
 
@@ -31,15 +31,15 @@ function change(current, base) {
   return `<span class="bs-change ${tone}"><strong>${signed(result.amount)}</strong><small><span class="bs-change-separator" aria-hidden="true">|</span>${result.percent == null ? '—' : percent(result.percent)}</small></span>`;
 }
 
-function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, accountDetail = null, ordinal = null } = {}) {
+function managementRow(label, key, start, end, yearOpening, { total = false, child = false, nested = false, note = '', noYear = false, profitDetail = false, accountDetail = null, ordinal = null } = {}) {
   const name = `${label}:`;
   const detailButton = profitDetail
     ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>`
     : accountDetail
       ? `<button type="button" class="bs-management-link" data-account-details="${accountDetail}" aria-label="Xem chi tiết tài khoản ${label}">${name}</button>`
       : name;
-  return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${ordinal ? 'bs-management-numbered' : ''}">
-    <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${detailButton}</div>
+  return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${nested ? 'bs-management-nested' : ''} ${ordinal ? 'bs-management-numbered' : ''}">
+    <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${detailButton}${note ? `<small class="bs-management-note">${note}</small>` : ''}</div>
     <div class="bs-management-end"><strong>${money(end[key])}</strong></div>
     <div class="bs-management-value" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
     <div class="bs-management-value" data-label="Từ đầu năm">${noYear ? '<span class="text-muted">—</span>' : change(end[key], yearOpening?.[key])}</div>
@@ -315,13 +315,21 @@ function showProfitDetails(report) {
   });
 }
 
+function clearedAccountNote(line) {
+  if (line.balance !== 0 || !Number.isFinite(line.lastBalance) || !line.lastBalance) return '';
+  return line.lastBalance > 0
+    ? `Đã giảm hết ${money(line.lastBalance)} (100%) so với ${monthName(line.lastMonth)}`
+    : `Đã về 0 từ số dư ${money(line.lastBalance)} (${monthName(line.lastMonth)})`;
+}
+
 function showAccountDetails(report, key) {
   const labels = { internalReceivables: 'Phải thu nội bộ', otherLiabilities: 'Nợ phải trả khác' };
   const label = labels[key];
   if (!label) return;
   const { start, end } = report.figures;
   const januaryStart = yearOpeningReport(reports, report.year_month)?.figures?.start;
-  const lines = accountDetailChanges(end.accountDetails?.[key], start.accountDetails?.[key], januaryStart?.accountDetails?.[key]);
+  const lines = accountDetailChanges(end.accountDetails?.[key], start.accountDetails?.[key],
+    januaryStart?.accountDetails?.[key], historicAccountLines(reports, report.year_month, key));
   if (!lines) {
     openModal({ title: label, bodyHtml: '<p class="text-muted">Kỳ này được nạp trước khi ứng dụng lưu chi tiết tài khoản. Vui lòng nạp lại file A01 của đúng tháng để xem từng tài khoản và số dư.</p>' });
     return;
@@ -333,7 +341,7 @@ function showAccountDetails(report, key) {
       <div class="bs-account-list">
         <div class="bs-account-columns"><span>Tài khoản</span><span>Cuối kỳ</span><span>Tăng/giảm</span><span>Từ đầu năm</span></div>
         ${lines.length ? lines.map((line) => `<div class="bs-account-line">
-          <div><strong>${line.residual ? 'Phần chưa tách' : `TK ${escapeHtml(String(line.code || ''))}${line.incomplete ? ' (chưa đủ cấp)' : ''}`}</strong>${line.name ? `<span>${escapeHtml(String(line.name))}</span>` : ''}</div>
+          <div><strong>${line.residual ? 'Phần chưa tách' : `TK ${escapeHtml(String(line.code || ''))}${line.incomplete ? ' (chưa đủ cấp)' : ''}`}</strong>${line.name ? `<span>${escapeHtml(String(line.name))}</span>` : ''}${clearedAccountNote(line) ? `<small>${clearedAccountNote(line)}</small>` : ''}</div>
           <b>${money(Number(line.balance) || 0)}</b>
           <div class="bs-account-delta" data-label="Tăng/giảm">${change(Number(line.balance) || 0, line.startBalance)}</div>
           <div class="bs-account-delta" data-label="Từ đầu năm">${change(Number(line.balance) || 0, line.yearBalance)}</div>
@@ -344,6 +352,23 @@ function showAccountDetails(report, key) {
         </div>
       </div>`,
   });
+}
+
+function equityOtherRows(report, yearStart) {
+  const { start, end } = report.figures;
+  const lines = accountDetailChanges(end.accountDetails?.equityOther, start.accountDetails?.equityOther,
+    yearStart?.accountDetails?.equityOther, historicAccountLines(reports, report.year_month, 'equityOther'));
+  if (!lines) return { html: '', hasHistory: false };
+  return {
+    hasHistory: lines.length > 0,
+    html: lines.map((line) => {
+      const title = line.residual ? 'Phần vốn chưa tách tài khoản'
+        : `${escapeHtml(String(line.name || 'Vốn khác'))} (TK ${escapeHtml(String(line.code || ''))})`;
+      const note = clearedAccountNote(line);
+      return managementRow(`↳ ${title}`, 'balance', { balance: line.startBalance }, line,
+        { balance: line.yearBalance }, { child: true, nested: true, note });
+    }).join(''),
+  };
 }
 
 function provisionComparison(report) {
@@ -392,7 +417,10 @@ function draw(contentEl) {
   const start = report?.figures.start;
   const yearOpening = report ? yearOpeningReport(reports, report.year_month) : null;
   const yearStart = yearOpening?.figures.start;
+  const previousDecember = report ? previousDecemberReport(reports, report.year_month) : null;
+  const fundingYearStart = { ...yearStart, equity: previousDecember?.figures?.end?.equity };
   const equityParts = end?.equityParts;
+  const equityOther = report ? equityOtherRows(report, yearStart) : { html: '', hasHistory: false };
   const assetItems = report ? [
     { label: 'Tiền mặt tại đơn vị', key: 'cash' },
     { label: 'Tiền gửi tại các TCTD', key: 'tctdDeposits', children: [['Không kỳ hạn', 'tctdDemand'], ['Có kỳ hạn', 'tctdTerm']] },
@@ -402,14 +430,17 @@ function draw(contentEl) {
       : [{ label: 'TSCĐ ròng và vốn góp NHHTX', key: 'fixedCapital' }]),
     { label: 'Phải thu nội bộ', key: 'internalReceivables', options: { accountDetail: 'internalReceivables' } },
     { label: 'Lãi và phí phải thu', key: 'accruedReceivables' },
-    ...(end.otherAssets || start.otherAssets ? [{ label: 'Tài sản khác', key: 'otherAssets' }] : []),
+    ...(end.otherAssets || start.otherAssets || reports.some((item) => item.year_month?.slice(0, 4) === report.year_month.slice(0, 4)
+      && item.year_month <= report.year_month && item.figures?.end?.otherAssets)
+      ? [{ label: 'Tài sản khác', key: 'otherAssets' }] : []),
   ] : [];
   const equityDetails = equityParts ? `
     ${equityPartRow('↳ Vốn điều lệ', 'charterCapital', report, yearStart)}
     ${equityPartRow('↳ Quỹ dự trữ bổ sung vốn điều lệ', 'supplementaryReserve', report, yearStart)}
     ${equityPartRow('↳ Quỹ đầu tư phát triển', 'developmentReserve', report, yearStart)}
     ${equityPartRow('↳ Quỹ dự phòng tài chính', 'financialReserve', report, yearStart)}
-    ${equityParts.otherEquity || start.equityParts?.otherEquity ? equityPartRow('↳ Vốn chủ sở hữu khác', 'otherEquity', report, yearStart) : ''}`
+    ${equityParts.otherEquity || start.equityParts?.otherEquity || yearStart?.equityParts?.otherEquity || equityOther.hasHistory
+      ? `${equityPartRow('↳ Vốn chủ sở hữu khác', 'otherEquity', report, yearStart)}${equityOther.html}` : ''}`
     : '<p class="bs-management-hint">Cần nạp lại file kỳ này để hiển thị vốn điều lệ và các quỹ.</p>';
   const fundingItems = report ? [
     { label: 'Tiền gửi khách hàng', key: 'customerDeposits' },
@@ -421,7 +452,7 @@ function draw(contentEl) {
   contentEl.innerHTML = `<div class="bs-toolbar"><div><h2>Số liệu quản trị theo tháng</h2>${report ? `<p class="bs-source">Số liệu đến ngày: <strong>${reportDate(report.period_end)}</strong></p>` : ''}</div>
     <div class="bs-toolbar-actions">${reports.length ? `<label class="bs-month-select">Kỳ báo cáo <select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${monthName(r.year_month)}</option>`).join('')}</select></label>` : ''}
     <button class="btn btn-outline" id="bs-refresh" type="button">Làm mới</button>
-    ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" hidden>' : ''}</div></div>
+    ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>' : ''}</div></div>
     ${!report ? `<div class="card card-pad"><p>Chưa có bảng cân đối nào. Quản trị viên toàn quyền có thể nạp file .xls hoặc .xlsx của từng tháng.</p></div>` : `
     <div class="grid-4 bs-stats">
       ${stat('Tổng tài sản', end.assets, start.assets, 'c-green')}
@@ -432,10 +463,10 @@ function draw(contentEl) {
     <div class="card card-pad bs-section bs-trend-section"><h3>Biến động</h3>${trendChart(reports)}</div>
     <div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
       <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div>
-    <div class="bs-management bs-section"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3><span>${yearOpening ? `So với đầu kỳ tháng 01/${report.year_month.slice(0, 4)}` : `Chưa có kỳ 01/${report.year_month.slice(0, 4)} để so sánh từ đầu năm`}</span></div>
+    <div class="bs-management bs-section"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3><span>${yearOpening ? `So với đầu kỳ tháng 01/${report.year_month.slice(0, 4)}` : `Chưa có kỳ 01/${report.year_month.slice(0, 4)} để so sánh từ đầu năm`}; Vốn chủ sở hữu so với cuối tháng 12/${Number(report.year_month.slice(0, 4)) - 1}${previousDecember ? '' : ' (chưa có dữ liệu)'}</span></div>
       ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart)}
         ${managementRow('Tổng tài sản', 'assets', start, end, yearStart, { total: true })}`)}
-      ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, yearStart)}
+      ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, fundingYearStart)}
         ${managementRow('Tổng nguồn vốn', 'liabilities', start, end, yearStart, { total: true })}`)}
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
     ${ratiosSection(end)}
@@ -457,28 +488,41 @@ function draw(contentEl) {
   contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { hasLoaded = false; remoteProvisions.clear(); render(contentEl); });
   contentEl.querySelector('#bs-import')?.addEventListener('click', () => contentEl.querySelector('#bs-file')?.click());
   contentEl.querySelector('#bs-file')?.addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
+    const files = [...(event.target.files || [])];
     event.target.value = '';
-    if (file) await previewImport(file, contentEl);
+    if (files.length) await previewImport(files, contentEl);
   });
 }
 
-async function previewImport(file, contentEl) {
+async function previewImport(files, contentEl) {
+  const importButton = contentEl.querySelector('#bs-import');
+  if (importButton) importButton.disabled = true;
   try {
-    if (!/\.xlsx?$/i.test(file.name)) throw new Error('Chỉ nhận file .xls hoặc .xlsx.');
-    if (file.size > 10 * 1024 * 1024) throw new Error('File vượt quá 10 MB.');
-    const parsed = parseBalanceSheetRows(await readExcelFirstSheet(file));
-    const replacing = reports.some((r) => r.year_month === parsed.yearMonth);
+    const imports = [];
+    for (const [index, file] of files.entries()) {
+      if (importButton) importButton.textContent = `Đang đọc ${index + 1}/${files.length}...`;
+      if (!/\.xlsx?$/i.test(file.name)) throw new Error(`${file.name}: Chỉ nhận file .xls hoặc .xlsx.`);
+      if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name}: File vượt quá 10 MB.`);
+      try {
+        imports.push({ file, parsed: parseBalanceSheetRows(await readExcelFirstSheet(file)) });
+      } catch (error) {
+        throw new Error(`${file.name}: ${error.message || 'Không đọc được file.'}`);
+      }
+    }
+    const { selected, skipped } = selectLatestBalanceImports(imports);
     openModal({
-      title: `Kiểm tra ${monthName(parsed.yearMonth)}`,
-      bodyHtml: `<p>File: <strong>${escapeHtml(file.name)}</strong></p>
-        <p>Số liệu đến ngày: <strong>${reportDate(parsed.periodEnd)}</strong></p>
-        <div class="oc-line"><span>Tổng tài sản đầu kỳ</span><b>${money(parsed.start.assets)}</b></div>
-        <div class="oc-line"><span>Tổng tài sản cuối kỳ</span><b>${money(parsed.end.assets)}</b></div>
-        <div class="oc-line"><span>Dự phòng chung cuối kỳ</span><b>${money(parsed.end.generalProvision)}</b></div>
-        <div class="oc-line"><span>Dự phòng cụ thể cuối kỳ</span><b>${money(parsed.end.specificProvision)}</b></div>
-        <p class="bs-balance-note">Đã kiểm tra: Tài sản = Nguồn vốn ở đầu và cuối kỳ.</p>
-        ${replacing ? '<p class="bs-warning">Kỳ này đã có dữ liệu. Lưu sẽ thay thế số liệu cũ của đúng tháng này.</p>' : ''}`,
+      title: selected.length === 1 ? `Kiểm tra ${monthName(selected[0].parsed.yearMonth)}` : `Kiểm tra ${selected.length} kỳ cân đối`,
+      bodyHtml: `<p>Đã kiểm tra cân đối đầu kỳ và cuối kỳ cho ${imports.length} file. Mỗi tháng chỉ lưu bản có ngày số liệu mới nhất trong lượt nạp này.</p>
+        <div class="bs-import-list">${selected.map(({ file, parsed }) => {
+          const existing = reports.find((item) => item.year_month === parsed.yearMonth);
+          return `<div class="bs-import-item"><strong>${monthName(parsed.yearMonth)} · đến ngày ${reportDate(parsed.periodEnd)}</strong>
+            <small>${escapeHtml(file.name)}</small>
+            <div><span>Tổng tài sản đầu kỳ</span><b>${money(parsed.start.assets)}</b></div>
+            <div><span>Tổng tài sản cuối kỳ</span><b>${money(parsed.end.assets)}</b></div>
+            <div><span>Dự phòng chung / cụ thể</span><b>${money(parsed.end.generalProvision)} / ${money(parsed.end.specificProvision)}</b></div>
+            ${existing ? `<p class="bs-warning">Sẽ thay bản ${monthName(parsed.yearMonth)} đang lưu (đến ngày ${reportDate(existing.period_end)}).</p>` : ''}</div>`;
+        }).join('')}</div>
+        ${skipped.length ? `<p class="bs-account-period">Bỏ qua ${skipped.length} file cũ hơn trong cùng tháng: ${skipped.map(({ file }) => escapeHtml(file.name)).join(', ')}.</p>` : ''}`,
       footHtml: '<button class="btn btn-outline" data-cancel>Hủy</button><button class="btn btn-primary" data-save>Lưu số liệu</button>',
       onMount(sheet, close) {
         sheet.querySelector('[data-cancel]').addEventListener('click', close);
@@ -487,15 +531,17 @@ async function previewImport(file, contentEl) {
           button.disabled = true;
           const session = S.getSession();
           if (!S.isSuperAdmin(session?.id)) { toast('Chỉ quản trị viên toàn quyền được nạp file.', 'error'); close(); return; }
-          const { error } = await makeClient().from('balance_sheet_reports').upsert({
+          const importedAt = new Date().toISOString();
+          const rows = selected.map(({ file, parsed }) => ({
             year_month: parsed.yearMonth, period_end: parsed.periodEnd,
             source_name: file.name, figures: { start: parsed.start, end: parsed.end },
-            imported_by: session.id, imported_at: new Date().toISOString(),
-          }, { onConflict: 'year_month' });
+            imported_by: session.id, imported_at: importedAt,
+          }));
+          const { error } = await makeClient().from('balance_sheet_reports').upsert(rows, { onConflict: 'year_month' });
           if (error) { toast(`Không lưu được: ${error.message}`, 'error'); button.disabled = false; return; }
-          selectedMonth = parsed.yearMonth;
+          selectedMonth = selected.at(-1).parsed.yearMonth;
           close();
-          toast(`Đã lưu ${monthName(parsed.yearMonth)}`, 'success');
+          toast(`Đã lưu ${selected.length} kỳ cân đối`, 'success');
           hasLoaded = false;
           await render(contentEl);
         });
@@ -503,5 +549,7 @@ async function previewImport(file, contentEl) {
     });
   } catch (error) {
     toast(error.message || 'Không đọc được file bảng cân đối.', 'error');
+  } finally {
+    if (importButton) { importButton.disabled = false; importButton.textContent = 'Nạp cân đối'; }
   }
 }
