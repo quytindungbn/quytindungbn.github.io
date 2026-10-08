@@ -679,7 +679,12 @@ svg { display: block; }
 }
 
 /* Quản trị: bảng số liệu và biểu đồ riêng, co giãn trên điện thoại. */
-.bs-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+.bs-toolbar {
+  position:sticky; top:var(--header-h); z-index:19;
+  display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;
+  margin-bottom:16px; padding:12px 14px; background:var(--surface);
+  border:1px solid var(--border-strong); border-radius:var(--radius-sm); box-shadow:var(--shadow-sm);
+}
 .bs-toolbar h2 { margin:0 0 4px; font-size:20px; }
 .bs-toolbar p { margin:0; }
 .bs-toolbar-actions { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }
