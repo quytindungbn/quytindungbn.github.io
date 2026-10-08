@@ -315,13 +315,6 @@ function showProfitDetails(report) {
   });
 }
 
-function clearedAccountNote(line) {
-  if (line.balance !== 0 || !Number.isFinite(line.lastBalance) || !line.lastBalance) return '';
-  return line.lastBalance > 0
-    ? `Đã giảm hết ${money(line.lastBalance)} (100%) so với ${monthName(line.lastMonth)}`
-    : `Đã về 0 từ số dư ${money(line.lastBalance)} (${monthName(line.lastMonth)})`;
-}
-
 function showAccountDetails(report, key) {
   const labels = { internalReceivables: 'Phải thu nội bộ', otherLiabilities: 'Nợ phải trả khác' };
   const label = labels[key];
@@ -341,7 +334,7 @@ function showAccountDetails(report, key) {
       <div class="bs-account-list">
         <div class="bs-account-columns"><span>Tài khoản</span><span>Cuối kỳ</span><span>Tăng/giảm</span><span>Từ đầu năm</span></div>
         ${lines.length ? lines.map((line) => `<div class="bs-account-line">
-          <div><strong>${line.residual ? 'Phần chưa tách' : `TK ${escapeHtml(String(line.code || ''))}${line.incomplete ? ' (chưa đủ cấp)' : ''}`}</strong>${line.name ? `<span>${escapeHtml(String(line.name))}</span>` : ''}${clearedAccountNote(line) ? `<small>${clearedAccountNote(line)}</small>` : ''}</div>
+          <div><strong>${line.residual ? 'Phần chưa tách' : `TK ${escapeHtml(String(line.code || ''))}${line.incomplete ? ' (chưa đủ cấp)' : ''}`}</strong>${line.name ? `<span>${escapeHtml(String(line.name))}</span>` : ''}</div>
           <b>${money(Number(line.balance) || 0)}</b>
           <div class="bs-account-delta" data-label="Tăng/giảm">${change(Number(line.balance) || 0, line.startBalance)}</div>
           <div class="bs-account-delta" data-label="Từ đầu năm">${change(Number(line.balance) || 0, line.yearBalance)}</div>

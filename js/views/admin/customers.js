@@ -81,7 +81,7 @@ export function render(contentEl, filterEl) {
       <div class="flex gap-8 mb-8">
         <button class="btn btn-outline btn-sm" id="btn-import">${icon('paperclip', 'icon-sm')} Nhập từ Excel</button>
         <button class="btn btn-primary btn-sm" id="btn-add">${icon('plus', 'icon-sm')} Tạo tài khoản khách hàng</button>
-      </div>` : `<p class="field-hint mb-8">Tài khoản nhân viên — chỉ xem, không chỉnh sửa được dữ liệu.</p>`}
+      </div>` : ''}
     </div>
   `;
   bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(); });
@@ -231,38 +231,35 @@ export function render(contentEl, filterEl) {
     const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);
 
     contentEl.innerHTML = `
-      <div class="text-sm text-muted mb-8">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <b style="color:var(--color-primary)">${formatVND(totalAmount)}</b></div>
-      ${enriched.length ? enriched.map(({ c, contracts, hasOverdue, hasNearDue, mostOverdueDays, mostNearDueDays }) => {
-        // Trong đúng NEAR_DUE_DAYS (15 ngày) mới tô khung vàng cảnh báo như cũ
-        // — xa hơn (tới 45 ngày) chỉ hiện chữ nhỏ bình thường, y hệt cách
-        // popup "Gần đến hạn" ở Tổng quan đang làm (xem openContractListModal
-        // trong overview.js).
-        const nearDueHighlight = hasNearDue && mostNearDueDays <= S.NEAR_DUE_DAYS;
-        return `
-        <div class="card mb-8" style="padding:12px 16px">
-          <div class="flex items-center gap-6 mb-6" style="flex-wrap:wrap">
-            <span style="font-size:15px;font-weight:700">${c.name}</span>
-            ${hasOverdue ? `<span class="badge badge-red">Quá hạn ${mostOverdueDays} ngày</span>` : ''}
-            ${hasNearDue ? (nearDueHighlight
-              ? `<span class="badge badge-yellow">Gần đến hạn ${mostNearDueDays} ngày</span>`
-              : `<span class="text-sm text-muted">Gần đến hạn ${mostNearDueDays} ngày</span>`) : ''}
-            <span style="margin-left:auto">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
-          </div>
-          <div class="list-row" data-id="${c.id}" style="cursor:pointer;padding:0;gap:8px">
-            <div class="row-thumb" style="width:34px;height:34px;font-size:13px;background:${colorFor(c.id)}">${initials(c.name)}</div>
-            <div class="row-main">
-              <div class="row-sub" style="white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${[c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn'}</div>
-              ${contracts.length === 1 ? installmentHintHtml(contracts[0]) : ''}
-            </div>
-            ${contracts.length === 1 ? `<div data-view-contract="${contracts[0].id}" data-customer-id="${c.id}" style="cursor:pointer">${contractAmountsHtml(contracts[0])}</div>` : ''}
-          </div>
-          ${contracts.length > 1 ? `
-          <div style="border-top:1px dashed var(--border);margin-top:6px">
-            ${contracts.map((ct) => contractRowCompact(ct)).join('')}
-          </div>` : ''}
-          ${!contracts.length ? '<p class="text-sm text-muted mt-8">Chưa có hợp đồng.</p>' : ''}
-        </div>`;
-      }).join('') : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
+      <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
+      ${enriched.length ? `<div class="customer-ledger">
+        <div class="customer-ledger-columns" aria-hidden="true">
+          <span>HỢP ĐỒNG</span><span>NGÀY VAY</span><span>ĐẾN HẠN</span><span>DƯ NỢ</span>
+          <span>ĐÃ TRẢ LÃI ĐẾN</span><span>SỐ NGÀY LÃI</span><span>LÃI CỘNG DỒN</span><span>TÌNH TRẠNG</span>
+        </div>
+        ${enriched.map(({ c, contracts, totalBalance, hasOverdue, hasNearDue, mostOverdueDays, mostNearDueDays }) => {
+          const nearDueHighlight = hasNearDue && mostNearDueDays <= S.NEAR_DUE_DAYS;
+          const location = [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn';
+          return `
+            <section class="customer-ledger-group">
+              <button type="button" class="customer-ledger-person" data-id="${c.id}" aria-label="Xem khách hàng ${escapeHtml(c.name)}">
+                <span class="customer-ledger-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}</span>
+                <span class="customer-ledger-identity">
+                  <span class="customer-ledger-name">${escapeHtml(c.name)}
+                    ${hasOverdue ? `<span class="badge badge-red">Quá hạn ${mostOverdueDays} ngày</span>` : ''}
+                    ${hasNearDue ? (nearDueHighlight
+                      ? `<span class="badge badge-yellow">Gần đến hạn ${mostNearDueDays} ngày</span>`
+                      : `<span class="customer-ledger-soft-alert">Gần đến hạn ${mostNearDueDays} ngày</span>`) : ''}
+                  </span>
+                  <span class="customer-ledger-address">${escapeHtml(location)}</span>
+                </span>
+                ${contracts.length > 1 ? `<span class="customer-ledger-total">Tổng dư nợ: <strong>${formatVND(totalBalance)}</strong></span>` : ''}
+                <span class="customer-ledger-dots">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
+              </button>
+              ${contracts.map((ct) => contractLedgerRow(ct)).join('')}
+            </section>`;
+        }).join('')}
+      </div>` : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
     `;
     contentEl.querySelectorAll('[data-id]').forEach((row) => {
       row.addEventListener('click', () => openCustomerDetail(row.dataset.id, { readOnly: isStaff }));
@@ -618,6 +615,30 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
  * phải số tiền vay ban đầu — số tiền vay ban đầu chỉ hiện trong màn chi tiết
  * hợp đồng (mục "Số tiền vay ban đầu").
  */
+function contractLedgerRow(ct) {
+  const info = S.contractAttentionInfo(ct);
+  const interest = S.accruedInterest(ct);
+  const interestDays = S.interestDaysAccrued(ct);
+  const status = info.level === 'qua_han'
+    ? statusBadge({ badge: 'badge-red', label: `Quá hạn ${info.days} ngày` })
+    : info.level === 'gan_den_han'
+      ? statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${info.days} ngày` })
+      : statusBadge({ badge: 'badge-blue', label: 'Trong hạn' });
+  return `
+    <button type="button" class="customer-ledger-contract ${info.level === 'qua_han' ? 'is-overdue' : info.level === 'gan_den_han' ? 'is-near' : ''}"
+      data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" aria-label="Xem hợp đồng ${escapeHtml(ct.code)}">
+      <div class="customer-ledger-code"><span>HĐTD ${escapeHtml(ct.code)}</span>${installmentHintHtml(ct)}</div>
+      <span class="customer-ledger-disbursed">${formatDate(ct.disbursedDate)}</span>
+      <span class="customer-ledger-due">${formatDate(ct.dueDate)}</span>
+      <span class="customer-ledger-balance">${formatVND(ct.balance)}</span>
+      <span class="customer-ledger-paid">${formatDate(ct.interestPaidUntil || ct.disbursedDate)}</span>
+      <span class="customer-ledger-days">${interestDays} ngày</span>
+      <span class="customer-ledger-interest">${formatVND(interest)}</span>
+      <span class="customer-ledger-status">${status}</span>
+      <span class="customer-ledger-mobile-extra">Lãi: ${formatVND(interest)} · ${interestDays} ngày lãi</span>
+    </button>`;
+}
+
 function contractAmountsHtml(ct) {
   const interest = S.accruedInterest(ct);
   return `
@@ -750,64 +771,67 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     // Kèm thêm tên khách hàng vào tiêu đề để đỡ nhầm giữa nhiều hợp đồng đang
     // mở/xem liên tiếp (VD: khách có nhiều hợp đồng, hoặc mở hợp đồng từ danh
     // sách quá hạn/gần đến hạn ở Tổng quan) — trước đây chỉ có mã hợp đồng.
-    title: `Hợp đồng ${contract.code}${customer ? ` - ${customer.name}` : ''}`,
+    title: `Hợp đồng ${escapeHtml(contract.code)}${customer ? ` - ${escapeHtml(customer.name)}` : ''}`,
+    sheetClass: 'customer-contract-sheet',
     bodyHtml: `
-      <div class="flex justify-between items-center mb-10">
-        <span class="fw-700">Trạng thái</span>
-        ${statusBadge(info)}
+      <div class="customer-contract-view">
+        <div class="customer-contract-intro">
+          <span>${customer ? escapeHtml(customer.name) : 'Khách hàng'}${customer && customer.address ? ` · ${escapeHtml(customer.address)}` : ''}</span>
+          ${statusBadge(info)}
+        </div>
+        <div class="customer-contract-metrics">
+          <div class="customer-contract-metric is-primary"><span>DƯ NỢ HIỆN TẠI</span><strong>${formatVND(contract.balance)}</strong><small>Số gốc còn phải trả</small></div>
+          <div class="customer-contract-metric"><span>LÃI CỘNG DỒN</span><strong>${formatVND(accrued)}</strong><small>Tính đến ${formatDate(new Date())}</small></div>
+          <div class="customer-contract-metric"><span>SỐ NGÀY LÃI</span><strong>${interestDays} ngày</strong><small>Từ kỳ đã trả lãi</small></div>
+        </div>
+        <div class="customer-contract-info-grid">
+          <section class="customer-contract-panel">
+            <h4>Thông tin hợp đồng</h4>
+            <div class="oc-line"><span>Số tiền vay ban đầu</span><b>${formatVND(contract.principal)}</b></div>
+            <div class="oc-line"><span>Ngày vay</span><b>${formatDate(contract.disbursedDate)}</b></div>
+            <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
+            <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
+            <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
+            <div class="oc-line"><span>SĐT</span><b>${customer && customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
+          </section>
+          <section class="customer-contract-panel customer-contract-calculation">
+            <h4>Cách tính lãi</h4>
+            <p>Lãi tính từ ngày đã trả lãi đến ngày đang xem.</p>
+            <div class="customer-contract-formula">${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%<br>÷ 365 ngày = <strong>${formatVND(accrued)}</strong></div>
+            ${canPay && info.source !== 'installment' && info.status !== 'dang_vay' ? `<div class="customer-contract-alert ${info.status === 'qua_han' ? 'is-overdue' : ''}">${info.status === 'qua_han' ? `Đã quá hạn ${info.days} ngày` : `Còn ${info.days} ngày đến hạn thanh toán`}</div>` : ''}
+          </section>
+        </div>
+        ${installmentNextBoxHtml(contract, 'installment-next-box-ct')}
+        <div class="customer-contract-actions">
+          <section class="customer-contract-panel">
+            <h4>Liên hệ và gửi thông báo</h4>
+            ${customer && customer.phone && canPay ? `<a href="${buildSmsLink(customer, contract)}" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS cho khách</a>` : ''}
+            ${customer && canPay ? `<button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-noti-app-ct">${icon('bell', 'icon-sm')} Thông báo qua ứng dụng</button>` : ''}
+            ${customer && customer.phone && canPay && canManageZalo ? `
+              <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
+              <div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
+          </section>
+          <section class="customer-contract-panel">
+            <h4>Thanh toán và mã QR</h4>
+            ${hasBank ? `
+              <label class="customer-contract-settle"><input type="checkbox" id="settle-full-cb-ct"/> Tất toán khoản vay</label>
+              <div class="grid-2">
+                <div class="field"><label>Gốc</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
+                <div class="field"><label>Lãi</label><input type="text" inputmode="numeric" id="qr-lai-input"/></div>
+              </div>
+              <div class="field-hint mb-8" id="qr-lai-hint" style="display:none">Đã nhập số tiền trả gốc — Lãi tự khóa theo đúng "Lãi đến nay", không sửa tay được. Xóa ô Gốc nếu cần tự chỉnh lại Lãi.</div>
+              <div class="customer-contract-qr-layout">
+                <div>
+                  <span class="text-sm text-muted">Tổng chuyển khoản</span>
+                  <strong id="qr-total-ct">${formatVND(accrued)}</strong>
+                  <button type="button" class="btn btn-outline btn-block mt-8" id="btn-download-qr-ct">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
+                  <button type="button" class="btn btn-outline btn-block mt-8" id="btn-share-qr-ct">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
+                </div>
+                <img id="qr-img-ct" src="${qrUrl}" alt="Mã QR chuyển khoản"/>
+              </div>` : `<p class="text-sm text-muted">${canPay ? 'Chưa cấu hình thông tin nhận thanh toán.' : 'Hợp đồng đã tất toán.'}</p>`}
+          </section>
+        </div>
       </div>
-      <div class="oc-line"><span>Số tiền vay ban đầu</span><b>${formatVND(contract.principal)}</b></div>
-      <div class="oc-line"><span>Dư nợ hiện tại</span><b style="color:var(--color-primary)">${formatVND(contract.balance)}</b></div>
-      <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
-      <div class="oc-line"><span>Ngày giải ngân (ngày vay)</span><b>${formatDate(contract.disbursedDate)}</b></div>
-      <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
-      <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
-      <div class="oc-line"><span>SĐT</span><b>${customer && customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${customer.phone}</a>` : '—'}</b></div>
-      ${installmentNextBoxHtml(contract, 'installment-next-box-ct')}
-      ${customer && customer.phone && canPay ? `
-      <a href="${buildSmsLink(customer, contract)}" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS cho khách</a>
-      ` : ''}
-      ${customer && canPay ? `
-      <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-noti-app-ct">${icon('bell', 'icon-sm')} Thông báo cho khách hàng qua ứng dụng</button>
-      ` : ''}
-      ${customer && customer.phone && canPay && canManageZalo ? `
-      <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
-        <button type="button" class="btn btn-outline btn-sm btn-block" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
-        <div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>
-      </div>
-      ` : ''}
-      ${canPay ? `
-      <div class="oc-line" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
-        <span class="fw-700">Lãi đến nay</span>
-        <b style="color:var(--warning)">${formatVND(accrued)}</b>
-      </div>
-      <div class="field-hint">(${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%/năm ÷ 365)</div>
-      ${info.source !== 'installment' ? `
-      <div class="field-hint ${info.status === 'qua_han' ? 'text-danger' : ''}" style="${info.status === 'gan_den_han' ? 'color:var(--warning)' : ''}margin-top:6px">
-        ${info.status === 'qua_han' ? `${icon('alert', 'icon-sm')} Đã quá hạn ${info.days} ngày`
-          : info.status === 'gan_den_han' ? `${icon('alert', 'icon-sm')} Còn ${info.days} ngày đến hạn thanh toán`
-          : `Còn ${info.days} ngày đến hạn thanh toán`}
-      </div>` : ''}` : ''}
-      ${hasBank ? `
-      <div class="mb-8" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:10px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;font-size:14px">
-          <input type="checkbox" id="settle-full-cb-ct"/>
-          Tất toán khoản vay (trả hết gốc + lãi)
-        </label>
-      </div>
-      <div class="grid-2">
-        <div class="field"><label>Gốc</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
-        <div class="field"><label>Lãi</label><input type="text" inputmode="numeric" id="qr-lai-input"/></div>
-      </div>
-      <div class="field-hint mb-8" id="qr-lai-hint" style="display:none">Đã nhập số tiền trả gốc — Lãi tự khóa theo đúng "Lãi đến nay", không sửa tay được. Xóa ô Gốc nếu cần tự chỉnh lại Lãi.</div>
-      <div class="grid-2 mb-8">
-        <button type="button" class="btn btn-outline btn-block" id="btn-download-qr-ct">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
-        <button type="button" class="btn btn-outline btn-block" id="btn-share-qr-ct">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
-      </div>
-      <div style="text-align:center">
-        <img id="qr-img-ct" src="${qrUrl}" alt="Mã QR chuyển khoản" style="max-width:200px;width:100%;border:1px solid var(--border);border-radius:12px"/>
-      </div>
-      ` : ''}
     `,
     footHtml: readOnly ? '' : `<button class="btn btn-danger-outline btn-block" id="del-contract">${icon('trash', 'icon-sm')} Xóa hợp đồng</button>`,
     onMount(sheet, closeFn) {
@@ -817,6 +841,10 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       let laiAmount = accrued;
       let settleFull = false; // Tất toán khoản vay — trả hết gốc (= dư nợ còn lại) + lãi, khóa cả 2 ô
       /** Sửa ô Gốc hoặc Lãi là vẽ lại ảnh QR theo tổng 2 ô cộng lại. */
+      function updateQrTotal() {
+        const totalEl = sheet.querySelector('#qr-total-ct');
+        if (totalEl) totalEl.textContent = formatVND(gocAmount + laiAmount);
+      }
       function refreshQr() {
         if (!qrImgEl) return;
         qrImgEl.src = buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: gocAmount + laiAmount, content: buildQrContent(gocAmount, laiAmount, settleFull), accountName: org.bankAccountName });
@@ -854,9 +882,9 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         if (gocInput) gocInput.value = settleFull ? formatNumber(contract.balance) : '';
         syncLaiLock();
       }
-      if (settleCb) settleCb.addEventListener('change', (e) => { settleFull = e.target.checked; syncSettleFull(); refreshQr(); });
-      if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; syncLaiLock(); refreshQrDebounced(); }, contract.balance);
-      if (laiInput) bindMoneyInput(laiInput, accrued, (v) => { laiAmount = v; refreshQrDebounced(); });
+      if (settleCb) settleCb.addEventListener('change', (e) => { settleFull = e.target.checked; syncSettleFull(); updateQrTotal(); refreshQr(); });
+      if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; syncLaiLock(); updateQrTotal(); refreshQrDebounced(); }, contract.balance);
+      if (laiInput) bindMoneyInput(laiInput, accrued, (v) => { laiAmount = v; updateQrTotal(); refreshQrDebounced(); });
       const downloadQrBtn = sheet.querySelector('#btn-download-qr-ct');
       if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`));
       const shareQrBtn = sheet.querySelector('#btn-share-qr-ct');
