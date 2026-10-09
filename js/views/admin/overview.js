@@ -7,7 +7,7 @@ import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
 import { barChartSvg, monthlyTrendLineChartSvg, compositionDonutHtml, BALANCE_TREND_COLOR } from '../../components/charts.js';
-import { openContractView, openCustomerDetail } from './customers.js';
+import { openContractView, customerLedgerHtml, bindCustomerLedger } from './customers.js';
 import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
 
 const COLLATERAL_NAMES = Object.freeze({
@@ -102,12 +102,9 @@ export function render(contentEl) {
   // NEAR_DUE_DAYS ngày như cũ, không đổi): popup này liệt kê TIẾP cả những
   // hợp đồng còn xa hơn nữa (16, 17, 18 ngày...) — kể cả xa hơn do KỲ TỚI của
   // phân kỳ trả nợ, không chỉ ngày đáo hạn hợp đồng gốc — sắp xếp gần nhất
-  // trước, để xem trước được lịch sắp tới — chỉ hợp đồng trong đúng
-  // NEAR_DUE_DAYS ngày mới tô khung vàng cảnh báo như cũ (xem
-  // highlightWithinDays ở openContractListModal), phần còn lại hiện chữ nhỏ
-  // bình thường. contractAttentionInfo() đã tự giới hạn tối đa
-  // S.WIDE_NEAR_DUE_DAYS (45 ngày) — xa hơn nữa chưa cần xem trước, tránh
-  // danh sách dài vô ích.
+  // trước, để xem trước được lịch sắp tới. Bảng popup dùng cùng nhãn cảnh báo
+  // với trang Khách hàng. contractAttentionInfo() đã tự giới hạn tối đa
+  // S.WIDE_NEAR_DUE_DAYS (45 ngày).
   const upcoming = attention
     .filter((x) => x.info.level === 'gan_den_han')
     .sort((a, b) => a.info.days - b.info.days)
@@ -159,7 +156,7 @@ export function render(contentEl) {
   // thông tin số lượng + tổng tiền + danh sách vào chung 1 chỗ cho gọn,
   // không cần 2 bảng riêng bên dưới nữa.
   contentEl.querySelector('#tile-overdue').addEventListener('click', () => openContractListModal('Hợp đồng quá hạn', overdue, isStaff, 'var(--danger)'));
-  contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', upcoming, isStaff, 'var(--warning)', { highlightWithinDays: S.NEAR_DUE_DAYS }));
+  contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', upcoming, isStaff, 'var(--warning)'));
 
   // "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng giảm" LUÔN
   // hiện cho MỌI vai trò (staff lẫn super) — bấm vào 1 cột/nhãn nhóm nợ để
@@ -1051,82 +1048,28 @@ function tsbdRowHtml(ct) {
   return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${collateralDescription(ct)}</div>`;
 }
 
-/**
- * Danh sách gọn chỉ gồm các hợp đồng thuộc đúng nhóm (quá hạn / gần đến hạn)
- * — bấm vào PHẦN THÔNG TIN KHÁCH HÀNG (tên/địa chỉ) của 1 dòng để mở thẳng
- * chi tiết KHÁCH HÀNG (openCustomerDetail — y hệt màn "Khách hàng & Hợp
- * đồng", có đủ CCCD/SĐT/mật khẩu/nút thao tác + danh sách MỌI hợp đồng của
- * khách đó, dễ quản lý hơn thay vì chỉ thấy đúng 1 hợp đồng) — riêng ô SỐ
- * TIỀN bên phải vẫn bấm riêng được để mở thẳng chi tiết ĐÚNG hợp đồng đang
- * cảnh báo (openContractView), giống cách tách 2 lớp bấm ở customers.js. Kèm
- * tổng cộng cả nhóm ở đầu danh sách để dễ theo dõi. Số tiền = ĐÚNG số tiền
- * của KỲ đến hạn (nếu cảnh báo đến từ 1 kỳ cụ thể trong phân kỳ trả nợ),
- * KHÔNG phải toàn bộ dư nợ hợp đồng — xem S.contractAttentionInfo().dueAmount.
- *
- * `opts.highlightWithinDays` (tùy chọn, chỉ dùng cho danh sách "Gần đến
- * hạn"): nếu có, CHỈ những hợp đồng còn trong đúng số ngày này mới tô khung
- * vàng cảnh báo như cũ — hợp đồng còn xa hơn (vẫn hiện tiếp trong cùng danh
- * sách để xem trước lịch sắp tới) chỉ hiện chữ nhỏ bình thường, không khung.
- * Không truyền (mặc định, dùng cho "Hợp đồng quá hạn") thì LUÔN tô khung như
- * trước giờ, không đổi gì.
- */
-function openContractListModal(title, contracts, isStaff, colorVar, opts = {}) {
-  const { highlightWithinDays } = opts;
-  // Tổng cộng = cộng ĐÚNG số tiền của KỲ đến hạn (S.contractAttentionInfo().dueAmount)
-  // khi cảnh báo đến từ 1 kỳ cụ thể, không phải toàn bộ dư nợ hợp đồng.
+/** Hai ô cảnh báo dùng chung bảng hợp đồng với trang Khách hàng; chỉ lọc các món thuộc nhóm đang xem. */
+function openContractListModal(title, contracts, isStaff, colorVar) {
   const total = contracts.reduce((s, ct) => s + S.contractAttentionInfo(ct).dueAmount, 0);
+  const grouped = new Map();
+  for (const ct of contracts) {
+    let group = grouped.get(ct.customerId);
+    if (!group) {
+      group = { c: S.getCustomer(ct.customerId) || { id: ct.customerId, name: '—' }, contracts: [], totalBalance: 0 };
+      grouped.set(ct.customerId, group);
+    }
+    group.contracts.push(ct);
+    group.totalBalance += ct.balance || 0;
+  }
   openModal({
     title: `${title} (${contracts.length})`,
+    sheetClass: 'attention-ledger-sheet',
     bodyHtml: `
-      <div class="text-sm text-muted mb-12">Tổng cộng: <b style="color:${colorVar}">${formatVND(total)}</b></div>
-      ${contracts.length ? contracts.map((ct) => {
-        const cust = S.getCustomer(ct.customerId);
-        // Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ
-        // (nếu có) — xem S.contractAttentionInfo() — cùng cách hiện "Quá
-        // hạn/Gần đến hạn X ngày" và địa chỉ (Xóm, Thôn, Tỉnh) như ở mục
-        // Khách hàng & Hợp đồng, để 2 nơi nhất quán với nhau.
-        const info = S.contractAttentionInfo(ct);
-        const dueLabel = info.level === 'qua_han' ? `Quá hạn ${info.days} ngày` : `Gần đến hạn ${info.days} ngày`;
-        const dueBadgeClass = info.level === 'qua_han' ? 'badge-red' : 'badge-yellow';
-        const highlight = highlightWithinDays == null || info.days <= highlightWithinDays;
-        const addressLabel = cust ? ([cust.xom, cust.thon, cust.tinh].filter(Boolean).join(', ') || cust.address || 'Chưa có địa bàn') : '—';
-        return `
-        <div class="list-row" data-view-cust="${ct.customerId}" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:2px">
-          <div class="flex items-center gap-6" style="flex-wrap:nowrap">
-            <span style="font-size:14px;font-weight:700;line-height:1.8;padding-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${cust ? cust.name : '—'}</span>
-            ${highlight
-              ? `<span class="badge ${dueBadgeClass}" style="flex-shrink:0">${dueLabel}</span>`
-              : `<span class="text-sm text-muted" style="flex-shrink:0">${dueLabel}</span>`}
-          </div>
-          <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
-            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${addressLabel}</span>
-            <b data-view-contract="${ct.id}" style="color:${colorVar};font-size:13px;flex-shrink:0">${formatVND(info.dueAmount)}</b>
-          </div>
-          ${installmentHintHtml(ct)}
-        </div>`;
-      }).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Danh sách hiện đang trống.' })}
+      <div class="customer-list-summary">${grouped.size} khách hàng · ${contracts.length} hợp đồng · Tổng tiền đến hạn: <strong style="color:${colorVar}">${formatVND(total)}</strong></div>
+      ${contracts.length ? customerLedgerHtml([...grouped.values()], S.canManageZaloOA(S.getSession().id)) : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: 'Danh sách hiện đang trống.' })}
     `,
     onMount(sheet) {
-      // Bấm vào PHẦN THÔNG TIN KHÁCH HÀNG (tên/địa chỉ) mở chi tiết KHÁCH
-      // HÀNG (y hệt bấm 1 dòng ở màn "Khách hàng & Hợp đồng") — CHỒNG lên
-      // trên (không đóng danh sách này trước), đóng lại là quay về đúng danh
-      // sách đang xem, đỡ phải mở lại "Xem tất cả" từ đầu mỗi lần muốn xem
-      // khách khác. Bấm riêng vào Ô SỐ TIỀN (data-view-contract, lồng bên
-      // trong) thì mở thẳng chi tiết ĐÚNG hợp đồng đang cảnh báo — chặn nổi
-      // bọt (stopPropagation) để không mở luôn cả khách hàng cùng lúc.
-      sheet.querySelectorAll('[data-view-cust]').forEach((row) => {
-        row.addEventListener('click', (e) => {
-          if (e.target.closest('[data-view-contract]')) return;
-          openCustomerDetail(row.dataset.viewCust, { readOnly: isStaff });
-        });
-      });
-      sheet.querySelectorAll('[data-view-contract]').forEach((el) => {
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const ct = S.getContract(el.dataset.viewContract);
-          openContractView(ct.customerId, ct, { readOnly: isStaff });
-        });
-      });
+      bindCustomerLedger(sheet, { readOnly: isStaff });
     },
   });
 }
