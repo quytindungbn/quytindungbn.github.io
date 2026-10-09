@@ -21,6 +21,12 @@ const SORT_OPTIONS = [
   { value: 'interest-desc', label: 'Lãi: Cao → Thấp' },
 ];
 const SORT_LABEL = Object.fromEntries(SORT_OPTIONS.map((o) => [o.value, o.label]));
+const COLLATERAL_NAMES = Object.freeze({
+  '01': 'Quyền sử dụng đất chính chủ',
+  '02': 'Quyền sử dụng đất bên thứ 3',
+  '04': 'Xe ô tô chính chủ',
+  '06': 'Sổ tiết kiệm',
+});
 
 // "Gần đến hạn" ở đây rộng hơn hẳn NEAR_DUE_DAYS (15 ngày, dùng cho nhắc nợ/
 // Zalo OA...) — hiển thị TRƯỚC tới S.WIDE_NEAR_DUE_DAYS (45) ngày, y hệt
@@ -232,12 +238,15 @@ export function render(contentEl, filterEl) {
 
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
-      ${enriched.length ? `<div class="customer-ledger">
-        <div class="customer-ledger-columns" aria-hidden="true">
-          <span>HỢP ĐỒNG · TÌNH TRẠNG</span><span>NGÀY VAY</span><span>ĐẾN HẠN</span><span>DƯ NỢ</span>
-          <span>ĐÃ TRẢ LÃI ĐẾN</span><span>SỐ NGÀY LÃI</span><span>LÃI CỘNG DỒN</span>
+      ${enriched.length ? `<div class="customer-ledger-wrap">
+        <div class="customer-ledger-heading">
+          <div class="customer-ledger-columns" aria-hidden="true">
+            <span>HỢP ĐỒNG · TÌNH TRẠNG</span><span>NGÀY VAY</span><span>ĐẾN HẠN</span><span>DƯ NỢ</span>
+            <span>ĐÃ TRẢ LÃI ĐẾN</span><span>SỐ NGÀY LÃI</span><span>LÃI CỘNG DỒN</span>
+          </div>
         </div>
-        ${enriched.map(({ c, contracts, totalBalance }) => {
+        <div class="customer-ledger">
+          ${enriched.map(({ c, contracts, totalBalance }) => {
           const location = [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn';
           const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
           return `
@@ -256,9 +265,17 @@ export function render(contentEl, filterEl) {
               </div>
               ${contracts.map((ct) => contractLedgerRow(ct)).join('')}
             </section>`;
-        }).join('')}
+          }).join('')}
+        </div>
       </div>` : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
     `;
+    const ledger = contentEl.querySelector('.customer-ledger');
+    const ledgerColumns = contentEl.querySelector('.customer-ledger-columns');
+    if (ledger && ledgerColumns) {
+      ledger.addEventListener('scroll', () => {
+        ledgerColumns.style.transform = `translateX(${-ledger.scrollLeft}px)`;
+      }, { passive: true });
+    }
     contentEl.querySelectorAll('[data-id]').forEach((row) => {
       row.addEventListener('click', () => openCustomerDetail(row.dataset.id, { readOnly: isStaff }));
     });
@@ -734,6 +751,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const interestPaidUntil = contract.interestPaidUntil || contract.disbursedDate;
   const interestDays = S.interestDaysAccrued(contract);
   const accrued = S.accruedInterest(contract);
+  const collateralName = contract.hasCollateral ? COLLATERAL_NAMES[contract.collateralType] : null;
   const canPay = S.effectiveContractStatus(contract) !== 'da_tat_toan';
   const session = S.getSession();
   const canManageZalo = S.canManageZaloOA(session.id);
@@ -777,7 +795,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           <div class="customer-contract-metric"><span>SỐ NGÀY LÃI</span><strong>${interestDays} ngày</strong><small>Từ kỳ đã trả lãi</small></div>
         </div>
         <div class="customer-contract-info-grid">
-          <section class="customer-contract-panel">
+          <section class="customer-contract-panel customer-contract-details">
             <h4>Thông tin hợp đồng</h4>
             <div class="oc-line"><span>Số tiền vay ban đầu</span><b>${formatVND(contract.principal)}</b></div>
             <div class="oc-line"><span>Ngày vay</span><b>${formatDate(contract.disbursedDate)}</b></div>
@@ -786,12 +804,17 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
             <div class="oc-line"><span>SĐT</span><b>${customer && customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
           </section>
-          <section class="customer-contract-panel customer-contract-calculation">
-            <h4>Cách tính lãi</h4>
-            <p>Lãi tính từ ngày đã trả lãi đến ngày đang xem.</p>
-            <div class="customer-contract-formula">${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%<br>÷ 365 ngày = <strong>${formatVND(accrued)}</strong></div>
-            ${canPay && info.source !== 'installment' && info.status !== 'dang_vay' ? `<div class="customer-contract-alert ${info.status === 'qua_han' ? 'is-overdue' : ''}">${info.status === 'qua_han' ? `Đã quá hạn ${info.days} ngày` : `Còn ${info.days} ngày đến hạn thanh toán`}</div>` : ''}
-          </section>
+          <div class="customer-contract-side">
+            <section class="customer-contract-panel customer-contract-collateral">
+              <h4>Tài sản bảo đảm</h4>
+              ${collateralName ? `<div class="customer-contract-collateral-value"><span>${collateralName}</span><strong>Giá trị: ${formatVND(Math.max(0, Number(contract.collateralValue) || 0))}</strong></div>` : '<p>Không có tài sản bảo đảm</p>'}
+            </section>
+            <section class="customer-contract-panel customer-contract-calculation">
+              <h4>Cách tính lãi</h4>
+              <div class="customer-contract-formula">${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%<br>÷ 365 ngày = <strong>${formatVND(accrued)}</strong></div>
+              ${canPay && info.source !== 'installment' && info.status !== 'dang_vay' ? `<div class="customer-contract-alert ${info.status === 'qua_han' ? 'is-overdue' : ''}">${info.status === 'qua_han' ? `Đã quá hạn ${info.days} ngày` : `Còn ${info.days} ngày đến hạn thanh toán`}</div>` : ''}
+            </section>
+          </div>
         </div>
         ${installmentNextBoxHtml(contract, 'installment-next-box-ct')}
         <div class="customer-contract-actions">
@@ -803,7 +826,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
               <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
               <div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
           </section>
-          <section class="customer-contract-panel">
+          <section class="customer-contract-panel customer-contract-payment">
             <h4>Thanh toán và mã QR</h4>
             ${hasBank ? `
               <label class="customer-contract-settle"><input type="checkbox" id="settle-full-cb-ct"/> Tất toán khoản vay</label>
@@ -816,8 +839,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
                 <div>
                   <span class="text-sm text-muted">Tổng chuyển khoản</span>
                   <strong id="qr-total-ct">${formatVND(accrued)}</strong>
-                  <button type="button" class="btn btn-outline btn-block mt-8" id="btn-download-qr-ct">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
-                  <button type="button" class="btn btn-outline btn-block mt-8" id="btn-share-qr-ct">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
+                  <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-download-qr-ct">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
+                  <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-share-qr-ct">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
                 </div>
                 <img id="qr-img-ct" src="${qrUrl}" alt="Mã QR chuyển khoản"/>
               </div>` : `<p class="text-sm text-muted">${canPay ? 'Chưa cấu hình thông tin nhận thanh toán.' : 'Hợp đồng đã tất toán.'}</p>`}
