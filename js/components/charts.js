@@ -282,7 +282,8 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
 }
 
 /** Hai trục riêng giữ đường nợ xấu đọc được khi dư nợ lớn hơn nhiều lần. */
-export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceColor = '#087d6a', badDebtColor = '#c04343' }) {
+export const BALANCE_TREND_COLOR = '#087d6a';
+export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceColor = BALANCE_TREND_COLOR, badDebtColor = '#c04343' }) {
   if (!months.length) return '<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu.</div>';
   const renderSvg = (mobile) => {
     const viewport = mobile ? 330 : 1080;
