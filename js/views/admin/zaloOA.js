@@ -354,7 +354,7 @@ function drawAutoTab(slot, admin) {
  * hiện đủ chữ + bấm chọn được, phần tên/mã HĐ dài quá thì tự "..." bớt lại.
  */
 function intervalSelectHtml(rowId, intervalMonths) {
-  return `<select data-interval="${rowId}" style="flex-shrink:0;font-size:11.5px;padding:1px 3px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:inherit;cursor:pointer;vertical-align:middle" title="Định kỳ báo — mặc định mỗi tháng, chọn 2/3/4 để báo thưa hơn">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${(intervalMonths || 1) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`;
+  return `<select data-interval="${rowId}" style="flex-shrink:0;font-size:11.5px;padding:1px 3px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:inherit;cursor:pointer;vertical-align:middle" title="Ngưỡng lãi chưa trả: đủ số tháng đã chọn thì báo mỗi tháng cho đến khi khách trả lãi">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${(intervalMonths || 1) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`;
 }
 
 /**
@@ -534,8 +534,9 @@ function openAddAutoSendModal(kind, admin, onDone) {
     bodyHtml: `
       ${isCustomDay ? `<div class="field"><label>Ngày trong tháng (1-30) — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label><input type="number" id="day-input" min="1" max="30" value="1"/></div>` : ''}
       <div class="field">
-        <label>Định kỳ báo — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label>
+        <label>Ngưỡng lãi chưa trả — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label>
         <select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? 'Mỗi tháng' : `${n} tháng/lần`}</option>`).join('')}</select>
+        <small class="text-muted">Đủ số tháng này sẽ gửi vào đúng ngày hằng tháng; nếu chưa trả lãi, các tháng sau tiếp tục gửi. Sau khi trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</small>
       </div>
       ${searchBoxHtml('add-auto-search', 'Tìm theo tên khách hoặc mã hợp đồng...', '')}
       <div class="filter-row mb-8" id="add-auto-pills"></div>

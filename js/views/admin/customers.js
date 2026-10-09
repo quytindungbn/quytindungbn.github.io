@@ -243,8 +243,20 @@ export function render(contentEl, filterEl) {
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
       ${enriched.length ? customerLedgerHtml(enriched, canManageZalo) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
+      ${enriched.length ? `<nav class="customer-page-jump" aria-label="Di chuyển trong danh sách khách hàng">
+        <button type="button" data-jump="top" title="Lên đầu trang" aria-label="Lên đầu trang">↑</button>
+        <button type="button" data-jump="bottom" title="Xuống cuối trang" aria-label="Xuống cuối trang">↓</button>
+      </nav>` : ''}
     `;
     bindCustomerLedger(contentEl, { readOnly: isStaff });
+    contentEl.querySelectorAll('.customer-page-jump [data-jump]').forEach((button) => {
+      button.addEventListener('click', () => {
+        window.scrollTo({
+          top: button.dataset.jump === 'top' ? 0 : document.documentElement.scrollHeight,
+          behavior: 'smooth',
+        });
+      });
+    });
   }
   draw();
   window.__qtdRedrawCustomers = draw;
