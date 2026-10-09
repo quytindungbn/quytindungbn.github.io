@@ -519,7 +519,9 @@ svg { display: block; }
 /* Danh sách khách hàng: mỗi hợp đồng một dòng, nhóm theo khách hàng. */
 .customer-list-summary { color: var(--text-muted); font-size: 13px; margin: 2px 0 10px; }
 .customer-list-summary strong { color: var(--color-primary-dark); }
-.customer-ledger { border: 1px solid var(--border-strong); border-radius: 14px; overflow-x: auto; background: var(--surface); }
+.customer-ledger-wrap { border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface); }
+.customer-ledger-heading { position: sticky; top: var(--header-h); z-index: 19; overflow: hidden; border-bottom: 1px solid var(--border-strong); border-radius: 13px 13px 0 0; background: #eef4f1; }
+.customer-ledger { overflow-x: auto; background: var(--surface); border-radius: 0 0 13px 13px; }
 .customer-ledger-columns, .customer-ledger-group { min-width: 1120px; }
 .customer-ledger-columns,
 .customer-ledger-contract {
@@ -566,6 +568,7 @@ svg { display: block; }
 .customer-ledger-days strong { color: var(--text); font-weight: 700; }
 .customer-ledger-person-main:focus-visible, .customer-ledger-call:focus-visible, .customer-ledger-contract:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media (max-width: 960px) {
+  .customer-ledger-heading { display: none; }
   .customer-ledger-columns, .customer-ledger-group { min-width: 0; }
   .customer-ledger-columns { display: none; }
   .customer-ledger-person { align-items: flex-start; padding: 9px 10px; gap: 7px; }
@@ -673,8 +676,8 @@ svg { display: block; }
 .modal-body { padding: 16px; overflow-y: auto; }
 .modal-foot { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
 .modal-sheet.customer-contract-sheet { max-width: 1040px; }
-.customer-contract-view { display: flex; flex-direction: column; gap: 14px; }
-.customer-contract-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.customer-contract-view { display: flex; flex-direction: column; gap: 10px; }
+.customer-contract-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 10px; }
 .customer-contract-metric { min-width: 0; padding: 14px; border: 1px solid var(--border-strong); border-radius: 12px; display: flex; flex-direction: column; gap: 6px; }
 .customer-contract-metric.is-primary { background: #eef7f2; border-color: #cbded3; }
 .customer-contract-metric > span { color: var(--text-muted); font-size: 11px; font-weight: 700; }
@@ -682,30 +685,39 @@ svg { display: block; }
 .customer-contract-metric.is-primary strong { color: var(--color-primary-dark); }
 .customer-contract-metric small { color: var(--text-muted); font-size: 11px; }
 .customer-contract-info-grid, .customer-contract-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
-.customer-contract-panel { min-width: 0; border: 1px solid var(--border-strong); border-radius: 12px; padding: 15px; }
-.customer-contract-panel h4 { font-size: 15px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
-.customer-contract-panel .oc-line { border-bottom: 1px solid var(--border); padding: 8px 0; }
+.customer-contract-side { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.customer-contract-calculation { order: -1; }
+.customer-contract-panel { min-width: 0; height: fit-content; border: 1px solid var(--border-strong); border-radius: 12px; padding: 13px; }
+.customer-contract-panel h4 { font-size: 15px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.customer-contract-panel .oc-line { border-bottom: 1px solid var(--border); padding: 6px 0; }
 .customer-contract-panel .oc-line:last-child { border-bottom: 0; }
-.customer-contract-calculation p { color: var(--text-muted); font-size: 12px; margin-bottom: 16px; }
-.customer-contract-formula { font-size: 14px; line-height: 1.9; }
+.customer-contract-collateral-value { display: grid; gap: 5px; font-size: 13px; }
+.customer-contract-collateral-value strong { color: var(--color-primary-dark); }
+.customer-contract-collateral p { color: var(--text-muted); font-size: 13px; }
+.customer-contract-formula { font-size: 14px; line-height: 1.5; }
 .customer-contract-formula strong { color: var(--color-primary-dark); }
-.customer-contract-alert { margin-top: 16px; padding: 10px 12px; border-radius: 8px; color: #8a5b0c; background: var(--warning-bg); font-size: 12px; font-weight: 600; }
+.customer-contract-alert { margin-top: 10px; padding: 8px 10px; border-radius: 8px; color: #8a5b0c; background: var(--warning-bg); font-size: 12px; font-weight: 600; }
 .customer-contract-alert.is-overdue { color: var(--danger); background: var(--danger-bg); }
-.customer-contract-settle { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; margin: 2px 0 12px; cursor: pointer; }
-.customer-contract-qr-layout { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 14px; align-items: center; }
-.customer-contract-qr-layout strong { display: block; margin: 5px 0 12px; color: var(--color-primary-dark); font-size: 20px; }
+.customer-contract-settle { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; margin: 0 0 8px; cursor: pointer; }
+.customer-contract-payment .field { margin-bottom: 8px; }
+.customer-contract-payment .field label { margin-bottom: 3px; }
+.customer-contract-payment .field input { padding: 7px 9px; }
+.customer-contract-payment .btn.mt-8 { margin-top: 6px; }
+.customer-contract-qr-layout { display: grid; grid-template-columns: minmax(0, 1fr) 130px; gap: 10px; align-items: start; }
+.customer-contract-qr-layout strong { display: block; margin: 3px 0 7px; color: var(--color-primary-dark); font-size: 18px; }
 .customer-contract-qr-layout img { width: 100%; border: 1px solid var(--border); border-radius: 10px; }
 @media (max-width: 639px) {
   .modal-sheet.customer-contract-sheet { max-height: 94vh; }
   .customer-contract-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .customer-contract-metric.is-primary { grid-column: 1 / -1; }
-  .customer-contract-metric { padding: 11px; }
+  .customer-contract-metric { padding: 9px 11px; gap: 3px; }
   .customer-contract-metric strong { font-size: 18px; }
   .customer-contract-metric.is-primary strong { font-size: 23px; }
   .customer-contract-metric small { display: none; }
   .customer-contract-info-grid, .customer-contract-actions { grid-template-columns: 1fr; }
-  .customer-contract-panel { padding: 12px; }
-  .customer-contract-qr-layout { grid-template-columns: minmax(0, 1fr) 115px; }
+  .customer-contract-calculation { order: 0; }
+  .customer-contract-panel { padding: 11px; }
+  .customer-contract-qr-layout { grid-template-columns: minmax(0, 1fr) 105px; }
 }
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 @keyframes slideUp { from { transform: translateY(24px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
