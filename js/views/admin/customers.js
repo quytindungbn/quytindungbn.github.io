@@ -762,16 +762,17 @@ function manualOaState(contract) {
 async function sendManualOa(contractId, button, onSuccess) {
   if (manualOaSending.has(contractId)) return;
   const originalLabel = button.innerHTML;
+  const compact = button.classList.contains('customer-ledger-oa');
   manualOaSending.add(contractId);
   button.disabled = true;
-  button.innerHTML = `${icon('refresh', 'icon-sm')} Đang gửi...`;
+  button.innerHTML = compact ? 'Đang gửi' : `${icon('refresh', 'icon-sm')} Đang gửi...`;
   try {
     const res = await S.sendZaloManual(contractId);
     toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error');
     if (res.ok) {
       const sentAt = new Date().toISOString();
       manualOaSentAt.set(contractId, sentAt);
-      button.innerHTML = `${icon('check', 'icon-sm')} Đã gửi`;
+      button.innerHTML = compact ? 'Đã gửi' : `${icon('check', 'icon-sm')} Đã gửi`;
       button.title = 'Đã gửi OA; chờ 5 ngày trước khi gửi lại';
       onSuccess?.(sentAt);
       window.__qtdRedrawCustomers?.();
