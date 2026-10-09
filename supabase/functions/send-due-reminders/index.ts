@@ -759,7 +759,7 @@ Deno.serve(async (req) => {
       console.error('Không kiểm tra được lịch sử gửi tay Zalo OA:', error);
       return false; // Không gửi OA nếu không xác minh được thời hạn chờ.
     }
-    return !data?.sent_at || daysBetween(new Date(data.sent_at), now) >= 5;
+    return !data?.sent_at || now.getTime() - new Date(data.sent_at).getTime() >= 5 * 24 * 60 * 60 * 1000;
   }
   async function logSent(customerId: string, contractId: string, kind: string) {
     await admin.from('notification_log').insert({ owner_id: customerId, contract_id: contractId, kind, sent_at: now.toISOString() });
