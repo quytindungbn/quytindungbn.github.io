@@ -525,6 +525,13 @@ svg { display: block; }
 /* Danh sách khách hàng: mỗi hợp đồng một dòng, nhóm theo khách hàng. */
 .customer-list-summary { color: var(--text-muted); font-size: 13px; margin: 2px 0 10px; }
 .customer-list-summary strong { color: var(--color-primary-dark); }
+.customer-page-jump { display: none; }
+@media (min-width: 900px) {
+  .customer-page-jump { position: fixed; right: 24px; bottom: 94px; z-index: 21; display: grid; gap: 8px; }
+  .customer-page-jump button { width: 42px; height: 42px; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); color: var(--color-primary-dark); font-size: 22px; font-weight: 700; line-height: 1; cursor: pointer; }
+  .customer-page-jump button:hover { background: var(--color-primary-light); border-color: var(--color-primary); }
+  .customer-page-jump button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+}
 .customer-ledger-wrap { border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface); }
 .customer-ledger-heading { position: sticky; top: var(--header-h); z-index: 19; overflow: hidden; border-bottom: 1px solid var(--border-strong); border-radius: 13px 13px 0 0; background: #eef4f1; }
 .customer-ledger { overflow-x: auto; background: var(--surface); border-radius: 0 0 13px 13px; }
