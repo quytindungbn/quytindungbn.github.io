@@ -39,6 +39,8 @@ let filterThon = []; // rỗng = Tất cả — có thể tích chọn nhiều T
 let filterXom = [];  // rỗng = Tất cả — có thể tích chọn nhiều Xóm cùng lúc
 let urgencyFilter = 'all'; // 'all' | 'qua_han' | 'gan_den_han' — CHỈ chọn được 1 trong 3 (không phải nhiều lựa chọn cùng lúc như trước)
 let sortMode = 'default';
+const manualOaSending = new Set();
+const manualOaSentAt = new Map();
 // Nhãn hiển thị dùng chung cho urgencyFilter — dùng lại khi ghi Nhật ký sử
 // dụng (S.logAdminAction('filter-customers', ...)), khỏi lặp lại chuỗi.
 const URGENCY_FILTER_LABELS = { all: 'Tất cả', qua_han: 'Nợ quá hạn', gan_den_han: 'Gần đến hạn' };
@@ -53,6 +55,7 @@ const URGENCY_FILTER_LABELS = { all: 'Tất cả', qua_han: 'Nợ quá hạn', g
  */
 export function resetFilters() {
   query = ''; filterThon = []; filterXom = []; urgencyFilter = 'all'; sortMode = 'default';
+  manualOaSending.clear(); manualOaSentAt.clear();
 }
 
 function multiPillLabel(prefix, values) {
@@ -182,6 +185,7 @@ export function render(contentEl, filterEl) {
   renderFilterPills();
 
   function draw() {
+    const canManageZalo = S.canManageZaloOA(S.getSession().id);
     let list = S.listCustomers({
       adminId: isStaff ? admin.id : undefined,
       thon: filterThon,
@@ -238,11 +242,14 @@ export function render(contentEl, filterEl) {
 
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
-      ${enriched.length ? `<div class="customer-ledger-wrap">
+      ${enriched.length ? `<div class="customer-ledger-wrap ${canManageZalo ? 'has-oa-actions' : ''}">
         <div class="customer-ledger-heading">
           <div class="customer-ledger-columns" aria-hidden="true">
-            <span>HỢP ĐỒNG · TÌNH TRẠNG</span><span>NGÀY VAY</span><span>ĐẾN HẠN</span><span>DƯ NỢ</span>
-            <span>ĐÃ TRẢ LÃI ĐẾN</span><span>SỐ NGÀY LÃI</span><span>LÃI CỘNG DỒN</span>
+            <div class="customer-ledger-column-main">
+              <span>HỢP ĐỒNG · TÌNH TRẠNG</span><span>NGÀY VAY</span><span>ĐẾN HẠN</span><span>DƯ NỢ</span>
+              <span>ĐÃ TRẢ LÃI ĐẾN</span><span>SỐ NGÀY LÃI</span><span>LÃI CỘNG DỒN</span>
+            </div>
+            ${canManageZalo ? '<span class="customer-ledger-oa-heading">GỬI OA</span>' : ''}
           </div>
         </div>
         <div class="customer-ledger">
@@ -263,7 +270,7 @@ export function render(contentEl, filterEl) {
                 ${dialPhone ? `<a class="customer-ledger-call" href="tel:${escapeHtml(dialPhone)}" aria-label="Gọi ${escapeHtml(c.name)}" title="Gọi ${escapeHtml(c.phone)}">${icon('phone', 'icon-sm')} Gọi</a>` : ''}
                 <span class="customer-ledger-dots">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
               </div>
-              ${contracts.map((ct) => contractLedgerRow(ct)).join('')}
+              ${contracts.map((ct) => contractLedgerRow(ct, canManageZalo)).join('')}
             </section>`;
           }).join('')}
         </div>
@@ -285,6 +292,9 @@ export function render(contentEl, filterEl) {
         const customerId = row.dataset.customerId;
         openContractView(customerId, S.getContract(row.dataset.viewContract), { readOnly: isStaff });
       });
+    });
+    contentEl.querySelectorAll('[data-send-oa]').forEach((button) => {
+      button.addEventListener('click', () => sendManualOa(button.dataset.sendOa, button));
     });
   }
   draw();
@@ -630,7 +640,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
  * phải số tiền vay ban đầu — số tiền vay ban đầu chỉ hiện trong màn chi tiết
  * hợp đồng (mục "Số tiền vay ban đầu").
  */
-function contractLedgerRow(ct) {
+function contractLedgerRow(ct, canManageZalo) {
   const info = S.contractAttentionInfo(ct);
   const interest = S.accruedInterest(ct);
   const interestDays = S.interestDaysAccrued(ct);
@@ -639,17 +649,21 @@ function contractLedgerRow(ct) {
     : info.level === 'gan_den_han'
       ? statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${info.days} ngày` })
       : statusBadge({ badge: 'badge-green', label: 'Trong hạn' });
+  const oa = canManageZalo ? manualOaState(ct) : null;
+  const oaReason = oa && (!oa.inZaloList ? 'Khách chưa có trong Danh sách OA' : oa.cooldownDaysLeft > 0 ? `Còn ${oa.cooldownDaysLeft} ngày nữa mới gửi lại được` : manualOaSending.has(ct.id) ? 'Đang gửi OA' : 'Gửi OA cho hợp đồng này');
   return `
-    <button type="button" class="customer-ledger-contract ${info.level === 'qua_han' ? 'is-overdue' : info.level === 'gan_den_han' ? 'is-near' : ''}"
-      data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" aria-label="Xem hợp đồng ${escapeHtml(ct.code)}">
-      <div class="customer-ledger-code"><span class="customer-ledger-code-line"><span>HĐTD ${escapeHtml(ct.code)}</span>${status}</span>${installmentHintHtml(ct)}</div>
-      <span class="customer-ledger-disbursed">${formatDate(ct.disbursedDate)}</span>
-      <span class="customer-ledger-due">${formatDate(ct.dueDate)}</span>
-      <span class="customer-ledger-balance">${formatVND(ct.balance)}</span>
-      <span class="customer-ledger-paid">${formatDate(ct.interestPaidUntil || ct.disbursedDate)}</span>
-      <span class="customer-ledger-days"><strong>${interestDays}</strong> ngày</span>
-      <span class="customer-ledger-interest">${formatVND(interest)}</span>
-    </button>`;
+    <div class="customer-ledger-contract ${info.level === 'qua_han' ? 'is-overdue' : info.level === 'gan_den_han' ? 'is-near' : ''}">
+      <button type="button" class="customer-ledger-contract-main" data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" aria-label="Xem hợp đồng ${escapeHtml(ct.code)}">
+        <div class="customer-ledger-code"><span class="customer-ledger-code-line"><span>HĐTD ${escapeHtml(ct.code)}</span>${status}</span>${installmentHintHtml(ct)}</div>
+        <span class="customer-ledger-disbursed">${formatDate(ct.disbursedDate)}</span>
+        <span class="customer-ledger-due">${formatDate(ct.dueDate)}</span>
+        <span class="customer-ledger-balance">${formatVND(ct.balance)}</span>
+        <span class="customer-ledger-paid">${formatDate(ct.interestPaidUntil || ct.disbursedDate)}</span>
+        <span class="customer-ledger-days"><strong>${interestDays}</strong> ngày</span>
+        <span class="customer-ledger-interest">${formatVND(interest)}</span>
+      </button>
+      ${oa ? `<button type="button" class="btn btn-outline btn-sm customer-ledger-oa" data-send-oa="${ct.id}" title="${escapeHtml(oaReason)}" aria-label="Gửi OA cho hợp đồng ${escapeHtml(ct.code)}" ${!oa.inZaloList || oa.cooldownDaysLeft > 0 || manualOaSending.has(ct.id) ? 'disabled' : ''}>Gửi OA</button>` : ''}
+    </div>`;
 }
 
 function contractAmountsHtml(ct) {
@@ -735,6 +749,40 @@ function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
   return `<div class="field-hint">${lastZaloSend ? `Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — đã đủ 5 ngày, gửi lại được rồi. ` : ''}Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>`;
 }
 
+function manualOaState(contract) {
+  const inZaloList = S.isZaloCustomer(contract.customerId);
+  const lastServerSend = S.lastSuccessfulZaloSend(contract.id);
+  const recentSentAt = manualOaSentAt.get(contract.id);
+  const lastZaloSend = recentSentAt && (!lastServerSend || new Date(recentSentAt) > new Date(lastServerSend.sentAt))
+    ? { sentAt: recentSentAt } : lastServerSend;
+  const daysSince = lastZaloSend ? daysBetween(new Date(lastZaloSend.sentAt), new Date()) : null;
+  return { inZaloList, lastZaloSend, cooldownDaysLeft: daysSince === null ? 0 : Math.max(0, 5 - daysSince) };
+}
+
+async function sendManualOa(contractId, button, onSuccess) {
+  if (manualOaSending.has(contractId)) return;
+  const originalLabel = button.innerHTML;
+  manualOaSending.add(contractId);
+  button.disabled = true;
+  button.innerHTML = `${icon('refresh', 'icon-sm')} Đang gửi...`;
+  try {
+    const res = await S.sendZaloManual(contractId);
+    toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error');
+    if (res.ok) {
+      const sentAt = new Date().toISOString();
+      manualOaSentAt.set(contractId, sentAt);
+      button.innerHTML = `${icon('check', 'icon-sm')} Đã gửi`;
+      button.title = 'Đã gửi OA; chờ 5 ngày trước khi gửi lại';
+      onSuccess?.(sentAt);
+      window.__qtdRedrawCustomers?.();
+      return;
+    }
+  } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+  finally { manualOaSending.delete(contractId); }
+  button.disabled = false;
+  button.innerHTML = originalLabel;
+}
+
 /**
  * Xem chi tiết hợp đồng — hiển thị đầy đủ giống hệt trang khách hàng thấy khi
  * họ bấm vào. Dữ liệu lấy từ Excel, quản trị viên KHÔNG chỉnh sửa trực tiếp
@@ -759,10 +807,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   // lần gửi thành công gần nhất phải >= 5 ngày — server luôn là nơi quyết
   // định thật sự (chặn cả 2 điều kiện này), ở đây chỉ tính trước để BÁO
   // TRƯỚC cho admin biết lý do trước khi bấm, đỡ bấm xong mới biết bị chặn.
-  const inZaloList = customer ? S.isZaloCustomer(customer.id) : false;
-  const lastZaloSend = customer ? S.lastSuccessfulZaloSend(contract.id) : null;
-  const daysSinceZaloSend = lastZaloSend ? daysBetween(new Date(lastZaloSend.sentAt), new Date()) : null;
-  const zaloCooldownDaysLeft = daysSinceZaloSend !== null ? Math.max(0, 5 - daysSinceZaloSend) : 0;
+  const { inZaloList, lastZaloSend, cooldownDaysLeft: zaloCooldownDaysLeft } = manualOaState(contract);
 
   // Mã QR VietQR cho quản trị viên/nhân viên — 2 ô Gốc/Lãi riêng, cộng lại ra
   // số tiền trên QR. Mặc định chỉ có sẵn Lãi (= "Lãi đến nay"), ô Gốc để
@@ -911,33 +956,9 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       });
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       const zaloHintWrap = sheet.querySelector('#zalo-hint-wrap-ct');
-      if (zaloManualBtn) zaloManualBtn.addEventListener('click', async () => {
-        // Gửi Zalo phải gọi qua máy chủ Zalo (mạng ngoài, không phải máy chủ
-        // của quỹ) nên luôn mất vài giây thật sự, không có cách nào bấm phát
-        // ra kết quả ngay — đổi chữ trên nút thành "Đang gửi..." để người bấm
-        // biết ngay là đã bấm trúng, đang chờ, không phải app bị đứng/lag.
-        const originalLabel = zaloManualBtn.innerHTML;
-        zaloManualBtn.disabled = true;
-        zaloManualBtn.innerHTML = `${icon('refresh', 'icon-sm')} Đang gửi...`;
-        try {
-          const res = await S.sendZaloManual(contract.id);
-          toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error');
-          if (res.ok) {
-            // Gửi THÀNH CÔNG là bắt đầu tính lại đúng 5 ngày chờ NGAY LẬP TỨC
-            // — tự cập nhật nút (giữ chìm/disabled) + dòng chú thích tại đây
-            // luôn, khỏi phải đóng rồi mở lại popup mới thấy đúng — khớp
-            // đúng với refreshSessionData() đang chạy ngầm phía sau (xem
-            // S.sendZaloManual), mở lại popup sau đó vẫn ra y hệt.
-            // Đổi chữ trên nút thành "Đã gửi" (không để lại "Đang gửi..." —
-            // để lâu dài trông như bị đứng/lag) nhưng vẫn giữ disabled.
-            zaloManualBtn.innerHTML = `${icon('check', 'icon-sm')} Đã gửi`;
-            if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt: new Date().toISOString() });
-            return; // giữ nguyên nút đang chìm — KHÔNG khôi phục lại như nút gốc
-          }
-        } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-        zaloManualBtn.disabled = false;
-        zaloManualBtn.innerHTML = originalLabel;
-      });
+      if (zaloManualBtn) zaloManualBtn.addEventListener('click', () => sendManualOa(contract.id, zaloManualBtn, (sentAt) => {
+        if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt });
+      }));
       const delBtn = sheet.querySelector('#del-contract');
       if (delBtn) delBtn.addEventListener('click', () => {
         confirmDialog({

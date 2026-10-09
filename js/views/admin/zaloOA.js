@@ -177,7 +177,7 @@ function drawOATab(slot, admin) {
     listEl.innerHTML = `
       <div class="text-sm text-muted mb-8">${rows.length} khách hàng trong danh sách OA</div>
       ${rows.length ? rows.map(({ r, customer }) => `
-        <div class="list-row" data-open="${customer.id}" style="cursor:pointer;padding:12px 4px">
+        <div class="list-row" data-open="${customer.id}" style="cursor:pointer">
           <div class="row-thumb" style="background:${colorFor(customer.id)}">${initials(customer.name)}</div>
           <div class="row-main">
             <div class="row-title">${customer.name}</div>

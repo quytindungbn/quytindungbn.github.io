@@ -6,7 +6,7 @@ import { emptyState, statusBadge, installmentHintHtml } from '../../components/u
 import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor, escapeHtml } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
-import { barChartSvg, monthlyTrendLineChartSvg, compositionDonutHtml } from '../../components/charts.js';
+import { barChartSvg, monthlyTrendLineChartSvg, compositionDonutHtml, BALANCE_TREND_COLOR } from '../../components/charts.js';
 import { openContractView, openCustomerDetail } from './customers.js';
 import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
 
@@ -208,7 +208,7 @@ function bindNhomNoClicks(root) {
   });
 }
 
-const GROUP_COLORS = { 1: 'var(--success)', 2: 'var(--warning)', 3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d' };
+const GROUP_COLORS = { 1: BALANCE_TREND_COLOR, 2: 'var(--warning)', 3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d' };
 
 const COMPOSITION_OPTIONS = {
   purpose: {
