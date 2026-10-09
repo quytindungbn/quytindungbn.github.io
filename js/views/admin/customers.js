@@ -767,7 +767,16 @@ function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
   if (zaloCooldownDaysLeft > 0) {
     return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — còn ${zaloCooldownDaysLeft} ngày nữa mới gửi lại được (giới hạn 5 ngày/lần).</div>`;
   }
-  return `<div class="field-hint">${lastZaloSend ? `Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — đã đủ 5 ngày, gửi lại được rồi. ` : ''}Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>`;
+  return lastZaloSend ? `<div class="field-hint">Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — đã đủ 5 ngày, gửi lại được rồi.</div>` : '';
+}
+
+function zaloAutoStatusHtml(status) {
+  if (status === null) return '<div class="field-hint">Đang kiểm tra trạng thái gửi tự động...</div>';
+  if (status === undefined) return '<div class="field-hint">Chưa kiểm tra được trạng thái gửi tự động.</div>';
+  const interval = [1, 2, 3, 4].includes(status.intervalMonths) ? status.intervalMonths : 1;
+  return status.enabled
+    ? `<div class="field-hint customer-contract-oa-auto-added">Đã thêm vào gửi tự động ${interval === 1 ? 'hàng tháng' : `${interval} tháng`}</div>`
+    : '<div class="field-hint">Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>';
 }
 
 function manualOaState(contract) {
@@ -892,6 +901,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             ${customer && customer.phone && canPay && canManageZalo ? `
               <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
               <div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
+            ${canPay ? `<div id="zalo-auto-status-ct">${zaloAutoStatusHtml(null)}</div>` : ''}
           </section>
           <section class="customer-contract-panel customer-contract-payment">
             <h4>Thanh toán và mã QR</h4>
@@ -917,6 +927,12 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     `,
     footHtml: readOnly ? '' : `<button class="btn btn-danger-outline btn-block" id="del-contract">${icon('trash', 'icon-sm')} Xóa hợp đồng</button>`,
     onMount(sheet, closeFn) {
+      const zaloAutoStatus = sheet.querySelector('#zalo-auto-status-ct');
+      if (zaloAutoStatus) {
+        S.getZaloAutoSendStatus(contract.id)
+          .then((status) => { if (zaloAutoStatus.isConnected) zaloAutoStatus.innerHTML = zaloAutoStatusHtml(status); })
+          .catch(() => { if (zaloAutoStatus.isConnected) zaloAutoStatus.innerHTML = zaloAutoStatusHtml(undefined); });
+      }
       bindInstallmentNextBox(sheet, contract, 'installment-next-box-ct');
       const qrImgEl = sheet.querySelector('#qr-img-ct');
       let gocAmount = 0;

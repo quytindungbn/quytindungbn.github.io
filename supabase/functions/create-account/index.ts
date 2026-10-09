@@ -934,6 +934,40 @@ Deno.serve(async (req) => {
     return json({ ok: true, sentCount });
   }
 
+  // Chỉ trả về trạng thái và chu kỳ để mọi nhân viên xem được trong chi tiết
+  // hợp đồng. Không trả người đăng ký hay ngày gửi riêng tư của người khác.
+  if (body.type === 'get-zalo-auto-send-status') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') {
+      return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
+    const { data: caller, error: callerError } = await admin.from('admins')
+      .select('role, allowed_thon, allowed_xom').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerError || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const contractId = String(body.contractId || '').trim();
+    if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
+    const { data: contract, error: contractError } = await admin.from('contracts')
+      .select('customer_id').eq('id', contractId).maybeSingle();
+    if (contractError) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    if (!contract) return json({ ok: false, reason: 'Không tìm thấy hợp đồng.' }, 404);
+    if (caller.role !== 'super') {
+      const { data: customer, error: customerError } = await admin.from('customers')
+        .select('thon, xom').eq('id', contract.customer_id).maybeSingle();
+      if (customerError) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      const allowedThon: string[] = caller.allowed_thon || [];
+      const allowedXom: string[] = caller.allowed_xom || [];
+      if (!customer || !(allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`))) {
+        return json({ ok: false, reason: 'Bạn không có quyền xem hợp đồng này.' }, 403);
+      }
+    }
+    const { data: selection, error: selectionError } = await admin.from('zalo_auto_send_list')
+      .select('interval_months').eq('contract_id', contractId).maybeSingle();
+    if (selectionError) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    return json({ ok: true, enabled: !!selection, intervalMonths: selection?.interval_months || null });
+  }
+
   // ===== type: 'add-zalo-auto-send' / 'remove-zalo-auto-send' / 'send-zalo-manual'
   // — quản lý danh sách gửi Zalo OA tự động + gửi tay ngay 1 khách. Cần quyền
   // canManageZaloOA (cờ RIÊNG, KHÔNG dùng chung canManageUsers) HOẶC

@@ -1078,6 +1078,13 @@ export function listZaloCustomers() { return state.zaloCustomers || []; }
 export function findZaloAutoSend(contractId) {
   return (state.zaloAutoSendList || []).find((r) => r.contractId === contractId) || null;
 }
+/** Chỉ đọc trạng thái và chu kỳ gửi tự động của hợp đồng trong phạm vi quản lý; không cần quyền quản lý OA. */
+export async function getZaloAutoSendStatus(contractId) {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'get-zalo-auto-send-status', contractId });
+  if (!res.ok) throw new Error(res.reason || 'Không kiểm tra được trạng thái gửi tự động.');
+  return { enabled: res.enabled === true, intervalMonths: Number(res.intervalMonths) || 1 };
+}
 export function listZaloAutoSend() { return state.zaloAutoSendList || []; }
 export function listZaloAutoSendByKind(kind) { return (state.zaloAutoSendList || []).filter((r) => r.kind === kind); }
 export function listZaloSendLog() { return state.zaloSendLog || []; }
