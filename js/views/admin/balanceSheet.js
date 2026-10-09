@@ -439,7 +439,7 @@ function draw(contentEl) {
     <div class="card card-pad bs-section bs-trend-section"><h3>Biến động</h3>${trendChart(reports)}</div>
     <div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
       <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div>
-    <div class="bs-management bs-section"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3><span>${yearOpening ? `So với đầu kỳ tháng 01/${report.year_month.slice(0, 4)}` : `Chưa có kỳ 01/${report.year_month.slice(0, 4)} để so sánh từ đầu năm`}; Vốn chủ sở hữu so với cuối tháng 12/${Number(report.year_month.slice(0, 4)) - 1}${previousDecember ? '' : ' (chưa có dữ liệu)'}</span></div>
+    <div class="bs-management bs-section"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3></div>
       ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart)}
         ${managementRow('Tổng tài sản', 'assets', start, end, yearStart, { total: true })}`)}
       ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, fundingYearStart)}
