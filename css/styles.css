@@ -538,7 +538,7 @@ svg { display: block; }
 }
 .customer-ledger-columns { display: flex; align-items: center; padding: 11px 16px; background: #eef4f1; color: #000; font-size: 10px; font-weight: 800; }
 .customer-ledger-column-main { flex: 1; min-width: 0; }
-.customer-ledger-oa-heading { flex: 0 0 64px; margin-left: 8px; text-align: center; }
+.customer-ledger-oa-heading { flex: 0 0 56px; margin-left: 6px; text-align: center; }
 .customer-ledger-column-main span, .customer-ledger-contract-main > span, .customer-ledger-code { min-width: 0; }
 .customer-ledger-column-main span:not(:first-child), .customer-ledger-contract-main > span { padding-left: 8px; }
 .customer-ledger-group + .customer-ledger-group { border-top: 3px solid #b4cabc; }
@@ -565,7 +565,7 @@ svg { display: block; }
   border-top: 1px solid var(--border); background: var(--surface); font-size: 12px;
 }
 .customer-ledger-contract-main { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; font-size: inherit; }
-.customer-ledger-oa { flex: 0 0 64px; margin-left: 8px; padding: 6px 3px; color: var(--color-primary-dark); font-size: 11px; white-space: nowrap; }
+.customer-ledger-oa { flex: 0 0 56px; margin-left: 6px; padding: 6px 2px; color: var(--color-primary-dark); font-size: 11px; white-space: nowrap; }
 .customer-ledger-code { border-left: 4px solid #0d6b34; padding-left: 9px; font-weight: 400; font-size: 13px; }
 .customer-ledger-code-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .customer-ledger-code-line .badge { font-size: 10px; }
