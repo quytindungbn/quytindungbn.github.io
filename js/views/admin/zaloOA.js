@@ -303,6 +303,7 @@ const AUTO_PREVIEW_COUNT = 4; // trang chính chỉ hiện vài dòng đầu —
 function drawAutoTab(slot, admin) {
   slot.innerHTML = `
     <p class="text-sm text-muted mb-8">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại. 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
+    <p class="text-sm text-muted mb-8">Số tháng là ngưỡng lãi chưa trả. Đủ ngưỡng sẽ gửi vào đúng ngày hằng tháng; khi khách trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</p>
     ${AUTO_SEND_SECTIONS.map((s) => `
       <div class="card card-pad mb-16">
         <div class="section-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -535,7 +536,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
       ${isCustomDay ? `<div class="field"><label>Ngày trong tháng (1-30) — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label><input type="number" id="day-input" min="1" max="30" value="1"/></div>` : ''}
       <div class="field">
         <label>Ngưỡng lãi chưa trả — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label>
-        <select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? 'Mỗi tháng' : `${n} tháng/lần`}</option>`).join('')}</select>
+        <select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? 'Đủ 1 tháng' : `Đủ ${n} tháng`}</option>`).join('')}</select>
         <small class="text-muted">Đủ số tháng này sẽ gửi vào đúng ngày hằng tháng; nếu chưa trả lãi, các tháng sau tiếp tục gửi. Sau khi trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</small>
       </div>
       ${searchBoxHtml('add-auto-search', 'Tìm theo tên khách hoặc mã hợp đồng...', '')}
