@@ -749,6 +749,18 @@ Deno.serve(async (req) => {
     if (!data || !data.length) return true;
     return daysBetween(new Date(data[0].sent_at), now) >= 1;
   }
+  /** Gửi tay thành công chưa đủ 5 ngày: bỏ kỳ OA tự động này, chờ đúng kỳ tháng sau. */
+  async function shouldSendAutoZalo(contractId: string, kind: string): Promise<boolean> {
+    if (!await shouldSend(contractId, kind)) return false;
+    const { data, error } = await admin.from('zalo_send_log').select('sent_at')
+      .eq('contract_id', contractId).eq('triggered_by', 'manual').eq('status', 'success')
+      .order('sent_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) {
+      console.error('Không kiểm tra được lịch sử gửi tay Zalo OA:', error);
+      return false; // Không gửi OA nếu không xác minh được thời hạn chờ.
+    }
+    return !data?.sent_at || daysBetween(new Date(data.sent_at), now) >= 5;
+  }
   async function logSent(customerId: string, contractId: string, kind: string) {
     await admin.from('notification_log').insert({ owner_id: customerId, contract_id: contractId, kind, sent_at: now.toISOString() });
   }
@@ -796,7 +808,7 @@ Deno.serve(async (req) => {
         const picked = pickZaloTemplate(ct, now, orgRow);
         if (picked) {
           const customer = customerMap.get(ct.customer_id);
-          if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_hang_thang')) {
+          if (customer?.phone && await shouldSendAutoZalo(ct.id, 'zalo_lai_hang_thang')) {
             const zaloOk = await sendZaloTemplate({
               accessToken: zaloAccessToken, phone: customer.phone, templateId: picked.templateId,
               templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
@@ -824,7 +836,7 @@ Deno.serve(async (req) => {
         const picked = pickZaloTemplate(ct, now, orgRow);
         if (picked) {
           const customer = customerMap.get(ct.customer_id);
-          if (customer?.phone && await shouldSend(ct.id, 'zalo_lai_ngay_cu_the')) {
+          if (customer?.phone && await shouldSendAutoZalo(ct.id, 'zalo_lai_ngay_cu_the')) {
             const zaloOk = await sendZaloTemplate({
               accessToken: zaloAccessToken, phone: customer.phone, templateId: picked.templateId,
               templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
