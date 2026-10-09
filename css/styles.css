@@ -694,6 +694,11 @@ svg { display: block; }
 .modal-head h3 { font-size: 16px; font-weight: 700; line-height: 1.8; padding-top: 2px; }
 .modal-body { padding: 16px; overflow-y: auto; }
 .modal-foot { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+.modal-sheet.attention-ledger-sheet { width: min(1200px, calc(100vw - 40px)); max-width: none; }
+.attention-ledger-sheet .customer-ledger-heading { top: 0; }
+@media (max-width: 639px) {
+  .modal-sheet.attention-ledger-sheet { width: 100%; }
+}
 .modal-sheet.customer-contract-sheet { max-width: 1040px; }
 .customer-contract-view { display: flex; flex-direction: column; gap: 10px; }
 .customer-contract-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 10px; }
