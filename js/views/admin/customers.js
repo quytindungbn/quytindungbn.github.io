@@ -8,6 +8,7 @@ import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, 
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xlsxLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
+import { printNotice } from '../../lib/printNotices.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Khách hàng & Hợp đồng' });
@@ -320,6 +321,57 @@ export function bindCustomerLedger(root, { readOnly = false } = {}) {
   wrap.querySelectorAll('[data-send-oa]').forEach((button) => {
     button.addEventListener('click', () => sendManualOa(button.dataset.sendOa, button));
   });
+  // Menu chuột phải gắn vào đúng dòng hợp đồng, không gắn vào tên khách hàng:
+  // một khách có thể có nhiều món và mỗi giấy báo phải lấy đúng món được chọn.
+  wrap.addEventListener('contextmenu', (event) => {
+    const row = event.target.closest('[data-view-contract]');
+    if (!row || !wrap.contains(row) || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    event.preventDefault();
+    showContractNoticeMenu(row.dataset.viewContract, event.clientX, event.clientY);
+  });
+}
+
+let closeContractNoticeMenu = null;
+
+function showContractNoticeMenu(contractId, clientX, clientY) {
+  closeContractNoticeMenu?.();
+  const contract = S.getContract(contractId);
+  const customer = contract && S.getCustomer(contract.customerId);
+  if (!contract || !customer) return;
+  const menu = document.createElement('div');
+  menu.className = 'customer-notice-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', `In giấy báo hợp đồng ${contract.code}`);
+  menu.innerHTML = `
+    <div class="customer-notice-menu-heading">HĐTD ${escapeHtml(contract.code)}</div>
+    <button type="button" role="menuitem" data-notice="interest">In thông báo nộp lãi</button>
+    <button type="button" role="menuitem" data-notice="due">In giấy báo hợp đồng đến hạn</button>`;
+  document.body.append(menu);
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(clientX, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(clientY, window.innerHeight - bounds.height - 8))}px`;
+  function close() {
+    menu.remove();
+    document.removeEventListener('pointerdown', outside);
+    document.removeEventListener('keydown', escape);
+    window.removeEventListener('scroll', close, true);
+    if (closeContractNoticeMenu === close) closeContractNoticeMenu = null;
+  }
+  function outside(event) { if (!menu.contains(event.target)) close(); }
+  function escape(event) { if (event.key === 'Escape') close(); }
+  closeContractNoticeMenu = close;
+  document.addEventListener('pointerdown', outside);
+  document.addEventListener('keydown', escape);
+  window.addEventListener('scroll', close, true);
+  menu.querySelectorAll('[data-notice]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const type = button.dataset.notice;
+      close();
+      const opened = printNotice({ type, contract, customer, org: S.getOrg(), interest: S.accruedInterest(contract) });
+      if (!opened) toast('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.', 'error');
+    });
+  });
+  menu.querySelector('button')?.focus();
 }
 
 /**
