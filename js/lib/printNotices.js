@@ -89,7 +89,7 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
       @media print{.toolbar{display:none}.sheet{padding:0;max-width:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body><div class="toolbar"><button onclick="window.print()">In giấy báo</button><span>Kiểm tra số liệu và ngày yêu cầu trước khi phát hành.</span></div><article class="sheet">
       <header><strong>${orgName}</strong><span>Số: ............................</span></header>
-      <div class="date">Quảng Ngãi, ngày ${h(day)} tháng ${h(month)} năm ${h(year)}</div>
+      <div class="date">Bình Sơn, ngày ${h(day)} tháng ${h(month)} năm ${h(year)}</div>
       <h1>${h(title)}</h1><h2>Hợp đồng tín dụng số ${code}</h2>
       <div class="recipient">Kính gửi: Ông/Bà ${name}</div>
       <div class="address">Địa chỉ: ${address}</div>
