@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { amountInWords, buildNoticeHtml } from '../js/lib/printNotices.js';
+import { amountInWords, buildNoticeHtml, nextNoticePaymentDate, noticeDeadlineDate } from '../js/lib/printNotices.js';
 
 const base = {
   contract: { code: '020/26', balance: 20000000, interestRate: 10.95, disbursedDate: '2026-02-12', interestPaidUntil: '2026-05-12', dueDate: '2026-10-20' },
@@ -16,6 +16,13 @@ test('số tiền bằng chữ giữ đúng đơn vị triệu, nghìn và đồ
   assert.equal(amountInWords(0), 'Không đồng');
 });
 
+test('hạn thanh toán tự chọn thứ Sáu hoặc thứ Hai, bỏ cuối tuần', () => {
+  const results = [12, 13, 14, 15, 16, 17, 18].map((day) => nextNoticePaymentDate(new Date(2026, 9, day)).getDate());
+  assert.deepEqual(results, [16, 16, 19, 19, 19, 19, 19]);
+  assert.equal(noticeDeadlineDate('due', '2026-10-17', new Date(2026, 9, 12)).getDate(), 17);
+  assert.equal(noticeDeadlineDate('due', '2026-10-17', new Date(2026, 9, 18)).getDate(), 19);
+});
+
 test('hai mẫu in dùng đúng hợp đồng, địa chỉ và khoản phải trả khác nhau', () => {
   const interest = buildNoticeHtml({ ...base, type: 'interest' });
   const due = buildNoticeHtml({ ...base, type: 'due' });
@@ -29,13 +36,13 @@ test('hai mẫu in dùng đúng hợp đồng, địa chỉ và khoản phải t
   }
   assert.match(interest, /Số tiền lãi: 918\.000 ₫/);
   assert.match(interest, /Đề nghị ông\/bà thanh toán đầy đủ số tiền lãi nêu trên/);
+  assert.match(interest, /trước <strong>ngày 16 tháng 10 năm 2026<\/strong>/);
   assert.match(interest, /xem xét thu hồi nợ trước hạn khi đủ điều kiện/);
   assert.doesNotMatch(interest, /chịu hoàn toàn trước pháp luật/);
   assert.match(due, /Tổng gốc và lãi/);
-  assert.match(due, /Yêu cầu ông\/bà trước ngày…… tháng…… năm………… phải thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên/);
+  assert.match(due, /Yêu cầu ông\/bà trước <strong>ngày 20 tháng 10 năm 2026<\/strong> phải thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên/);
   assert.doesNotMatch(due, /phải có mặt tại/);
   assert.match(due, /20\.918\.000 ₫/);
-  assert.match(due, /ngày…… tháng…… năm/);
 });
 
 test('dữ liệu khách hàng trong giấy báo được mã hóa HTML', () => {
