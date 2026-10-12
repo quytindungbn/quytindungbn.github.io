@@ -95,7 +95,7 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
       <div class="address">Địa chỉ: ${address}</div>
       <section class="contract"><div class="contract-label">THÔNG TIN HỢP ĐỒNG</div>${contractRows}</section>
       <main>${amountRows}${body}</main>
-      <footer class="signatures"><div><strong>CÁN BỘ TÍN DỤNG</strong><small>(Ký, ghi rõ họ tên)</small></div><div><strong>ĐẠI DIỆN QUỸ</strong><small>(Ký, đóng dấu nếu phát hành)</small></div></footer>
+      <footer class="signatures"><div><strong>CÁN BỘ TÍN DỤNG</strong><small>(Ký, ghi rõ họ tên)</small></div><div><strong>ĐẠI DIỆN QUỸ</strong><small>(Ký, đóng dấu)</small></div></footer>
     </article></body></html>`;
 }
 
