@@ -29,6 +29,8 @@ test('hai mẫu in dùng đúng hợp đồng, địa chỉ và khoản phải t
   }
   assert.match(interest, /Số tiền lãi: 918\.000 ₫/);
   assert.match(due, /Tổng gốc và lãi/);
+  assert.match(due, /Yêu cầu ông\/bà trước ngày…… tháng…… năm………… phải thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên/);
+  assert.doesNotMatch(due, /phải có mặt tại/);
   assert.match(due, /20\.918\.000 ₫/);
   assert.match(due, /ngày…… tháng…… năm/);
 });
