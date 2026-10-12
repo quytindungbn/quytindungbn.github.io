@@ -70,7 +70,7 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
     <p class="indent"><strong>Số tiền lãi: ${h(formatVND(accrued))}.</strong> <strong><em>(Bằng chữ: ${h(amountInWords(accrued))}.)</em></strong><br>
     <em>(Lãi tính từ ngày: ${h(formatDate(contract.interestPaidUntil || contract.disbursedDate))} đến ngày: ${h(date)}).</em></p>`;
   const body = type === 'due' ? `
-    <p>Yêu cầu Ông/Bà chậm nhất đến ngày…… tháng…… năm………… phải có mặt tại ${orgName} để thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi vay theo quy định.</p>
+    <p>Yêu cầu Ông/Bà trước ngày…… tháng…… năm………… phải thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên.</p>
     <p>Quá thời hạn nêu trên, khoản vay sẽ bị chuyển sang nợ quá hạn, đồng thời Ông/Bà phải chịu lãi suất quá hạn, các khoản phí phạt phát sinh và các biện pháp xử lý theo quy định của pháp luật và điều lệ của Quỹ. Mọi hậu quả phát sinh do việc chậm trễ thanh toán, Ông/Bà hoàn toàn chịu trách nhiệm.</p>
     <p>Chúng tôi xin trân trọng cảm ơn sự hợp tác của ông/bà.</p>` : `
     <p>Đề nghị ông/bà trước <strong>ngày..........tháng.........năm ${h(year)}</strong> phải thực hiện thanh toán lãi tiền vay cho Quỹ tín dụng nhân dân Bình Nguyên. Nếu không chấp hành Quỹ tín dụng sẽ tiến hành thu hồi nợ trước hạn theo quy định và ông/bà sẽ bồi thường thiệt hại cho Quỹ (nếu có).</p>
