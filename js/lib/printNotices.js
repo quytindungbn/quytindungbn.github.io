@@ -73,8 +73,9 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
     <p>Yêu cầu ông/bà trước ngày…… tháng…… năm………… phải thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên.</p>
     <p>Quá thời hạn nêu trên, khoản vay sẽ bị chuyển sang nợ quá hạn, đồng thời Ông/Bà phải chịu lãi suất quá hạn, các khoản phí phạt phát sinh và các biện pháp xử lý theo quy định của pháp luật và điều lệ của Quỹ. Mọi hậu quả phát sinh do việc chậm trễ thanh toán, Ông/Bà hoàn toàn chịu trách nhiệm.</p>
     <p>Chúng tôi xin trân trọng cảm ơn sự hợp tác của ông/bà.</p>` : `
-    <p>Đề nghị ông/bà trước <strong>ngày..........tháng.........năm ${h(year)}</strong> phải thực hiện thanh toán lãi tiền vay cho Quỹ tín dụng nhân dân Bình Nguyên. Nếu không chấp hành Quỹ tín dụng sẽ tiến hành thu hồi nợ trước hạn theo quy định và ông/bà sẽ bồi thường thiệt hại cho Quỹ (nếu có).</p>
-    <p>Nếu ông/bà không chấp hành sẽ chịu hoàn toàn trước pháp luật của Nhà nước và QTDND Bình Nguyên. Chúng tôi xin trân trọng cảm ơn sự hợp tác của ông/bà.</p>`;
+    <p>Đề nghị ông/bà thanh toán đầy đủ số tiền lãi nêu trên cho Quỹ tín dụng nhân dân Bình Nguyên trước <strong>ngày…… tháng…… năm ${h(year)}</strong>, theo đúng cam kết tại hợp đồng tín dụng.</p>
+    <p>Nếu quá thời hạn trên mà Quỹ chưa nhận được khoản thanh toán, Quỹ sẽ thực hiện các biện pháp xử lý nợ theo hợp đồng tín dụng và quy định pháp luật, bao gồm xem xét thu hồi nợ trước hạn khi đủ điều kiện. Lãi chậm trả và các nghĩa vụ phát sinh (nếu có) được xác định theo thỏa thuận đã ký.</p>
+    <p>Đề nghị ông/bà nghiêm túc thực hiện. Quỹ trân trọng cảm ơn sự hợp tác của ông/bà.</p>`;
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${h(title)} - HĐTD ${code}</title>
     <style>
       @page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;color:#202020;background:#fff;font:13pt/1.48 "Times New Roman",Times,serif}
