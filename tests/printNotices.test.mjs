@@ -24,6 +24,8 @@ test('hai mẫu in dùng đúng hợp đồng, địa chỉ và khoản phải t
     assert.match(html, /Bình Sơn, ngày 12 tháng 10 năm 2026/);
     assert.match(html, /Hợp đồng tín dụng số 020\/26/);
     assert.match(html, /CÁN BỘ TÍN DỤNG/);
+    assert.match(html, /\(Ký, đóng dấu\)/);
+    assert.doesNotMatch(html, /nếu phát hành/);
   }
   assert.match(interest, /Số tiền lãi: 918\.000 ₫/);
   assert.match(due, /Tổng gốc và lãi/);
