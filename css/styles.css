@@ -1126,3 +1126,7 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
   background: linear-gradient(135deg, var(--color-primary), #22a68f);
   display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 22px;
 }
+.customer-notice-menu{position:fixed;z-index:10000;min-width:238px;padding:5px;background:#fff;border:1px solid #b9cbc5;border-radius:10px;box-shadow:0 12px 32px rgba(12,42,34,.18);font-size:13px}
+.customer-notice-menu-heading{padding:8px 10px 6px;color:#486058;font-weight:700;border-bottom:1px solid #e4ebe8;margin-bottom:4px}
+.customer-notice-menu button{display:block;width:100%;border:0;border-radius:6px;background:transparent;color:#173d33;text-align:left;padding:10px 12px;cursor:pointer;font:inherit}
+.customer-notice-menu button:hover,.customer-notice-menu button:focus-visible{background:#e7f3ed;outline:none}
