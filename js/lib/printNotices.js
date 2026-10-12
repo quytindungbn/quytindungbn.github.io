@@ -77,16 +77,16 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
     <p>Nếu ông/bà không chấp hành sẽ chịu hoàn toàn trước pháp luật của Nhà nước và QTDND Bình Nguyên. Chúng tôi xin trân trọng cảm ơn sự hợp tác của ông/bà.</p>`;
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${h(title)} - HĐTD ${code}</title>
     <style>
-      @page{size:A4;margin:18mm 18mm 16mm}*{box-sizing:border-box}body{margin:0;color:#202020;background:#fff;font:13pt/1.48 "Times New Roman",Times,serif}
+      @page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;color:#202020;background:#fff;font:13pt/1.48 "Times New Roman",Times,serif}
       .toolbar{font:14px Arial,sans-serif;padding:12px 18mm;background:#f3f6f5;border-bottom:1px solid #d5dfdc;display:flex;gap:12px;align-items:center}
       .toolbar button{background:#0c6253;color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer}.sheet{max-width:174mm;margin:0 auto;padding:16mm 0}
       header{border-bottom:1px solid #252525;padding-bottom:8px;display:flex;justify-content:space-between;align-items:baseline;font-size:10pt}header strong{text-transform:uppercase;font-size:11pt}
       .date{text-align:right;font-style:italic;margin:16px 0 26px;font-size:11pt}h1{text-align:center;font-size:17pt;margin:0 0 3px}h2{text-align:center;font-size:11pt;font-weight:400;margin:0 0 24px}
       .recipient{font-weight:700;margin:0 0 2px}.address{margin:0 0 15px;font-size:11.5pt}.contract{background:#f3f8f5;border:1px solid #d5e2dc;border-radius:8px;padding:12px 15px;display:grid;grid-template-columns:1fr 1fr;gap:7px 18px;font-size:10.5pt}
-      .contract-label{grid-column:1/-1;color:#0c6253;font-weight:700;font-size:9pt}.contract>div:not(.contract-label){display:flex;justify-content:space-between;gap:6px}.contract span{color:#5d5d5d}.contract strong{white-space:nowrap}
+      .contract-label{grid-column:1/-1;color:#0c6253;font-weight:700;font-size:9pt}.contract>div:not(.contract-label){display:flex;justify-content:space-between;gap:6px}.contract span{color:#000}.contract strong{color:#000;white-space:nowrap}
       main{margin-top:18px;text-align:justify}p{margin:0 0 13px}.indent{margin-left:18px}.amount-box{background:#f7f9f8;border:1px solid #d5e2dc;border-radius:8px;padding:9px 15px;margin-bottom:11px;font-size:11.5pt}.amount-box>div{display:flex;justify-content:space-between;gap:16px;padding:4px 0}.amount-box .total{border-top:1px solid #cbd9d3;margin-top:4px;padding-top:8px;font-weight:700}
       .signatures{display:grid;grid-template-columns:1fr 1fr;margin-top:32px;text-align:center;font-size:11pt;break-inside:avoid}.signatures small{display:block;font-style:italic;font-size:9pt}
-      @media print{.toolbar{display:none}.sheet{padding:0;max-width:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+      @media print{.toolbar{display:none}.sheet{padding:18mm 18mm 16mm;max-width:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body><div class="toolbar"><button onclick="window.print()">In giấy báo</button><span>Kiểm tra số liệu và ngày yêu cầu trước khi phát hành.</span></div><article class="sheet">
       <header><strong>${orgName}</strong><span>Số: ............................</span></header>
       <div class="date">Bình Sơn, ngày ${h(day)} tháng ${h(month)} năm ${h(year)}</div>
