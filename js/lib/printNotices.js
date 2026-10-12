@@ -43,6 +43,38 @@ export function amountInWords(amount) {
 
 const h = (value) => escapeHtml(String(value ?? ''));
 
+function localCalendarDate(value) {
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+  const date = new Date(value);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/** Thứ Hai/Ba hẹn thứ Sáu; các ngày còn lại hẹn thứ Hai tuần kế tiếp. */
+export function nextNoticePaymentDate(from) {
+  const date = localCalendarDate(from);
+  const weekday = date.getDay();
+  const daysUntilDeadline = weekday === 1 ? 4 : weekday === 2 ? 3 : (8 - weekday) % 7;
+  date.setDate(date.getDate() + daysUntilDeadline);
+  return date;
+}
+
+function writtenDate(date) {
+  return `ngày ${date.getDate()} tháng ${date.getMonth() + 1} năm ${date.getFullYear()}`;
+}
+
+/** Giấy báo chưa quá hạn lấy đúng mốc hợp đồng, kể cả khi rơi vào cuối tuần. */
+export function noticeDeadlineDate(type, dueDate, asOf) {
+  const printedOn = localCalendarDate(asOf);
+  const maturity = localCalendarDate(dueDate);
+  if (type === 'due' && !Number.isNaN(maturity.getTime()) && maturity >= printedOn) {
+    return maturity;
+  }
+  return nextNoticePaymentDate(printedOn);
+}
+
 /** Tạo đúng một trang A4; mọi trường lấy từ hợp đồng đang được chọn. */
 export function buildNoticeHtml({ type, contract, customer, org, interest, asOf = new Date() }) {
   if (!['interest', 'due'].includes(type) || !contract || !customer) throw new Error('Thiếu dữ liệu giấy báo');
@@ -56,6 +88,7 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
   const date = formatDate(asOf);
   const [day, month, year] = date.split('/');
   const title = type === 'due' ? 'GIẤY BÁO HỢP ĐỒNG ĐẾN HẠN' : 'THÔNG BÁO NỘP LÃI';
+  const deadline = `<strong>${h(writtenDate(noticeDeadlineDate(type, contract.dueDate, asOf)))}</strong>`;
   const contractRows = `
     <div><span>Số HĐTD</span><strong>${code}</strong></div>
     <div><span>Lãi suất</span><strong>${h(contract.interestRate)}%/năm</strong></div>
@@ -70,10 +103,10 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
     <p class="indent"><strong>Số tiền lãi: ${h(formatVND(accrued))}.</strong> <strong><em>(Bằng chữ: ${h(amountInWords(accrued))}.)</em></strong><br>
     <em>(Lãi tính từ ngày: ${h(formatDate(contract.interestPaidUntil || contract.disbursedDate))} đến ngày: ${h(date)}).</em></p>`;
   const body = type === 'due' ? `
-    <p>Yêu cầu ông/bà trước ngày…… tháng…… năm………… phải thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên.</p>
+    <p>Yêu cầu ông/bà trước ${deadline} phải thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên.</p>
     <p>Quá thời hạn nêu trên, khoản vay sẽ bị chuyển sang nợ quá hạn, đồng thời Ông/Bà phải chịu lãi suất quá hạn, các khoản phí phạt phát sinh và các biện pháp xử lý theo quy định của pháp luật và điều lệ của Quỹ. Mọi hậu quả phát sinh do việc chậm trễ thanh toán, Ông/Bà hoàn toàn chịu trách nhiệm.</p>
     <p>Chúng tôi xin trân trọng cảm ơn sự hợp tác của ông/bà.</p>` : `
-    <p>Đề nghị ông/bà thanh toán đầy đủ số tiền lãi nêu trên cho Quỹ tín dụng nhân dân Bình Nguyên trước <strong>ngày…… tháng…… năm ${h(year)}</strong>, theo đúng cam kết tại hợp đồng tín dụng.</p>
+    <p>Đề nghị ông/bà thanh toán đầy đủ số tiền lãi nêu trên cho Quỹ tín dụng nhân dân Bình Nguyên trước ${deadline}, theo đúng cam kết tại hợp đồng tín dụng.</p>
     <p>Nếu quá thời hạn trên mà Quỹ chưa nhận được khoản thanh toán, Quỹ sẽ thực hiện các biện pháp xử lý nợ theo hợp đồng tín dụng và quy định pháp luật, bao gồm xem xét thu hồi nợ trước hạn khi đủ điều kiện. Lãi chậm trả và các nghĩa vụ phát sinh (nếu có) được xác định theo thỏa thuận đã ký.</p>
     <p>Đề nghị ông/bà nghiêm túc thực hiện. Quỹ trân trọng cảm ơn sự hợp tác của ông/bà.</p>`;
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${h(title)} - HĐTD ${code}</title>
