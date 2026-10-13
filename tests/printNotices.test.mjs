@@ -16,11 +16,12 @@ test('số tiền bằng chữ giữ đúng đơn vị triệu, nghìn và đồ
   assert.equal(amountInWords(0), 'Không đồng');
 });
 
-test('hạn thanh toán tự chọn thứ Sáu hoặc thứ Hai, bỏ cuối tuần', () => {
+test('hạn thanh toán theo từng thứ trong tuần và bỏ cuối tuần', () => {
   const results = [12, 13, 14, 15, 16, 17, 18].map((day) => nextNoticePaymentDate(new Date(2026, 9, day)).getDate());
-  assert.deepEqual(results, [16, 16, 19, 19, 19, 19, 19]);
+  assert.deepEqual(results, [16, 16, 19, 20, 21, 23, 23]);
+  assert.equal(nextNoticePaymentDate(new Date(2026, 9, 30)).toDateString(), new Date(2026, 10, 4).toDateString());
   assert.equal(noticeDeadlineDate('due', '2026-10-17', new Date(2026, 9, 12)).getDate(), 17);
-  assert.equal(noticeDeadlineDate('due', '2026-10-17', new Date(2026, 9, 18)).getDate(), 19);
+  assert.equal(noticeDeadlineDate('due', '2026-10-17', new Date(2026, 9, 18)).getDate(), 23);
 });
 
 test('hai mẫu in dùng đúng hợp đồng, địa chỉ và khoản phải trả khác nhau', () => {
