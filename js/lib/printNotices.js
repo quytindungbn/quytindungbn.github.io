@@ -52,11 +52,10 @@ function localCalendarDate(value) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-/** Thứ Hai/Ba hẹn thứ Sáu; các ngày còn lại hẹn thứ Hai tuần kế tiếp. */
+/** Ngày hẹn theo thứ trong tuần in: T2/T3/T7/CN → T6, T4 → T2, T5 → T3, T6 → T4. */
 export function nextNoticePaymentDate(from) {
   const date = localCalendarDate(from);
-  const weekday = date.getDay();
-  const daysUntilDeadline = weekday === 1 ? 4 : weekday === 2 ? 3 : (8 - weekday) % 7;
+  const daysUntilDeadline = [5, 4, 3, 5, 5, 5, 6][date.getDay()];
   date.setDate(date.getDate() + daysUntilDeadline);
   return date;
 }
