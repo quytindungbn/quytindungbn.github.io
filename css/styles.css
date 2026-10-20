@@ -728,7 +728,7 @@ svg { display: block; }
 .customer-contract-panel { min-width: 0; height: fit-content; border: 1px solid var(--border-strong); border-radius: 12px; padding: 13px; }
 .customer-contract-panel h4 { font-size: 15px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .customer-contract-panel .oc-line { border-bottom: 1px solid var(--border); padding: 6px 0; }
-.customer-contract-panel .oc-line:last-child { border-bottom: 0; }
+.customer-contract-panel .oc-line:last-child { border-bottom: 0; padding-bottom: 0; }
 .customer-contract-collateral-value { display: grid; gap: 5px; font-size: 13px; }
 .customer-contract-collateral-value strong { color: var(--color-primary-dark); }
 .customer-contract-collateral p { color: var(--text-muted); font-size: 13px; }
