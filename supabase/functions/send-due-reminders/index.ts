@@ -575,6 +575,29 @@ async function getZaloAccessToken(): Promise<string | null> {
   }
 }
 
+// Zalo báo SĐT KHÔNG có tài khoản Zalo ("Zalo account not existed", mã -118 =
+// tài khoản Zalo không tồn tại/đã bị vô hiệu hóa): báo lại bằng tiếng Việt,
+// và TỰ BỎ khách đó khỏi Danh sách OA (Tầng 1) lẫn mọi lựa chọn gửi tự động
+// (Tầng 2) — SĐT này gửi Zalo không bao giờ tới được. Muốn gửi lại sau này
+// (VD khách đổi sang SĐT có Zalo) thì cập nhật SĐT rồi thêm lại vào OA.
+const ZALO_NO_ACCOUNT_MESSAGE = 'Số điện thoại này không có đăng ký Zalo — đã tự bỏ khách khỏi Danh sách OA và gửi tin tự động.';
+function isZaloNoAccountError(resp: any): boolean {
+  if (!resp) return false;
+  if (resp.error === -118) return true;
+  return /account\s+not\s+exist/i.test(String(resp.message || ''));
+}
+async function removeCustomerFromZaloLists(customerId: string): Promise<void> {
+  try {
+    await admin.from('zalo_auto_send_list').delete().eq('customer_id', customerId);
+    await admin.from('zalo_customers').delete().eq('customer_id', customerId);
+  } catch (e) {
+    console.error('Lỗi tự bỏ khách không có Zalo khỏi danh sách OA:', e);
+  }
+}
+
+// Khách vừa bị phát hiện KHÔNG có Zalo trong lượt chạy này — bỏ qua các hợp đồng còn lại của họ, khỏi gửi/ghi lỗi lặp lại.
+const noZaloCustomerIds = new Set<string>();
+
 /**
  * Gửi 1 tin nhắn mẫu (ZBS Template Message) qua số điện thoại, TỰ GHI LOG vào
  * bảng zalo_send_log (cả thành công lẫn lỗi, kèm nội dung lỗi) — để trang
@@ -587,6 +610,7 @@ async function sendZaloTemplate(opts: {
 }): Promise<boolean> {
   let status: 'success' | 'error' = 'error';
   let errorMessage = '';
+  let noAccount = false;
   try {
     const res = await fetch('https://business.openapi.zalo.me/message/template', {
       method: 'POST',
@@ -599,11 +623,14 @@ async function sendZaloTemplate(opts: {
       }),
     });
     const json = await res.json();
-    if (json.error === 0) { status = 'success'; } else { errorMessage = json.message || JSON.stringify(json); console.error('Lỗi gửi tin Zalo:', json); }
+    if (json.error === 0) { status = 'success'; }
+    else if (isZaloNoAccountError(json)) { errorMessage = ZALO_NO_ACCOUNT_MESSAGE; noAccount = true; console.error('SĐT không có Zalo:', json); }
+    else { errorMessage = json.message || JSON.stringify(json); console.error('Lỗi gửi tin Zalo:', json); }
   } catch (e: any) {
     errorMessage = String(e?.message || e);
     console.error('Lỗi gọi API gửi tin Zalo:', e);
   }
+  if (noAccount) { noZaloCustomerIds.add(opts.customerId); await removeCustomerFromZaloLists(opts.customerId); }
   await admin.from('zalo_send_log').insert({
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null, triggered_by: 'auto',
@@ -703,6 +730,7 @@ Deno.serve(async (req) => {
   //   sinh cuối ngày như khi chốt lúc 8h sáng) — KHÔNG gửi nhắc lãi/Zalo gì
   //   cả trong lượt gọi này, xem đoạn "Tự chốt số liệu" phía cuối.
   const purpose = new URL(req.url).searchParams.get('purpose') || 'daily-reminders';
+  noZaloCustomerIds.clear();
 
   const now = new Date();
   const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0 };
@@ -808,7 +836,7 @@ Deno.serve(async (req) => {
         const picked = pickZaloTemplate(ct, now, orgRow);
         if (picked) {
           const customer = customerMap.get(ct.customer_id);
-          if (customer?.phone && await shouldSendAutoZalo(ct.id, 'zalo_lai_hang_thang')) {
+          if (customer?.phone && !noZaloCustomerIds.has(ct.customer_id) && await shouldSendAutoZalo(ct.id, 'zalo_lai_hang_thang')) {
             const zaloOk = await sendZaloTemplate({
               accessToken: zaloAccessToken, phone: customer.phone, templateId: picked.templateId,
               templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
@@ -836,7 +864,7 @@ Deno.serve(async (req) => {
         const picked = pickZaloTemplate(ct, now, orgRow);
         if (picked) {
           const customer = customerMap.get(ct.customer_id);
-          if (customer?.phone && await shouldSendAutoZalo(ct.id, 'zalo_lai_ngay_cu_the')) {
+          if (customer?.phone && !noZaloCustomerIds.has(ct.customer_id) && await shouldSendAutoZalo(ct.id, 'zalo_lai_ngay_cu_the')) {
             const zaloOk = await sendZaloTemplate({
               accessToken: zaloAccessToken, phone: customer.phone, templateId: picked.templateId,
               templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),

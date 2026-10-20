@@ -560,6 +560,26 @@ async function getZaloAccessToken(): Promise<string | null> {
     return null;
   }
 }
+// Zalo báo SĐT KHÔNG có tài khoản Zalo ("Zalo account not existed", mã -118 =
+// tài khoản Zalo không tồn tại/đã bị vô hiệu hóa): báo lại bằng tiếng Việt,
+// và TỰ BỎ khách đó khỏi Danh sách OA (Tầng 1) lẫn mọi lựa chọn gửi tự động
+// (Tầng 2) — SĐT này gửi Zalo không bao giờ tới được. Muốn gửi lại sau này
+// (VD khách đổi sang SĐT có Zalo) thì cập nhật SĐT rồi thêm lại vào OA.
+const ZALO_NO_ACCOUNT_MESSAGE = 'Số điện thoại này không có đăng ký Zalo — đã tự bỏ khách khỏi Danh sách OA và gửi tin tự động.';
+function isZaloNoAccountError(resp: any): boolean {
+  if (!resp) return false;
+  if (resp.error === -118) return true;
+  return /account\s+not\s+exist/i.test(String(resp.message || ''));
+}
+async function removeCustomerFromZaloLists(customerId: string): Promise<void> {
+  try {
+    await admin.from('zalo_auto_send_list').delete().eq('customer_id', customerId);
+    await admin.from('zalo_customers').delete().eq('customer_id', customerId);
+  } catch (e) {
+    console.error('Lỗi tự bỏ khách không có Zalo khỏi danh sách OA:', e);
+  }
+}
+
 /** Gửi 1 tin mẫu Zalo qua SĐT, TỰ GHI LOG vào zalo_send_log (dùng cho cả gửi tay lẫn xem trong "Quản lý gửi tin"). */
 async function sendZaloTemplateLogged(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
@@ -567,6 +587,7 @@ async function sendZaloTemplateLogged(opts: {
 }): Promise<{ ok: boolean; reason?: string }> {
   let status: 'success' | 'error' = 'error';
   let errorMessage = '';
+  let noAccount = false;
   try {
     const res = await fetch('https://business.openapi.zalo.me/message/template', {
       method: 'POST',
@@ -579,10 +600,13 @@ async function sendZaloTemplateLogged(opts: {
       }),
     });
     const respJson = await res.json();
-    if (respJson.error === 0) { status = 'success'; } else { errorMessage = respJson.message || JSON.stringify(respJson); }
+    if (respJson.error === 0) { status = 'success'; }
+    else if (isZaloNoAccountError(respJson)) { errorMessage = ZALO_NO_ACCOUNT_MESSAGE; noAccount = true; }
+    else { errorMessage = respJson.message || JSON.stringify(respJson); }
   } catch (e: any) {
     errorMessage = String(e?.message || e);
   }
+  if (noAccount) await removeCustomerFromZaloLists(opts.customerId);
   await admin.from('zalo_send_log').insert({
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null,

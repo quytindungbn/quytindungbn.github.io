@@ -1789,10 +1789,15 @@ function mapZaloCustomerRow(row) {
 function mapZaloAutoSendRow(row) {
   return { id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, customDay: row.custom_day, intervalMonths: row.interval_months || 1, createdBy: row.created_by, createdAt: row.created_at };
 }
+/** Lỗi Zalo "Zalo account not existed" (các dòng log CŨ còn lưu nguyên tiếng Anh) -> tiếng Việt để hiện ở "Quản lý gửi tin". Từ nay server đã tự lưu sẵn tiếng Việt. */
+function translateZaloError(msg) {
+  if (msg && /account\s+not\s+exist/i.test(msg)) return 'Số điện thoại này không có đăng ký Zalo';
+  return msg;
+}
 function mapZaloSendLogRow(row) {
   return {
     id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, templateId: row.template_id,
-    phone: row.phone, status: row.status, errorMessage: row.error_message,
+    phone: row.phone, status: row.status, errorMessage: translateZaloError(row.error_message),
     triggeredBy: row.triggered_by, triggeredByAdminId: row.triggered_by_admin_id, sentAt: row.sent_at,
   };
 }
