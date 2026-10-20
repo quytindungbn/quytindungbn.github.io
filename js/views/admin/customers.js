@@ -87,9 +87,9 @@ export function render(contentEl, filterEl) {
       ${!isStaff ? `<button type="button" class="filter-import-btn" id="btn-filter-import" aria-label="Nhập từ Excel" title="Nhập từ Excel">${icon('paperclip')}</button>` : ''}
       <div class="filter-row filter-pills" id="filter-pills-row"></div>
       <div class="segmented-row filter-seg mb-8">
-        <button class="${urgencyFilter === 'all' ? 'active' : ''}" data-urgency="all">Tất cả <i class="seg-n"></i></button>
-        <button class="${urgencyFilter === 'qua_han' ? 'active' : ''}" data-urgency="qua_han">${icon('alert', 'icon-sm')} Nợ quá hạn <i class="seg-n"></i></button>
-        <button class="${urgencyFilter === 'gan_den_han' ? 'active' : ''}" data-urgency="gan_den_han">Gần đến hạn <i class="seg-n"></i></button>
+        <button class="${urgencyFilter === 'all' ? 'active' : ''}" data-urgency="all"><b class="seg-n"></b><span>Tất cả</span></button>
+        <button class="${urgencyFilter === 'qua_han' ? 'active' : ''}" data-urgency="qua_han"><b class="seg-n"></b><span>Nợ quá hạn</span></button>
+        <button class="${urgencyFilter === 'gan_den_han' ? 'active' : ''}" data-urgency="gan_den_han"><b class="seg-n"></b><span>Gần đến hạn</span></button>
       </div>
       ${!isStaff ? `
       <div class="flex gap-8 mb-8 filter-actions">
