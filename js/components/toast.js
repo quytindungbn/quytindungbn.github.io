@@ -8,7 +8,7 @@ function ensureWrap() {
   return wrap;
 }
 
-export function toast(message, type = 'default') {
+export function toast(message, type = 'default', durationMs = 2200) {
   const w = ensureWrap();
   const el = document.createElement('div');
   el.className = `toast ${type === 'success' ? 'toast-success' : type === 'error' ? 'toast-error' : ''}`;
@@ -18,5 +18,5 @@ export function toast(message, type = 'default') {
     el.style.transition = 'opacity .2s ease';
     el.style.opacity = '0';
     setTimeout(() => el.remove(), 200);
-  }, 2200);
+  }, durationMs);
 }

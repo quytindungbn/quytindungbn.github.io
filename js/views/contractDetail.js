@@ -132,18 +132,24 @@ function prefetchQrPng(url) {
  * Tải ảnh QR về máy dưới dạng file PNG thật (xem rasterizeQrToPng). Nếu không
  * xử lý được thì mở ảnh gốc ở tab mới để khách tự nhấn giữ ảnh chọn "Lưu ảnh".
  */
+let qrDownloading = false; // chặn bấm liên tiếp — mỗi lần bấm thêm là 1 lượt tải nữa chồng lên thanh tiến trình của trình duyệt
 export async function downloadQrImage(url, filename) {
+  if (qrDownloading) return;
+  qrDownloading = true;
   try {
     const file = await getQrPngFile(url).promise;
     const objUrl = URL.createObjectURL(file);
     const a = document.createElement('a');
     a.href = objUrl; a.download = filename || 'qr-thanh-toan.png';
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(objUrl), 4000);
+    // Giữ link tạm đủ lâu để trình duyệt điện thoại ghi xong file; thu hồi quá sớm làm lượt tải "chạy mãi" không kết thúc.
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
     toast('Đã tải ảnh QR về máy', 'success');
   } catch (e) {
     window.open(url, '_blank');
     toast('Không tải trực tiếp được — đã mở ảnh, giữ tay lên ảnh và chọn "Lưu ảnh" để tải về.', 'info');
+  } finally {
+    setTimeout(() => { qrDownloading = false; }, 1500);
   }
 }
 

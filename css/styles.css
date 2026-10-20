@@ -674,6 +674,7 @@ svg { display: block; }
   background: var(--surface);
   width: 100%; max-width: 480px;
   max-height: 88vh;
+  max-height: 88dvh; /* dvh = chiều cao phần màn hình THẤY ĐƯỢC (trừ thanh địa chỉ/thanh điều hướng điện thoại) — vh cũ tính cả vùng bị che nên khung cao hơn màn hình */
   border-radius: 18px 18px 0 0;
   display: flex; flex-direction: column;
   animation: slideUp .18s ease;
@@ -689,7 +690,12 @@ svg { display: block; }
    — trên điện thoại modal-overlay canh ĐÁY (align-items: flex-end) nên sheet
    thấp đi kéo theo cả phần đầu (chứa ô tìm kiếm) tụt xuống gần bàn phím ảo,
    gây cảm giác "nhảy"/thu gọn khó chịu mỗi lần gõ ra ít kết quả. */
-.modal-sheet.sheet-search { min-height: 88vh; }
+.modal-sheet.sheet-search { min-height: 88vh; min-height: 88dvh; }
+.oc-line b > a { display: inline-flex; align-items: center; gap: 5px; }
+/* 2 khung xem chi tiết Hợp đồng/Khách hàng: thu gọn khoảng trống trên-dưới (tiêu đề, thân, chân) để khung vừa với nội dung. */
+.modal-sheet.customer-contract-sheet .modal-head, .modal-sheet.customer-detail-sheet .modal-head { padding-top: 10px; padding-bottom: 10px; }
+.modal-sheet.customer-contract-sheet .modal-body, .modal-sheet.customer-detail-sheet .modal-body { padding-top: 12px; padding-bottom: 12px; }
+.modal-sheet.customer-contract-sheet .modal-foot { padding-top: 10px; padding-bottom: 10px; }
 .modal-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px; border-bottom: 1px solid var(--border);
@@ -739,7 +745,7 @@ svg { display: block; }
 .customer-contract-qr-layout strong { display: block; margin: 3px 0 7px; color: var(--color-primary-dark); font-size: 18px; }
 .customer-contract-qr-layout img { width: 100%; border: 1px solid var(--border); border-radius: 10px; }
 @media (max-width: 639px) {
-  .modal-sheet.customer-contract-sheet { max-height: 94vh; }
+  .modal-sheet.customer-contract-sheet { max-height: 94vh; max-height: 94dvh; }
   .customer-contract-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .customer-contract-metric.is-primary { grid-column: 1 / -1; }
   .customer-contract-metric { padding: 9px 11px; gap: 3px; }
@@ -1144,3 +1150,12 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
 }
 .scroll-top-btn.show { opacity: 1; pointer-events: auto; transform: none; }
 @media (min-width: 900px) { .scroll-top-btn { display: none; } }
+
+/* Điện thoại: thanh menu dưới tự ẩn khi vuốt xuống, hiện lại khi vuốt lên (xem bindBottomNavAutoHide() trong js/components/shell.js). Nút chat nổi và nút "về đầu trang" trượt xuống theo cho khỏi lơ lửng giữa trang. */
+.bottom-nav { transition: transform .25s ease; }
+.fab { transition: bottom .25s ease; }
+.scroll-top-btn { transition: opacity .18s ease, transform .18s ease, bottom .25s ease; }
+body.nav-hidden .bottom-nav { transform: translateY(100%); }
+body.nav-hidden .fab { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+@media (prefers-reduced-motion: reduce) { .bottom-nav, .fab, .scroll-top-btn { transition: none; } }

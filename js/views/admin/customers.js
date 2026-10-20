@@ -604,6 +604,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const inZaloList = S.isZaloCustomer(customerId);
   const close = openModal({
     title: c.name,
+    sheetClass: 'customer-detail-sheet',
     bodyHtml: `
       <div class="oc-line"><span>CCCD</span><b>${c.cccd}</b></div>
       <div class="oc-line"><span>SĐT</span><b>${c.phone ? `<a href="tel:${c.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${c.phone}</a>` : '—'}</b></div>
@@ -859,7 +860,7 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = compact ? 'Đang gửi' : `${icon('refresh', 'icon-sm')} Đang gửi...`;
   try {
     const res = await S.sendZaloManual(contractId);
-    toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error');
+    toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error', /chưa đăng ký Zalo/.test(res.reason || '') ? 7000 : undefined);
     if (res.ok) {
       const sentAt = new Date().toISOString();
       manualOaSentAt.set(contractId, sentAt);

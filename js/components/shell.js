@@ -47,6 +47,32 @@ export const ADMIN_NAV_SUPER_ONLY = [
 // Bốn mục đầu hiện trực tiếp trên điện thoại; các mục sau nằm trong "Thêm".
 const BOTTOM_NAV_MAX_DIRECT = 4;
 
+/**
+ * Điện thoại: vuốt xuống (đang đọc danh sách) thì thanh menu dưới (Tổng quan,
+ * Khách hàng...) tự trượt ẩn để thêm chỗ xem; vuốt lên (hoặc về gần đầu trang,
+ * hoặc đổi trang) thì hiện lại. Chỉ gắn 1 lần — thanh menu dùng chung cho mọi
+ * trang. Trạng thái nằm ở class "nav-hidden" trên <body> để nút chat nổi và
+ * nút "về đầu trang" (đặt theo thanh menu) trượt xuống theo — xem css.
+ */
+let navAutoHideBound = false;
+function bindBottomNavAutoHide() {
+  if (navAutoHideBound) return;
+  navAutoHideBound = true;
+  const SHOW_ABOVE = 80;  // gần đầu trang (px): luôn hiện menu
+  const STEP = 10;        // phải vuốt quá ngưỡng này mới đổi, tránh giật khi tay rung nhẹ
+  let lastY = window.scrollY;
+  const setHidden = (hidden) => document.body.classList.toggle('nav-hidden', hidden);
+  window.addEventListener('scroll', () => {
+    const y = window.scrollY;
+    if (y <= SHOW_ABOVE) { setHidden(false); lastY = y; return; }
+    const dy = y - lastY;
+    if (Math.abs(dy) < STEP) return;
+    setHidden(dy > 0);
+    lastY = y;
+  }, { passive: true });
+  window.addEventListener('hashchange', () => { setHidden(false); lastY = window.scrollY; });
+}
+
 function matchPath(navPath, current) {
   if (navPath === '#/') return current === '#/' || current === '' || current === '#';
   return current === navPath || current.startsWith(navPath + '/');
@@ -127,6 +153,7 @@ export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA,
   `;
   renderSidebarNav(nav);
   renderBottomNav(nav);
+  bindBottomNavAutoHide();
   renderSidebarProfile();
   document.getElementById('btn-logout-side').addEventListener('click', onLogoutClick);
   const installBtnSide = document.getElementById('btn-install-side');
