@@ -1130,3 +1130,16 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
 .customer-notice-menu-heading{padding:8px 10px 6px;color:#486058;font-weight:700;border-bottom:1px solid #e4ebe8;margin-bottom:4px}
 .customer-notice-menu button{display:block;width:100%;border:0;border-radius:6px;background:transparent;color:#173d33;text-align:left;padding:10px 12px;cursor:pointer;font:inherit}
 .customer-notice-menu button:hover,.customer-notice-menu button:focus-visible{background:#e7f3ed;outline:none}
+
+/* Nút nhỏ "về đầu trang" (xem mountScrollTopButton() trong js/components/ui.js) — nằm NGAY TRÊN nút chat nổi (.fab) để không đè lên nhau. */
+.scroll-top-btn {
+  position: fixed; right: 26px; bottom: calc(var(--bottomnav-h) + 84px);
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--surface); color: var(--color-primary);
+  border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  z-index: 24; opacity: 0; pointer-events: none; transform: translateY(8px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.scroll-top-btn.show { opacity: 1; pointer-events: auto; transform: none; }
+@media (min-width: 900px) { .scroll-top-btn { right: 40px; bottom: 98px; } }

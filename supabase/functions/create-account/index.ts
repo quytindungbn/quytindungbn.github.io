@@ -565,7 +565,7 @@ async function getZaloAccessToken(): Promise<string | null> {
 // và TỰ BỎ khách đó khỏi Danh sách OA (Tầng 1) lẫn mọi lựa chọn gửi tự động
 // (Tầng 2) — SĐT này gửi Zalo không bao giờ tới được. Muốn gửi lại sau này
 // (VD khách đổi sang SĐT có Zalo) thì cập nhật SĐT rồi thêm lại vào OA.
-const ZALO_NO_ACCOUNT_MESSAGE = 'Số điện thoại này không có đăng ký Zalo — đã tự bỏ khách khỏi Danh sách OA và gửi tin tự động.';
+const ZALO_NO_ACCOUNT_MESSAGE = 'Số điện thoại này chưa đăng ký Zalo';
 function isZaloNoAccountError(resp: any): boolean {
   if (!resp) return false;
   if (resp.error === -118) return true;
@@ -1834,7 +1834,7 @@ Deno.serve(async (req) => {
       }
     }
     // Chặn trước mọi thao tác ghi nếu migration chưa được chạy trên Supabase.
-    const { error: schemaError } = await admin.from('contracts').select('id, collateral_type, loan_term, loan_purpose').limit(1);
+    const { error: schemaError } = await admin.from('contracts').select('id, collateral_type, loan_term, loan_purpose, heir_name').limit(1);
     if (schemaError) return json({ ok: false, reason: 'Chưa cập nhật cấu trúc bảng contracts trên Supabase; chưa thay đổi dữ liệu.' }, 500);
     const result = {
       newProfiles: 0, existingCustomers: 0, contracts: 0,
@@ -1958,6 +1958,8 @@ Deno.serve(async (req) => {
       const collateralValue = hasCollateralType ? Math.max(0, Number(row.collateralValue) || 0) : (Number(ct?.collateral_value) || 0);
       const loanTerm = Object.prototype.hasOwnProperty.call(row, 'loanTerm') ? (row.loanTerm || null) : (ct?.loan_term || null);
       const loanPurpose = Object.prototype.hasOwnProperty.call(row, 'loanPurpose') ? (row.loanPurpose || null) : (ct?.loan_purpose || null);
+      // Người thừa kế/đồng vay (cột D file số 1) — chỉ file số 1 mới gửi lên; mẫu khác không gửi thì giữ nguyên giá trị đã có.
+      const heirName = Object.prototype.hasOwnProperty.call(row, 'heirName') ? (String(row.heirName || '').trim().slice(0, 200) || null) : (ct?.heir_name || null);
       const contractRow = {
         id: contractId, customer_id: cust.id, code,
         principal: row.principal != null && row.principal !== '' ? Number(row.principal) || 0 : bal,
@@ -1974,6 +1976,7 @@ Deno.serve(async (req) => {
         collateral_type: collateralType,
         loan_term: loanTerm,
         loan_purpose: loanPurpose,
+        heir_name: heirName,
         agreement_code: bal > 0 ? (row.agreementCode || ct?.agreement_code || code) : code,
         installment_schedule: bal > 0
           ? (row.installmentSchedule && Object.keys(row.installmentSchedule).length ? row.installmentSchedule : ct?.installment_schedule || null)

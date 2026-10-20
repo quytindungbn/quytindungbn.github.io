@@ -273,3 +273,28 @@ export function openInstallmentPlanModal(contract) {
     `,
   });
 }
+
+/**
+ * Nút nhỏ "về đầu trang" (mũi tên lên) nổi ở góc dưới bên phải — chỉ hiện khi
+ * đã kéo xuống đủ xa (> 500px), bấm vào cuộn mượt về đầu trang. Nút gắn vào
+ * `hostEl` (vùng bộ lọc của trang, bị xóa sạch khi chuyển trang) nên tự biến
+ * mất theo trang; listener cuộn tự gỡ khi nút không còn trong màn hình.
+ */
+export function mountScrollTopButton(hostEl) {
+  if (!hostEl) return;
+  hostEl.querySelector('.scroll-top-btn')?.remove();
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'scroll-top-btn';
+  btn.setAttribute('aria-label', 'Về đầu trang');
+  btn.title = 'Về đầu trang';
+  btn.innerHTML = icon('arrowUp', 'icon-sm');
+  btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  hostEl.appendChild(btn);
+  const onScroll = () => {
+    if (!btn.isConnected) { window.removeEventListener('scroll', onScroll); return; }
+    btn.classList.toggle('show', window.scrollY > 500);
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+}

@@ -580,7 +580,7 @@ async function getZaloAccessToken(): Promise<string | null> {
 // và TỰ BỎ khách đó khỏi Danh sách OA (Tầng 1) lẫn mọi lựa chọn gửi tự động
 // (Tầng 2) — SĐT này gửi Zalo không bao giờ tới được. Muốn gửi lại sau này
 // (VD khách đổi sang SĐT có Zalo) thì cập nhật SĐT rồi thêm lại vào OA.
-const ZALO_NO_ACCOUNT_MESSAGE = 'Số điện thoại này không có đăng ký Zalo — đã tự bỏ khách khỏi Danh sách OA và gửi tin tự động.';
+const ZALO_NO_ACCOUNT_MESSAGE = 'Số điện thoại này chưa đăng ký Zalo';
 function isZaloNoAccountError(resp: any): boolean {
   if (!resp) return false;
   if (resp.error === -118) return true;

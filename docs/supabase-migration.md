@@ -2810,6 +2810,18 @@ GIỐNG HỆT secret đang dùng cho Cron Job cũ). Chạy xong, mỗi đêm h�
 giao sang ngày 01 đầu tháng mới thật sự chốt số liệu tháng vừa qua, các đêm khác chạy xong không làm gì
 cả (vô hại).
 
+### 10.56. Người thừa kế/đồng vay (cột D file số 1) + Zalo "chưa đăng ký" (BẮT BUỘC chạy SQL + deploy lại CẢ 2 Edge Function)
+
+- **Người thừa kế/đồng vay**: cột D của file số 1 được lưu vào cột mới `contracts.heir_name`. Tiêu đề chi tiết hợp đồng
+  (trang Khách hàng & Hợp đồng) hiện `Hợp đồng 455/26 - PHẠM THỊ TÀI và NGUYỄN DUY HUY`; cột D trống (hoặc chỉ có số/ký
+  hiệu, hoặc trùng tên khách) thì chỉ hiện `Hợp đồng 455/26 - PHẠM THỊ TÀI` như cũ. Hợp đồng cũ chỉ có người thừa kế sau khi
+  tải lại file số 1. **Chạy SQL TRƯỚC khi deploy `create-account`** (file `supabase/migrations/20261020_contract_heir_name.sql`):
+  `alter table public.contracts add column if not exists heir_name text;`
+- **Zalo "Số điện thoại này chưa đăng ký Zalo"**: khi Zalo báo `Zalo account not existed` (hoặc mã -118) khi gửi tay/gửi tự
+  động, hệ thống ghi lỗi tiếng Việt này vào "Quản lý gửi tin" và tự bỏ khách khỏi Danh sách OA + mọi lựa chọn gửi tự động.
+  Deploy lại `create-account` và `send-due-reminders`.
+- **Nút về đầu trang** trên trang Khách hàng & Hợp đồng (chỉ giao diện, không cần deploy gì).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

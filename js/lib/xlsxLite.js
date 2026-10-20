@@ -235,6 +235,7 @@ function remapPrimaryLoanRows(rows) {
     line.push('', ''); // agreementCode, installmentSchedule: file số 2 bổ sung sau.
     line.push(String(row[19] ?? '').trim(), String(row[27] ?? '').trim(),
       String(row[22] ?? '').trim(), String(row[26] ?? '').trim());
+    { const heir = String(row[3] ?? '').trim(); line.push(/\p{L}/u.test(heir) ? heir : ''); } // cột D: người thừa kế/đồng vay (hiện cạnh tên khách ở chi tiết hợp đồng; ô chỉ toàn số/ký hiệu thì bỏ qua)
     out.push(line);
   }
   if (!out.length) throw new Error('File số 1 không có hợp đồng hợp lệ.');

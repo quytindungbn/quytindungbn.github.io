@@ -1,7 +1,7 @@
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox, installmentHintHtml } from '../../components/ui.js';
+import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox, installmentHintHtml, mountScrollTopButton } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
@@ -95,6 +95,7 @@ export function render(contentEl, filterEl) {
     </div>
   `;
   bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(); });
+  mountScrollTopButton(filterEl); // nút nhỏ về đầu trang khi kéo xuống danh sách dài
   if (!isStaff) {
     filterEl.querySelector('#btn-import').addEventListener('click', openImportModal);
     filterEl.querySelector('#btn-add').addEventListener('click', () => openCustomerForm());
@@ -909,11 +910,15 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   }
   const qrUrl = hasBank ? buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: accrued, content: buildQrContent(0, accrued), accountName: org.bankAccountName }) : '';
 
+  // Người thừa kế/đồng vay (cột D file số 1): có thì nối thêm " và <tên>" vào tiêu đề, không có (hoặc trùng tên khách) thì để nguyên như cũ.
+  const heirName = String(contract.heirName || '').trim();
+  const heirTitle = heirName && customer && heirName.toLowerCase() !== String(customer.name || '').trim().toLowerCase() ? ` và ${escapeHtml(heirName)}` : '';
+
   const close = openModal({
     // Kèm thêm tên khách hàng vào tiêu đề để đỡ nhầm giữa nhiều hợp đồng đang
     // mở/xem liên tiếp (VD: khách có nhiều hợp đồng, hoặc mở hợp đồng từ danh
     // sách quá hạn/gần đến hạn ở Tổng quan) — trước đây chỉ có mã hợp đồng.
-    title: `Hợp đồng ${escapeHtml(contract.code)}${customer ? ` - ${escapeHtml(customer.name)}` : ''}`,
+    title: `Hợp đồng ${escapeHtml(contract.code)}${customer ? ` - ${escapeHtml(customer.name)}${heirTitle}` : ''}`,
     sheetClass: 'customer-contract-sheet',
     bodyHtml: `
       <div class="customer-contract-view">

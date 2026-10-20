@@ -826,6 +826,8 @@ function mapContractRow(row) {
     collateralType: row.collateral_type || null,
     loanTerm: row.loan_term || null,
     loanPurpose: row.loan_purpose || null,
+    // Người thừa kế/đồng vay (cột D file số 1) — hiện cạnh tên khách ở chi tiết hợp đồng.
+    heirName: row.heir_name || null,
   };
 }
 
@@ -1308,7 +1310,7 @@ function parseImportLine(line) {
 
   // Các cột sau 11 cột chính chỉ có ở mẫu báo cáo/file số 1; dán tay/mẫu
   // phẳng cũ không có thì các giá trị tương ứng tự thành undefined.
-  const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate, agreementCode, installmentScheduleRaw, collateralValueRaw, collateralTypeRaw, loanTermRaw, loanPurposeRaw] = cells.map((c) => c.trim());
+  const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate, agreementCode, installmentScheduleRaw, collateralValueRaw, collateralTypeRaw, loanTermRaw, loanPurposeRaw, heirNameRaw] = cells.map((c) => c.trim());
   const cccd = (cccdRaw || '').replace(/\s/g, '');
   if (!cccd || !/^\d{9,12}$/.test(cccd)) return { error: `Bỏ qua dòng (CCCD không hợp lệ): ${line.slice(0, 40)}...` };
 
@@ -1350,6 +1352,7 @@ function parseImportLine(line) {
     const purposeCode = String(loanPurposeRaw || '').trim();
     const termCode = String(loanTermRaw || '').trim().toUpperCase();
     row.collateralValue = parseVNNumber(collateralValueRaw);
+    row.heirName = String(heirNameRaw || '').trim();
     row.collateralType = /^\d{1,2}$/.test(collateralCode) ? collateralCode.padStart(2, '0') : collateralCode;
     row.loanTerm = termCode.startsWith('NH') ? 'NH' : termCode.startsWith('TH') ? 'TH' : termCode;
     row.loanPurpose = purposeCode === '1' || purposeCode === '01' ? '01'
@@ -1791,7 +1794,7 @@ function mapZaloAutoSendRow(row) {
 }
 /** Lỗi Zalo "Zalo account not existed" (các dòng log CŨ còn lưu nguyên tiếng Anh) -> tiếng Việt để hiện ở "Quản lý gửi tin". Từ nay server đã tự lưu sẵn tiếng Việt. */
 function translateZaloError(msg) {
-  if (msg && /account\s+not\s+exist/i.test(msg)) return 'Số điện thoại này không có đăng ký Zalo';
+  if (msg && /account\s+not\s+exist/i.test(msg)) return 'Số điện thoại này chưa đăng ký Zalo';
   return msg;
 }
 function mapZaloSendLogRow(row) {
