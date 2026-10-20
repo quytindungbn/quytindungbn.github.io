@@ -88,7 +88,7 @@ function ratiosSection(end) {
   const tile = (label, value, detail, advice, alert = false) => `<article class="bs-ratio-card ${alert ? 'bs-ratio-alert' : ''}">
     <div class="bs-ratio-head"><h4>${label}</h4><strong>${value}</strong></div>
     ${detail ? `<p class="bs-ratio-detail">${detail}</p>` : ''}${advice ? `<p class="bs-ratio-advice">${advice}</p>` : ''}</article>`;
-  return `<section class="bs-ratios bs-section"><div class="bs-management-title"><h3>Chỉ số quản trị</h3><span>Lũy kế từ đầu năm · không quy đổi năm</span></div>
+  return `<section class="bs-ratios bs-section" id="bs-sec-ratios"><div class="bs-management-title"><h3>Chỉ số quản trị</h3><span>Lũy kế từ đầu năm · không quy đổi năm</span></div>
     <div class="bs-ratio-grid">
       ${tile('ROE', ratioFormat(ratios.roe, '%'), 'Lợi nhuận lũy kế / vốn chủ sở hữu', profitWarning, Number(end.profit) < 0)}
       ${tile('ROA', ratioFormat(ratios.roa, '%'), 'Lợi nhuận lũy kế / tổng tài sản', profitWarning, Number(end.profit) < 0)}
@@ -150,9 +150,20 @@ export async function render(contentEl) {
   draw(contentEl);
 }
 
+/** Số lớn gọn ở đầu trang: từ 1 tỷ trở lên hiện "x,xx tỷ", dưới 1 tỷ hiện "x,x triệu" (số đầy đủ vẫn nằm ngay dòng bên dưới). */
+function compactMoney(value) {
+  const n = Number(value) || 0;
+  const big = Math.abs(n) >= 1e9;
+  return {
+    num: new Intl.NumberFormat('vi-VN', { minimumFractionDigits: big ? 2 : 1, maximumFractionDigits: big ? 2 : 1 }).format(big ? n / 1e9 : n / 1e6),
+    unit: big ? 'tỷ đ' : 'triệu đ',
+  };
+}
+
 function stat(label, value, startValue, color, clickable = false) {
   const tag = clickable ? 'button' : 'div';
-  return `<${tag} ${clickable ? 'type="button" id="bs-profit-details" aria-label="Xem Doanh thu và Chi phí"' : ''} class="stat-tile ${color} ${clickable ? 'bs-stat-clickable' : ''}"><span class="stat-label">${label}</span><span class="stat-value bs-stat-value">${money(value)}</span><span class="stat-trend">${change(value, startValue)}</span>${clickable ? '<span class="bs-stat-more">Xem Doanh thu – Chi phí ›</span>' : ''}</${tag}>`;
+  const compact = compactMoney(value);
+  return `<${tag} ${clickable ? 'type="button" id="bs-profit-details" aria-label="Xem Doanh thu và Chi phí"' : ''} class="stat-tile ${color} ${clickable ? 'bs-stat-clickable' : ''}"><span class="stat-label">${label}</span><span class="stat-value bs-stat-value">${compact.num}<small>${compact.unit}</small></span><span class="stat-exact">${money(value)}</span><span class="stat-trend">${change(value, startValue)}</span>${clickable ? '<span class="bs-stat-more">Xem Doanh thu – Chi phí ›</span>' : ''}</${tag}>`;
 }
 
 const trendSeries = [
@@ -261,6 +272,39 @@ function bindTrendPoints(root) {
   chart.addEventListener('click', (event) => show(event.target));
   chart.addEventListener('focusin', (event) => show(event.target));
   chart.scrollLeft = chart.scrollWidth;
+}
+
+let chipSpyHandler = null;
+/** Thanh chọn nhanh (điện thoại): bấm để cuộn tới mục; cuộn tay thì chip tự đổi theo mục đang xem. */
+function bindSectionChips(root) {
+  if (chipSpyHandler) { window.removeEventListener('scroll', chipSpyHandler); chipSpyHandler = null; }
+  const chips = root.querySelector('.bs-chips');
+  if (!chips) return;
+  const buttons = [...chips.querySelectorAll('button[data-jump]')];
+  const targetOf = (button) => root.querySelector('#' + button.dataset.jump);
+  buttons.forEach((button) => { if (!targetOf(button)) button.remove(); });
+  const live = buttons.filter((button) => button.isConnected);
+  const setActive = (active) => {
+    live.forEach((button) => button.classList.toggle('is-active', button === active));
+    if (active) chips.scrollLeft = active.offsetLeft - (chips.clientWidth - active.offsetWidth) / 2;
+  };
+  let lockUntil = 0;
+  live.forEach((button) => button.addEventListener('click', () => {
+    lockUntil = Date.now() + 700;
+    setActive(button);
+    targetOf(button)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  chipSpyHandler = () => {
+    if (!chips.isConnected) { window.removeEventListener('scroll', chipSpyHandler); chipSpyHandler = null; return; }
+    if (Date.now() < lockUntil) return;
+    const line = (document.querySelector('.app-header')?.offsetHeight || 56) + chips.offsetHeight + 24;
+    let current = live[0];
+    live.forEach((button) => { if (targetOf(button).getBoundingClientRect().top <= line) current = button; });
+    // Cuối trang: mục cuối ngắn nên không bao giờ chạm "vạch" ở trên — coi như đang ở mục cuối.
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 6) current = live.at(-1);
+    if (!current.classList.contains('is-active')) setActive(current);
+  };
+  window.addEventListener('scroll', chipSpyHandler, { passive: true });
 }
 
 function composition(items, total, centerLabel, { grossShares = false } = {}) {
@@ -376,7 +420,7 @@ function provisionComparison(report) {
     if (gap < 0) return `<p>${label} thiếu <strong>${money(-gap)}</strong>; cần trích bổ sung trong 07 ngày đầu tháng sau, chậm nhất ngày ${deadline}.</p>`;
     return '';
   }).join('') : '';
-  return `<div class="card card-pad bs-section bs-provision-section"><h3>Trích lập dự phòng${isUnclosedMonth ? ' <span class="bs-provision-pending">(Chưa chốt số liệu tháng này)</span>' : ''}</h3>
+  return `<div class="card card-pad bs-section bs-provision-section" id="bs-sec-prov"><h3>Trích lập dự phòng${isUnclosedMonth ? ' <span class="bs-provision-pending">(Chưa chốt số liệu tháng này)</span>' : ''}</h3>
     ${remote?.error && !app ? '<p class="bs-warning">Không tải được số Phải trích. Bấm Làm mới để thử lại.</p>' : ''}
     ${alerts ? `<div class="bs-provision-alerts" role="status">${alerts}</div>` : ''}
     <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch</th></tr></thead><tbody>
@@ -425,28 +469,33 @@ function draw(contentEl) {
     { label: 'Vốn chủ sở hữu', key: 'equity', detailHtml: equityDetails },
     { label: 'Lợi nhuận lũy kế', key: 'profit', options: { noYear: true, profitDetail: true } },
   ] : [];
-  contentEl.innerHTML = `<div class="bs-toolbar"><div><h2>Số liệu quản trị theo tháng</h2>${report ? `<p class="bs-source">Số liệu đến ngày: <strong>${reportDate(report.period_end)}</strong></p>` : ''}</div>
+  const toolbarHtml = `<div class="bs-toolbar"><div><h2>Số liệu quản trị theo tháng</h2>${report ? `<p class="bs-source">Số liệu đến ngày: <strong>${reportDate(report.period_end)}</strong></p>` : ''}</div>
     <div class="bs-toolbar-actions">${reports.length ? `<label class="bs-month-select">Kỳ báo cáo tháng <select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select></label>` : ''}
     <button class="btn btn-outline" id="bs-refresh" type="button">Làm mới</button>
-    ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>' : ''}</div></div>
+    ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>' : ''}</div></div>`;
+  const ratiosHtml = report ? ratiosSection(end) : '';
+  // Thứ tự trang: khối tổng hợp -> chỉ số -> biến động -> cơ cấu -> chỉ tiêu -> dự phòng (khớp thanh chọn nhanh trên điện thoại).
+  contentEl.innerHTML = `<div class="bs-lux">
+    ${report ? `<nav class="bs-chips" aria-label="Chuyển nhanh tới mục">${[['bs-sec-summary', 'Tổng hợp'], ['bs-sec-ratios', 'Chỉ số'], ['bs-sec-trend', 'Biến động'], ['bs-sec-comp', 'Cơ cấu'], ['bs-sec-mgmt', 'Chỉ tiêu'], ['bs-sec-prov', 'Dự phòng']].map(([id, name], index) => `<button type="button" data-jump="${id}" class="${index === 0 ? 'is-active' : ''}">${name}</button>`).join('')}</nav>` : ''}
+    <div class="bs-hero" id="bs-sec-summary">${toolbarHtml}${report ? `
+      <div class="grid-4 bs-stats">
+        ${stat('Tổng tài sản', end.assets, start.assets, 'c-green')}
+        ${stat('Tiền gửi khách hàng', end.customerDeposits, start.customerDeposits, 'c-blue')}
+        ${stat('Tiền gửi tại TCTD', end.tctdDeposits, start.tctdDeposits, 'c-orange')}
+        ${stat('Lợi nhuận lũy kế', end.profit, start.profit, 'c-pink', true)}
+      </div>` : ''}</div>
     ${!report ? `<div class="card card-pad"><p>Chưa có bảng cân đối nào. Quản trị viên toàn quyền có thể nạp file .xls hoặc .xlsx của từng tháng.</p></div>` : `
-    <div class="grid-4 bs-stats">
-      ${stat('Tổng tài sản', end.assets, start.assets, 'c-green')}
-      ${stat('Tiền gửi khách hàng', end.customerDeposits, start.customerDeposits, 'c-blue')}
-      ${stat('Tiền gửi tại TCTD', end.tctdDeposits, start.tctdDeposits, 'c-orange')}
-      ${stat('Lợi nhuận lũy kế', end.profit, start.profit, 'c-pink', true)}
-    </div>
-    <div class="card card-pad bs-section bs-trend-section"><h3>Biến động</h3>${trendChart(reports)}</div>
-    <div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
+    ${ratiosHtml}
+    <div class="card card-pad bs-section bs-trend-section" id="bs-sec-trend"><h3>Biến động</h3>${trendChart(reports)}</div>
+    <div class="bs-two-col" id="bs-sec-comp"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
       <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div>
-    <div class="bs-management bs-section"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3></div>
+    <div class="bs-management bs-section" id="bs-sec-mgmt"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3></div>
       ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart)}
         ${managementRow('Tổng tài sản', 'assets', start, end, yearStart, { total: true })}`)}
       ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, fundingYearStart)}
         ${managementRow('Tổng nguồn vốn', 'liabilities', start, end, yearStart, { total: true })}`)}
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
-    ${ratiosSection(end)}
-    ${provisionComparison(report)}`}`;
+    ${provisionComparison(report)}`}</div>`;
   contentEl.querySelector('#bs-month')?.addEventListener('change', (event) => {
     selectedMonth = event.target.value;
     remoteProvisions.delete(selectedMonth);
@@ -456,6 +505,7 @@ function draw(contentEl) {
     void loadRemoteProvision(report.year_month, contentEl);
   }
   bindTrendPoints(contentEl);
+  bindSectionChips(contentEl);
   contentEl.querySelector('#bs-profit-details')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelector('[data-profit-details]')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelectorAll('[data-account-details]').forEach((button) => {
