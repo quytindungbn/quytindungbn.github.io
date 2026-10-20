@@ -75,6 +75,8 @@ function bindBottomNavAutoHide() {
 
 function matchPath(navPath, current) {
   if (navPath === '#/') return current === '#/' || current === '' || current === '#';
+  // "Tổng quan" (#/admin) là tiền tố của MỌI trang quản trị — chỉ sáng khi đúng trang này, không sáng kèm các menu khác.
+  if (navPath === '#/admin') return current === navPath;
   return current === navPath || current.startsWith(navPath + '/');
 }
 

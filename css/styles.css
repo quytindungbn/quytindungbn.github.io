@@ -46,6 +46,10 @@
   color-scheme: light;
 }
 
+/* Bảng màu xanh bạc hà của trang Tổng quan — dùng chung cho MỌI trang trong app (mọi menu quản trị và khách hàng,
+   có khung .app-shell); riêng màn đăng nhập (không có khung này) giữ nguyên. */
+body:has(.app-shell) { --bg: #e6efea; --surface: #ffffff; --surface-alt: #f0f6f3; --border: #d9e5df; --border-strong: #cbdbd2; }
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
@@ -601,7 +605,6 @@ svg { display: block; }
   .customer-page-jump button:hover { background: var(--color-primary-light); border-color: var(--color-primary); }
   .customer-page-jump button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 }
-body:has(.filter-align-content) { --bg: #e6efea; }
 .customer-ledger-wrap { border: 1px solid #d3e1d9; border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(12, 74, 63, .05), 0 6px 18px rgba(12, 74, 63, .05); font-feature-settings: "tnum"; }
 .customer-ledger-heading { position: sticky; top: var(--header-h); z-index: 19; overflow: hidden; border-radius: 15px 15px 0 0; background: #0c4a3f; }
 .customer-ledger { overflow-x: auto; background: var(--surface); border-radius: 0 0 15px 15px; }
@@ -1266,7 +1269,6 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 .imp-tag { display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 999px; background: var(--surface-alt); color: var(--text-muted); font-size: 12px; }
 
 /* ============ Trang Tổng quan — phong cách "kem & vàng đồng" (xem js/views/admin/overview.js) ============ */
-body:has(.lux-root) { --bg: #e6efea; --surface: #ffffff; --surface-alt: #f0f6f3; --border: #d9e5df; --border-strong: #cbdbd2; }
 .lux-root {
   --lux-display: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --lux-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
