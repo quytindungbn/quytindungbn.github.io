@@ -164,7 +164,7 @@ function compactMoney(value) {
 function stat(label, value, startValue, color, clickable = false) {
   const tag = clickable ? 'button' : 'div';
   const compact = compactMoney(value);
-  return `<${tag} ${clickable ? 'type="button" id="bs-profit-details" aria-label="Xem Doanh thu và Chi phí"' : ''} class="stat-tile ${color} ${clickable ? 'bs-stat-clickable' : ''}"><span class="stat-label">${label}</span><span class="stat-value bs-stat-value">${compact.num}<small>${compact.unit}</small></span><span class="stat-exact">${money(value)}</span><span class="stat-trend">${change(value, startValue)}</span>${clickable ? '<span class="bs-stat-more">Xem Doanh thu – Chi phí ›</span>' : ''}</${tag}>`;
+  return `<${tag} ${clickable ? 'type="button" id="bs-profit-details" aria-label="Xem Doanh thu và Chi phí"' : ''} class="stat-tile ${color} ${clickable ? 'bs-stat-clickable' : ''}"><span class="stat-label">${label}</span><span class="stat-value bs-stat-value">${compact.num}<small>${compact.unit}</small></span><span class="stat-trend">${change(value, startValue)}</span>${clickable ? '<span class="bs-stat-more">Xem Doanh thu – Chi phí ›</span>' : ''}</${tag}>`;
 }
 
 const trendSeries = [
@@ -273,39 +273,6 @@ function bindTrendPoints(root) {
   chart.addEventListener('click', (event) => show(event.target));
   chart.addEventListener('focusin', (event) => show(event.target));
   chart.scrollLeft = chart.scrollWidth;
-}
-
-let chipSpyHandler = null;
-/** Thanh chọn nhanh (điện thoại): bấm để cuộn tới mục; cuộn tay thì chip tự đổi theo mục đang xem. */
-function bindSectionChips(root) {
-  if (chipSpyHandler) { window.removeEventListener('scroll', chipSpyHandler); chipSpyHandler = null; }
-  const chips = root.querySelector('.bs-chips');
-  if (!chips) return;
-  const buttons = [...chips.querySelectorAll('button[data-jump]')];
-  const targetOf = (button) => root.querySelector('#' + button.dataset.jump);
-  buttons.forEach((button) => { if (!targetOf(button)) button.remove(); });
-  const live = buttons.filter((button) => button.isConnected);
-  const setActive = (active) => {
-    live.forEach((button) => button.classList.toggle('is-active', button === active));
-    if (active) chips.scrollLeft = active.offsetLeft - (chips.clientWidth - active.offsetWidth) / 2;
-  };
-  let lockUntil = 0;
-  live.forEach((button) => button.addEventListener('click', () => {
-    lockUntil = Date.now() + 700;
-    setActive(button);
-    targetOf(button)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }));
-  chipSpyHandler = () => {
-    if (!chips.isConnected) { window.removeEventListener('scroll', chipSpyHandler); chipSpyHandler = null; return; }
-    if (Date.now() < lockUntil) return;
-    const line = (document.querySelector('.app-header')?.offsetHeight || 56) + (root.querySelector('.bs-sticky')?.offsetHeight || chips.offsetHeight) + 24;
-    let current = live[0];
-    live.forEach((button) => { if (targetOf(button).getBoundingClientRect().top <= line) current = button; });
-    // Cuối trang: mục cuối ngắn nên không bao giờ chạm "vạch" ở trên — coi như đang ở mục cuối.
-    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 6) current = live.at(-1);
-    if (!current.classList.contains('is-active')) setActive(current);
-  };
-  window.addEventListener('scroll', chipSpyHandler, { passive: true });
 }
 
 function composition(items, total, centerLabel, { grossShares = false } = {}) {
@@ -477,10 +444,9 @@ function draw(contentEl) {
     ${reports.length ? `<label class="bs-bar-period"><small>Kỳ báo cáo</small><select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select></label>` : ''}
     <div class="bs-bar-tools"><button type="button" class="bs-ibtn" id="bs-refresh" title="Làm mới" aria-label="Làm mới">${icon('refresh')}</button>${superAdmin ? `<button type="button" class="bs-ibtn" id="bs-import" title="Nạp cân đối" aria-label="Nạp cân đối">${icon('upload')}</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>` : ''}</div></div>`;
   const ratiosHtml = report ? ratiosSection(end) : '';
-  // Thứ tự trang: khối tổng hợp -> chỉ số -> biến động -> cơ cấu -> chỉ tiêu -> dự phòng (khớp thanh chọn nhanh trên điện thoại).
+  // Thứ tự trang: khối tổng hợp -> chỉ số -> biến động -> cơ cấu -> cân đối rút gọn -> dự phòng.
   contentEl.innerHTML = `<div class="bs-lux">
-    <div class="bs-sticky">${barHtml}
-    ${report ? `<nav class="bs-chips" aria-label="Chuyển nhanh tới mục">${[['bs-sec-summary', 'Tổng hợp'], ['bs-sec-ratios', 'Chỉ số'], ['bs-sec-trend', 'Biến động'], ['bs-sec-comp', 'Cơ cấu'], ['bs-sec-mgmt', 'Chỉ tiêu'], ['bs-sec-prov', 'Dự phòng']].map(([id, name], index) => `<button type="button" data-jump="${id}" class="${index === 0 ? 'is-active' : ''}">${name}</button>`).join('')}</nav>` : ''}</div>
+    <div class="bs-sticky">${barHtml}</div>
     <div class="bs-doc">
     ${report ? `<header class="bs-doc-head"><div class="bs-doc-org">${escapeHtml(S.getOrg()?.shortName || 'QTD Bình Nguyên')} · Báo cáo số liệu quản trị</div><h1>${monthName(report.year_month)}</h1><div class="bs-doc-asof">Số liệu đến ngày ${dateText}</div></header>` : ''}
     <div class="bs-hero" id="bs-sec-summary">${report ? `<h3 class="bs-sec-h bs-d-only">Tổng hợp</h3>
@@ -495,7 +461,7 @@ function draw(contentEl) {
     <div class="card card-pad bs-section bs-trend-section" id="bs-sec-trend"><h3 class="bs-sec-h">Biến động</h3>${trendChart(reports)}</div>
     <div class="bs-comp-wrap" id="bs-sec-comp"><h3 class="bs-sec-h bs-d-only">Cơ cấu</h3><div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
       <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div></div>
-    <div class="bs-management bs-section" id="bs-sec-mgmt"><div class="bs-management-title"><h3 class="bs-sec-h">Chỉ tiêu quản trị</h3></div>
+    <div class="bs-management bs-section" id="bs-sec-mgmt"><div class="bs-management-title"><h3 class="bs-sec-h">Cân đối rút gọn</h3></div>
       ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart)}
         ${managementRow('Tổng tài sản', 'assets', start, end, yearStart, { total: true })}`)}
       ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, fundingYearStart)}
@@ -511,7 +477,6 @@ function draw(contentEl) {
     void loadRemoteProvision(report.year_month, contentEl);
   }
   bindTrendPoints(contentEl);
-  bindSectionChips(contentEl);
   contentEl.querySelector('#bs-profit-details')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelector('[data-profit-details]')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelectorAll('[data-account-details]').forEach((button) => {

@@ -5,6 +5,7 @@ import { statusBadge, installmentNextBoxHtml, bindInstallmentNextBox } from '../
 import { openModal } from '../components/modal.js';
 import { formatVND, formatDate, formatNumber, stripDiacritics, debounce } from '../utils.js';
 import { toast } from '../components/toast.js';
+import { makeVietQrFile } from '../lib/vietQrLocal.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Chi tiết hợp đồng', back: true });
@@ -73,10 +74,26 @@ export function buildVietQrUrl({ bin, accountNo, amount, content, accountName })
   const info = encodeURIComponent(content);
   const name = encodeURIComponent(accountName);
   const url = `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?amount=${Math.round(amount)}&addInfo=${info}&accountName=${name}`;
+  // Ghi nhớ thông tin của link này để khi không tải được ảnh từ img.vietqr.io
+  // thì tự vẽ ảnh QR ngay trên máy (xem localQrFile) — Chia sẻ/Tải ảnh vẫn chạy.
+  const org = S.getOrg() || {};
+  qrParams.set(new URL(url, location.href).href, { bin, accountNo, amount, content, accountName, bankName: org.bankName, orgName: org.name });
+  if (qrParams.size > 40) qrParams.delete(qrParams.keys().next().value);
   // Chuẩn bị sẵn file PNG THẬT ngay từ lúc dựng link (xem getQrPngFile) để lúc
   // bấm "Chia sẻ"/"Tải ảnh" có ngay, không phải chờ mạng.
   prefetchQrPng(url);
   return url;
+}
+
+const qrParams = new Map(); // link QR chuẩn hóa -> thông tin tạo QR (dùng cho ảnh tự vẽ)
+const QR_FETCH_TIMEOUT_MS = 8000; // quá thời gian này coi như không tải được ảnh từ dịch vụ ngoài
+const QR_RETRY_REMOTE_MS = 15000; // đang dùng ảnh tự vẽ thì sau chừng này sẽ thử lại bản của ngân hàng/VietQR
+
+/** Ảnh QR tự vẽ ngay trên máy (không cần mạng) — xem js/lib/vietQrLocal.js. */
+function localQrFile(url) {
+  const p = qrParams.get(url);
+  if (!p) return Promise.reject(new Error('no qr params'));
+  return makeVietQrFile(p, 'qr-thanh-toan.png');
 }
 
 // Bộ nhớ đệm file PNG theo từng link QR — dùng chung cho Chia sẻ lẫn Tải ảnh.
@@ -91,7 +108,10 @@ const qrPngCache = new Map(); // url -> { promise, file }
  * URL cùng nguồn rồi mới vẽ nên canvas không bị chặn "tainted".
  */
 async function rasterizeQrToPng(url) {
-  const res = await fetch(url);
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), QR_FETCH_TIMEOUT_MS) : 0;
+  let res;
+  try { res = await fetch(url, ctl ? { signal: ctl.signal } : undefined); } finally { clearTimeout(timer); }
   if (!res.ok) throw new Error('fetch failed');
   const srcBlob = await res.blob();
   const objUrl = URL.createObjectURL(srcBlob);
@@ -117,10 +137,22 @@ function getQrPngFile(rawUrl) {
   const url = new URL(rawUrl, location.href).href; // chuẩn hóa — img.src trả về dạng đã chuẩn hóa, phải khớp khóa lúc dựng link
   let entry = qrPngCache.get(url);
   if (!entry) {
-    entry = { file: null, promise: null };
-    entry.promise = rasterizeQrToPng(url).then((f) => { entry.file = f; return f; }).catch((e) => { qrPngCache.delete(url); throw e; });
+    // Ưu tiên ảnh của img.vietqr.io; không tải được (mất mạng, bị chặn, quá chậm) thì dùng ảnh tự vẽ trên máy
+    // — nhờ vậy nút Chia sẻ/Tải ảnh không bao giờ phải báo lỗi hay đẩy khách sang trang link.
+    entry = { file: null, promise: null, source: '', at: 0, retrying: false };
+    entry.promise = rasterizeQrToPng(url)
+      .then((f) => { entry.file = f; entry.source = 'remote'; return f; })
+      .catch(() => localQrFile(url).then((f) => { entry.file = f; entry.source = 'local'; entry.at = Date.now(); return f; }))
+      .catch((e) => { qrPngCache.delete(url); throw e; });
     if (qrPngCache.size > 20) qrPngCache.delete(qrPngCache.keys().next().value);
     qrPngCache.set(url, entry);
+  } else if (entry.source === 'local' && !entry.retrying && Date.now() - entry.at > QR_RETRY_REMOTE_MS) {
+    // Đang dùng bản tự vẽ: lâu lâu thử lại bản chính thức ở nền, được thì thay vào cho lần bấm sau.
+    entry.retrying = true;
+    rasterizeQrToPng(url)
+      .then((f) => { entry.file = f; entry.source = 'remote'; })
+      .catch(() => { entry.at = Date.now(); })
+      .finally(() => { entry.retrying = false; });
   }
   return entry;
 }
@@ -146,6 +178,7 @@ export async function downloadQrImage(url, filename) {
     setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
     toast('Đã tải ảnh QR về máy', 'success');
   } catch (e) {
+    // Chỉ còn trường hợp hiếm (cả ảnh tự vẽ cũng không tạo được): mở ảnh gốc để khách tự lưu.
     window.open(url, '_blank');
     toast('Không tải trực tiếp được — đã mở ảnh, giữ tay lên ảnh và chọn "Lưu ảnh" để tải về.', 'info');
   } finally {
