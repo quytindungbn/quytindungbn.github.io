@@ -9,6 +9,7 @@ import { isSupplementReportRows } from '../../lib/xlsxLite.js';
 import { monthlyTrendLineChartSvg, compositionDonutHtml } from '../../components/charts.js';
 import { openContractView, customerLedgerHtml, bindCustomerLedger } from './customers.js';
 import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
+import { icon } from '../../icons.js';
 
 const COLLATERAL_NAMES = Object.freeze({
   '01': 'Quyền sử dụng đất chính chủ',
@@ -939,7 +940,7 @@ function monthSelectorHtml(months, selectedYm, isSuper) {
         <label for="month-select" class="lux-eyebrow">Kỳ báo cáo tháng</label>
         <select id="month-select" class="lux-select">${options}</select>
       </div>
-      ${isSuper ? `<a href="javascript:void(0)" id="btn-import-historical" class="lux-link">Nạp dữ liệu cũ</a>` : ''}
+      ${isSuper ? `<button type="button" id="btn-import-historical" class="lux-icon-btn" title="Nạp dữ liệu cũ" aria-label="Nạp dữ liệu cũ">${icon('upload')}</button>` : ''}
     </div>`;
 }
 
