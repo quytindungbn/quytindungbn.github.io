@@ -961,7 +961,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             ${canPay ? `<div id="zalo-auto-status-ct">${zaloAutoStatusHtml(null)}</div>` : ''}
           </section>
           <section class="customer-contract-panel customer-contract-payment">
-            <h4>Thanh toán và mã QR</h4>
+            <h4>Gửi mã QR để thanh toán</h4>
             ${hasBank ? `
               <label class="customer-contract-settle"><input type="checkbox" id="settle-full-cb-ct"/> Tất toán khoản vay</label>
               <div class="grid-2">
