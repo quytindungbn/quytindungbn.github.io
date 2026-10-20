@@ -40,7 +40,7 @@
   --shadow-lg: 0 12px 32px rgba(20, 30, 60, 0.14);
 
   --header-h: 56px;
-  --bottomnav-h: 62px;
+  --bottomnav-h: calc(74px + env(safe-area-inset-bottom, 0px)); /* thanh menu dưới nổi: 64px cao + 10px cách đáy */
   --sidebar-w: 232px;
 
   color-scheme: light;
@@ -89,55 +89,74 @@ svg { display: block; }
 
 .sidebar {
   display: none;
+  flex-direction: column;
   width: var(--sidebar-w);
   flex-shrink: 0;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  padding: 20px 14px;
+  background: linear-gradient(180deg, #0e5245 0%, #0a3f35 100%);
+  box-shadow: 2px 0 18px rgba(8, 45, 38, .18);
+  padding: 22px 14px 16px;
   position: fixed;
   top: 0; bottom: 0; left: 0;
+  color: #dcebe5;
 }
 .sidebar-brand {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 10px 22px;
+  display: flex; align-items: center; gap: 11px;
+  padding: 2px 8px 18px; margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, .1);
 }
 .sidebar-brand .logo-mark {
-  width: 34px; height: 34px; border-radius: 10px;
-  background: linear-gradient(135deg, var(--color-primary), #6a9bff);
+  width: 40px; height: 40px; border-radius: 13px; flex: none;
+  background: linear-gradient(135deg, #e6cd8a, #b08d3c);
   display: flex; align-items: center; justify-content: center;
-  color: #fff; font-weight: 700; font-size: 15px;
+  color: #0c4a3f; box-shadow: 0 4px 12px rgba(0, 0, 0, .28);
 }
-.sidebar-brand strong { font-size: 15px; }
-.sidebar-brand span { display: block; font-size: 11px; color: var(--text-muted); }
+.sidebar-brand .logo-mark svg { width: 21px; height: 21px; }
+.sidebar-brand strong { display: block; color: #fff; font-size: 15px; font-weight: 700; }
+.sidebar-brand span { display: block; margin-top: 3px; color: #dcc27d; font-size: 9.5px; font-weight: 600; letter-spacing: .17em; text-transform: uppercase; }
 
-.sidebar-profile {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px; margin-bottom: 14px;
-  background: var(--surface-alt);
-  border-radius: var(--radius-sm);
-}
-
+.sidebar-nav { flex: 1; min-height: 0; overflow-y: auto; padding-top: 2px; }
 .sidebar-nav a {
+  position: relative;
   display: flex; align-items: center; gap: 12px;
   padding: 10px 12px; margin-bottom: 2px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  font-size: 14px; font-weight: 500;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, .72);
+  font-size: 13.5px; font-weight: 500;
 }
-.sidebar-nav a:hover { background: var(--surface-alt); color: var(--text); }
-.sidebar-nav a.active { background: var(--color-primary-light); color: var(--color-primary-dark); }
+.sidebar-nav a svg { width: 19px; height: 19px; flex: none; opacity: .85; }
+.sidebar-nav a:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+.sidebar-nav a.active { background: rgba(255, 255, 255, .12); color: #fff; font-weight: 600; }
+.sidebar-nav a.active svg { color: #e6cd8a; opacity: 1; }
+.sidebar-nav a.active::before { content: ''; position: absolute; left: -14px; top: 8px; bottom: 8px; width: 4px; border-radius: 0 4px 4px 0; background: #e6cd8a; }
 .nav-badge {
   margin-left: auto; flex: none;
-  min-width: 18px; height: 18px; padding: 0 5px;
-  border-radius: 999px; background: var(--danger); color: #fff;
-  font-size: 11px; font-weight: 800; line-height: 18px; text-align: center;
+  min-width: 19px; height: 19px; padding: 0 6px;
+  border-radius: 999px; background: #e0362f; color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 19px; text-align: center;
 }
 .sidebar-nav .nav-group-title {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--text-faint); padding: 16px 12px 6px;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .17em;
+  color: rgba(220, 194, 125, .85); padding: 18px 12px 8px;
   font-weight: 700;
 }
+.sidebar-nav .nav-group-title:first-child { padding-top: 14px; }
 
+.sidebar-foot { margin-top: 8px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, .12); }
+.sidebar-profile { display: flex; align-items: center; gap: 10px; }
+.sidebar .sidebar-profile { padding: 2px 4px; }
+.sidebar .sidebar-profile .row-thumb { box-shadow: 0 0 0 2px #b08d3c; }
+.sidebar .sidebar-profile .row-main { min-width: 0; }
+.sidebar .sidebar-profile .row-title { color: #fff; font-size: 13px; font-weight: 700; }
+.sidebar .sidebar-profile .row-sub { color: rgba(255, 255, 255, .58); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-tools { display: flex; gap: 8px; margin-top: 12px; }
+.sidebar-tool {
+  flex: 1; height: 36px; border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .06);
+  color: #e9f3ef; display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.sidebar-tool:hover { background: rgba(255, 255, 255, .13); color: #fff; }
+.sidebar-tool svg { width: 17px; height: 17px; }
+.sidebar-tool:focus-visible, .sidebar-nav a:focus-visible { outline: 2px solid #e6cd8a; outline-offset: 2px; }
 .main-col {
   flex: 1;
   min-width: 0;
@@ -264,27 +283,29 @@ svg { display: block; }
 
 /* ---------------- Bottom nav ---------------- */
 .bottom-nav {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-  height: var(--bottomnav-h);
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+  position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 30;
+  height: 64px; padding: 6px; gap: 2px;
+  background: #0c4a3f;
+  border-radius: 22px;
+  box-shadow: 0 10px 28px rgba(8, 45, 38, .4);
   display: flex;
-  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 .bottom-nav a, .bottom-nav button.more-btn {
   position: relative;
-  flex: 1;
+  flex: 1; min-width: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px;
-  color: var(--text-faint);
+  border-radius: 16px;
+  color: rgba(255, 255, 255, .62);
   font-size: 10.5px; font-weight: 600;
   border: none; background: none; cursor: pointer;
 }
-.bottom-nav a.active, .bottom-nav button.more-btn.active { color: var(--color-primary); }
+.bottom-nav a.active, .bottom-nav button.more-btn.active { background: rgba(255, 255, 255, .13); color: #fff; }
+.bottom-nav a.active svg { color: #e6cd8a; }
 .bottom-nav-badge {
   position: absolute; top: 2px; left: calc(50% + 6px);
   min-width: 15px; height: 15px; padding: 0 3px;
-  border-radius: 999px; background: var(--danger); color: #fff;
+  border-radius: 999px; background: #e0362f; color: #fff;
   font-size: 9.5px; font-weight: 800; line-height: 15px; text-align: center;
 }
 
@@ -788,6 +809,22 @@ svg { display: block; }
 .modal-head h3 { font-size: 16px; font-weight: 700; line-height: 1.8; padding-top: 2px; }
 .modal-body { padding: 16px; overflow-y: auto; }
 .modal-foot { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+
+/* ---- Bảng "Thêm" (điện thoại) — xem openMoreSheet() trong js/components/shell.js ---- */
+.modal-sheet.more-sheet { background: #f4f8f6; border-radius: 22px 22px 0 0; }
+@media (min-width: 640px) { .modal-sheet.more-sheet { border-radius: 22px; } }
+.more-sheet .modal-head { border-bottom: 0; padding: 14px 18px 4px; }
+.more-sheet .sidebar-profile { margin-bottom: 10px; padding: 14px; border-radius: 16px; background: linear-gradient(135deg, #0e5245, #0a3f35); }
+.more-sheet .sidebar-profile .row-thumb { box-shadow: 0 0 0 2px #b08d3c; }
+.more-sheet .sidebar-profile .row-title { color: #fff; }
+.more-sheet .sidebar-profile .row-sub { color: rgba(255, 255, 255, .62); }
+.more-list { display: flex; flex-direction: column; gap: 6px; }
+.more-group { padding: 12px 4px 2px; color: #8a6a22; font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.more-list .list-row { cursor: pointer; text-decoration: none; color: inherit; padding: 11px 12px; border: 1px solid #d9e5df; border-radius: 14px; background: #fff; }
+.more-list .list-row .row-thumb { width: 42px; height: 42px; border-radius: 11px; background: #e3f1ea; color: #0c4a3f; }
+.more-list .list-row::after { content: '›'; padding-left: 6px; color: #9bb0a7; font-size: 20px; line-height: 1; }
+.more-list .list-row .nav-badge { margin-left: 0; }
+.more-sheet .modal-foot { border-top: 0; background: #f4f8f6; }
 .modal-sheet.attention-ledger-sheet { width: min(1200px, calc(100vw - 40px)); max-width: none; }
 .attention-ledger-sheet .customer-ledger-heading { top: 0; }
 @media (max-width: 639px) {
@@ -1172,7 +1209,7 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
 
 /* ---------------- Desktop layout ---------------- */
 @media (min-width: 900px) {
-  .sidebar { display: block; }
+  .sidebar { display: flex; }
   .main-col { margin-left: var(--sidebar-w); }
   .bottom-nav { display: none; }
   .app-content { padding: 20px 28px 32px; }
@@ -1220,7 +1257,7 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
 /* Nút nhỏ "về đầu trang" (xem mountScrollTopButton() trong js/components/ui.js) — CHỈ trên điện thoại: nằm GIỮA màn hình, sát phía trên thanh menu dưới, cách xa các nút "Gửi OA" ở mép phải mỗi dòng để khỏi bấm nhầm. Trên máy tính ẩn hẳn (đã có sẵn các nút cố định riêng). */
 .scroll-top-btn {
   position: fixed; left: 0; right: 0; margin: 0 auto;
-  bottom: calc(var(--bottomnav-h) + 14px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--bottomnav-h) + 14px);
   width: 40px; height: 40px; border-radius: 50%;
   background: var(--surface); color: var(--color-primary);
   border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
@@ -1235,7 +1272,7 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
 .bottom-nav { transition: transform .25s ease; }
 .fab { transition: bottom .25s ease; }
 .scroll-top-btn { transition: opacity .18s ease, transform .18s ease, bottom .25s ease; }
-body.nav-hidden .bottom-nav { transform: translateY(100%); }
+body.nav-hidden .bottom-nav { transform: translateY(calc(100% + 24px + env(safe-area-inset-bottom, 0px))); }
 body.nav-hidden .fab { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
 body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
 @media (prefers-reduced-motion: reduce) { .bottom-nav, .fab, .scroll-top-btn { transition: none; } }

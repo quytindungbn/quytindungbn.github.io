@@ -12,37 +12,38 @@ export const CUSTOMER_NAV = [
   { path: '#/tai-khoan', label: 'Tài khoản', shortLabel: 'Tài khoản', icon: 'idCard' },
 ];
 
+// `group` = tiêu đề nhóm hiện trên sidebar (máy tính) và trong bảng "Thêm" (điện thoại); các mục cùng nhóm đứng liền nhau.
 export const ADMIN_NAV = [
-  { path: '#/admin', label: 'Tổng quan', shortLabel: 'Tổng quan', icon: 'chart' },
-  { path: '#/admin/khach-hang', label: 'Khách hàng & Hợp đồng', shortLabel: 'Khách hàng', icon: 'users' },
+  { path: '#/admin', label: 'Tổng quan', shortLabel: 'Tổng quan', icon: 'dashboard', group: 'Quản lý' },
+  { path: '#/admin/khach-hang', label: 'Khách hàng & Hợp đồng', shortLabel: 'Khách hàng', icon: 'users', group: 'Quản lý' },
 ];
 // "Hỗ trợ" gồm hai tab trong cùng trang; luôn hiện cho mọi quản trị viên.
 export const ADMIN_NAV_SUPPORT = [
-  { path: '#/admin/ho-tro', label: 'Hỗ trợ', shortLabel: 'Hỗ trợ', icon: 'message' },
+  { path: '#/admin/ho-tro', label: 'Hỗ trợ', shortLabel: 'Hỗ trợ', icon: 'message', group: 'Chăm sóc khách' },
 ];
 // "Quản lý User" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được
 // cấp riêng cờ canManageUsers (xem js/views/admin/staff.js) — không còn
 // bó cứng "chỉ toàn quyền" như "Cài đặt" nữa.
 export const ADMIN_NAV_MANAGE_USERS = [
-  { path: '#/admin/nhan-vien', label: 'Quản lý User', shortLabel: 'User', icon: 'idCard' },
+  { path: '#/admin/nhan-vien', label: 'Quản lý User', shortLabel: 'User', icon: 'idCard', group: 'Hệ thống' },
 ];
 // "Quản lý OA" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được cấp
 // riêng cờ canManageZaloOA (xem js/state.js) — y hệt kiểu ADMIN_NAV_MANAGE_USERS.
 export const ADMIN_NAV_MANAGE_ZALO_OA = [
-  { path: '#/admin/zalo-oa', label: 'Quản lý OA', shortLabel: 'Quản lý OA', icon: 'send' },
+  { path: '#/admin/zalo-oa', label: 'Quản lý OA', shortLabel: 'Quản lý OA', icon: 'send', group: 'Chăm sóc khách' },
 ];
 export const ADMIN_NAV_BALANCE_SHEET = [
-  { path: '#/admin/can-doi-ke-toan', label: 'Quản trị', shortLabel: 'Quản trị', icon: 'chart' },
+  { path: '#/admin/can-doi-ke-toan', label: 'Quản trị', shortLabel: 'Quản trị', icon: 'chart', group: 'Quản lý' },
 ];
 export const ADMIN_NAV_SUPER_ONLY = [
-  { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings' },
+  { path: '#/admin/cai-dat', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: 'settings', group: 'Hệ thống' },
   // "Nhật ký" ghi lại các thao tác quan trọng của MỌI quản trị viên/nhân
   // viên (đăng nhập, tạo/xóa/sửa tài khoản, xóa hợp đồng, nhập Excel...) —
   // CHỈ quản trị viên toàn quyền mới xem được, chặn ở CẢ nav này (ẩn mục)
   // LẪN RLS thật ở tầng database (xem docs/supabase-migration.md mục
   // 10.33) — ẩn mục ở đây chỉ là tiện cho giao diện, không phải lớp bảo mật
   // thật sự.
-  { path: '#/admin/nhat-ky', label: 'Nhật ký', shortLabel: 'Nhật ký', icon: 'clock' },
+  { path: '#/admin/nhat-ky', label: 'Nhật ký', shortLabel: 'Nhật ký', icon: 'clock', group: 'Hệ thống' },
 ];
 // Bốn mục đầu hiện trực tiếp trên điện thoại; các mục sau nằm trong "Thêm".
 const BOTTOM_NAV_MAX_DIRECT = 4;
@@ -133,17 +134,21 @@ export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA,
     <div class="app-shell">
       <aside class="sidebar">
         <div class="sidebar-brand">
-          <div class="logo-mark">${icon('landmark', 'icon-sm')}</div>
+          <div class="logo-mark">${icon('landmark')}</div>
           <div>
             <strong id="brand-name">QTD Bình Nguyên</strong>
             <span>${role === 'admin' ? 'Trang quản trị' : 'Cổng khách hàng'}</span>
           </div>
         </div>
-        <div id="sidebar-profile-slot"></div>
         <nav class="sidebar-nav" id="sidebar-nav"></nav>
-        ${!isStandalone() ? `<button class="btn btn-outline btn-block" id="btn-install-side" style="margin-top:16px">${icon('download', 'icon-sm')} Cài ứng dụng</button>` : ''}
-        <a href="#/doi-mat-khau" class="btn btn-outline btn-block" style="margin-top:8px">${icon('lock', 'icon-sm')} Đổi mật khẩu</a>
-        <button class="btn btn-outline btn-block" id="btn-logout-side" style="margin-top:8px">${icon('logout', 'icon-sm')} Đăng xuất</button>
+        <div class="sidebar-foot">
+          <div id="sidebar-profile-slot"></div>
+          <div class="sidebar-tools">
+            ${!isStandalone() ? `<button type="button" class="sidebar-tool" id="btn-install-side" title="Cài ứng dụng" aria-label="Cài ứng dụng">${icon('download')}</button>` : ''}
+            <a href="#/doi-mat-khau" class="sidebar-tool" title="Đổi mật khẩu" aria-label="Đổi mật khẩu">${icon('lock')}</a>
+            <button type="button" class="sidebar-tool" id="btn-logout-side" title="Đăng xuất" aria-label="Đăng xuất">${icon('logout')}</button>
+          </div>
+        </div>
       </aside>
       <div class="main-col">
         <header class="app-header" id="app-header"></header>
@@ -197,10 +202,15 @@ function unreadBadgeHtml(path, cls = 'nav-badge') {
 
 function renderSidebarNav(nav) {
   const el = document.getElementById('sidebar-nav');
-  el.innerHTML = nav.map((item) => `<a href="${item.path}" data-path="${item.path}">${icon(item.icon)}<span>${item.label}</span>${unreadBadgeHtml(item.path)}</a>`).join('');
+  let lastGroup = '';
+  el.innerHTML = nav.map((item) => {
+    const title = item.group && item.group !== lastGroup ? `<div class="nav-group-title">${item.group}</div>` : '';
+    lastGroup = item.group || lastGroup;
+    return `${title}<a href="${item.path}" data-path="${item.path}">${icon(item.icon)}<span>${item.label}</span>${unreadBadgeHtml(item.path)}</a>`;
+  }).join('');
 }
 
-const CHANGE_PW_ITEM = { path: '#/doi-mat-khau', label: 'Đổi mật khẩu', icon: 'lock' };
+const CHANGE_PW_ITEM = { path: '#/doi-mat-khau', label: 'Đổi mật khẩu', icon: 'lock', group: 'Tài khoản' };
 
 function renderBottomNav(nav) {
   const el = document.getElementById('bottom-nav');
@@ -216,21 +226,27 @@ function renderBottomNav(nav) {
 
 /** Bảng "Thêm" — gộp các mục menu còn lại + Đổi mật khẩu + Đăng xuất, tránh nhồi quá nhiều mục vào 1 hàng menu. */
 function openMoreSheet(overflowItems) {
+  let lastGroup = '';
   openModal({
     title: 'Thêm',
+    sheetClass: 'more-sheet',
     bodyHtml: `
       ${profileBlockHtml(getProfileInfo())}
-      <div class="flex-col gap-6">
-        ${overflowItems.map((item) => `
-          <a href="${item.path}" data-path="${item.path}" class="list-row" style="cursor:pointer;text-decoration:none;color:inherit">
-            <div class="row-thumb" style="background:var(--surface-alt);color:var(--text)">${icon(item.icon, 'icon-sm')}</div>
+      <div class="more-list">
+        ${overflowItems.map((item) => {
+          const title = item.group && item.group !== lastGroup ? `<div class="more-group">${item.group}</div>` : '';
+          lastGroup = item.group || lastGroup;
+          return `${title}
+          <a href="${item.path}" data-path="${item.path}" class="list-row">
+            <div class="row-thumb">${icon(item.icon, 'icon-sm')}</div>
             <div class="row-main"><div class="row-title">${item.label}</div></div>
             ${unreadBadgeHtml(item.path)}
-          </a>`).join('')}
+          </a>`;
+        }).join('')}
       </div>
     `,
     footHtml: `
-      ${!isStandalone() ? `<button class="btn btn-outline btn-block" id="sheet-install" style="margin-bottom:8px">${icon('download', 'icon-sm')} Cài ứng dụng</button>` : ''}
+      ${!isStandalone() ? `<button class="btn btn-outline btn-block" id="sheet-install">${icon('download', 'icon-sm')} Cài ứng dụng</button>` : ''}
       <button class="btn btn-outline btn-block" id="sheet-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>
     `,
     onMount(sheet, closeFn) {
