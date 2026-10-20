@@ -8,6 +8,7 @@ import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
 import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
 import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, formatCompact } from '../../utils.js';
+import { icon } from '../../icons.js';
 
 let reports = [];
 let selectedMonth = null;
@@ -32,12 +33,12 @@ function change(current, base) {
 }
 
 function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, accountDetail = null, ordinal = null } = {}) {
-  const name = `${label}:`;
+  const name = `${label}<span class="bs-colon">:</span>`;
   const detailButton = profitDetail
     ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>`
     : accountDetail
       ? `<button type="button" class="bs-management-link" data-account-details="${accountDetail}" aria-label="Xem chi tiết tài khoản ${label}">${name}</button>`
-      : name;
+      : `<span>${name}</span>`;
   return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${ordinal ? 'bs-management-numbered' : ''}">
     <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${detailButton}</div>
     <div class="bs-management-end"><strong>${money(end[key])}</strong></div>
@@ -88,7 +89,7 @@ function ratiosSection(end) {
   const tile = (label, value, detail, advice, alert = false) => `<article class="bs-ratio-card ${alert ? 'bs-ratio-alert' : ''}">
     <div class="bs-ratio-head"><h4>${label}</h4><strong>${value}</strong></div>
     ${detail ? `<p class="bs-ratio-detail">${detail}</p>` : ''}${advice ? `<p class="bs-ratio-advice">${advice}</p>` : ''}</article>`;
-  return `<section class="bs-ratios bs-section" id="bs-sec-ratios"><div class="bs-management-title"><h3>Chỉ số quản trị</h3><span>Lũy kế từ đầu năm · không quy đổi năm</span></div>
+  return `<section class="bs-ratios bs-section" id="bs-sec-ratios"><div class="bs-management-title"><h3 class="bs-sec-h">Chỉ số quản trị</h3><span>Lũy kế từ đầu năm · không quy đổi năm</span></div>
     <div class="bs-ratio-grid">
       ${tile('ROE', ratioFormat(ratios.roe, '%'), 'Lợi nhuận lũy kế / vốn chủ sở hữu', profitWarning, Number(end.profit) < 0)}
       ${tile('ROA', ratioFormat(ratios.roa, '%'), 'Lợi nhuận lũy kế / tổng tài sản', profitWarning, Number(end.profit) < 0)}
@@ -167,10 +168,10 @@ function stat(label, value, startValue, color, clickable = false) {
 }
 
 const trendSeries = [
-  { key: 'assets', label: 'Tổng tài sản', color: '#087d6a' },
-  { key: 'customerDeposits', label: 'Tiền gửi khách hàng', color: '#2f69d9' },
-  { key: 'grossLoans', label: 'Dư nợ cho vay', color: '#d97706' },
-  { key: 'profit', label: 'Lợi nhuận', color: '#8b46b8', rightAxis: true },
+  { key: 'assets', label: 'Tổng tài sản', color: '#0c4a3f' },
+  { key: 'customerDeposits', label: 'Tiền gửi khách hàng', color: '#b08d3c' },
+  { key: 'grossLoans', label: 'Dư nợ cho vay', color: '#4f9d86' },
+  { key: 'profit', label: 'Lợi nhuận', color: '#a8402f', rightAxis: true },
 ];
 
 function trendMonthDetail(report) {
@@ -193,7 +194,7 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
   const profitY = (v) => bottom - (v - profitBase) / profitSpan * (bottom - top);
   const lines = [0, 0.5, 1].map((p) => {
     const yy = bottom - (bottom - top) * p;
-    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text><text x="${right + 7}" y="${yy + 4}" font-size="${mobile ? 8 : 11}" fill="#8b46b8">${formatTrieuDong(profitBase + profitSpan * p)}</text>`;
+    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text><text x="${right + 7}" y="${yy + 4}" font-size="${mobile ? 8 : 11}" fill="#a8402f">${formatTrieuDong(profitBase + profitSpan * p)}</text>`;
   }).join('');
   const pointYs = trendSeries.map((s) => shown.map((r) =>
     (s.rightAxis ? profitY : y)(Number(r.figures.end[s.key]) || 0)));
@@ -297,7 +298,7 @@ function bindSectionChips(root) {
   chipSpyHandler = () => {
     if (!chips.isConnected) { window.removeEventListener('scroll', chipSpyHandler); chipSpyHandler = null; return; }
     if (Date.now() < lockUntil) return;
-    const line = (document.querySelector('.app-header')?.offsetHeight || 56) + chips.offsetHeight + 24;
+    const line = (document.querySelector('.app-header')?.offsetHeight || 56) + (root.querySelector('.bs-sticky')?.offsetHeight || chips.offsetHeight) + 24;
     let current = live[0];
     live.forEach((button) => { if (targetOf(button).getBoundingClientRect().top <= line) current = button; });
     // Cuối trang: mục cuối ngắn nên không bao giờ chạm "vạch" ở trên — coi như đang ở mục cuối.
@@ -323,22 +324,22 @@ function composition(items, total, centerLabel, { grossShares = false } = {}) {
 
 function assetComposition(figures) {
   return composition([
-    ['Dư nợ cho vay', figures.grossLoans, '#087d6a'],
-    ['Dự phòng rủi ro (trừ)', -(figures.totalProvision ?? figures.generalProvision + figures.specificProvision), '#c04343'],
-    ['Tiền gửi tại TCTD', figures.tctdDeposits, '#2f69d9'],
-    ['Lãi, phí phải thu', figures.accruedReceivables, '#e69910'],
-    ['Tiền mặt', figures.cash, '#b066c6'],
-    ['TSCĐ, vốn góp NHHTX và tài sản khác', figures.fixedCapital + figures.internalReceivables + figures.otherAssets, '#8996a8'],
+    ['Dư nợ cho vay', figures.grossLoans, '#0c4a3f'],
+    ['Dự phòng rủi ro (trừ)', -(figures.totalProvision ?? figures.generalProvision + figures.specificProvision), '#a8402f'],
+    ['Tiền gửi tại TCTD', figures.tctdDeposits, '#b08d3c'],
+    ['Lãi, phí phải thu', figures.accruedReceivables, '#dcc27d'],
+    ['Tiền mặt', figures.cash, '#7fa597'],
+    ['TSCĐ, vốn góp NHHTX và tài sản khác', figures.fixedCapital + figures.internalReceivables + figures.otherAssets, '#b9c4bf'],
   ], figures.assets, 'Tổng tài sản', { grossShares: true });
 }
 
 function fundingComposition(figures) {
   return composition([
-    ['Tiền gửi khách hàng', figures.customerDeposits, '#2f69d9'],
-    ['Lãi và phí phải trả', figures.interestPayable, '#e69910'],
-    ['Nợ phải trả khác', figures.otherLiabilities, '#8996a8'],
-    ['Vốn chủ sở hữu', figures.equity, '#087d6a'],
-    ['Lợi nhuận lũy kế', figures.profit, '#b066c6'],
+    ['Tiền gửi khách hàng', figures.customerDeposits, '#0c4a3f'],
+    ['Lãi và phí phải trả', figures.interestPayable, '#dcc27d'],
+    ['Nợ phải trả khác', figures.otherLiabilities, '#b9c4bf'],
+    ['Vốn chủ sở hữu', figures.equity, '#b08d3c'],
+    ['Lợi nhuận lũy kế', figures.profit, '#7fa597'],
   ], figures.liabilities, 'Tổng nguồn vốn');
 }
 
@@ -420,7 +421,7 @@ function provisionComparison(report) {
     if (gap < 0) return `<p>${label} thiếu <strong>${money(-gap)}</strong>; cần trích bổ sung trong 07 ngày đầu tháng sau, chậm nhất ngày ${deadline}.</p>`;
     return '';
   }).join('') : '';
-  return `<div class="card card-pad bs-section bs-provision-section" id="bs-sec-prov"><h3>Trích lập dự phòng${isUnclosedMonth ? ' <span class="bs-provision-pending">(Chưa chốt số liệu tháng này)</span>' : ''}</h3>
+  return `<div class="card card-pad bs-section bs-provision-section" id="bs-sec-prov"><h3 class="bs-sec-h">Trích lập dự phòng${isUnclosedMonth ? ' <span class="bs-provision-pending">(Chưa chốt số liệu tháng này)</span>' : ''}</h3>
     ${remote?.error && !app ? '<p class="bs-warning">Không tải được số Phải trích. Bấm Làm mới để thử lại.</p>' : ''}
     ${alerts ? `<div class="bs-provision-alerts" role="status">${alerts}</div>` : ''}
     <div class="bs-table-wrap"><table class="bs-table"><thead><tr><th>Khoản mục</th><th>Bảng cân đối</th><th>Phải trích</th><th>Chênh lệch</th></tr></thead><tbody>
@@ -469,15 +470,20 @@ function draw(contentEl) {
     { label: 'Vốn chủ sở hữu', key: 'equity', detailHtml: equityDetails },
     { label: 'Lợi nhuận lũy kế', key: 'profit', options: { noYear: true, profitDetail: true } },
   ] : [];
-  const toolbarHtml = `<div class="bs-toolbar"><div><h2>Số liệu quản trị theo tháng</h2>${report ? `<p class="bs-source">Số liệu đến ngày: <strong>${reportDate(report.period_end)}</strong></p>` : ''}</div>
-    <div class="bs-toolbar-actions">${reports.length ? `<label class="bs-month-select">Kỳ báo cáo tháng <select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select></label>` : ''}
-    <button class="btn btn-outline" id="bs-refresh" type="button">Làm mới</button>
-    ${superAdmin ? '<button class="btn btn-primary" id="bs-import">Nạp cân đối</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>' : ''}</div></div>`;
+  const dateText = report ? reportDate(report.period_end) : '';
+  // Thanh cố định (dính dưới tiêu đề khi cuộn): số liệu đến ngày + kỳ báo cáo + nút làm mới/nạp cân đối.
+  const barHtml = `<div class="bs-bar">
+    ${report ? `<div class="bs-bar-date"><small><span class="bs-d-only">Số liệu </span>đến ngày</small><b>${dateText}</b></div>` : ''}
+    ${reports.length ? `<label class="bs-bar-period"><small>Kỳ báo cáo</small><select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select></label>` : ''}
+    <div class="bs-bar-tools"><button type="button" class="bs-ibtn" id="bs-refresh" title="Làm mới" aria-label="Làm mới">${icon('refresh')}</button>${superAdmin ? `<button type="button" class="bs-ibtn" id="bs-import" title="Nạp cân đối" aria-label="Nạp cân đối">${icon('upload')}</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>` : ''}</div></div>`;
   const ratiosHtml = report ? ratiosSection(end) : '';
   // Thứ tự trang: khối tổng hợp -> chỉ số -> biến động -> cơ cấu -> chỉ tiêu -> dự phòng (khớp thanh chọn nhanh trên điện thoại).
   contentEl.innerHTML = `<div class="bs-lux">
-    ${report ? `<nav class="bs-chips" aria-label="Chuyển nhanh tới mục">${[['bs-sec-summary', 'Tổng hợp'], ['bs-sec-ratios', 'Chỉ số'], ['bs-sec-trend', 'Biến động'], ['bs-sec-comp', 'Cơ cấu'], ['bs-sec-mgmt', 'Chỉ tiêu'], ['bs-sec-prov', 'Dự phòng']].map(([id, name], index) => `<button type="button" data-jump="${id}" class="${index === 0 ? 'is-active' : ''}">${name}</button>`).join('')}</nav>` : ''}
-    <div class="bs-hero" id="bs-sec-summary">${toolbarHtml}${report ? `
+    <div class="bs-sticky">${barHtml}
+    ${report ? `<nav class="bs-chips" aria-label="Chuyển nhanh tới mục">${[['bs-sec-summary', 'Tổng hợp'], ['bs-sec-ratios', 'Chỉ số'], ['bs-sec-trend', 'Biến động'], ['bs-sec-comp', 'Cơ cấu'], ['bs-sec-mgmt', 'Chỉ tiêu'], ['bs-sec-prov', 'Dự phòng']].map(([id, name], index) => `<button type="button" data-jump="${id}" class="${index === 0 ? 'is-active' : ''}">${name}</button>`).join('')}</nav>` : ''}</div>
+    <div class="bs-doc">
+    ${report ? `<header class="bs-doc-head"><div class="bs-doc-org">${escapeHtml(S.getOrg()?.shortName || 'QTD Bình Nguyên')} · Báo cáo số liệu quản trị</div><h1>${monthName(report.year_month)}</h1><div class="bs-doc-asof">Số liệu đến ngày ${dateText}</div></header>` : ''}
+    <div class="bs-hero" id="bs-sec-summary">${report ? `<h3 class="bs-sec-h bs-d-only">Tổng hợp</h3>
       <div class="grid-4 bs-stats">
         ${stat('Tổng tài sản', end.assets, start.assets, 'c-green')}
         ${stat('Tiền gửi khách hàng', end.customerDeposits, start.customerDeposits, 'c-blue')}
@@ -486,16 +492,16 @@ function draw(contentEl) {
       </div>` : ''}</div>
     ${!report ? `<div class="card card-pad"><p>Chưa có bảng cân đối nào. Quản trị viên toàn quyền có thể nạp file .xls hoặc .xlsx của từng tháng.</p></div>` : `
     ${ratiosHtml}
-    <div class="card card-pad bs-section bs-trend-section" id="bs-sec-trend"><h3>Biến động</h3>${trendChart(reports)}</div>
-    <div class="bs-two-col" id="bs-sec-comp"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
-      <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div>
-    <div class="bs-management bs-section" id="bs-sec-mgmt"><div class="bs-management-title"><h3>Chỉ tiêu quản trị</h3></div>
+    <div class="card card-pad bs-section bs-trend-section" id="bs-sec-trend"><h3 class="bs-sec-h">Biến động</h3>${trendChart(reports)}</div>
+    <div class="bs-comp-wrap" id="bs-sec-comp"><h3 class="bs-sec-h bs-d-only">Cơ cấu</h3><div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
+      <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div></div>
+    <div class="bs-management bs-section" id="bs-sec-mgmt"><div class="bs-management-title"><h3 class="bs-sec-h">Chỉ tiêu quản trị</h3></div>
       ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart)}
         ${managementRow('Tổng tài sản', 'assets', start, end, yearStart, { total: true })}`)}
       ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, fundingYearStart)}
         ${managementRow('Tổng nguồn vốn', 'liabilities', start, end, yearStart, { total: true })}`)}
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
-    ${provisionComparison(report)}`}</div>`;
+    ${provisionComparison(report)}`}</div></div>`;
   contentEl.querySelector('#bs-month')?.addEventListener('change', (event) => {
     selectedMonth = event.target.value;
     remoteProvisions.delete(selectedMonth);
