@@ -14,6 +14,10 @@
      Xem docs/dong-goi-android.md -->
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<!-- Font chữ có chân (Playfair Display) chỉ dùng cho các con số lớn/tiêu đề mục ở trang Tổng quan — display=swap nên không chặn hiển thị, lỗi mạng thì tự dùng font dự phòng. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap">
 <link rel="stylesheet" href="css/styles.css">
 <!-- Kết nối Supabase (thay dần localStorage) — CDN ESM, giữ đúng kiến trúc
      "0 dependency, không cần build" của app: xem docs/supabase-migration.md -->

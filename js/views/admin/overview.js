@@ -6,7 +6,7 @@ import { emptyState, statusBadge, installmentHintHtml } from '../../components/u
 import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor, escapeHtml } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
-import { barChartSvg, monthlyTrendLineChartSvg, compositionDonutHtml, BALANCE_TREND_COLOR } from '../../components/charts.js';
+import { monthlyTrendLineChartSvg, compositionDonutHtml } from '../../components/charts.js';
 import { openContractView, customerLedgerHtml, bindCustomerLedger } from './customers.js';
 import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
 
@@ -113,28 +113,51 @@ export function render(contentEl) {
   const dashboardMonth = dashboardData.months.find((m) => m.yearMonth === selectedDashboardMonth)
     || dashboardData.months[dashboardData.months.length - 1];
 
-  contentEl.innerHTML = `
-    <div class="grid-4 mb-16">
-      <div class="stat-tile c-blue"><div class="stat-label">Tổng khách hàng</div><div class="stat-value">${formatNumber(activeCustomerCount)}</div></div>
-      <div class="stat-tile c-green"><div class="stat-label">Tổng dư nợ</div><div class="stat-value" style="font-size:15px">${formatVND(totalOutstanding)}</div></div>
-      <div class="stat-tile c-pink" id="tile-overdue" style="cursor:pointer">
-        <div class="stat-label">Hợp đồng quá hạn</div>
-        <div class="stat-value">${formatNumber(overdue.length)}</div>
-        <div class="stat-trend" style="color:var(--danger)">Tổng cộng: ${formatVND(overdueTotal)}</div>
-      </div>
-      <div class="stat-tile c-orange" id="tile-neardue" style="cursor:pointer">
-        <div class="stat-label">Gần đến hạn</div>
-        <div class="stat-value">${formatNumber(nearDue.length)}</div>
-        <div class="stat-trend" style="color:var(--warning)">Tổng cộng: ${formatVND(nearDueTotal)}</div>
-      </div>
-    </div>
+  // ----- Số liệu cho thẻ "Tổng dư nợ" (hero) và 2 dòng "Cần chú ý" -----
+  const latestMonth = dashboardData.months[dashboardData.months.length - 1];
+  const prevOfLatest = dashboardData.prevMonthOf(latestMonth.yearMonth);
+  const heroDelta = prevOfLatest && prevOfLatest.balance > 0 ? ((totalOutstanding - prevOfLatest.balance) / prevOfLatest.balance) * 100 : null;
+  const activeContractCount = contracts.filter((c) => Number(c.balance) > 0).length;
+  const heroMoney = compactVnd(totalOutstanding);
+  const heroInterest = compactVnd(latestMonth.interest || 0);
+  const sparkValues = dashboardData.months.slice(-6).map((m) => m.balance);
+  const overdueMoney = compactVnd(overdueTotal);
+  const nearDueMoney = compactVnd(nearDueTotal);
 
-    <div id="month-selector-slot" class="card card-pad mb-16 overview-period-picker">${monthSelectorHtml(dashboardData.months, dashboardMonth.yearMonth, isSuper)}</div>
+  contentEl.innerHTML = `
+    <div class="lux-root">
+    <div id="month-selector-slot" class="lux-period overview-period-picker">${monthSelectorHtml(dashboardData.months, dashboardMonth.yearMonth, isSuper)}</div>
+
+    <section class="lux-hero lux-c-hero" aria-label="Tổng dư nợ">
+      <span class="lux-eyebrow">Tổng dư nợ</span>
+      <div class="lux-num">${heroMoney.num}<small>${heroMoney.unit}</small></div>
+      <div class="lux-sub">${heroDelta !== null ? `<span class="lux-delta ${heroDelta >= 0 ? 'up' : 'down'}">${heroDelta >= 0 ? '▲' : '▼'} ${formatPercent(Math.abs(heroDelta))} so với tháng trước</span> · ` : ''}lãi phải thu ${heroInterest.num} ${heroInterest.unit.replace(' ₫', '')}</div>
+      ${sparkValues.length >= 2 ? `<div class="lux-spark">${sparklineSvg(sparkValues)}</div>` : ''}
+      <div class="lux-trio">
+        <div><span class="lux-eyebrow">Khách hàng</span><b>${formatNumber(activeCustomerCount)}</b></div>
+        <div><span class="lux-eyebrow">Hợp đồng</span><b>${formatNumber(activeContractCount)}</b></div>
+        <div><span class="lux-eyebrow">Nợ xấu</span><b class="${(latestMonth.badDebtRatio || 0) > 0 ? 'bad' : ''}">${formatPercent(latestMonth.badDebtRatio || 0)}</b></div>
+      </div>
+    </section>
+
+    <h3 class="lux-h lux-h--plain lux-c-attn-h"><span>Cần chú ý</span></h3>
+    <div class="lux-card lux-attn lux-c-attn">
+      <button type="button" class="lux-attn-row" id="tile-overdue">
+        <span class="mk red"></span>
+        <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(overdue.length)} hợp đồng</small></span>
+        <span class="v red">${overdueMoney.num}<small>${overdueMoney.unit}</small></span>${LUX_CHEVRON}
+      </button>
+      <button type="button" class="lux-attn-row" id="tile-neardue">
+        <span class="mk gold"></span>
+        <span class="t"><b>Gần đến hạn</b><small>${formatNumber(nearDue.length)} hợp đồng</small></span>
+        <span class="v gold">${nearDueMoney.num}<small>${nearDueMoney.unit}</small></span>${LUX_CHEVRON}
+      </button>
+    </div>
 
     ${debtDashboardHtml(dashboardData, dashboardMonth)}
 
-    <div class="card card-pad">
-      <div class="section-head"><h2>Yêu cầu mới nhất</h2><a href="#/admin/ho-tro?tab=requests" class="link-more">Xem tất cả</a></div>
+    <section class="lux-card lux-c-req">
+      <h3 class="lux-h"><span>Yêu cầu mới nhất</span><a href="#/admin/ho-tro?tab=requests" class="lux-link">Xem tất cả</a></h3>
       ${requests.length ? requests.slice(0, 5).map((r) => {
         const cust = S.getCustomer(r.customerId);
         const typeLabel = S.REQUEST_TYPE.find((t) => t.id === r.type)?.label || '';
@@ -148,6 +171,7 @@ export function render(contentEl) {
           <div class="row-end">${statusBadge(S.REQUEST_STATUS_MAP[r.status])}</div>
         </div>`;
       }).join('') : `<p class="text-sm text-muted">Chưa có yêu cầu nào.</p>`}
+    </section>
     </div>
   `;
 
@@ -205,36 +229,62 @@ function bindNhomNoClicks(root) {
   });
 }
 
-const GROUP_COLORS = { 1: BALANCE_TREND_COLOR, 2: 'var(--warning)', 3: '#f0a29c', 4: 'var(--danger)', 5: '#8f231d' };
+const GROUP_COLORS = { 1: '#0c4a3f', 2: '#b08d3c', 3: '#d49a8a', 4: '#a8402f', 5: '#5e1717' };
+// Tên gọi phân loại nợ theo Thông tư 02/2013 — hiện cạnh số nhóm ở "Dư nợ theo nhóm nợ".
+const GROUP_NAMES = { 1: 'Đủ tiêu chuẩn', 2: 'Cần chú ý', 3: 'Dưới tiêu chuẩn', 4: 'Nghi ngờ', 5: 'Có khả năng mất vốn' };
+
+/** Số tiền rút gọn cho số lớn: 48,62 tỷ ₫ / 236,48 triệu ₫ / 950.000 ₫ (số đầy đủ vẫn hiện ngay dưới). */
+function compactVnd(n) {
+  const v = Math.round(Number(n) || 0);
+  const comma = (x) => x.toFixed(2).replace('.', ',');
+  if (v >= 1e9) return { num: comma(v / 1e9), unit: 'tỷ ₫' };
+  if (v >= 1e6) return { num: comma(v / 1e6), unit: 'triệu ₫' };
+  return { num: formatNumber(v), unit: '₫' };
+}
+/** Đường xu hướng nhỏ (tối đa 6 tháng gần nhất) cho thẻ Tổng dư nợ. */
+function sparklineSvg(values) {
+  const w = 340, h = 52;
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || 1;
+  const pts = values.map((v, i) => [(i * (w - 10)) / (values.length - 1) + 5, h - 6 - ((v - min) / span) * (h - 14)]);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="lux-spark-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#0c4a3f" stop-opacity=".28"/><stop offset="1" stop-color="#0c4a3f" stop-opacity="0"/></linearGradient></defs>
+    <path d="${d} L${w - 5} ${h} L5 ${h} Z" fill="url(#lux-spark-fill)"/>
+    <path d="${d}" fill="none" stroke="#0c4a3f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4.5" fill="#b08d3c" stroke="#fffdf8" stroke-width="1.5"/></svg>`;
+}
+const LUX_CHEVRON = '<svg class="lux-chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 
 const COMPOSITION_OPTIONS = {
   purpose: {
     label: 'Mục đích vay', field: 'loanPurpose',
     categories: [
-      { code: '01', label: 'Vay tiêu dùng', color: '#0f766e' },
-      { code: '04', label: 'Vay sản xuất kinh doanh', color: '#2563eb' },
-      { code: '052', label: 'Vay nông nghiệp', color: '#e59b16' },
+      { code: '01', label: 'Vay tiêu dùng', color: '#0c4a3f' },
+      { code: '04', label: 'Vay sản xuất kinh doanh', color: '#b08d3c' },
+      { code: '052', label: 'Vay nông nghiệp', color: '#7fa597' },
     ],
   },
   term: {
     label: 'Loại vay', field: 'loanTerm',
     categories: [
-      { code: 'NH', label: 'Ngắn hạn', color: '#0f766e' },
-      { code: 'TH', label: 'Trung hạn', color: '#2563eb' },
+      { code: 'NH', label: 'Ngắn hạn', color: '#0c4a3f' },
+      { code: 'TH', label: 'Trung hạn', color: '#b08d3c' },
     ],
   },
   collateral: {
     label: 'Tài sản bảo đảm', field: 'collateralType',
     categories: [
-      { code: '01', label: 'Quyền sử dụng đất chính chủ', color: '#0f766e' },
-      { code: '02', label: 'Quyền sử dụng đất bên thứ ba', color: '#2563eb' },
-      { code: '04', label: 'Xe ô tô chính chủ', color: '#e59b16' },
-      { code: '06', label: 'Sổ tiết kiệm', color: '#8b5cf6' },
-      { code: 'KCDB', label: 'Không có tài sản bảo đảm', color: '#e05b50' },
+      { code: '01', label: 'Quyền sử dụng đất chính chủ', color: '#0c4a3f' },
+      { code: '02', label: 'Quyền sử dụng đất bên thứ ba', color: '#b08d3c' },
+      { code: '04', label: 'Xe ô tô chính chủ', color: '#7fa597' },
+      { code: '06', label: 'Sổ tiết kiệm', color: '#8a7a9e' },
+      { code: 'KCDB', label: 'Không có tài sản bảo đảm', color: '#a8402f' },
     ],
   },
 };
-const COMPOSITION_UNKNOWN = { label: 'Khác / chưa xác định', color: '#94a3b8' };
+const COMPOSITION_UNKNOWN = { label: 'Khác / chưa xác định', color: '#cbbf9d' };
 let activeCompositionTab = 'purpose';
 let activeCompositionMetric = 'balance';
 
@@ -418,11 +468,22 @@ function bindCompositionTabs(root) {
 /** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m — có thể là tháng đang sống hoặc tháng đã chốt trong quá khứ, xem selectMonth()) — mỗi cột bấm được để mở danh sách hợp đồng, xem bindNhomNoClicks(). */
 function nhomNoBarHtml(m) {
   const gb = m.groupBalances || {};
-  const barItems = [1, 2, 3, 4, 5].map((g) => ({
-    id: g,
-    label: `Nhóm ${g}`, shortLabel: String(g), value: gb[g] || 0, color: GROUP_COLORS[g],
-  }));
-  return barChartSvg({ items: barItems });
+  const groups = [1, 2, 3, 4, 5];
+  const total = groups.reduce((sum, g) => sum + (gb[g] || 0), 0);
+  const share = (g) => (total > 0 ? ((gb[g] || 0) / total) * 100 : 0);
+  // Mỗi đoạn của thanh tỷ lệ và mỗi dòng bên dưới đều có data-id = số nhóm — bấm vào mở danh sách hợp đồng nhóm đó (bindNhomNoClicks).
+  const segments = groups.filter((g) => (gb[g] || 0) > 0).map((g) => `<button type="button" class="lux-seg" data-id="${g}" aria-label="Nhóm ${g}: ${formatVND(gb[g])}" style="flex:${Math.max(share(g), 1.5).toFixed(2)};background:${GROUP_COLORS[g]}"></button>`).join('');
+  const rows = groups.map((g) => {
+    const money = compactVnd(gb[g] || 0);
+    return `<button type="button" class="lux-leg" data-id="${g}">
+      <i style="background:${GROUP_COLORS[g]}"></i>
+      <span class="t"><b>Nhóm ${g}</b><small>${GROUP_NAMES[g]}</small></span>
+      <span class="v"><b>${money.num}<small>${money.unit}</small></b><small>${formatPercent(share(g))}</small></span>
+    </button>`;
+  }).join('');
+  return `<div class="lux-bad-row"><span class="lux-bad-tag${(m.badDebtRatio || 0) > 0 ? '' : ' zero'}">Nợ xấu ${formatPercent(m.badDebtRatio || 0)}</span></div>
+    ${total > 0 ? `<div class="lux-stack">${segments}</div>` : ''}
+    <div class="lux-legs">${rows}</div>`;
 }
 /**
  * Dự phòng phải trích của ĐÚNG 1 tháng (m, mục 10.52 docs) — tháng ĐANG
@@ -638,11 +699,11 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
   const prev = prevMonthOf(m.yearMonth);
   const yearStart = yearStartOf(m.yearMonth);
   const rows = [
-    { label: 'Dư nợ', color: 'var(--color-primary)', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, mode: 'better' },
-    { label: 'Nợ xấu', color: 'var(--danger)', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, mode: 'worse' },
-    { label: 'Lãi phải thu', color: 'var(--purple)', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, mode: 'better' },
+    { label: 'Dư nợ', color: '#0c4a3f', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, mode: 'better' },
+    { label: 'Nợ xấu', color: '#a8402f', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, mode: 'worse' },
+    { label: 'Lãi phải thu', color: '#8a6a22', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, mode: 'better' },
   ];
-  const th = 'padding:0 8px 8px 0;text-align:left;font-size:10.5px;color:var(--text-muted);font-weight:600;white-space:nowrap';
+  const th = 'padding:0 8px 8px 0;text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#b08d3c;font-weight:600;white-space:nowrap;border-bottom:1px solid #dccb99';
   const td = 'padding:10px 8px 10px 0;border-top:1px solid var(--border);white-space:nowrap';
   const bodyRows = rows.map((r) => `
     <tr>
@@ -747,10 +808,10 @@ function monthSelectorHtml(months, selectedYm, isSuper) {
   return `
     <div class="overview-period-row">
       <div class="overview-period-controls">
-        <label for="month-select" style="font-size:12px;color:var(--text-muted);font-weight:600;white-space:nowrap">Kỳ báo cáo tháng</label>
-        <select id="month-select" class="pill-select" style="max-width:220px">${options}</select>
+        <label for="month-select" class="lux-eyebrow">Kỳ báo cáo tháng</label>
+        <select id="month-select" class="lux-select">${options}</select>
       </div>
-      ${isSuper ? `<a href="javascript:void(0)" id="btn-import-historical" class="link-more" style="font-size:11.5px">Nạp dữ liệu cũ</a>` : ''}
+      ${isSuper ? `<a href="javascript:void(0)" id="btn-import-historical" class="lux-link">Nạp dữ liệu cũ</a>` : ''}
     </div>`;
 }
 
@@ -758,30 +819,35 @@ function debtDashboardHtml({ months, prevMonthOf, yearStartOf }, initial) {
   const provision = provisionForMonth(initial);
 
   return `
-    <div class="card card-pad mb-16">
-      <h3 style="font-size:13.5px;margin-bottom:10px">Dư nợ theo nhóm nợ</h3>
+    <section class="lux-card lux-c-nhom">
+      <h3 class="lux-h"><span>Dư nợ theo nhóm nợ</span></h3>
       <div id="nhom-no-slot" data-ym="${initial.yearMonth}">${nhomNoBarHtml(initial)}</div>
-      <div id="provision-slot" class="mt-16">${provisionRowsHtml(provision)}</div>
-      <h3 style="font-size:13.5px;margin-bottom:10px" class="mt-24">Biến động hàng tháng</h3>
+    </section>
+
+    <section class="lux-card lux-c-prov">
+      <h3 class="lux-h"><span>Dự phòng rủi ro</span></h3>
+      <div id="provision-slot">${provisionRowsHtml(provision)}</div>
+    </section>
+
+    <section class="lux-card lux-c-trend">
+      <h3 class="lux-h"><span>Biến động hàng tháng</span></h3>
       <div id="trend-chart-slot">${monthlyTrendLineChartSvg({ months, selectedYm: initial.yearMonth })}</div>
+    </section>
 
-      <section class="composition-section" aria-labelledby="composition-heading">
-        <h3 id="composition-heading" style="font-size:13.5px;margin-bottom:10px">Tỷ trọng dư nợ và số món vay</h3>
-        ${compositionTabsHtml()}
-        <div id="composition-slot" role="tabpanel" aria-labelledby="composition-tab-${activeCompositionTab}">
-          ${compositionPanelHtml(initial)}
-        </div>
-      </section>
-
-      <div class="flex items-center justify-between mb-10 mt-20">
-        <h3 style="font-size:13.5px;margin:0">Tổng hợp tăng giảm</h3>
-        <div class="flex items-center" style="gap:10px">
-          <span id="month-detail-label" style="font-size:12px;color:var(--text-muted);font-weight:600">${monthLabelWithNote(initial)}</span>
-          <a href="javascript:void(0)" id="btn-monthly-detail" class="link-more">Xem chi tiết</a>
-        </div>
+    <section class="lux-card lux-c-comp composition-section" aria-labelledby="composition-heading">
+      <h3 class="lux-h" id="composition-heading"><span>Tỷ trọng dư nợ và số món vay</span></h3>
+      ${compositionTabsHtml()}
+      <div id="composition-slot" role="tabpanel" aria-labelledby="composition-tab-${activeCompositionTab}">
+        ${compositionPanelHtml(initial)}
       </div>
+    </section>
+
+    <section class="lux-card lux-c-diff">
+      <h3 class="lux-h"><span>Tổng hợp tăng giảm</span>
+        <span class="lux-h-end"><span id="month-detail-label">${monthLabelWithNote(initial)}</span><a href="javascript:void(0)" id="btn-monthly-detail" class="lux-link">Xem chi tiết</a></span>
+      </h3>
       <div id="month-detail-slot">${monthDetailTableHtml(initial, prevMonthOf, yearStartOf)}</div>
-    </div>
+    </section>
   `;
 }
 
