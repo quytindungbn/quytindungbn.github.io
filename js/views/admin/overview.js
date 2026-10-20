@@ -59,99 +59,197 @@ function visibleContracts() {
   return S.getState().contracts.filter((c) => customerIds.has(c.customerId));
 }
 
-export function render(contentEl) {
-  const { isStaff, isSuper } = currentRoles();
+/**
+ * Số liệu "sống" của THÁNG HIỆN TẠI (chưa chốt) — tính trực tiếp từ hợp đồng đang có, đúng phạm vi của phiên đăng nhập.
+ * Tháng ĐÃ CHỐT không dùng hàm này mà dùng bản chốt đã lưu, xem snapshotOverview().
+ */
+function computeLiveOverview() {
+  const { isStaff } = currentRoles();
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
   const customers = S.listCustomers({ adminId: isStaff ? admin.id : undefined });
-  const customerIds = new Set(customers.map((c) => c.id));
   const contracts = visibleContracts();
-  // "Yêu cầu mới nhất" chỉ để nhắc việc CẦN LÀM — yêu cầu đã chuyển "Đã liên
-  // hệ" (xử lý xong) tự ẩn khỏi đây, xem đầy đủ (kể cả đã xử lý) ở trang
-  // "Hỗ trợ" (tab "Tư vấn") qua nút "Xem tất cả".
-  const requests = S.listRequests({}).filter((r) => (!isStaff || customerIds.has(r.customerId)) && r.status !== 'da_lien_he');
   // "Tổng khách hàng" chỉ tính khách còn dư nợ > 0 — khớp đúng với số khách
   // hàng thực sự hiện ra ở trang Khách hàng & Hợp đồng (trang đó cũng ẩn
   // khách hết dư nợ), để 2 nơi luôn đồng bộ với nhau.
   const balanceByCustomer = new Map();
   for (const ct of contracts) balanceByCustomer.set(ct.customerId, (balanceByCustomer.get(ct.customerId) || 0) + (ct.balance || 0));
   const activeCustomerCount = customers.filter((c) => (balanceByCustomer.get(c.id) || 0) > 0).length;
-  const totalOutstanding = contracts.filter((c) => S.effectiveContractStatus(c) !== 'da_tat_toan').reduce((s, c) => s + c.balance, 0);
+  const totalOutstanding = contracts.filter((c) => S.effectiveContractStatus(c) !== 'da_tat_toan').reduce((sum, c) => sum + c.balance, 0);
   // Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
   // có) — xem S.contractAttentionInfo() — để hợp đồng có 1 kỳ giữa chừng
   // (chưa tới ngày đáo hạn cuối) đến/quá hạn cũng được tính vào đây, y hệt
-  // trang "Khách hàng & Hợp đồng". Tính 1 lần, dùng lại cho cả tile lẫn
-  // popup danh sách bên dưới, khỏi tính lại nhiều lần.
+  // trang "Khách hàng & Hợp đồng". Tính 1 lần, dùng lại cho cả ô lẫn popup.
   const attention = contracts
     .filter((c) => Number(c.balance) > 0)
     .map((c) => ({ c, info: S.contractAttentionInfo(c) }));
   const overdue = attention
-  .filter((x) => x.info.level === 'qua_han')
-  .sort((a, b) => a.info.days - b.info.days)
-  .map((x) => x.c);
+    .filter((x) => x.info.level === 'qua_han')
+    .sort((a, b) => a.info.days - b.info.days)
+    .map((x) => x.c);
   // Ô thống kê + tổng tiền "Gần đến hạn" GIỮ NGUYÊN đúng trong NEAR_DUE_DAYS
-  // (15 ngày chính thức) như cũ, không đổi — không phải ngưỡng RỘNG 45 ngày.
+  // (15 ngày chính thức) — không phải ngưỡng RỘNG 45 ngày.
   const nearDue = attention.filter((x) => x.info.level === 'gan_den_han' && x.info.days <= S.NEAR_DUE_DAYS).map((x) => x.c);
   // Tổng cộng CỦA NHÓM = cộng ĐÚNG số tiền của KỲ đến hạn (info.dueAmount)
-  // khi cảnh báo đến từ 1 kỳ cụ thể, không phải toàn bộ dư nợ hợp đồng — xem
-  // S.contractAttentionInfo().
-  const overdueTotal = attention.filter((x) => x.info.level === 'qua_han').reduce((s, x) => s + x.info.dueAmount, 0);
-  const nearDueTotal = attention.filter((x) => x.info.level === 'gan_den_han' && x.info.days <= S.NEAR_DUE_DAYS).reduce((s, x) => s + x.info.dueAmount, 0);
-  // Danh sách hiện trong popup khi bấm vào ô "Gần đến hạn" — KHÁC với nearDue
-  // ở trên (ô thống kê + tổng tiền trên Tổng quan giữ nguyên đúng trong
-  // NEAR_DUE_DAYS ngày như cũ, không đổi): popup này liệt kê TIẾP cả những
-  // hợp đồng còn xa hơn nữa (16, 17, 18 ngày...) — kể cả xa hơn do KỲ TỚI của
-  // phân kỳ trả nợ, không chỉ ngày đáo hạn hợp đồng gốc — sắp xếp gần nhất
-  // trước, để xem trước được lịch sắp tới. Bảng popup dùng cùng nhãn cảnh báo
-  // với trang Khách hàng. contractAttentionInfo() đã tự giới hạn tối đa
-  // S.WIDE_NEAR_DUE_DAYS (45 ngày).
+  // khi cảnh báo đến từ 1 kỳ cụ thể, không phải toàn bộ dư nợ hợp đồng.
+  const overdueTotal = attention.filter((x) => x.info.level === 'qua_han').reduce((sum, x) => sum + x.info.dueAmount, 0);
+  const nearDueTotal = attention.filter((x) => x.info.level === 'gan_den_han' && x.info.days <= S.NEAR_DUE_DAYS).reduce((sum, x) => sum + x.info.dueAmount, 0);
+  // Danh sách trong popup "Gần đến hạn" liệt kê TIẾP cả những hợp đồng xa hơn
+  // (tới S.WIDE_NEAR_DUE_DAYS = 45 ngày), sắp xếp gần nhất trước.
   const upcoming = attention
     .filter((x) => x.info.level === 'gan_den_han')
     .sort((a, b) => a.info.days - b.info.days)
     .map((x) => x.c);
+  return {
+    isStaff, customers, activeCustomerCount, activeContractCount: contracts.filter((c) => Number(c.balance) > 0).length,
+    totalOutstanding, overdue, nearDue, upcoming, overdueTotal, nearDueTotal,
+  };
+}
+
+/**
+ * Số liệu của 1 THÁNG ĐÃ CHỐT, tính từ chi tiết từng hợp đồng đã lưu lúc chốt (contractsDetail).
+ * - Khách hàng: bản chốt không lưu mã khách nên đếm theo (tên + địa bàn) — đủ chính xác trừ khi 2 người trùng cả tên lẫn xóm.
+ * - Quá hạn: hợp đồng có daysOverdue > 0 tại ngày chốt; "tiền" là dư nợ của các hợp đồng đó.
+ * - Gần đến hạn: bản chốt KHÔNG lưu ngày đến hạn nên không tính lại được -> báo "chưa lưu", không đoán.
+ * `hasDetail` = false khi tháng đó không có chi tiết hợp đồng (chốt trước khi có tính năng lưu chi tiết).
+ */
+function snapshotOverview(m) {
+  const rows = Array.isArray(m.contractsDetail) ? m.contractsDetail.filter((d) => Number(d.balance) > 0) : [];
+  if (!rows.length && Number(m.balance) > 0) return { hasDetail: false };
+  const overdueRows = rows.filter((d) => Number(d.daysOverdue) > 0).sort((a, b) => b.daysOverdue - a.daysOverdue);
+  return {
+    hasDetail: true,
+    customers: new Set(rows.map((d) => `${d.name || ''}|${d.address || ''}`)).size,
+    contracts: rows.length,
+    overdueRows,
+    overdueTotal: overdueRows.reduce((sum, d) => sum + (Number(d.balance) || 0), 0),
+  };
+}
+
+/** Tháng dương lịch hiện tại — dù đã có bản chốt hay chưa, 2 khối đầu trang (Tổng dư nợ, Cần chú ý) vẫn tính SỐNG cho tháng này như trước. */
+function isCurrentMonth(m) {
+  const now = new Date();
+  return !!m.live || m.yearMonth === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Phần "Tổng dư nợ" ở đầu trang — ĐỔI THEO tháng đang chọn (kỳ báo cáo): số dư, so với tháng trước, lãi phải thu, đường xu hướng, khách hàng, hợp đồng, nợ xấu. */
+function heroInnerHtml(m, ctx) {
+  const { months, prevMonthOf } = ctx.dashboardData;
+  const useLive = isCurrentMonth(m);
+  const snap = useLive ? null : snapshotOverview(m);
+  const balance = useLive ? ctx.live.totalOutstanding : m.balance;
+  const prev = prevMonthOf(m.yearMonth);
+  const delta = prev && prev.balance > 0 ? ((balance - prev.balance) / prev.balance) * 100 : null;
+  const money = compactVnd(balance);
+  const interest = compactVnd(m.interest || 0);
+  const spark = months.filter((x) => x.yearMonth <= m.yearMonth).slice(-6).map((x) => x.balance);
+  const customers = useLive ? formatNumber(ctx.live.activeCustomerCount) : (snap.hasDetail ? formatNumber(snap.customers) : '—');
+  const contractCount = useLive ? formatNumber(ctx.live.activeContractCount) : (snap.hasDetail ? formatNumber(snap.contracts) : '—');
+  return `
+      <span class="lux-eyebrow">Tổng dư nợ${useLive ? '' : ` · ${m.label}`}</span>
+      <div class="lux-num">${money.num}<small>${money.unit}</small></div>
+      <div class="lux-sub">${delta !== null ? `<span class="lux-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${formatPercent(Math.abs(delta))} so với tháng trước</span> · ` : ''}lãi phải thu ${interest.num} ${interest.unit.replace(' ₫', '')}</div>
+      ${spark.length >= 2 ? `<div class="lux-spark">${sparklineSvg(spark)}</div>` : ''}
+      <div class="lux-trio">
+        <div><span class="lux-eyebrow">Khách hàng</span><b>${customers}</b></div>
+        <div><span class="lux-eyebrow">Hợp đồng</span><b>${contractCount}</b></div>
+        <div><span class="lux-eyebrow">Nợ xấu</span><b class="${(m.badDebtRatio || 0) > 0 ? 'bad' : ''}">${formatPercent(m.badDebtRatio || 0)}</b></div>
+      </div>`;
+}
+
+/** Hai dòng "Cần chú ý" — tháng hiện tại tính sống; tháng đã chốt lấy từ bản chốt (xem snapshotOverview()). */
+function attentionInnerHtml(m, ctx) {
+  if (isCurrentMonth(m)) {
+    const L = ctx.live;
+    const overdueMoney = compactVnd(L.overdueTotal);
+    const nearDueMoney = compactVnd(L.nearDueTotal);
+    return `
+      <button type="button" class="lux-attn-row" id="tile-overdue">
+        <span class="mk red"></span>
+        <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(L.overdue.length)} hợp đồng</small></span>
+        <span class="v red">${overdueMoney.num}<small>${overdueMoney.unit}</small></span>${LUX_CHEVRON}
+      </button>
+      <button type="button" class="lux-attn-row" id="tile-neardue">
+        <span class="mk gold"></span>
+        <span class="t"><b>Gần đến hạn</b><small>${formatNumber(L.nearDue.length)} hợp đồng</small></span>
+        <span class="v gold">${nearDueMoney.num}<small>${nearDueMoney.unit}</small></span>${LUX_CHEVRON}
+      </button>`;
+  }
+  const snap = snapshotOverview(m);
+  const overdueMoney = compactVnd(snap.hasDetail ? snap.overdueTotal : 0);
+  return `
+      ${snap.hasDetail ? `<button type="button" class="lux-attn-row" id="tile-overdue">
+        <span class="mk red"></span>
+        <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(snap.overdueRows.length)} hợp đồng · tại ${m.label}</small></span>
+        <span class="v red">${overdueMoney.num}<small>${overdueMoney.unit}</small></span>${LUX_CHEVRON}
+      </button>` : `<div class="lux-attn-row is-static">
+        <span class="mk red"></span>
+        <span class="t"><b>Hợp đồng quá hạn</b><small>${m.label} chưa lưu chi tiết hợp đồng</small></span>
+        <span class="v red">—</span>
+      </div>`}
+      <div class="lux-attn-row is-static">
+        <span class="mk gold"></span>
+        <span class="t"><b>Gần đến hạn</b><small>${m.label} chưa lưu ngày đến hạn nên không tính lại được</small></span>
+        <span class="v gold">—</span>
+      </div>`;
+}
+
+/** Gắn click cho 2 dòng "Cần chú ý" — tháng sống mở bảng hợp đồng như cũ; tháng đã chốt mở danh sách quá hạn đã lưu. */
+function bindAttention(root, m, live) {
+  const { isStaff } = currentRoles();
+  root.querySelector('#tile-overdue')?.addEventListener('click', () => {
+    if (isCurrentMonth(m)) openContractListModal('Hợp đồng quá hạn', live.overdue, isStaff, 'var(--danger)');
+    else openSnapshotOverdueModal(m);
+  });
+  root.querySelector('#tile-neardue')?.addEventListener('click', () => openContractListModal('Gần đến hạn', live.upcoming, isStaff, 'var(--warning)'));
+}
+
+/** Danh sách hợp đồng quá hạn ĐÃ CHỐT của 1 tháng (chỉ xem — bản chốt không có hồ sơ để mở tiếp). */
+function openSnapshotOverdueModal(m) {
+  const snap = snapshotOverview(m);
+  const rows = snap.hasDetail ? snap.overdueRows : [];
+  openModal({
+    title: `Hợp đồng quá hạn · ${m.label} (${rows.length})`,
+    bodyHtml: `
+      <div class="text-sm text-muted mb-12">Số liệu đã chốt của ${m.label} · Dư nợ các hợp đồng quá hạn: <b style="color:var(--danger)">${formatVND(snap.overdueTotal || 0)}</b></div>
+      ${rows.length ? rows.map((d) => `
+        <div class="list-row" style="flex-direction:column;align-items:stretch;gap:2px">
+          <div class="flex items-center gap-6" style="flex-wrap:nowrap">
+            <span style="font-size:14px;font-weight:700;line-height:1.8;padding-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${d.name || '—'}</span>
+            <span class="text-sm" style="flex-shrink:0;color:var(--danger)">Quá hạn ${d.daysOverdue} ngày</span>
+          </div>
+          <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
+            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${d.code ? `HĐTD ${d.code} · ` : ''}${d.address || 'Chưa có địa bàn'}</span>
+            <b style="color:var(--danger);font-size:13px;flex-shrink:0">${formatVND(d.balance)}</b>
+          </div>
+        </div>`).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: `${m.label} không có hợp đồng quá hạn.` })}`,
+  });
+}
+
+export function render(contentEl) {
+  const { isStaff, isSuper } = currentRoles();
+  const session = S.getSession();
+  const admin = S.getAdmin(session.id);
+  const customers = S.listCustomers({ adminId: isStaff ? admin.id : undefined });
+  const customerIds = new Set(customers.map((c) => c.id));
+  // "Yêu cầu mới nhất" chỉ để nhắc việc CẦN LÀM — yêu cầu đã chuyển "Đã liên
+  // hệ" (xử lý xong) tự ẩn khỏi đây, xem đầy đủ (kể cả đã xử lý) ở trang
+  // "Hỗ trợ" (tab "Tư vấn") qua nút "Xem tất cả".
+  const requests = S.listRequests({}).filter((r) => (!isStaff || customerIds.has(r.customerId)) && r.status !== 'da_lien_he');
   const dashboardData = buildDebtDashboardData();
   const dashboardMonth = dashboardData.months.find((m) => m.yearMonth === selectedDashboardMonth)
     || dashboardData.months[dashboardData.months.length - 1];
-
-  // ----- Số liệu cho thẻ "Tổng dư nợ" (hero) và 2 dòng "Cần chú ý" -----
-  const latestMonth = dashboardData.months[dashboardData.months.length - 1];
-  const prevOfLatest = dashboardData.prevMonthOf(latestMonth.yearMonth);
-  const heroDelta = prevOfLatest && prevOfLatest.balance > 0 ? ((totalOutstanding - prevOfLatest.balance) / prevOfLatest.balance) * 100 : null;
-  const activeContractCount = contracts.filter((c) => Number(c.balance) > 0).length;
-  const heroMoney = compactVnd(totalOutstanding);
-  const heroInterest = compactVnd(latestMonth.interest || 0);
-  const sparkValues = dashboardData.months.slice(-6).map((m) => m.balance);
-  const overdueMoney = compactVnd(overdueTotal);
-  const nearDueMoney = compactVnd(nearDueTotal);
+  const ctx = { live: computeLiveOverview(), dashboardData };
 
   contentEl.innerHTML = `
     <div class="lux-root">
     <div id="month-selector-slot" class="lux-period overview-period-picker">${monthSelectorHtml(dashboardData.months, dashboardMonth.yearMonth, isSuper)}</div>
 
-    <section class="lux-hero lux-c-hero" aria-label="Tổng dư nợ">
-      <span class="lux-eyebrow">Tổng dư nợ</span>
-      <div class="lux-num">${heroMoney.num}<small>${heroMoney.unit}</small></div>
-      <div class="lux-sub">${heroDelta !== null ? `<span class="lux-delta ${heroDelta >= 0 ? 'up' : 'down'}">${heroDelta >= 0 ? '▲' : '▼'} ${formatPercent(Math.abs(heroDelta))} so với tháng trước</span> · ` : ''}lãi phải thu ${heroInterest.num} ${heroInterest.unit.replace(' ₫', '')}</div>
-      ${sparkValues.length >= 2 ? `<div class="lux-spark">${sparklineSvg(sparkValues)}</div>` : ''}
-      <div class="lux-trio">
-        <div><span class="lux-eyebrow">Khách hàng</span><b>${formatNumber(activeCustomerCount)}</b></div>
-        <div><span class="lux-eyebrow">Hợp đồng</span><b>${formatNumber(activeContractCount)}</b></div>
-        <div><span class="lux-eyebrow">Nợ xấu</span><b class="${(latestMonth.badDebtRatio || 0) > 0 ? 'bad' : ''}">${formatPercent(latestMonth.badDebtRatio || 0)}</b></div>
-      </div>
+    <section class="lux-hero lux-c-hero" id="hero-slot" aria-label="Tổng dư nợ">${heroInnerHtml(dashboardMonth, ctx)}
     </section>
 
     <h3 class="lux-h lux-h--plain lux-c-attn-h"><span>Cần chú ý</span></h3>
-    <div class="lux-card lux-attn lux-c-attn">
-      <button type="button" class="lux-attn-row" id="tile-overdue">
-        <span class="mk red"></span>
-        <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(overdue.length)} hợp đồng</small></span>
-        <span class="v red">${overdueMoney.num}<small>${overdueMoney.unit}</small></span>${LUX_CHEVRON}
-      </button>
-      <button type="button" class="lux-attn-row" id="tile-neardue">
-        <span class="mk gold"></span>
-        <span class="t"><b>Gần đến hạn</b><small>${formatNumber(nearDue.length)} hợp đồng</small></span>
-        <span class="v gold">${nearDueMoney.num}<small>${nearDueMoney.unit}</small></span>${LUX_CHEVRON}
-      </button>
+    <div class="lux-card lux-attn lux-c-attn" id="attention-slot">${attentionInnerHtml(dashboardMonth, ctx)}
     </div>
 
     ${debtDashboardHtml(dashboardData, dashboardMonth)}
@@ -179,8 +277,7 @@ export function render(contentEl) {
   // sách chi tiết của nhóm đó (giống hệt "Xem tất cả" trước đây) — gộp
   // thông tin số lượng + tổng tiền + danh sách vào chung 1 chỗ cho gọn,
   // không cần 2 bảng riêng bên dưới nữa.
-  contentEl.querySelector('#tile-overdue').addEventListener('click', () => openContractListModal('Hợp đồng quá hạn', overdue, isStaff, 'var(--danger)'));
-  contentEl.querySelector('#tile-neardue').addEventListener('click', () => openContractListModal('Gần đến hạn', upcoming, isStaff, 'var(--warning)'));
+  bindAttention(contentEl, dashboardMonth, ctx.live);
 
   // "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng giảm" LUÔN
   // hiện cho MỌI vai trò (staff lẫn super) — bấm vào 1 cột/nhãn nhóm nợ để
@@ -984,6 +1081,11 @@ function selectMonth(root, ym) {
   root.querySelector('#composition-slot').innerHTML = compositionPanelHtml(m);
   root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
   root.querySelector('#month-detail-label').textContent = monthLabelWithNote(m);
+  // Tổng dư nợ, khách hàng, hợp đồng, nợ xấu và "Cần chú ý" cũng đổi theo tháng đang chọn.
+  const ctx = { live: computeLiveOverview(), dashboardData: { months, prevMonthOf, yearStartOf } };
+  root.querySelector('#hero-slot').innerHTML = heroInnerHtml(m, ctx);
+  root.querySelector('#attention-slot').innerHTML = attentionInnerHtml(m, ctx);
+  bindAttention(root, m, ctx.live);
   // Đổi trend-chart-slot.innerHTML sẽ làm mất luôn vị trí cuộn ngang cũ (nếu
   // khối trước đó có cuộn) — LƯU LẠI trước, đặt lại ĐÚNG vị trí đó sau khi
   // vẽ xong, thay vì gọi scrollTrendChartToEnd() (chỉ dùng lúc mới vào trang).

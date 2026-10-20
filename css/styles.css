@@ -1596,3 +1596,6 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-lux .bs-chips button { flex: none; padding: 7px 14px; border: 1px solid #d3e1d9; border-radius: 999px; background: #fff; color: #4b5d56; font: 600 12.5px 'Inter', sans-serif; cursor: pointer; }
   .bs-lux .bs-chips button.is-active { border-color: var(--em); background: var(--em); color: #f4eedb; }
 }
+.lux-attn-row.is-static { cursor: default; }
+.lux-attn-row.is-static .t small { white-space: normal; }
+.lux-attn-row.is-static .v { color: var(--lux-mut); }
