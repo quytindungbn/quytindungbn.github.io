@@ -116,6 +116,15 @@ export function colorAt(index) {
   return PALETTE[index % PALETTE.length];
 }
 
+/** Thiết bị đang dùng: 'phone' | 'tablet' | 'desktop' (đoán theo User-Agent) — ghi vào Nhật ký lúc đăng nhập. */
+export function detectDeviceKind() {
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  if (/iPad|Tablet|PlayBook|Silk/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) return 'tablet';
+  if (/Mobi|iPhone|iPod|Android|Windows Phone|BlackBerry|Opera Mini/i.test(ua)) return 'phone';
+  if (/Macintosh/i.test(ua) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1) return 'tablet'; // iPadOS giả danh Mac
+  return 'desktop';
+}
+
 export function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',

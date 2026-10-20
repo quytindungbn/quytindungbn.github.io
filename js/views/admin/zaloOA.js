@@ -652,7 +652,8 @@ function drawLogTab(slot) {
     // Nguồn dữ liệu là 200 lần gửi GẦN NHẤT (toàn hệ thống, xem state.js) —
     // lọc theo khoảng ngày cũ hơn phạm vi đó sẽ không thấy đủ, chấp nhận
     // được với quy mô hiện tại.
-    let logs = S.listZaloSendLog();
+    const monthAgo = Date.now() - 30 * 86400000; // chỉ hiển thị các lần gửi trong 1 tháng gần nhất
+    let logs = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= monthAgo);
     if (logStatusFilter !== 'all') logs = logs.filter((l) => l.status === logStatusFilter);
     if (logFromDate) logs = logs.filter((l) => new Date(l.sentAt) >= new Date(`${logFromDate}T00:00:00`));
     if (logToDate) logs = logs.filter((l) => new Date(l.sentAt) <= new Date(`${logToDate}T23:59:59`));
@@ -660,7 +661,7 @@ function drawLogTab(slot) {
     const errorCount = logs.filter((l) => l.status === 'error').length;
     const hasFilter = logStatusFilter !== 'all' || logFromDate || logToDate;
     slot.querySelector('#log-list').innerHTML = `
-      <div class="text-sm text-muted mb-8">${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ' gần nhất'} · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
+      <div class="text-sm text-muted mb-8">${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ''} trong 1 tháng gần nhất · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
       ${logs.length ? logs.map((l) => {
         const customer = S.getCustomer(l.customerId);
         const contract = l.contractId ? S.getContract(l.contractId) : null;

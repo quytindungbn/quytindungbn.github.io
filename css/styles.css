@@ -238,6 +238,12 @@ svg { display: block; }
 .overview-period-row, .overview-period-controls { display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; }
 .overview-period-controls { gap:8px; min-width:0; }
 .overview-period-controls select { max-width:100%; }
+/* Điện thoại: khung "Kỳ báo cáo tháng" rộng đúng bằng các khung bên dưới (máy tính giữ nguyên, co theo nội dung). */
+@media (max-width: 899px) {
+  .overview-period-picker { width: 100%; }
+  .overview-period-controls { flex: 1 1 100%; flex-wrap: nowrap; }
+  .overview-period-controls select { flex: 1; min-width: 0; max-width: none !important; }
+}
 .section { margin-bottom: 16px; }
 .section-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -1163,3 +1169,32 @@ body.nav-hidden .bottom-nav { transform: translateY(100%); }
 body.nav-hidden .fab { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
 body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
 @media (prefers-reduced-motion: reduce) { .bottom-nav, .fab, .scroll-top-btn { transition: none; } }
+
+/* Xem trước / lịch sử nhập file Excel (xem js/views/admin/importReview.js) — chỉ tài khoản toàn quyền. */
+.imp-sheet { max-width: 720px; }
+.imp-banner { display: flex; gap: 8px; align-items: flex-start; padding: 9px 11px; border-radius: 10px; background: var(--warning-bg); color: #8a5b0c; font-size: 13px; margin-bottom: 10px; }
+.imp-banner svg { flex: none; margin-top: 2px; }
+.imp-banner-danger { background: var(--danger-bg); color: var(--danger); }
+.imp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.imp-chip { padding: 4px 10px; border-radius: 999px; font-size: 12.5px; background: var(--surface-alt); border: 1px solid var(--border); }
+.imp-chip-ok { background: #e8f5ee; color: #0d6b34; border-color: #cbe6d6; }
+.imp-chip-warn { background: var(--warning-bg); color: #8a5b0c; border-color: transparent; }
+.imp-chip-danger { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.imp-section { border: 1px solid var(--border-strong); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+.imp-section > summary { cursor: pointer; padding: 10px 12px; font-weight: 700; font-size: 14px; }
+.imp-section.imp-danger > summary { color: var(--danger); background: var(--danger-bg); }
+.imp-section.imp-ok > summary { color: #0d6b34; background: #e8f5ee; }
+.imp-section.imp-warn > summary { color: #8a5b0c; background: var(--warning-bg); }
+.imp-list { padding: 4px 12px 10px; }
+.imp-row { padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; line-height: 1.45; }
+.imp-row:last-of-type { border-bottom: 0; }
+.imp-hidden { display: none; }
+.imp-muted { color: var(--text-muted); font-size: 12.5px; }
+.imp-changes { margin-top: 3px; padding-left: 8px; border-left: 2px solid var(--border-strong); font-size: 12.5px; }
+.imp-more { margin-top: 8px; }
+.imp-note { margin: 6px 0; }
+.imp-head { margin-bottom: 8px; font-size: 13.5px; }
+.imp-hist-item { border: 1px solid var(--border-strong); border-radius: 12px; padding: 11px 12px; margin-bottom: 8px; font-size: 13px; }
+.imp-hist-item.is-rolled { opacity: .65; }
+.imp-hist-sum { margin-top: 4px; }
+.imp-tag { display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 999px; background: var(--surface-alt); color: var(--text-muted); font-size: 12px; }

@@ -9,6 +9,7 @@ import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../l
 import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xlsxLite.js';
 import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 import { printNotice } from '../../lib/printNotices.js';
+import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Khách hàng & Hợp đồng' });
@@ -1086,6 +1087,7 @@ function openImportModal() {
   const close = openModal({
     title: 'Nhập dữ liệu từ Excel',
     bodyHtml: `
+      <button type="button" class="btn btn-outline btn-sm mb-8" id="btn-import-history">${icon('clock', 'icon-sm')} Lịch sử nhập &amp; quay lại bản trước</button>
       <p class="text-sm text-muted mb-8">
         Chọn file Excel sổ theo dõi vay bạn đang dùng (<b>.xls</b> hoặc <b>.xlsx</b>) — hỗ trợ <b>2 loại mẫu</b>, tự nhận diện đúng loại, không cần chọn:<br/>
         <b>1. File số 1 (dữ liệu chính)</b>: lấy đầy đủ thông tin hợp đồng, giá trị TSBĐ ở cột T, loại vay ở W, mục đích vay ở AA và loại TSBĐ ở AB. Nếu chưa có số khế ước thì dùng Số HĐTD. Hỗ trợ cả mẫu sao kê hợp đồng tín dụng có dòng "STT" (các cột: <b>${REPORT_TEMPLATE_COLUMNS}</b>).<br/>
@@ -1119,14 +1121,13 @@ function openImportModal() {
       const supplementInput = sheet.querySelector('#file-input-2');
       const supplementBtn = sheet.querySelector('#btn-upload-file-2');
       const supplementResultEl = sheet.querySelector('#supplement-result');
+      sheet.querySelector('#btn-import-history').addEventListener('click', () => openImportHistory({ onChanged: () => window.__qtdRedrawCustomers?.() }));
 
       // Chỉ lo việc nhập + hiện kết quả + thông báo — KHÔNG đụng vào trạng
       // thái nút bấm (nút "Tải lên" và nút "Nhập từ dữ liệu đã dán" tự quản
       // lý trạng thái bận/xong của riêng mình bên dưới, vì mỗi nút có 1 giai
       // đoạn chờ trước đó khác nhau — trộn chung dễ bị kẹt ở chữ "Đang..." mãi).
-      const runImport = async (tsvText, fullSync) => {
-        if (!tsvText.trim()) { toast('Không có dữ liệu để nhập', 'error'); return; }
-        const res = await S.importFromPastedTable(tsvText, { fullSync });
+      const showImportResult = (res) => {
         resultEl.innerHTML = `
           <div class="card card-pad mt-16" style="background:var(--surface-alt)">
             <div class="text-sm mb-8">✅ Đã nhập xong — ${res.newProfiles} khách hàng mới · ${res.existingCustomers} khách đã có sẵn được cập nhật · ${res.contracts} hợp đồng</div>
@@ -1140,9 +1141,27 @@ function openImportModal() {
             ${res.errors.length ? `<div class="text-sm text-danger mt-8">${res.errors.slice(0, 5).map(escapeHtml).join('<br/>')}</div>` : ''}
           </div>
         `;
+        // Kết quả CỤ THỂ: hợp đồng nào mới/đổi/xóa, của ai (lưu cả vào "Lịch sử nhập" để xem lại hoặc quay lại).
+        resultEl.insertAdjacentHTML('beforeend', `<div class="mt-8">${importSummaryHtml(res.summary)}${importDetailsHtml(res.details)}${res.historyId ? '<div class="text-sm text-muted mt-8">Đã lưu vào “Lịch sử nhập” — nhập nhầm thì mở mục đó để quay lại bản trước.</div>' : ''}</div>`);
+        bindImportDetails(resultEl);
         resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         toast('Đã nhập dữ liệu xong', 'success');
         window.__qtdRedrawCustomers?.();
+      };
+      // Luôn XEM TRƯỚC (máy chủ chỉ so sánh, chưa ghi gì) rồi mới nhập thật khi bấm "Xác nhận nhập".
+      const runImport = async (tsvText, fullSync, fileName) => {
+        if (!tsvText.trim()) { toast('Không có dữ liệu để nhập', 'error'); return; }
+        const prev = await S.previewImportFromPastedTable(tsvText, { fullSync });
+        openImportPreview({
+          title: fullSync ? 'Xem trước — tải file số 1' : 'Xem trước — dán tay',
+          summary: prev.summary, details: prev.details, fullSync,
+          notes: [fileName ? `File: ${fileName}` : '', prev.localSkipped ? `${prev.localSkipped} dòng không phải dòng hợp đồng đã bị bỏ qua khi đọc file.` : '', ...(prev.parseErrors || []).slice(0, 3)].filter(Boolean),
+          async onConfirm() {
+            const res = await S.importFromPastedTable(tsvText, { fullSync, fileName });
+            // Lỗi khi VẼ kết quả (nếu có) không được làm cửa sổ xem trước kẹt lại như thể nhập chưa xong — dữ liệu đã nhập rồi.
+            try { showImportResult(res); } catch (renderErr) { console.error(renderErr); }
+          },
+        });
       };
 
       // Chọn file xong chỉ hiện tên file + bật nút "Tải lên" — bấm nút mới
@@ -1173,7 +1192,7 @@ function openImportModal() {
         }
         uploadBtn.textContent = 'Đang xử lý...';
         try {
-          await runImport(rowsToTsv(rows), true);
+          await runImport(rowsToTsv(rows), true, file.name);
         } catch (err) {
           toast(err.message || 'Có lỗi khi nhập dữ liệu', 'error');
         } finally {
@@ -1195,16 +1214,27 @@ function openImportModal() {
         supplementBtn.textContent = 'Đang đọc file số 2...';
         try {
           const rows = parseSupplementReportRows(await readExcelFirstSheet(file));
-          supplementBtn.textContent = 'Đang bổ sung...';
-          const res = await S.importSupplementRows(rows);
-          supplementResultEl.innerHTML = `<div class="card card-pad mt-16" style="background:var(--surface-alt)">
-            <div class="text-sm">✅ Đã bổ sung ${res.updated} hợp đồng.</div>
-            ${res.unmatched ? `<div class="text-sm mt-8">${res.unmatched} Số HĐ không khớp hoặc đã tất toán nên không cập nhật.</div>` : ''}
-            ${res.emptySchedules ? `<div class="text-sm mt-8" style="color:var(--warning)">${res.emptySchedules} dòng trong file số 2 không có số tiền phân kỳ; lịch cũ của những hợp đồng khớp mã đã được xóa.</div>` : ''}
-            ${res.errors.length ? `<div class="text-sm text-danger mt-8">${res.errors.slice(0, 5).map(escapeHtml).join('<br/>')}</div>` : ''}
-          </div>`;
-          toast('Đã bổ sung file số 2', 'success');
-          window.__qtdRedrawCustomers?.();
+          supplementBtn.textContent = 'Đang so sánh...';
+          const prev = await S.previewSupplementRows(rows);
+          openImportPreview({
+            title: 'Xem trước — file số 2', kind: 'supplement', summary: prev.summary, details: prev.details, confirmLabel: 'Xác nhận bổ sung',
+            notes: [`File: ${file.name}`],
+            async onConfirm() {
+              const res = await S.importSupplementRows(rows, { fileName: file.name });
+              try {
+              supplementResultEl.innerHTML = `<div class="card card-pad mt-16" style="background:var(--surface-alt)">
+                <div class="text-sm">✅ Đã bổ sung ${res.updated} hợp đồng.</div>
+                ${res.unmatched ? `<div class="text-sm mt-8">${res.unmatched} Số HĐ không khớp hoặc đã tất toán nên không cập nhật.</div>` : ''}
+                ${res.emptySchedules ? `<div class="text-sm mt-8" style="color:var(--warning)">${res.emptySchedules} dòng trong file số 2 không có số tiền phân kỳ; lịch cũ của những hợp đồng khớp mã đã được xóa.</div>` : ''}
+                ${res.errors.length ? `<div class="text-sm text-danger mt-8">${res.errors.slice(0, 5).map(escapeHtml).join('<br/>')}</div>` : ''}
+              </div>`;
+              supplementResultEl.insertAdjacentHTML('beforeend', `<div class="mt-8">${importSummaryHtml(res.summary, 'supplement')}${importDetailsHtml(res.details, 'supplement')}</div>`);
+              bindImportDetails(supplementResultEl);
+              toast('Đã bổ sung file số 2', 'success');
+              window.__qtdRedrawCustomers?.();
+              } catch (renderErr) { console.error(renderErr); }
+            },
+          });
         } catch (err) {
           toast(err.message || 'Có lỗi khi bổ sung file số 2', 'error');
         } finally {

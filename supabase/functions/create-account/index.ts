@@ -63,7 +63,11 @@
 //     tới tài khoản Quản trị viên nào khác (kể cả nhân viên chỉ xem khác):
 //     { type: 'update-customer-profile', cccd, name?, phone?, address? }
 //     { type: 'delete-contract', contractId }
-//     { type: 'import', fullSync, rows: [...] } — nhập Excel/dán tay hàng loạt
+//     { type: 'import', fullSync, rows: [...], fileName? } — nhập Excel/dán tay hàng loạt
+//     { type: 'import-preview', fullSync, rows: [...] } — y hệt 'import' nhưng CHỈ trả danh sách cụ thể sẽ làm gì, không ghi gì
+//     { type: 'import-supplement-preview', rows: [...] } — như trên cho file số 2
+//     { type: 'import-history' } / { type: 'import-history-detail', id } — lịch sử các lần nhập
+//     { type: 'import-rollback', id } — quay lại bản trước của lần nhập mới nhất chưa quay lại
 //     { type: 'update-staff-role', staffId, role } — đổi Toàn quyền <-> Chỉ
 //       xem cho 1 tài khoản đã có sẵn (giữ lại ít nhất 1 toàn quyền)
 //     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom?, canManageUsers? }
@@ -615,6 +619,201 @@ async function sendZaloTemplateLogged(opts: {
   return status === 'success' ? { ok: true } : { ok: false, reason: errorMessage || 'Gửi thất bại.' };
 }
 
+// ---------- Nhập Excel: so sánh trước/sau, lịch sử các lần nhập, quay lại bản trước ----------
+// Mỗi lần nhập file thật (type 'import' / 'import-supplement') ghi 1 dòng vào
+// bảng import_history: `details` = danh sách CỤ THỂ đã làm gì (hợp đồng nào,
+// của ai, đổi gì) để hiện lại cho người xem; `snapshot` = dữ liệu cũ để quay
+// lại bản trước. Bảng chỉ truy cập qua Edge Function (service role), giao
+// diện chỉ hiện cho quản trị viên toàn quyền (xem SUPER_ONLY_TYPES).
+const CONTRACT_WRITE_COLS = [
+  'id', 'customer_id', 'code', 'principal', 'disbursed_date', 'due_date', 'interest_rate', 'balance',
+  'interest_paid_until', 'has_collateral', 'collateral_value', 'collateral_type', 'loan_term',
+  'loan_purpose', 'heir_name', 'agreement_code', 'installment_schedule',
+];
+const CUSTOMER_PROFILE_COLS = ['name', 'phone', 'address', 'xom', 'thon', 'xa', 'tinh'];
+type FieldKind = 'money' | 'date' | 'percent' | 'text' | 'yesno' | 'schedule';
+const CONTRACT_FIELD_META: Record<string, { label: string; kind: FieldKind }> = {
+  principal: { label: 'Số tiền vay', kind: 'money' },
+  disbursed_date: { label: 'Ngày vay', kind: 'date' },
+  due_date: { label: 'Ngày đến hạn', kind: 'date' },
+  interest_rate: { label: 'Lãi suất', kind: 'percent' },
+  balance: { label: 'Dư nợ', kind: 'money' },
+  interest_paid_until: { label: 'Đã trả lãi đến ngày', kind: 'date' },
+  has_collateral: { label: 'Có TSBĐ', kind: 'yesno' },
+  collateral_value: { label: 'Giá trị TSBĐ', kind: 'money' },
+  collateral_type: { label: 'Loại TSBĐ', kind: 'text' },
+  loan_term: { label: 'Loại vay', kind: 'text' },
+  loan_purpose: { label: 'Mục đích vay', kind: 'text' },
+  heir_name: { label: 'Người thừa kế', kind: 'text' },
+  agreement_code: { label: 'Số khế ước', kind: 'text' },
+  installment_schedule: { label: 'Phân kỳ trả nợ', kind: 'schedule' },
+};
+const CUSTOMER_FIELD_META: Record<string, { label: string; kind: FieldKind }> = {
+  name: { label: 'Họ tên', kind: 'text' },
+  phone: { label: 'SĐT', kind: 'text' },
+  address: { label: 'Địa chỉ', kind: 'text' },
+};
+const IMPORT_HISTORY_KEEP = 30;
+
+function normField(kind: FieldKind, v: any): string | number | boolean {
+  if (kind === 'money' || kind === 'percent') return v == null || v === '' ? 0 : Math.round(Number(v) * 1e6) / 1e6;
+  if (kind === 'yesno') return !!v;
+  if (kind === 'date') return v ? String(v).slice(0, 10) : '';
+  if (kind === 'schedule') {
+    if (!v || typeof v !== 'object') return '';
+    const keys = Object.keys(v).sort();
+    return keys.length ? JSON.stringify(keys.map((k) => [k, Number((v as any)[k])])) : '';
+  }
+  return v == null ? '' : String(v).trim();
+}
+/** Các trường khác nhau giữa bản cũ và bản mới: [{ field, label, kind, from, to }]. */
+function diffFields(meta: Record<string, { label: string; kind: FieldKind }>, before: any, after: any) {
+  const changes: { field: string; label: string; kind: FieldKind; from: unknown; to: unknown }[] = [];
+  for (const [field, m] of Object.entries(meta)) {
+    if (normField(m.kind, before?.[field]) !== normField(m.kind, after?.[field])) {
+      changes.push({ field, label: m.label, kind: m.kind, from: before?.[field] ?? null, to: after?.[field] ?? null });
+    }
+  }
+  return changes;
+}
+function pickCols(row: any, cols: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const c of cols) out[c] = row?.[c] ?? null;
+  return out;
+}
+/** Chia mảng thành từng đợt nhỏ — URL của .in() và kích thước 1 lệnh ghi đều có giới hạn. */
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+/** Kiểm tra bảng import_history đã được tạo (chạy SQL) trước khi ghi bất cứ thứ gì. */
+async function importHistoryReady(): Promise<string | null> {
+  const { error } = await admin.from('import_history').select('id').limit(1);
+  return error ? 'Chưa tạo bảng lịch sử nhập (import_history) trên Supabase — chạy SQL tạo bảng trước; chưa thay đổi dữ liệu.' : null;
+}
+/** Ghi 1 lần nhập vào lịch sử rồi dọn bớt các dòng cũ quá IMPORT_HISTORY_KEEP lần gần nhất. Trả về id, hoặc lỗi (không làm hỏng lần nhập đã xong). */
+async function saveImportHistory(entry: {
+  adminId: string; adminName: string; kind: 'import' | 'supplement'; fileName: string | null; fullSync: boolean;
+  summary: unknown; details: unknown; snapshot: unknown;
+}): Promise<{ id: string | null; error?: string }> {
+  const id = crypto.randomUUID();
+  const { error } = await admin.from('import_history').insert({
+    id, admin_id: entry.adminId, admin_name: entry.adminName, kind: entry.kind, file_name: entry.fileName,
+    full_sync: entry.fullSync, summary: entry.summary, details: entry.details, snapshot: entry.snapshot,
+  });
+  if (error) return { id: null, error: error.message };
+  const { data: old } = await admin.from('import_history').select('id').order('created_at', { ascending: false }).range(IMPORT_HISTORY_KEEP, IMPORT_HISTORY_KEEP + 200);
+  if (old && old.length) await admin.from('import_history').delete().in('id', old.map((r: any) => r.id));
+  return { id };
+}
+
+/**
+ * Quay lại bản trước của 1 lần nhập: trả dữ liệu về đúng như trước khi nhập
+ * (hợp đồng/khách đã xóa được tạo lại, giá trị đã đổi được trả về giá trị
+ * cũ, hợp đồng/khách mới tạo bị xóa). Mọi bước đều idempotent (upsert/xóa
+ * theo id) nên nếu giữa chừng lỗi thì bấm quay lại lần nữa vẫn an toàn; dừng
+ * ngay ở bước lỗi đầu tiên để không làm dữ liệu lệch thêm.
+ */
+async function rollbackImportSnapshot(snapshot: any): Promise<{ errors: string[]; counts: Record<string, number> }> {
+  const errors: string[] = [];
+  const counts: Record<string, number> = {
+    restoredContracts: 0, revertedContracts: 0, removedContracts: 0,
+    restoredCustomers: 0, revertedCustomers: 0, removedCustomers: 0,
+  };
+  const step = async (label: string, fn: () => Promise<void>) => {
+    if (errors.length) return;
+    try { await fn(); } catch (e: any) { errors.push(`${label}: ${e?.message || e}`); }
+  };
+  const must = (error: any) => { if (error) throw new Error(error.message || String(error)); };
+  const upsertAll = async (table: string, rows: any[], size: number) => {
+    for (const part of chunkArray(rows || [], size)) {
+      const { error } = await admin.from(table).upsert(part, { onConflict: 'id' });
+      must(error);
+    }
+  };
+
+  if (snapshot?.kind === 'supplement') {
+    await step('Trả số khế ước/phân kỳ về giá trị cũ', async () => {
+      await upsertAll('contracts', snapshot.updatedContracts, 300);
+      counts.revertedContracts = (snapshot.updatedContracts || []).length;
+    });
+    return { errors, counts };
+  }
+
+  await step('Tạo lại hồ sơ khách đã bị dọn', async () => {
+    await upsertAll('customers', snapshot.deletedCustomers, 200);
+    counts.restoredCustomers = (snapshot.deletedCustomers || []).length;
+  });
+  await step('Trả khách về danh sách OA', async () => {
+    for (const part of chunkArray(snapshot.zaloCustomers || [], 200)) {
+      const { error } = await admin.from('zalo_customers').upsert(part, { onConflict: 'customer_id' });
+      must(error);
+    }
+  });
+  await step('Tạo lại hợp đồng đã xóa', async () => {
+    await upsertAll('contracts', snapshot.deletedContracts, 150);
+    counts.restoredContracts = (snapshot.deletedContracts || []).length;
+  });
+  await step('Trả lại lựa chọn "Gửi tin tự động"', async () => {
+    await upsertAll('zalo_auto_send_list', snapshot.zaloAutoSend, 200);
+  });
+  await step('Nối lại nhật ký gửi tin với hợp đồng cũ', async () => {
+    for (const table of ['notification_log', 'zalo_send_log']) {
+      const byContract = new Map<string, string[]>();
+      for (const [logId, contractId] of (snapshot.logLinks?.[table] || []) as [string, string][]) {
+        byContract.set(contractId, [...(byContract.get(contractId) || []), logId]);
+      }
+      for (const [contractId, ids] of byContract) {
+        for (const part of chunkArray(ids, 150)) {
+          const { error } = await admin.from(table).update({ contract_id: contractId }).in('id', part);
+          must(error);
+        }
+      }
+    }
+  });
+  await step('Trả hợp đồng về giá trị cũ', async () => {
+    await upsertAll('contracts', snapshot.updatedContracts, 300);
+    counts.revertedContracts = (snapshot.updatedContracts || []).length;
+  });
+  await step('Trả hồ sơ khách về giá trị cũ', async () => {
+    for (const part of chunkArray(snapshot.updatedCustomers || [], 20)) {
+      const results = await Promise.all(part.map((c: any) => {
+        const { id, ...patch } = c;
+        return admin.from('customers').update(patch).eq('id', id);
+      }));
+      for (const r of results) must(r.error);
+    }
+    counts.revertedCustomers = (snapshot.updatedCustomers || []).length;
+  });
+  await step('Xóa hợp đồng do lần nhập này tạo ra', async () => {
+    for (const part of chunkArray(snapshot.createdContractIds || [], 150)) {
+      // Nhật ký gửi tin là lịch sử, giữ lại (chỉ bỏ liên kết) — y hệt cách xóa hợp đồng lúc nhập.
+      for (const table of ['notification_log', 'zalo_send_log']) {
+        const { error } = await admin.from(table).update({ contract_id: null }).in('contract_id', part);
+        must(error);
+      }
+      const { error } = await admin.from('contracts').delete().in('id', part);
+      must(error);
+      counts.removedContracts += part.length;
+    }
+  });
+  await step('Xóa khách do lần nhập này tạo ra', async () => {
+    for (const part of chunkArray<string>(snapshot.createdCustomerIds || [], 150)) {
+      const { data: stillUsed, error: usedError } = await admin.from('contracts').select('customer_id').in('customer_id', part);
+      must(usedError);
+      const used = new Set((stillUsed || []).map((r: any) => r.customer_id));
+      const removable = part.filter((id) => !used.has(id));
+      if (!removable.length) continue;
+      const { error } = await admin.from('customers').delete().in('id', removable);
+      must(error);
+      counts.removedCustomers += removable.length;
+    }
+  });
+  return { errors, counts };
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ ok: false, reason: 'Method not allowed' }, 405);
@@ -690,7 +889,11 @@ Deno.serve(async (req) => {
     });
     // Ghi nhật ký CHỈ đăng nhập của quản trị viên/nhân viên — KHÔNG ghi đăng
     // nhập của khách hàng (không thuộc "nhật ký sử dụng của quản trị viên").
-    if (role === 'admin') await logActivity(row.id, row.name || row.username, row.username, 'login', `Đăng nhập hệ thống (**${row.username}**)`);
+    if (role === 'admin') {
+      // Thiết bị do trình duyệt tự khai (đoán theo User-Agent) — chỉ để tham khảo trong nhật ký, không dùng để phân quyền.
+      const deviceLabel = ({ phone: 'điện thoại', tablet: 'máy tính bảng', desktop: 'máy tính' } as Record<string, string>)[String(body.device || '')];
+      await logActivity(row.id, row.name || row.username, row.username, 'login', `Đăng nhập hệ thống (**${row.username}**)${deviceLabel ? ` bằng **${deviceLabel}**` : ''}`);
+    }
     return json({ ok: true, token, id: row.id, mustChangePassword: !!row.must_change_password });
   }
 
@@ -1363,6 +1566,7 @@ Deno.serve(async (req) => {
   // chỉ được quản lý Use khách hàng, không được quản lý Use Quản trị viên.
   const SUPER_ONLY_TYPES = [
     'update-customer-profile', 'delete-contract', 'import', 'import-supplement', 'update-staff-role',
+    'import-preview', 'import-supplement-preview', 'import-history', 'import-history-detail', 'import-rollback',
     'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff', 'force-logout-staff',
     'update-staff-name',
     // Dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu toàn quỹ, mục 10.46
@@ -1772,8 +1976,50 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
+  // ===== Lịch sử các lần nhập file + quay lại bản trước (CHỈ super — xem SUPER_ONLY_TYPES) =====
+  if (body.type === 'import-history') {
+    const { data, error } = await admin.from('import_history')
+      .select('id, created_at, admin_name, kind, file_name, full_sync, summary, rolled_back_at, rolled_back_by')
+      .order('created_at', { ascending: false }).limit(IMPORT_HISTORY_KEEP);
+    if (error) return json({ ok: false, reason: 'Chưa tạo bảng lịch sử nhập (import_history) trên Supabase — chạy SQL tạo bảng trước.' }, 500);
+    const items = data || [];
+    // Chỉ lần nhập MỚI NHẤT chưa quay lại mới được quay lại (quay theo đúng thứ tự ngược).
+    const latestActive = items.find((it: any) => !it.rolled_back_at);
+    return json({ ok: true, items, latestActiveId: latestActive ? latestActive.id : null });
+  }
+  if (body.type === 'import-history-detail') {
+    const id = String(body.id || '');
+    if (!id) return json({ ok: false, reason: 'Thiếu mã lần nhập.' }, 400);
+    const { data, error } = await admin.from('import_history')
+      .select('id, created_at, admin_name, kind, file_name, full_sync, summary, details, rolled_back_at, rolled_back_by').eq('id', id).maybeSingle();
+    if (error || !data) return json({ ok: false, reason: 'Không tìm thấy lần nhập này.' }, 404);
+    return json({ ok: true, item: data });
+  }
+  if (body.type === 'import-rollback') {
+    const id = String(body.id || '');
+    if (!id) return json({ ok: false, reason: 'Thiếu mã lần nhập.' }, 400);
+    const { data: entry, error: entryError } = await admin.from('import_history').select('*').eq('id', id).maybeSingle();
+    if (entryError || !entry) return json({ ok: false, reason: 'Không tìm thấy lần nhập này.' }, 404);
+    if (entry.rolled_back_at) return json({ ok: false, reason: 'Lần nhập này đã được quay lại trước đó.' }, 409);
+    const { data: newer } = await admin.from('import_history').select('id, created_at').is('rolled_back_at', null)
+      .gt('created_at', entry.created_at).limit(1);
+    if (newer && newer.length) {
+      return json({ ok: false, reason: 'Đã có lần nhập mới hơn. Hãy quay lại lần nhập mới nhất trước, rồi mới quay lại lần này (đúng thứ tự từ mới đến cũ).' }, 409);
+    }
+    const { errors, counts } = await rollbackImportSnapshot(entry.snapshot);
+    if (errors.length) {
+      return json({ ok: false, reason: 'Quay lại chưa xong, dừng ở bước: ' + errors[0] + ' — dữ liệu chưa bị mất, có thể bấm quay lại lần nữa.' }, 500);
+    }
+    await admin.from('import_history').update({ rolled_back_at: new Date().toISOString(), rolled_back_by: callerAdmin.name || callerAdmin.username }).eq('id', id);
+    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import-rollback',
+      `Quay lại bản trước lần nhập ${entry.kind === 'supplement' ? 'file số 2' : 'file số 1'}${entry.file_name ? ` "**${entry.file_name}**"` : ''} lúc ${entry.created_at}`);
+    return json({ ok: true, counts });
+  }
+
   // File số 2 chỉ bổ sung mã khế ước và phân kỳ, không đồng bộ/xóa hợp đồng.
-  if (body.type === 'import-supplement') {
+  if (body.type === 'import-supplement' || body.type === 'import-supplement-preview') {
+    const isPreview = body.type === 'import-supplement-preview';
+    const fileName = String(body.fileName || '').trim().slice(0, 200) || null;
     const incoming = Array.isArray(body.rows) ? body.rows : [];
     if (!incoming.length || incoming.length > 5000) {
       return json({ ok: false, reason: 'File bổ sung không có hợp đồng hoặc vượt quá 5.000 dòng.' }, 400);
@@ -1800,6 +2046,50 @@ Deno.serve(async (req) => {
       // với tháng không tải file số 2, khi đó RPC hoàn toàn không được gọi.
       rows.push({ code, agreementCode, installmentSchedule: installments });
     }
+    // Đọc trước các hợp đồng khớp Số HĐTD để cho thấy CỤ THỂ sẽ đổi gì (và để quay lại bản trước được).
+    const contractsByCode = new Map<string, any[]>();
+    for (const part of chunkArray(rows.map((r) => r.code), 150)) {
+      const { data: found, error: foundError } = await admin.from('contracts').select('*').in('code', part);
+      if (foundError) return json({ ok: false, reason: 'Không đọc được hợp đồng hiện có; chưa thay đổi dữ liệu.' }, 500);
+      for (const ct of found || []) contractsByCode.set(ct.code, [...(contractsByCode.get(ct.code) || []), ct]);
+    }
+    const ownerIds = [...new Set([...contractsByCode.values()].flat().map((ct: any) => ct.customer_id as string))];
+    const ownerById = new Map<string, any>();
+    for (const part of chunkArray(ownerIds, 150)) {
+      const { data: owners } = await admin.from('customers').select('id, name, cccd').in('id', part);
+      for (const o of owners || []) ownerById.set(o.id, o);
+    }
+    const suppDetails = { matched: [] as any[], unchangedContracts: 0, unmatched: [] as any[] };
+    const suppSnapshot: any = { kind: 'supplement', updatedContracts: [] as any[] };
+    const SUPP_FIELDS = { agreement_code: CONTRACT_FIELD_META.agreement_code, installment_schedule: CONTRACT_FIELD_META.installment_schedule };
+    for (const row of rows) {
+      const sameCode = contractsByCode.get(row.code) || [];
+      const active = sameCode.filter((ct: any) => (Number(ct.balance) || 0) > 0);
+      if (active.length > 1) return json({ ok: false, reason: `Cơ sở dữ liệu có số HĐTD ${row.code} bị trùng; chưa thay đổi dữ liệu.` }, 409);
+      const ct = active[0];
+      if (!ct) {
+        suppDetails.unmatched.push({ code: row.code, reason: sameCode.length ? 'Hợp đồng đã tất toán (dư nợ 0)' : 'Không có hợp đồng này trong hệ thống' });
+        continue;
+      }
+      // Đúng cách apply_contract_supplement() tính: khế ước trống giữ giá trị cũ; phân kỳ {} nghĩa là xóa lịch cũ.
+      const after = {
+        ...ct,
+        agreement_code: row.agreementCode || ct.agreement_code || ct.code,
+        installment_schedule: Object.keys(row.installmentSchedule).length ? row.installmentSchedule : null,
+      };
+      const changes = diffFields(SUPP_FIELDS, ct, after);
+      if (!changes.length) { suppDetails.unchangedContracts++; continue; }
+      const owner = ownerById.get(ct.customer_id) || {};
+      suppDetails.matched.push({ code: ct.code, name: owner.name || '', cccd: owner.cccd || '', changes });
+      suppSnapshot.updatedContracts.push(pickCols(ct, CONTRACT_WRITE_COLS));
+    }
+    const suppSummary = {
+      fileRows: rows.length, matched: suppDetails.matched.length + suppDetails.unchangedContracts,
+      changedContracts: suppDetails.matched.length, unchangedContracts: suppDetails.unchangedContracts, unmatched: suppDetails.unmatched.length,
+    };
+    if (isPreview) return json({ ok: true, preview: true, summary: suppSummary, details: suppDetails });
+    const historyNotReady = await importHistoryReady();
+    if (historyNotReady) return json({ ok: false, reason: historyNotReady }, 500);
     // Một RPC giao dịch duy nhất chỉ UPDATE hai cột bổ sung trên hợp đồng còn dư nợ.
     const { data, error } = await admin.rpc('apply_contract_supplement', { p_rows: rows });
     if (error) return json({ ok: false, reason: `Không lưu được file bổ sung: ${error.message}` }, 500);
@@ -1807,10 +2097,21 @@ Deno.serve(async (req) => {
     const unmatched = Number(data?.unmatched) || 0;
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import-supplement',
       `Bổ sung khế ước và phân kỳ: **${updated} hợp đồng**${unmatched ? `, **${unmatched} dòng** không khớp hoặc đã tất toán` : ''}`);
-    return json({ ok: true, updated, unmatched, errors: [] });
+    const savedSupp = await saveImportHistory({
+      adminId: callerAdmin.id, adminName: callerAdmin.name || callerAdmin.username, kind: 'supplement', fileName, fullSync: false,
+      summary: suppSummary, details: suppDetails, snapshot: suppSnapshot,
+    });
+    return json({
+      ok: true, updated, unmatched,
+      errors: savedSupp.error ? ['Đã bổ sung xong nhưng chưa lưu được lịch sử nhập: ' + savedSupp.error] : [],
+      summary: suppSummary, details: suppDetails, historyId: savedSupp.id,
+    });
   }
 
-  if (body.type === 'import') {
+  if (body.type === 'import' || body.type === 'import-preview') {
+    // 'import-preview' chạy y hệt 'import' nhưng DỪNG trước mọi lệnh ghi — chỉ trả danh sách cụ thể sẽ làm gì.
+    const isPreview = body.type === 'import-preview';
+    const fileName = String(body.fileName || '').trim().slice(0, 200) || null;
     const rows = Array.isArray(body.rows)
       ? body.rows.map((row: any) => ({ ...(row || {}), code: String(row?.code || '').trim() })) : [];
     const fullSync = !!body.fullSync;
@@ -1836,6 +2137,10 @@ Deno.serve(async (req) => {
     // Chặn trước mọi thao tác ghi nếu migration chưa được chạy trên Supabase.
     const { error: schemaError } = await admin.from('contracts').select('id, collateral_type, loan_term, loan_purpose, heir_name').limit(1);
     if (schemaError) return json({ ok: false, reason: 'Chưa cập nhật cấu trúc bảng contracts trên Supabase; chưa thay đổi dữ liệu.' }, 500);
+    if (!isPreview) {
+      const notReady = await importHistoryReady();
+      if (notReady) return json({ ok: false, reason: notReady }, 500);
+    }
     const result = {
       newProfiles: 0, existingCustomers: 0, contracts: 0,
       deletedContracts: 0, deletedCustomers: 0, skipped: 0, zaloAutoSendMigrated: 0,
@@ -1888,6 +2193,8 @@ Deno.serve(async (req) => {
     const touchedContractIds = new Set<string>();
     const settledContractIds = new Set<string>();
     const usedCodes = new Set<string>();
+    const skippedRows: { code: string; name: string; cccd: string; reason: string }[] = [];
+    const zeroBalanceCodes = new Set<string>();
     // 1 khách hàng có thể xuất hiện ở NHIỀU dòng (mỗi dòng 1 hợp đồng) — GHI
     // hồ sơ khách hàng CHỈ SAU KHI xử lý xong hết các dòng (dùng touchedCccds
     // + originalCccds bên dưới để biết khách nào mới/cũ, 1 khách chỉ đẩy vào
@@ -1901,8 +2208,13 @@ Deno.serve(async (req) => {
 
     for (const row of rows) {
       const cccd = String(row.cccd || '').trim();
-      if (!cccd || !/^\d{9,12}$/.test(cccd)) { result.skipped++; continue; }
+      if (!cccd || !/^\d{9,12}$/.test(cccd)) {
+        result.skipped++;
+        skippedRows.push({ code: String(row.code || ''), name: String(row.name || ''), cccd, reason: 'CCCD trống hoặc không hợp lệ' });
+        continue;
+      }
       if ((Number(row.balance) || 0) <= 0) {
+        if (row.code) zeroBalanceCodes.add(String(row.code));
         // Dán tay một dòng dư nợ 0 cũng xóa đúng hợp đồng đã có, nhưng chỉ
         // khi CCCD của dòng đó trùng với chủ sở hữu để tránh xóa nhầm.
         const existing = row.code ? contractByCode.get(row.code) : null;
@@ -2015,6 +2327,81 @@ Deno.serve(async (req) => {
     }
     const contractUpsertsDeduped = dedupeById(contractUpserts);
 
+    // ---- Kế hoạch: so dữ liệu mới với dữ liệu đang có — cho bản xem trước + lịch sử nhập ----
+    const toDeleteIds = fullSync
+      ? (allContracts || []).filter((c: any) => !touchedContractIds.has(c.id)).map((c: any) => c.id)
+      : [...settledContractIds];
+    const allContractById = new Map<string, any>((allContracts || []).map((c: any) => [c.id, c]));
+    const allCustomerById = new Map<string, any>((allCustomers || []).map((c: any) => [c.id, c]));
+    const originalCustomerByCccd = new Map<string, any>((allCustomers || []).map((c: any) => [c.cccd, c]));
+    const finalCustomerById = new Map<string, any>();
+    for (const c of customerByCccd.values()) finalCustomerById.set((c as any).id, c);
+    const personOf = (customerId: string): any => finalCustomerById.get(customerId) || allCustomerById.get(customerId) || {};
+    const importDetails = {
+      newContracts: [] as any[], changedContracts: [] as any[], unchangedContracts: 0, deletedContracts: [] as any[],
+      newCustomers: [] as any[], changedCustomers: [] as any[], deletedCustomers: [] as any[], skipped: skippedRows,
+    };
+    const importSnapshot: any = {
+      kind: 'import', createdContractIds: [], createdCustomerIds: [], updatedContracts: [], updatedCustomers: [],
+      deletedContracts: [], deletedCustomers: [], zaloCustomers: [], zaloAutoSend: [], logLinks: { notification_log: [], zalo_send_log: [] },
+    };
+    for (const row of contractUpsertsDeduped as any[]) {
+      const before = allContractById.get(row.id);
+      const person = personOf(row.customer_id);
+      if (!before) {
+        importDetails.newContracts.push({ code: row.code, name: person.name || '', cccd: person.cccd || '', balance: row.balance, principal: row.principal, dueDate: row.due_date });
+        importSnapshot.createdContractIds.push(row.id);
+        continue;
+      }
+      const changes = diffFields(CONTRACT_FIELD_META, before, row);
+      if (!changes.length) { importDetails.unchangedContracts++; continue; }
+      importDetails.changedContracts.push({ code: row.code, name: person.name || '', cccd: person.cccd || '', changes });
+      importSnapshot.updatedContracts.push(pickCols(before, CONTRACT_WRITE_COLS));
+    }
+    for (const id of toDeleteIds) {
+      const ct = allContractById.get(id);
+      if (!ct) continue;
+      const person = personOf(ct.customer_id);
+      importDetails.deletedContracts.push({
+        code: ct.code, name: person.name || '', cccd: person.cccd || '', balance: Number(ct.balance) || 0,
+        reason: zeroBalanceCodes.has(ct.code) ? 'Dư nợ về 0 (đã tất toán)' : 'Không còn trong file mới',
+      });
+      importSnapshot.deletedContracts.push(ct);
+    }
+    for (const cccd of touchedCccds) {
+      const cust: any = customerByCccd.get(cccd);
+      if (!originalCccds.has(cccd)) {
+        importDetails.newCustomers.push({ name: cust.name || '', cccd, phone: cust.phone || '' });
+        importSnapshot.createdCustomerIds.push(cust.id);
+        continue;
+      }
+      const changes = diffFields(CUSTOMER_FIELD_META, originalCustomerByCccd.get(cccd), cust);
+      if (!changes.length) continue;
+      importDetails.changedCustomers.push({ name: cust.name || '', cccd, changes });
+      importSnapshot.updatedCustomers.push({ id: cust.id, ...pickCols(originalCustomerByCccd.get(cccd), CUSTOMER_PROFILE_COLS) });
+    }
+    // Dự đoán những hồ sơ khách sẽ bị dọn (hết hợp đồng, chưa có tài khoản) — đúng điều kiện dọn thật ở bước cuối.
+    if (fullSync || toDeleteIds.length) {
+      const finalContracts = new Map<string, any>(allContractById);
+      for (const id of toDeleteIds) finalContracts.delete(id);
+      for (const r of contractUpsertsDeduped as any[]) finalContracts.set(r.id, r);
+      const balByCustomer = new Map<string, number>();
+      for (const c of finalContracts.values()) balByCustomer.set(c.customer_id, (balByCustomer.get(c.customer_id) || 0) + (Number(c.balance) || 0));
+      const finalCustomers = new Map<string, any>(allCustomerById);
+      for (const [id, c] of finalCustomerById) finalCustomers.set(id, c);
+      for (const c of finalCustomers.values()) {
+        if ((balByCustomer.get(c.id) || 0) <= 0 && !(c.salt && c.hash)) importDetails.deletedCustomers.push({ name: c.name || '', cccd: c.cccd || '' });
+      }
+    }
+    const buildImportSummary = () => ({
+      fileRows: rows.length, activeRows: result.contracts,
+      newContracts: importDetails.newContracts.length, changedContracts: importDetails.changedContracts.length,
+      unchangedContracts: importDetails.unchangedContracts, deletedContracts: importDetails.deletedContracts.length,
+      newCustomers: importDetails.newCustomers.length, changedCustomers: importDetails.changedCustomers.length,
+      deletedCustomers: importDetails.deletedCustomers.length, skipped: result.skipped, zaloAutoSendMigrated: result.zaloAutoSendMigrated,
+    });
+    if (isPreview) return json({ ok: true, preview: true, fullSync, summary: buildImportSummary(), details: importDetails });
+
     if (newCustomerUpserts.length) {
       const { error } = await admin.from('customers').upsert(newCustomerUpserts, { onConflict: 'id' });
       if (error) return json({ ok: false, reason: 'Lỗi ghi hồ sơ khách hàng mới; chưa xóa hợp đồng nào: ' + error.message }, 500);
@@ -2033,9 +2420,6 @@ Deno.serve(async (req) => {
     const historySync = await syncHistoricalCollateral(admin);
     if (historySync.error) result.errors.push('Chưa đồng bộ TSBĐ lịch sử: ' + historySync.error);
 
-    const toDeleteIds = fullSync
-      ? (allContracts || []).filter((c: any) => !touchedContractIds.has(c.id)).map((c: any) => c.id)
-      : [...settledContractIds];
     if (toDeleteIds.length) {
         // Trước khi xóa hợp đồng không còn dư nợ, tự CHUYỂN lựa chọn
         // Tầng 2 "Gửi tin tự động" (nếu có) đang gắn với hợp đồng đó sang
@@ -2047,8 +2431,12 @@ Deno.serve(async (req) => {
         // khách đó (còn dư nợ, chưa có sẵn trong Tầng 2). Nếu khách hàng có
         // nhiều khả năng cùng lúc, hoặc không còn hợp đồng nào khác (tất
         // toán thật) thì để hành vi cũ (xóa theo cascade FK, không đoán mò).
-        const { data: orphanEntries } = await admin.from('zalo_auto_send_list')
-          .select('id, contract_id, customer_id').in('contract_id', toDeleteIds);
+        const orphanEntries: any[] = [];
+        for (const part of chunkArray(toDeleteIds, 150)) {
+          const { data } = await admin.from('zalo_auto_send_list').select('*').in('contract_id', part);
+          orphanEntries.push(...(data || []));
+        }
+        importSnapshot.zaloAutoSend = orphanEntries.map((e: any) => ({ ...e })); // bản gốc, trước khi chuyển sang hợp đồng khác
         if (orphanEntries && orphanEntries.length) {
           const { data: existingAutoRows } = await admin.from('zalo_auto_send_list').select('contract_id');
           const alreadyInAuto = new Set((existingAutoRows || []).map((r: any) => r.contract_id));
@@ -2079,11 +2467,22 @@ Deno.serve(async (req) => {
         // Nhật ký đã gửi là lịch sử, không được mất theo ON DELETE CASCADE
         // của contracts. Hai cột contract_id đều cho phép NULL.
         for (const table of ['notification_log', 'zalo_send_log'] as const) {
-          const { error: logError } = await admin.from(table).update({ contract_id: null }).in('contract_id', toDeleteIds);
-          if (logError) return json({ ok: false, reason: `Không giữ được lịch sử ${table}; chưa xóa hợp đồng: ${logError.message}` }, 500);
+          // Ghi nhớ nhật ký nào thuộc hợp đồng nào để quay lại bản trước nối lại được.
+          const links: [string, string][] = [];
+          for (const part of chunkArray(toDeleteIds, 150)) {
+            const { data } = await admin.from(table).select('id, contract_id').in('contract_id', part);
+            for (const r of data || []) links.push([(r as any).id, (r as any).contract_id]);
+          }
+          importSnapshot.logLinks[table] = links;
+          for (const part of chunkArray(toDeleteIds, 150)) {
+            const { error: logError } = await admin.from(table).update({ contract_id: null }).in('contract_id', part);
+            if (logError) return json({ ok: false, reason: `Không giữ được lịch sử ${table}; chưa xóa hợp đồng: ${logError.message}` }, 500);
+          }
         }
-        const { error } = await admin.from('contracts').delete().in('id', toDeleteIds);
-        if (error) return json({ ok: false, reason: 'Lỗi xóa hợp đồng đã tất toán hoặc rời file chính: ' + error.message }, 500);
+        for (const part of chunkArray(toDeleteIds, 150)) {
+          const { error } = await admin.from('contracts').delete().in('id', part);
+          if (error) return json({ ok: false, reason: 'Lỗi xóa hợp đồng đã tất toán hoặc rời file chính: ' + error.message }, 500);
+        }
         result.deletedContracts = toDeleteIds.length;
     }
     if (fullSync || toDeleteIds.length) {
@@ -2093,10 +2492,20 @@ Deno.serve(async (req) => {
       for (const c of remaining || []) balByCust.set(c.customer_id, (balByCust.get(c.customer_id) || 0) + (Number(c.balance) || 0));
       const { data: custNow, error: custNowError } = await readAll('customers');
       if (custNowError) return json({ ok: false, reason: 'Không kiểm tra được hồ sơ; chưa dọn hồ sơ khách hàng.' }, 500);
-      const pruneIds = (custNow || []).filter((c: any) => (balByCust.get(c.id) || 0) <= 0 && !(c.salt && c.hash)).map((c: any) => c.id);
-      if (pruneIds.length) {
-        const { error } = await admin.from('customers').delete().in('id', pruneIds);
-        if (!error) result.deletedCustomers = pruneIds.length;
+      const pruneRows = (custNow || []).filter((c: any) => (balByCust.get(c.id) || 0) <= 0 && !(c.salt && c.hash));
+      importDetails.deletedCustomers = [];
+      if (pruneRows.length) {
+        const deletedIds = new Set<string>();
+        for (const part of chunkArray(pruneRows.map((c: any) => c.id as string), 150)) {
+          const { data: zaloRows } = await admin.from('zalo_customers').select('*').in('customer_id', part);
+          const { error } = await admin.from('customers').delete().in('id', part);
+          if (error) break;
+          part.forEach((id) => deletedIds.add(id));
+          importSnapshot.zaloCustomers.push(...(zaloRows || []));
+        }
+        result.deletedCustomers = deletedIds.size;
+        importSnapshot.deletedCustomers = pruneRows.filter((c: any) => deletedIds.has(c.id));
+        importDetails.deletedCustomers = importSnapshot.deletedCustomers.map((c: any) => ({ name: c.name || '', cccd: c.cccd || '' }));
       }
     }
 
@@ -2105,7 +2514,13 @@ Deno.serve(async (req) => {
       (result.deletedContracts ? `, xóa **${result.deletedContracts} hợp đồng**` : '') +
       (result.deletedCustomers ? `, xóa **${result.deletedCustomers} khách hàng**` : '') +
       (result.skipped ? `, bỏ qua **${result.skipped} dòng lỗi**` : ''));
-    return json({ ok: true, ...result });
+    const importSummary = buildImportSummary();
+    const savedHistory = await saveImportHistory({
+      adminId: callerAdmin.id, adminName: callerAdmin.name || callerAdmin.username, kind: 'import', fileName, fullSync,
+      summary: importSummary, details: importDetails, snapshot: importSnapshot,
+    });
+    if (savedHistory.error) result.errors.push('Đã nhập xong nhưng chưa lưu được lịch sử nhập: ' + savedHistory.error);
+    return json({ ok: true, ...result, summary: importSummary, details: importDetails, historyId: savedHistory.id });
   }
 
   return json({ ok: false, reason: 'Thiếu hoặc sai "type".' }, 400);

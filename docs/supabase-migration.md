@@ -2822,6 +2822,29 @@ cả (vô hại).
   Deploy lại `create-account` và `send-due-reminders`.
 - **Nút về đầu trang** trên trang Khách hàng & Hợp đồng (chỉ giao diện, không cần deploy gì).
 
+### 10.57. Xem trước khi nhập file, lịch sử các lần nhập và quay lại bản trước (BẮT BUỘC chạy SQL + deploy lại `create-account`)
+
+- Trước khi nhập (file số 1, file số 2, dán tay), app hiện **bản xem trước cụ thể**: hợp đồng mới (số HĐ, tên khách), hợp đồng
+  thay đổi (từng trường: cũ → mới), hợp đồng sẽ bị xóa (kèm tên khách + lý do: dư nợ về 0 / không còn trong file), khách
+  hàng mới / đổi thông tin / bị dọn, dòng bị bỏ qua. Bấm **Xác nhận nhập** mới ghi thật. Xem trước dùng type riêng
+  `import-preview` / `import-supplement-preview` — KHÔNG ghi gì vào database.
+- Mỗi lần nhập thật ghi 1 dòng vào bảng mới `import_history` (người nhập, tên file, số liệu, danh sách cụ thể, dữ liệu cũ).
+  Nút **Lịch sử nhập** trong cửa sổ "Nhập dữ liệu từ Excel" xem lại các lần nhập và **Quay lại bản trước**
+  (giữ 30 lần gần nhất). Quay lại tạo lại hợp đồng/khách đã xóa, trả giá trị đã đổi về như cũ, xóa hợp đồng/khách do lần nhập
+  đó tạo ra, nối lại "Gửi tin tự động"/Danh sách OA/nhật ký gửi tin. Chỉ quay lại được **lần nhập mới nhất chưa quay lại**
+  (đúng thứ tự từ mới đến cũ) và mỗi lần chỉ quay lại 1 lần. Giữa chừng lỗi thì không đánh dấu hoàn tất, bấm lại lần nữa là an toàn.
+- **Chỉ tài khoản toàn quyền** thấy và dùng được (giao diện + Edge Function chặn `SUPER_ONLY_TYPES`; bảng không cấp quyền cho
+  anon/authenticated). Mật khẩu tạm của tài khoản mới tạo **không** được lưu vào lịch sử.
+- Chạy SQL `supabase/migrations/20261021_import_history.sql` TRƯỚC khi deploy lại `create-account`. Chưa có bảng thì nhập thật
+  bị từ chối trước khi ghi gì (xem trước vẫn dùng được).
+
+### 10.58. Quản lý gửi tin 1 tháng, Nhật ký ghi thiết bị đăng nhập (deploy lại `create-account`; phần còn lại chỉ giao diện)
+
+- **Quản lý gửi tin** (Quản lý OA) chỉ hiển thị các lần gửi trong **1 tháng gần nhất** (tải tối đa 1.000 lần gửi của 31 ngày qua).
+- **Nhật ký**: dòng đăng nhập của quản trị viên/nhân viên ghi thêm `bằng máy tính / điện thoại / máy tính bảng` (trình duyệt gửi
+  `device` lúc đăng nhập, Edge Function `create-account` ghi vào mô tả). Bản `create-account` cũ vẫn chạy, chỉ chưa ghi thiết bị.
+- **Tổng quan** (điện thoại): khung "Kỳ báo cáo tháng" rộng bằng các khung bên dưới.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

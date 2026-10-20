@@ -9,7 +9,7 @@
 // hình. localStorage/seedDemoData() chỉ còn dùng làm dữ liệu demo hiển
 // thị TẠM lúc app chưa kết nối được mạng, không phải nguồn sự thật nữa.
 // ============================================================
-import { genId, mulberry32, randInt, addDays, daysBetween } from './utils.js';
+import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
 import { specificProvisionForLoan, SPECIFIC_PROVISION_RATE, GENERAL_PROVISION_RATE, inheritCurrentCollateral } from './lib/collateral.js';
 export { GENERAL_PROVISION_RATE, provisionFromSnapshot } from './lib/collateral.js';
@@ -1370,7 +1370,7 @@ function parseImportLine(line) {
  * docs/supabase-migration.md), vì đó là hành động nhạy cảm cần xác minh
  * đúng người gọi có quyền "super" tại server.
  */
-export async function importFromPastedTable(text, { fullSync = false } = {}) {
+function prepareImportRows(text, fullSync) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const rows = [];
   let skipped = 0;
@@ -1386,9 +1386,37 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
   if (fullSync && (skipped || parseErrors.length || !rows.length)) {
     throw new Error(parseErrors[0] || 'File có dòng không hợp lệ hoặc không có hợp đồng; đã hủy đồng bộ để tránh xóa nhầm dữ liệu.');
   }
+  return { rows, skipped, parseErrors };
+}
+
+/** Máy chủ cũ chưa có chức năng xem trước/lịch sử nhập sẽ trả lỗi "sai type" — báo rõ thay vì lỗi khó hiểu (và tuyệt đối không nhập thật). */
+function throwIfServerLacksImportReview(res) {
+  if (res && !res.ok && /sai "type"/.test(res.reason || '')) {
+    throw new Error('Máy chủ chưa cập nhật chức năng xem trước và lịch sử nhập — cần triển khai lại Edge Function create-account rồi thử lại.');
+  }
+}
+
+/**
+ * Xem trước một lần nhập: gửi đúng dữ liệu như nhập thật nhưng máy chủ CHỈ so
+ * sánh với dữ liệu đang có và trả về danh sách cụ thể sẽ làm gì (hợp đồng nào,
+ * của ai, đổi gì), KHÔNG ghi gì. Dùng type riêng 'import-preview' để máy chủ
+ * cũ (chưa có chức năng này) không bao giờ nhập thật nhầm.
+ */
+export async function previewImportFromPastedTable(text, { fullSync = false } = {}) {
+  const { rows, skipped, parseErrors } = prepareImportRows(text, fullSync);
+  if (!rows.length) throw new Error(parseErrors[0] || 'Không đọc được hợp đồng nào từ dữ liệu này.');
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-preview', rows, fullSync });
+  throwIfServerLacksImportReview(res);
+  if (!res.ok) throw new Error(res.reason || 'Không xem trước được dữ liệu.');
+  return { summary: res.summary, details: res.details, localSkipped: skipped, parseErrors };
+}
+
+export async function importFromPastedTable(text, { fullSync = false, fileName = '' } = {}) {
+  const { rows, skipped, parseErrors } = prepareImportRows(text, fullSync);
 
   const session = getSession();
-  const res = await callImportDataFunction(session?.sbToken, { rows, fullSync });
+  const res = await callImportDataFunction(session?.sbToken, { rows, fullSync, fileName });
   if (!res.ok) throw new Error(res.reason || 'Không nhập được dữ liệu.');
 
   // Tải lại toàn bộ khách hàng/hợp đồng từ Supabase để đồng bộ đúng dữ liệu
@@ -1409,13 +1437,14 @@ export async function importFromPastedTable(text, { fullSync = false } = {}) {
     zaloAutoSendMigrated: res.zaloAutoSendMigrated || 0,
     skipped: skipped + (res.skipped || 0), errors: [...parseErrors, ...(res.errors || [])],
     newAccounts: res.newAccounts || [],
+    summary: res.summary || null, details: res.details || null, historyId: res.historyId || null,
   };
 }
 
 /** Nạp file số 2: chỉ bổ sung khế ước và phân kỳ, không xóa hợp đồng khác. */
-export async function importSupplementRows(rawRows) {
+function buildSupplementRows(rawRows) {
   if (!Array.isArray(rawRows) || !rawRows.length) throw new Error('File số 2 không có hợp đồng hợp lệ.');
-  const rows = rawRows.map((raw) => {
+  return rawRows.map((raw) => {
     const code = String(raw.code || '').trim();
     if (!code) throw new Error('File số 2 có dòng thiếu Số HĐ.');
     const installmentSchedule = {};
@@ -1427,15 +1456,57 @@ export async function importSupplementRows(rawRows) {
     // Ô khế ước trống trong file bổ sung không được ghi đè giá trị đã lưu.
     return { code, agreementCode: String(raw.agreementCode || '').trim() || null, installmentSchedule };
   });
+}
+
+/** Xem trước file số 2 (không ghi gì): hợp đồng nào khớp, đổi số khế ước/phân kỳ ra sao, dòng nào không khớp. */
+export async function previewSupplementRows(rawRows) {
+  const rows = buildSupplementRows(rawRows);
   const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-supplement', rows });
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-supplement-preview', rows });
+  throwIfServerLacksImportReview(res);
+  if (!res.ok) throw new Error(res.reason || 'Không xem trước được file số 2.');
+  return { summary: res.summary, details: res.details };
+}
+
+export async function importSupplementRows(rawRows, { fileName = '' } = {}) {
+  const rows = buildSupplementRows(rawRows);
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-supplement', rows, fileName });
   if (!res.ok) throw new Error(res.reason || 'Không bổ sung được file số 2.');
   await loadAdminSessionData(session.sbToken);
   notify();
   return {
     updated: res.updated || 0, unmatched: res.unmatched || 0, errors: res.errors || [],
+    summary: res.summary || null, details: res.details || null, historyId: res.historyId || null,
     emptySchedules: rows.filter((row) => !Object.keys(row.installmentSchedule).length).length,
   };
+}
+
+/** Lịch sử các lần nhập (chỉ tài khoản toàn quyền): { items, latestActiveId }. */
+export async function listImportHistory() {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-history' });
+  throwIfServerLacksImportReview(res);
+  if (!res.ok) throw new Error(res.reason || 'Không tải được lịch sử nhập.');
+  return { items: res.items || [], latestActiveId: res.latestActiveId || null };
+}
+
+/** Chi tiết cụ thể của 1 lần nhập (hợp đồng nào, của ai, đổi gì). */
+export async function getImportHistoryDetail(id) {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-history-detail', id });
+  if (!res.ok) throw new Error(res.reason || 'Không tải được chi tiết lần nhập.');
+  return res.item;
+}
+
+/** Quay lại bản trước của 1 lần nhập (máy chủ chỉ cho lần mới nhất chưa quay lại), rồi tải lại dữ liệu. */
+export async function rollbackImportHistory(id) {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-rollback', id });
+  if (!res.ok) throw new Error(res.reason || 'Không quay lại được.');
+  await loadAdminSessionData(session.sbToken);
+  notify();
+  return res.counts || {};
 }
 
 /**
@@ -1563,7 +1634,7 @@ export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary,
  * chặn được thật ở tầng server chứ không chỉ ẩn trên giao diện.
  */
 export async function loginAdmin(username, password) {
-  const res = await callLoginFunction({ role: 'admin', identifier: username, password });
+  const res = await callLoginFunction({ role: 'admin', identifier: username, password, device: detectDeviceKind() });
   if (!res.ok) return { ok: false, reason: res.reason };
   await loadAdminSessionData(res.token);
   await syncHistoricalCollateralOnce(res.token, res.id);
@@ -1719,7 +1790,8 @@ async function loadAdminSessionData(token) {
     // CHÍNH người đang đăng nhập (super thấy hết) + log gửi tin. Bọc an toàn
     // (giống push_subscriptions) phòng lúc chưa chạy policy (mục 10).
     sb.from('zalo_auto_send_list').select('*').then((r) => r, () => ({ data: [] })),
-    sb.from('zalo_send_log').select('*').order('sent_at', { ascending: false }).limit(200).then((r) => r, () => ({ data: [] })),
+    // "Quản lý gửi tin" chỉ hiển thị 1 tháng gần nhất (xem drawLogTab trong zaloOA.js).
+    sb.from('zalo_send_log').select('*').gte('sent_at', new Date(Date.now() - 31 * 86400000).toISOString()).order('sent_at', { ascending: false }).limit(1000).then((r) => r, () => ({ data: [] })),
     // Tổng số tin nhắn hỗ trợ (chat) do KHÁCH HÀNG gửi mà CHƯA có ai trong
     // phạm vi quản lý đọc — dùng cho chấm đỏ ở mục menu "Hỗ trợ" (xem
     // js/components/shell.js renderSupportNavBadge). Bọc an toàn (giống
