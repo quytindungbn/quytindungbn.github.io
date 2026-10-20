@@ -1,5 +1,5 @@
-// Ảnh QR chuyển khoản VietQR tự tạo ngay trên máy (không cần mạng, không phụ thuộc img.vietqr.io).
-// Dùng làm dự phòng cho nút "Chia sẻ ảnh QR" / "Tải ảnh QR" khi không tải được ảnh từ dịch vụ ngoài — xem contractDetail.js.
+// Ảnh QR chuyển khoản VietQR tự vẽ ngay trên máy (không cần mạng, không phụ thuộc img.vietqr.io).
+// Dùng để hiện QR trong popup thanh toán và cho nút "Chia sẻ ảnh QR" / "Tải ảnh QR" — xem contractDetail.js.
 // Nội dung QR theo chuẩn VietQR (EMVCo, NAPAS 247): chuyển nhanh tới số tài khoản, có số tiền và nội dung chuyển khoản.
 import { encodeQr } from './qrEncode.js';
 
@@ -56,13 +56,34 @@ function wrapLines(ctx, text, maxWidth) {
   return lines.length ? lines : [''];
 }
 
+/** Vẽ mã QR từng ô vuông nguyên pixel (nét, không nhòe) trên nền trắng, có viền trắng `quiet` ô xung quanh. */
+function paintQr(ctx, qr, x, y, mod, quiet) {
+  const box = mod * (qr.size + quiet * 2);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(x, y, box, box);
+  ctx.fillStyle = '#000000';
+  for (let r = 0; r < qr.size; r++) {
+    for (let c = 0; c < qr.size; c++) {
+      if (qr.modules[r][c]) ctx.fillRect(x + (c + quiet) * mod, y + (r + quiet) * mod, mod, mod);
+    }
+  }
+}
+
+/** Chỉ riêng mã QR (hình vuông, nền trắng) — dùng cho ô QR nhỏ trong popup nhân viên. */
+export function drawVietQrOnly(p) {
+  const qr = encodeQr(buildVietQrPayload(p), 'M');
+  const QUIET = 3, mod = Math.max(4, Math.floor(480 / (qr.size + QUIET * 2)));
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = mod * (qr.size + QUIET * 2);
+  paintQr(canvas.getContext('2d'), qr, 0, 0, mod, QUIET);
+  return canvas;
+}
+
 /**
  * Vẽ "thẻ" QR chuyển khoản (tên quỹ, mã QR, chủ tài khoản, số tài khoản, số tiền, nội dung) lên canvas, nền trắng.
  * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string, bankName?: string, orgName?: string }} p
  */
 export function drawVietQrCard(p) {
-  const payload = buildVietQrPayload(p);
-  const qr = encodeQr(payload, 'M');
+  const qr = encodeQr(buildVietQrPayload(p), 'M');
   const W = 720, PAD = 40, QUIET = 4;
   const mod = Math.max(4, Math.floor((W - PAD * 2 - 24) / (qr.size + QUIET * 2)));
   const qrBox = mod * (qr.size + QUIET * 2);
@@ -98,15 +119,7 @@ export function drawVietQrCard(p) {
   ctx.fillStyle = '#6a7a73'; ctx.font = `500 21px ${SANS}`;
   ctx.fillText('Quét mã bằng app ngân hàng để chuyển khoản', W / 2, y, W - PAD * 2);
   y += 26;
-  // mã QR: vẽ từng ô vuông nguyên pixel để nét, không bị nhòe
-  const qx = Math.round((W - qrBox) / 2);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(qx, y, qrBox, qrBox);
-  ctx.fillStyle = '#000000';
-  for (let r = 0; r < qr.size; r++) {
-    for (let c = 0; c < qr.size; c++) {
-      if (qr.modules[r][c]) ctx.fillRect(qx + (c + QUIET) * mod, y + (r + QUIET) * mod, mod, mod);
-    }
-  }
+  paintQr(ctx, qr, Math.round((W - qrBox) / 2), y, mod, QUIET);
   y += qrBox + 28;
   ctx.textAlign = 'left';
   laid.forEach((row) => {
@@ -120,11 +133,4 @@ export function drawVietQrCard(p) {
     y += 14;
   });
   return canvas;
-}
-
-/** Ảnh QR chuyển khoản dạng file PNG (async). */
-export async function makeVietQrFile(params, filename = 'qr-thanh-toan.png') {
-  const canvas = drawVietQrCard(params);
-  const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'));
-  return new File([blob], filename, { type: 'image/png' });
 }

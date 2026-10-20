@@ -7,7 +7,7 @@ import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xlsxLite.js';
-import { buildVietQrUrl, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
+import { buildVietQrUrl, qrImageSrc, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 import { printNotice } from '../../lib/printNotices.js';
 import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
 
@@ -1036,7 +1036,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
                   <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-download-qr-ct">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
                   <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-share-qr-ct">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
                 </div>
-                <img id="qr-img-ct" src="${qrUrl}" alt="Mã QR chuyển khoản"/>
+                <img id="qr-img-ct" src="${qrUrl ? qrImageSrc(qrUrl, { compact: true }) : ''}" alt="Mã QR chuyển khoản"/>
               </div>` : `<p class="text-sm text-muted">${canPay ? 'Chưa cấu hình thông tin nhận thanh toán.' : 'Hợp đồng đã tất toán.'}</p>`}
           </section>
         </div>
@@ -1062,7 +1062,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       }
       function refreshQr() {
         if (!qrImgEl) return;
-        qrImgEl.src = buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: gocAmount + laiAmount, content: buildQrContent(gocAmount, laiAmount, settleFull), accountName: org.bankAccountName });
+        qrImgEl.src = qrImageSrc(buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: gocAmount + laiAmount, content: buildQrContent(gocAmount, laiAmount, settleFull), accountName: org.bankAccountName }), { compact: true });
       }
       // Ảnh QR tải từ dịch vụ ngoài — mỗi lần đổi src là 1 request mạng render
       // ảnh mới, gọi thẳng theo từng phím gõ làm popup nặng/giật. Debounce lại,
