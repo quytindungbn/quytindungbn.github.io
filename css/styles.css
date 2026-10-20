@@ -196,6 +196,10 @@ svg { display: block; }
   margin: 0 auto;
 }
 
+/* Thanh lọc phía trên danh sách (Khách hàng & Hợp đồng): cùng bề rộng, căn giữa và cùng lề với .app-content để thẳng hàng với khung danh sách bên dưới. */
+.filter-align-content { max-width: 1180px; margin: 0 auto; padding: 10px 14px 0; }
+@media (min-width: 900px) { .filter-align-content { padding-left: 28px; padding-right: 28px; } } /* khớp lề 28px của .app-content trên máy tính */
+
 /* ---------------- Bottom nav ---------------- */
 .bottom-nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;

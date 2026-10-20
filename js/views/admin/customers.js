@@ -79,7 +79,7 @@ export function render(contentEl, filterEl) {
   // trước (2 biến đó cũng không hề bị reset ở render()).
 
   filterEl.innerHTML = `
-    <div style="padding:10px 14px 0">
+    <div class="filter-align-content">
       ${searchBoxHtml('search-input', 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
       <div class="filter-row" style="padding:0 0 8px" id="filter-pills-row"></div>
       <div class="segmented-row mb-8">
