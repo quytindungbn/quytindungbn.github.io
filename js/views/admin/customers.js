@@ -41,6 +41,7 @@ let filterThon = []; // rỗng = Tất cả — có thể tích chọn nhiều T
 let filterXom = [];  // rỗng = Tất cả — có thể tích chọn nhiều Xóm cùng lúc
 let urgencyFilter = 'all'; // 'all' | 'qua_han' | 'gan_den_han' — CHỈ chọn được 1 trong 3 (không phải nhiều lựa chọn cùng lúc như trước)
 let sortMode = 'default';
+let filterSheetRefresh = null; // vẽ lại bảng "Bộ lọc" (điện thoại) khi đang mở và lựa chọn đổi
 const manualOaSending = new Set();
 const manualOaSentAt = new Map();
 // Nhãn hiển thị dùng chung cho urgencyFilter — dùng lại khi ghi Nhật ký sử
@@ -81,7 +82,13 @@ export function render(contentEl, filterEl) {
 
   filterEl.innerHTML = `
     <div class="filter-align-content"><div class="filter-card${isStaff ? ' no-actions' : ''}">
-      ${searchBoxHtml('search-input', 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
+      ${searchBoxHtml('search-input', window.matchMedia('(max-width: 899px)').matches ? 'Tìm tên, CCCD, SĐT, số HĐ...' : 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
+      <button type="button" class="filter-open-btn" id="btn-filter-open">${icon('filter', 'icon-sm')}<span>Lọc</span><i class="filter-open-badge" hidden></i></button>
+      ${!isStaff ? `<button type="button" class="filter-plus-btn" id="btn-filter-plus" aria-label="Thêm">${icon('plus')}</button>
+      <div class="filter-plus-menu" id="filter-plus-menu" hidden>
+        <button type="button" data-plus-act="add">${icon('plus', 'icon-sm')} Tạo tài khoản khách hàng</button>
+        <button type="button" data-plus-act="import">${icon('paperclip', 'icon-sm')} Nhập từ Excel</button>
+      </div>` : ''}
       <div class="filter-row filter-pills" id="filter-pills-row"></div>
       <div class="segmented-row filter-seg mb-8">
         <button class="${urgencyFilter === 'all' ? 'active' : ''}" data-urgency="all">Tất cả <i class="seg-n"></i></button>
@@ -144,6 +151,11 @@ export function render(contentEl, filterEl) {
         draw();
       });
     });
+    // Chấm số trên nút "Lọc" = số mục Thôn/Xóm/Sắp xếp đang được chọn.
+    const activeCount = (filterThon.length ? 1 : 0) + (filterXom.length ? 1 : 0) + (sortMode !== 'default' ? 1 : 0);
+    const badge = filterEl.querySelector('.filter-open-badge');
+    if (badge) { badge.hidden = !activeCount; badge.textContent = String(activeCount); }
+    filterSheetRefresh?.();
   }
   function bindPickers() {
     filterEl.querySelector('#pill-thon').addEventListener('click', () => {
@@ -186,6 +198,55 @@ export function render(contentEl, filterEl) {
     });
   }
   renderFilterPills();
+
+  // ---- Điện thoại: nút "Lọc" mở bảng Thôn/Xóm/Sắp xếp; nút "+" mở menu Tạo/Nhập (máy tính vẫn hiện thẳng, 2 nút này bị ẩn bằng CSS) ----
+  filterEl.querySelector('#btn-filter-open').addEventListener('click', openFilterSheet);
+  const plusBtn = filterEl.querySelector('#btn-filter-plus');
+  if (plusBtn) {
+    const menu = filterEl.querySelector('#filter-plus-menu');
+    const closeMenu = () => { menu.hidden = true; document.removeEventListener('click', onOutside, true); };
+    function onOutside(e) { if (!menu.contains(e.target) && e.target !== plusBtn && !plusBtn.contains(e.target)) closeMenu(); }
+    plusBtn.addEventListener('click', () => {
+      if (!menu.hidden) { closeMenu(); return; }
+      menu.hidden = false;
+      document.addEventListener('click', onOutside, true);
+    });
+    menu.querySelectorAll('[data-plus-act]').forEach((item) => item.addEventListener('click', () => {
+      closeMenu();
+      filterEl.querySelector(item.dataset.plusAct === 'add' ? '#btn-add' : '#btn-import').click(); // dùng đúng nút gốc đã có sẵn
+    }));
+  }
+
+  function openFilterSheet() {
+    const valueOf = {
+      thon: () => (filterThon.length ? filterThon.join(', ') : 'Tất cả'),
+      xom: () => (filterXom.length ? filterXom.join(', ') : 'Tất cả'),
+      sort: () => SORT_LABEL[sortMode],
+    };
+    const rowHtml = (key, label) => `<button type="button" class="fsheet-row" data-fkey="${key}"><span><small>${label}</small><b>${escapeHtml(valueOf[key]())}</b></span>${icon('chevronDown', 'icon-sm')}</button>`;
+    openModal({
+      title: 'Bộ lọc',
+      bodyHtml: `<div class="fsheet-clear"><button type="button" id="fsheet-clear">Xóa lọc</button></div><div id="fsheet-fields"></div>`,
+      footHtml: `<button class="btn btn-primary btn-block" data-apply>Áp dụng</button>`,
+      onClose() { filterSheetRefresh = null; },
+      onMount(sheet, closeSheet) {
+        const paintSheet = () => {
+          sheet.querySelector('#fsheet-fields').innerHTML = rowHtml('thon', 'Thôn') + rowHtml('xom', 'Xóm') + rowHtml('sort', 'Sắp xếp');
+          // Chọn từng mục dùng đúng bảng chọn (picker) của 3 ô lọc gốc — ô gốc bị ẩn trên điện thoại nhưng vẫn bấm được bằng mã.
+          sheet.querySelectorAll('[data-fkey]').forEach((row) => row.addEventListener('click', () => filterEl.querySelector('#pill-' + row.dataset.fkey).click()));
+        };
+        filterSheetRefresh = paintSheet;
+        paintSheet();
+        sheet.querySelector('#fsheet-clear').addEventListener('click', () => {
+          filterThon = []; filterXom = []; sortMode = 'default';
+          renderFilterPills();
+          S.logAdminAction('filter-customers', { filterDesc: 'Xóa bộ lọc Thôn/Xóm/Sắp xếp' });
+          draw();
+        });
+        sheet.querySelector('[data-apply]').addEventListener('click', closeSheet);
+      },
+    });
+  }
 
   function draw() {
     const canManageZalo = S.canManageZaloOA(S.getSession().id);
