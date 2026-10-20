@@ -72,25 +72,74 @@ export function render(contentEl, filterEl, params) {
 export function buildVietQrUrl({ bin, accountNo, amount, content, accountName }) {
   const info = encodeURIComponent(content);
   const name = encodeURIComponent(accountName);
-  return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?amount=${Math.round(amount)}&addInfo=${info}&accountName=${name}`;
+  const url = `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?amount=${Math.round(amount)}&addInfo=${info}&accountName=${name}`;
+  // Chuẩn bị sẵn file PNG THẬT ngay từ lúc dựng link (xem getQrPngFile) để lúc
+  // bấm "Chia sẻ"/"Tải ảnh" có ngay, không phải chờ mạng.
+  prefetchQrPng(url);
+  return url;
+}
+
+// Bộ nhớ đệm file PNG theo từng link QR — dùng chung cho Chia sẻ lẫn Tải ảnh.
+const qrPngCache = new Map(); // url -> { promise, file }
+
+/**
+ * Lấy ảnh QR về dạng file PNG THẬT. img.vietqr.io có lúc trả về ảnh SVG (dù
+ * link đuôi .png) — tải nguyên bản sẽ ra file ".png.svg" không mở được, và
+ * trình duyệt điện thoại không cho chia sẻ file SVG qua Web Share. Vì vậy luôn
+ * vẽ lại ảnh lên canvas (nền trắng) rồi xuất PNG — dùng được dù nguồn trả về
+ * PNG hay SVG. fetch trước (đã chứng minh được phép tải khác nguồn), tạo blob
+ * URL cùng nguồn rồi mới vẽ nên canvas không bị chặn "tainted".
+ */
+async function rasterizeQrToPng(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('fetch failed');
+  const srcBlob = await res.blob();
+  const objUrl = URL.createObjectURL(srcBlob);
+  try {
+    const img = new Image();
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('decode failed')); img.src = objUrl; });
+    const w = img.naturalWidth || 600;
+    const h = img.naturalHeight || w;
+    const scale = Math.max(1, Math.min(2, 800 / Math.max(w, h))); // ảnh nhỏ thì phóng lên cho nét, tối đa 800px
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const pngBlob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'));
+    return new File([pngBlob], 'qr-thanh-toan.png', { type: 'image/png' });
+  } finally {
+    URL.revokeObjectURL(objUrl);
+  }
+}
+
+function getQrPngFile(rawUrl) {
+  const url = new URL(rawUrl, location.href).href; // chuẩn hóa — img.src trả về dạng đã chuẩn hóa, phải khớp khóa lúc dựng link
+  let entry = qrPngCache.get(url);
+  if (!entry) {
+    entry = { file: null, promise: null };
+    entry.promise = rasterizeQrToPng(url).then((f) => { entry.file = f; return f; }).catch((e) => { qrPngCache.delete(url); throw e; });
+    if (qrPngCache.size > 20) qrPngCache.delete(qrPngCache.keys().next().value);
+    qrPngCache.set(url, entry);
+  }
+  return entry;
+}
+function prefetchQrPng(url) {
+  try { getQrPngFile(url).promise.catch(() => {}); } catch (e) { /* bỏ qua — chỉ là chuẩn bị trước */ }
 }
 
 /**
- * Tải ảnh QR về máy. img.vietqr.io là ảnh khác nguồn (cross-origin) nên thử
- * tải qua fetch+blob trước (tải file thật); nếu bị chặn CORS thì mở ảnh ở
- * tab mới để khách tự nhấn giữ ảnh (long-press) chọn "Lưu ảnh" — luôn dùng
- * được trên điện thoại dù fetch thất bại.
+ * Tải ảnh QR về máy dưới dạng file PNG thật (xem rasterizeQrToPng). Nếu không
+ * xử lý được thì mở ảnh gốc ở tab mới để khách tự nhấn giữ ảnh chọn "Lưu ảnh".
  */
 export async function downloadQrImage(url, filename) {
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('fetch failed');
-    const blob = await res.blob();
-    const objUrl = URL.createObjectURL(blob);
+    const file = await getQrPngFile(url).promise;
+    const objUrl = URL.createObjectURL(file);
     const a = document.createElement('a');
-    a.href = objUrl; a.download = filename;
+    a.href = objUrl; a.download = filename || 'qr-thanh-toan.png';
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(objUrl), 2000);
+    setTimeout(() => URL.revokeObjectURL(objUrl), 4000);
     toast('Đã tải ảnh QR về máy', 'success');
   } catch (e) {
     window.open(url, '_blank');
@@ -99,17 +148,17 @@ export async function downloadQrImage(url, filename) {
 }
 
 /**
- * Chia sẻ ảnh QR qua Web Share API — trên điện thoại sẽ mở đúng bảng chọn
- * app có sẵn của hệ điều hành (giống khi chia sẻ từ Zalo/Ảnh...), khách
- * chọn ứng dụng ngân hàng/ví nào hỗ trợ nhận ảnh để quét là xong. Đây là
- * API chuẩn của trình duyệt — không đi qua dịch vụ ngoài nào. Máy tính/trình
- * duyệt không hỗ trợ chia sẻ sẽ tự chuyển sang tải ảnh về.
+ * Chia sẻ ảnh QR (file PNG thật) qua Web Share API — trên điện thoại mở đúng
+ * bảng chọn app của hệ điều hành. File đã được chuẩn bị sẵn từ lúc hiện QR
+ * (prefetchQrPng) nên navigator.share() được gọi NGAY trong lúc còn "thao tác
+ * bấm" của khách — nếu phải chờ tải ảnh rồi mới gọi, trình duyệt điện thoại
+ * sẽ từ chối (NotAllowedError) và báo "không hỗ trợ chia sẻ".
  */
 export async function shareQrImage(url, text) {
+  const entry = getQrPngFile(url);
+  let file = entry.file;
   try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    const file = new File([blob], 'qr-thanh-toan.png', { type: blob.type || 'image/png' });
+    if (!file) file = await entry.promise;
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({ files: [file], title: 'Mã QR chuyển khoản', text });
       return;
@@ -117,11 +166,14 @@ export async function shareQrImage(url, text) {
   } catch (e) {
     if (e && e.name === 'AbortError') return; // khách tự đóng bảng chọn, không phải lỗi
   }
-  if (navigator.share) {
-    try { await navigator.share({ title: 'Mã QR chuyển khoản', text, url }); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; }
+  // Máy không chia sẻ được file: thử chia sẻ nội dung chuyển khoản dạng chữ,
+  // rồi cuối cùng mới tải ảnh về để khách tự gửi.
+  if (file) {
+    toast('Máy này không chia sẻ trực tiếp ảnh được — đang tải ảnh QR về để bạn gửi qua app khác.', 'info');
+    await downloadQrImage(url, 'qr-thanh-toan.png');
+    return;
   }
-  toast('Trình duyệt này không hỗ trợ chia sẻ trực tiếp — dùng nút "Tải ảnh QR" rồi mở app ngân hàng để quét từ ảnh.', 'info');
+  toast('Chưa lấy được ảnh QR — kiểm tra mạng rồi thử lại, hoặc dùng nút "Tải ảnh QR".', 'info');
 }
 
 /**
