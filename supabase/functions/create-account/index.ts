@@ -410,6 +410,38 @@ function daysOverdueZalo(contract: any, asOf: Date): number | null {
   const instOverdue = inst ? -inst.next.daysLeft : -Infinity;
   return Math.max(0, mainOverdue, instOverdue);
 }
+/** Ngưỡng "gần đến hạn" RỘNG cho cột "Cần chú ý" — Y HỆT WIDE_NEAR_DUE_DAYS trong js/state.js. */
+const WIDE_NEAR_DUE_DAYS_ATTENTION = 45;
+/**
+ * Y HỆT contractAttentionInfo() trong js/state.js — mức cần chú ý CAO NHẤT của 1 hợp đồng tại ngày `asOf`
+ * (quá hạn lấy NHIỀU ngày nhất, gần đến hạn lấy ÍT ngày nhất; xét cả ngày đáo hạn hợp đồng gốc lẫn "Kỳ tới" của phân kỳ).
+ * Lưu vào bản chốt tháng để mục "Cần chú ý" của Tổng quan xem lại đúng số của tháng đó.
+ */
+function contractAttentionZalo(contract: any, asOf: Date): { level: 'qua_han' | 'gan_den_han' | null; days: number; dueAmount: number } {
+  const balance = Number(contract.balance) || 0;
+  if (balance <= 0) return { level: null, days: 0, dueAmount: 0 };
+  const d = daysBetweenZalo(asOf, new Date(contract.due_date));
+  const contractLevel = d < 0 ? 'qua_han' : (d <= WIDE_NEAR_DUE_DAYS_ATTENTION ? 'gan_den_han' : null);
+  const inst = nextInstallmentInfoZalo(contract, asOf);
+  const instDays = inst ? inst.next.daysLeft : null;
+  const instLevel = inst ? (instDays! < 0 ? 'qua_han' : (instDays! <= WIDE_NEAR_DUE_DAYS_ATTENTION ? 'gan_den_han' : null)) : null;
+  const overdue: { days: number; amount: number }[] = [];
+  if (contractLevel === 'qua_han') overdue.push({ days: Math.abs(d), amount: balance });
+  if (instLevel === 'qua_han') overdue.push({ days: Math.abs(instDays!), amount: inst!.next.dueAmount });
+  if (overdue.length) {
+    const worst = overdue.reduce((a, b) => (b.days > a.days ? b : a));
+    return { level: 'qua_han', days: worst.days, dueAmount: worst.amount };
+  }
+  const near: { days: number; amount: number }[] = [];
+  if (contractLevel === 'gan_den_han') near.push({ days: d, amount: balance });
+  if (instLevel === 'gan_den_han') near.push({ days: instDays!, amount: inst!.next.dueAmount });
+  if (near.length) {
+    const soonest = near.reduce((a, b) => (b.days < a.days ? b : a));
+    return { level: 'gan_den_han', days: soonest.days, dueAmount: soonest.amount };
+  }
+  return { level: null, days: 0, dueAmount: balance };
+}
+
 /** Y HỆT debtGroup() trong js/state.js — Nhóm nợ 1-5 theo Thông tư 02/2013 NHNN. null nếu đã tất toán. */
 function debtGroupZalo(contract: any, asOf: Date): number | null {
   const d = daysOverdueZalo(contract, asOf);
@@ -1662,6 +1694,7 @@ Deno.serve(async (req) => {
         specificProvision += Math.max(0, balance - deductible) * rate;
       }
       const cust = custMap.get(ct.customer_id);
+      const attention = contractAttentionZalo(ct, now);
       contractsDetail.push({
         code: ct.code || null,
         name: cust?.name || null,
@@ -1669,6 +1702,10 @@ Deno.serve(async (req) => {
         balance,
         group: g,
         daysOverdue: daysOverdueZalo(ct, now),
+        // Mục "Cần chú ý" của Tổng quan khi xem lại tháng này (quá hạn / gần đến hạn tại ngày chốt).
+        attention: attention.level,
+        attentionDays: attention.days,
+        attentionAmount: attention.dueAmount,
         hasCollateral: !!ct.has_collateral,
         collateralValue: Number(ct.collateral_value) || 0,
         collateralType: ct.collateral_type || null,

@@ -115,14 +115,28 @@ function computeLiveOverview() {
  */
 function snapshotOverview(m) {
   const rows = Array.isArray(m.contractsDetail) ? m.contractsDetail.filter((d) => Number(d.balance) > 0) : [];
-  if (!rows.length && Number(m.balance) > 0) return { hasDetail: false };
-  const overdueRows = rows.filter((d) => Number(d.daysOverdue) > 0).sort((a, b) => b.daysOverdue - a.daysOverdue);
+  if (!rows.length && Number(m.balance) > 0) return { hasDetail: false, hasAttention: false };
+  // Bản chốt MỚI lưu sẵn mức cần chú ý (attention/attentionDays/attentionAmount) tính ĐÚNG như tháng sống;
+  // bản chốt cũ chỉ có số ngày quá hạn nên "quá hạn" vẫn suy ra được còn "gần đến hạn" thì không.
+  const hasAttention = rows.length > 0 && rows.every((d) => Object.prototype.hasOwnProperty.call(d, 'attention'));
+  const amountOf = (d) => (hasAttention ? Number(d.attentionAmount) || 0 : Number(d.balance) || 0);
+  const overdueRows = hasAttention
+    ? rows.filter((d) => d.attention === 'qua_han').sort((a, b) => a.attentionDays - b.attentionDays)
+    : rows.filter((d) => Number(d.daysOverdue) > 0).sort((a, b) => a.daysOverdue - b.daysOverdue);
+  // Y HỆT tháng sống: ô thống kê chỉ đếm trong NEAR_DUE_DAYS (15 ngày), danh sách bấm vào xem tiếp tới 45 ngày.
+  const upcomingRows = hasAttention ? rows.filter((d) => d.attention === 'gan_den_han').sort((a, b) => a.attentionDays - b.attentionDays) : [];
+  const nearRows = upcomingRows.filter((d) => d.attentionDays <= S.NEAR_DUE_DAYS);
   return {
     hasDetail: true,
+    hasAttention,
     customers: new Set(rows.map((d) => `${d.name || ''}|${d.address || ''}`)).size,
     contracts: rows.length,
     overdueRows,
-    overdueTotal: overdueRows.reduce((sum, d) => sum + (Number(d.balance) || 0), 0),
+    overdueTotal: overdueRows.reduce((sum, d) => sum + amountOf(d), 0),
+    upcomingRows,
+    nearRows,
+    nearTotal: nearRows.reduce((sum, d) => sum + amountOf(d), 0),
+    amountOf,
   };
 }
 
@@ -177,6 +191,7 @@ function attentionInnerHtml(m, ctx) {
   }
   const snap = snapshotOverview(m);
   const overdueMoney = compactVnd(snap.hasDetail ? snap.overdueTotal : 0);
+  const nearMoney = compactVnd(snap.hasAttention ? snap.nearTotal : 0);
   return `
       ${snap.hasDetail ? `<button type="button" class="lux-attn-row" id="tile-overdue">
         <span class="mk red"></span>
@@ -187,42 +202,58 @@ function attentionInnerHtml(m, ctx) {
         <span class="t"><b>Hợp đồng quá hạn</b><small>${m.label} chưa lưu chi tiết hợp đồng</small></span>
         <span class="v red">—</span>
       </div>`}
-      <div class="lux-attn-row is-static">
+      ${snap.hasAttention ? `<button type="button" class="lux-attn-row" id="tile-neardue">
         <span class="mk gold"></span>
-        <span class="t"><b>Gần đến hạn</b><small>${m.label} chưa lưu ngày đến hạn nên không tính lại được</small></span>
+        <span class="t"><b>Gần đến hạn</b><small>${formatNumber(snap.nearRows.length)} hợp đồng · tại ${m.label}</small></span>
+        <span class="v gold">${nearMoney.num}<small>${nearMoney.unit}</small></span>${LUX_CHEVRON}
+      </button>` : `<div class="lux-attn-row is-static">
+        <span class="mk gold"></span>
+        <span class="t"><b>Gần đến hạn</b><small>${m.label} chốt trước khi lưu ngày đến hạn nên không tính lại được</small></span>
         <span class="v gold">—</span>
-      </div>`;
+      </div>`}`;
 }
 
-/** Gắn click cho 2 dòng "Cần chú ý" — tháng sống mở bảng hợp đồng như cũ; tháng đã chốt mở danh sách quá hạn đã lưu. */
+/** Gắn click cho 2 dòng "Cần chú ý" — tháng sống mở bảng hợp đồng như cũ; tháng đã chốt mở danh sách đã lưu của tháng đó. */
 function bindAttention(root, m, live) {
   const { isStaff } = currentRoles();
+  const useLive = isCurrentMonth(m);
   root.querySelector('#tile-overdue')?.addEventListener('click', () => {
-    if (isCurrentMonth(m)) openContractListModal('Hợp đồng quá hạn', live.overdue, isStaff, 'var(--danger)');
-    else openSnapshotOverdueModal(m);
+    if (useLive) openContractListModal('Hợp đồng quá hạn', live.overdue, isStaff, 'var(--danger)');
+    else openSnapshotAttentionModal(m, 'qua_han');
   });
-  root.querySelector('#tile-neardue')?.addEventListener('click', () => openContractListModal('Gần đến hạn', live.upcoming, isStaff, 'var(--warning)'));
+  root.querySelector('#tile-neardue')?.addEventListener('click', () => {
+    if (useLive) openContractListModal('Gần đến hạn', live.upcoming, isStaff, 'var(--warning)');
+    else openSnapshotAttentionModal(m, 'gan_den_han');
+  });
 }
 
-/** Danh sách hợp đồng quá hạn ĐÃ CHỐT của 1 tháng (chỉ xem — bản chốt không có hồ sơ để mở tiếp). */
-function openSnapshotOverdueModal(m) {
+/** Danh sách "Cần chú ý" ĐÃ CHỐT của 1 tháng (chỉ xem — bản chốt không có hồ sơ để mở tiếp). `kind`: 'qua_han' | 'gan_den_han'. */
+function openSnapshotAttentionModal(m, kind) {
   const snap = snapshotOverview(m);
-  const rows = snap.hasDetail ? snap.overdueRows : [];
+  const overdue = kind === 'qua_han';
+  const rows = overdue ? snap.overdueRows : snap.upcomingRows;
+  const total = rows.reduce((sum, d) => sum + snap.amountOf(d), 0);
+  const title = overdue ? 'Hợp đồng quá hạn' : 'Gần đến hạn';
+  const color = overdue ? 'var(--danger)' : 'var(--warning)';
+  const dayText = (d) => {
+    if (snap.hasAttention) return overdue ? `Quá hạn ${d.attentionDays} ngày` : (d.attentionDays === 0 ? 'Đến hạn hôm nay' : `Còn ${d.attentionDays} ngày`);
+    return `Quá hạn ${d.daysOverdue} ngày`;
+  };
   openModal({
-    title: `Hợp đồng quá hạn · ${m.label} (${rows.length})`,
+    title: `${title} · ${m.label} (${rows.length})`,
     bodyHtml: `
-      <div class="text-sm text-muted mb-12">Số liệu đã chốt của ${m.label} · Dư nợ các hợp đồng quá hạn: <b style="color:var(--danger)">${formatVND(snap.overdueTotal || 0)}</b></div>
+      <div class="text-sm text-muted mb-12">Số liệu đã chốt của ${m.label} · Tổng tiền ${overdue ? 'quá hạn' : 'đến hạn'}: <b style="color:${color}">${formatVND(total)}</b></div>
       ${rows.length ? rows.map((d) => `
         <div class="list-row" style="flex-direction:column;align-items:stretch;gap:2px">
           <div class="flex items-center gap-6" style="flex-wrap:nowrap">
             <span style="font-size:14px;font-weight:700;line-height:1.8;padding-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${d.name || '—'}</span>
-            <span class="text-sm" style="flex-shrink:0;color:var(--danger)">Quá hạn ${d.daysOverdue} ngày</span>
+            <span class="text-sm" style="flex-shrink:0;color:${color}">${dayText(d)}</span>
           </div>
           <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
             <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${d.code ? `HĐTD ${d.code} · ` : ''}${d.address || 'Chưa có địa bàn'}</span>
-            <b style="color:var(--danger);font-size:13px;flex-shrink:0">${formatVND(d.balance)}</b>
+            <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(snap.amountOf(d))}</b>
           </div>
-        </div>`).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: `${m.label} không có hợp đồng quá hạn.` })}`,
+        </div>`).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: `${m.label} không có hợp đồng ${overdue ? 'quá hạn' : 'gần đến hạn'}.` })}`,
   });
 }
 
@@ -242,8 +273,8 @@ export function render(contentEl) {
   const ctx = { live: computeLiveOverview(), dashboardData };
 
   contentEl.innerHTML = `
-    <div class="lux-root">
     <div id="month-selector-slot" class="lux-period overview-period-picker">${monthSelectorHtml(dashboardData.months, dashboardMonth.yearMonth, isSuper)}</div>
+    <div class="lux-root">
 
     <section class="lux-hero lux-c-hero" id="hero-slot" aria-label="Tổng dư nợ">${heroInnerHtml(dashboardMonth, ctx)}
     </section>

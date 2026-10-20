@@ -2845,6 +2845,20 @@ cả (vô hại).
   `device` lúc đăng nhập, Edge Function `create-account` ghi vào mô tả). Bản `create-account` cũ vẫn chạy, chỉ chưa ghi thiết bị.
 - **Tổng quan** (điện thoại): khung "Kỳ báo cáo tháng" rộng bằng các khung bên dưới.
 
+### 10.59. Tổng quan: chọn kỳ báo cáo thì MỌI số liệu đổi theo tháng đó (deploy lại `create-account` + `send-due-reminders`)
+
+- Chọn tháng ở "Kỳ báo cáo tháng" (hoặc bấm cột biểu đồ) thì **Tổng dư nợ, số khách hàng, số hợp đồng, nợ xấu, Cần chú ý**
+  (Hợp đồng quá hạn, Gần đến hạn), nhóm nợ, dự phòng, biểu đồ, tổng hợp tăng giảm đều là số của đúng tháng đó. Tháng dương lịch hiện
+  tại luôn tính sống. Thanh "Kỳ báo cáo tháng" **dính ngay dưới tiêu đề** khi cuộn trang.
+- Bản chốt tháng (`monthly_snapshots.contracts_detail`) lưu thêm cho từng hợp đồng `attention` (`qua_han` / `gan_den_han` / `null`),
+  `attentionDays`, `attentionAmount` — tính Y HỆT `contractAttentionInfo()` trong `js/state.js` (xét cả "Kỳ tới" của phân kỳ, ngưỡng
+  gần đến hạn rộng 45 ngày; ô thống kê chỉ đếm trong 15 ngày như tháng sống). Ghi bởi `captureMonthlySnapshot()` (send-due-reminders,
+  tự động cuối tháng), type `capture-monthly-snapshot` (create-account, bấm tay) và "Nạp dữ liệu cũ" (trình duyệt tự tính, chỉ cần
+  tải lại giao diện). **Không cần SQL** (cột jsonb sẵn có).
+- Tháng chốt TRƯỚC khi có 3 trường này: "Hợp đồng quá hạn" vẫn suy ra được từ `daysOverdue`, còn "Gần đến hạn" hiện "—" (không tính
+  lại được vì chưa lưu ngày đến hạn). Muốn có đủ cho tháng cũ: chốt lại tháng hiện tại hoặc "Nạp dữ liệu cũ" lại file của tháng đó.
+- Bản `create-account`/`send-due-reminders` cũ vẫn chạy bình thường, chỉ chưa lưu các trường mới.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

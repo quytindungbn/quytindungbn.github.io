@@ -1594,9 +1594,12 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
   for (const ct of contracts) {
     const g = debtGroup(ct, asOf);
     if (g === null) continue;
+    const attention = contractAttentionInfo(ct, asOf);
     contractsDetail.push({
       code: ct.code || null, name: ct.name || null, address: ct.address || null,
       balance: Number(ct.balance) || 0, group: g, daysOverdue: daysOverdue(ct, asOf),
+      // Mục "Cần chú ý" của Tổng quan khi xem lại tháng này (xem snapshotOverview() trong overview.js).
+      attention: attention.level, attentionDays: attention.days, attentionAmount: attention.dueAmount,
       hasCollateral: ct.hasCollateral, collateralValue: ct.collateralValue,
       collateralType: ct.collateralType || null,
       loanTerm: ct.loanTerm || null,
