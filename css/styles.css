@@ -1793,3 +1793,30 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-lux .bs-doc .bs-table tbody tr:last-child td::before { color: var(--mut); }
   .bs-lux .bs-doc .bs-table tbody tr:last-child .bs-overprovision { color: #875800; }
 }
+
+/* ===== Kiểu chữ "báo cáo" của trang Quản trị dùng cho TOÀN BỘ app =====
+   Chữ có chân (serif) cho tiêu đề, tên mục, tên khách hàng và các con số lớn; chữ không chân (Inter / chữ hệ thống)
+   giữ cho nhãn nhỏ, nút, ô nhập và số trong bảng. Cùng bộ chữ với trang Quản trị: 'Source Serif 4' nếu máy có, không thì Charter / Georgia. */
+:root { --font-serif: 'Source Serif 4', Charter, Georgia, 'Times New Roman', serif; }
+.lux-root, .lux-period { --lux-display: var(--font-serif); }
+h1, h2, h3,
+.app-header h1, .modal-head h3, .section-head h2, .login-card h1, .login-card h2,
+.sidebar-brand strong, .row-title, .customer-ledger-name,
+.stat-tile .stat-value, .lux-num, .lux-trio b, .lux-attn-row .t b, .lux-leg .t b,
+.customer-contract-metric strong, .composition-total strong, .bs-donut > div {
+  font-family: var(--font-serif);
+}
+/* Tiêu đề thẻ trong cửa sổ chi tiết, tên hợp đồng và lời chào ở cổng khách hàng */
+.modal-body h4, .customer-contract-view h4, .order-card .oc-code, .app-content .card > .fw-700[style*="17px"] { font-family: var(--font-serif); }
+/* Tiêu đề: đậm vừa phải, không co chữ để chữ có chân hiện rõ nét */
+h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0; }
+.app-header h1 { font-size: 18px; }
+.sidebar-brand strong { font-size: 16px; letter-spacing: 0; }
+.row-title { font-weight: 700; }
+.stat-tile .stat-value { letter-spacing: -.01em; }
+/* Nhãn viết hoa nhỏ và đơn vị luôn dùng chữ không chân cho gọn, dễ đọc */
+.lux-eyebrow, .nav-group-title, .stat-label, .lux-num small, .lux-attn-row .v small, .lux-leg .v b small, .badge,
+.btn, button, input, select, textarea, .customer-ledger-columns, .bs-management-head, .bs-bar small { font-family: inherit; }
+.badge, .nav-badge, .bottom-nav-badge, .tb-rn { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.lux-eyebrow, .stat-label, .nav-group-title, .customer-ledger-columns, .bs-bar small { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.lux-num small, .lux-attn-row .v small, .lux-leg .v b small { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
