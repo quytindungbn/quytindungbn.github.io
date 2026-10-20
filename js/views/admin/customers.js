@@ -82,7 +82,7 @@ export function render(contentEl, filterEl) {
 
   filterEl.innerHTML = `
     <div class="filter-align-content"><div class="filter-card${isStaff ? ' no-actions' : ''}">
-      ${searchBoxHtml('search-input', window.matchMedia('(max-width: 899px)').matches ? 'Tìm tên, CCCD, SĐT, HĐ...' : 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
+      ${searchBoxHtml('search-input', window.matchMedia('(max-width: 899px)').matches ? 'Tìm tên, SĐT, HĐ' : 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
       <button type="button" class="filter-open-btn" id="btn-filter-open">${icon('filter', 'icon-sm')}<span>Lọc</span><i class="filter-open-badge" hidden></i></button>
       ${!isStaff ? `<button type="button" class="filter-import-btn" id="btn-filter-import" aria-label="Nhập từ Excel" title="Nhập từ Excel">${icon('paperclip')}</button>` : ''}
       <div class="filter-row filter-pills" id="filter-pills-row"></div>

@@ -532,7 +532,8 @@ svg { display: block; }
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); padding: 9px 12px; color: var(--text-faint);
 }
-.search-box input { border: none; outline: none; flex: 1; font-size: 14px; background: transparent; color: var(--text); }
+.search-box { min-width: 0; }
+.search-box input { border: none; outline: none; flex: 1; min-width: 0; font-size: 14px; background: transparent; color: var(--text); text-overflow: ellipsis; }
 .search-clear-btn {
   border: none; background: var(--surface-alt); color: var(--text-muted);
   width: 22px; height: 22px; border-radius: 50%; flex: none;
