@@ -80,7 +80,7 @@ export function render(contentEl, filterEl) {
 
   filterEl.innerHTML = `
     <div style="padding:10px 14px 0">
-      ${searchBoxHtml('search-input', 'Tìm theo tên, số CCCD, SĐT...', query)}
+      ${searchBoxHtml('search-input', 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
       <div class="filter-row" style="padding:0 0 8px" id="filter-pills-row"></div>
       <div class="segmented-row mb-8">
         <button class="${urgencyFilter === 'all' ? 'active' : ''}" data-urgency="all">Tất cả</button>
@@ -195,7 +195,15 @@ export function render(contentEl, filterEl) {
     });
     if (query.trim()) {
       const q = query.trim().toLowerCase();
-      list = list.filter((c) => c.name.toLowerCase().includes(q) || c.cccd.includes(q) || (c.phone || '').includes(q));
+      // Tìm được cả theo SỐ HỢP ĐỒNG (Số HĐTD, VD "455/26"): giữ các khách có hợp
+      // đồng ĐANG CÒN DƯ NỢ khớp số đó — cùng tập hợp đồng đang hiển thị bên dưới
+      // (hợp đồng đã tất toán không hiện nên không dùng để tìm).
+      const contractMatchedCustomerIds = new Set(
+        S.getState().contracts
+          .filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan' && String(ct.code || '').toLowerCase().includes(q))
+          .map((ct) => ct.customerId)
+      );
+      list = list.filter((c) => c.name.toLowerCase().includes(q) || c.cccd.includes(q) || (c.phone || '').includes(q) || contractMatchedCustomerIds.has(c.id));
     }
     // Gộp sẵn hợp đồng + tổng gốc (= dư nợ hiện tại)/lãi + mức "đáng chú ý
     // nhất" (quá hạn/gần đến hạn bao nhiêu ngày) từng khách hàng — dùng để
