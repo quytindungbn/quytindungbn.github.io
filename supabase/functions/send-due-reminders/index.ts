@@ -273,7 +273,7 @@ function contractAttention(contract: any, asOf: Date): { level: 'qua_han' | 'gan
 function debtGroup(contract: any, asOf: Date): number | null {
   const d = daysOverdue(contract, asOf);
   if (d === null) return null;
-  if (d <= 10) return 1;
+  if (d < 10) return 1; // Nhóm 1 = quá hạn DƯỚI 10 ngày; từ đúng 10 ngày là Nhóm 2 — khớp debtGroup() trong js/state.js
   if (d <= 90) return 2;
   if (d <= 180) return 3;
   if (d <= 360) return 4;

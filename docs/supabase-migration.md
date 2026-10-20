@@ -2425,7 +2425,7 @@ Thêm dưới 4 ô thống kê chính ở trang **Tổng quan** — **CHỈ qu�
 không giới hạn theo phạm vi Thôn/Xóm của 1 nhân viên.
 
 **Nhóm nợ 1-5** — xếp theo ĐÚNG quy định phân loại nợ hiện hành của Ngân hàng Nhà nước (Thông tư
-02/2013, khớp chính xác với số ngày bạn đã cho): Nhóm 1 = quá hạn 0-10 ngày, Nhóm 2 = 11-90 ngày, Nhóm 3 =
+02/2013, khớp chính xác với số ngày bạn đã cho): Nhóm 1 = quá hạn dưới 10 ngày, Nhóm 2 = 10-90 ngày, Nhóm 3 =
 91-180 ngày, Nhóm 4 = 181-360 ngày, Nhóm 5 = trên 360 ngày — xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới"
 của phân kỳ trả nợ (nếu có), lấy nguồn nào quá hạn nhiều hơn, y hệt cách các cảnh báo khác trong app đã
 làm. **"Nợ xấu"** = tổng dư nợ Nhóm 3+4+5 (KHÔNG tính Nhóm 2, đúng chuẩn phân loại chính thức dù Nhóm 2 đã
@@ -2858,6 +2858,8 @@ cả (vô hại).
 - Tháng chốt TRƯỚC khi có 3 trường này: "Hợp đồng quá hạn" vẫn suy ra được từ `daysOverdue`, còn "Gần đến hạn" hiện "—" (không tính
   lại được vì chưa lưu ngày đến hạn). Muốn có đủ cho tháng cũ: chốt lại tháng hiện tại hoặc "Nạp dữ liệu cũ" lại file của tháng đó.
 - Bản `create-account`/`send-due-reminders` cũ vẫn chạy bình thường, chỉ chưa lưu các trường mới.
+- **Sửa nhóm nợ cho khớp**: Nhóm 1 = quá hạn **dưới 10 ngày**, Nhóm 2 = từ đúng 10 đến 90 ngày (trước đây 2 Edge Function xếp quá hạn
+  đúng 10 ngày vào Nhóm 1 còn trang web xếp vào Nhóm 2). Bản chốt các tháng ĐÃ lưu giữ nguyên số cũ; chỉ lần chốt sau mới tính theo quy tắc mới.
 
 ---
 

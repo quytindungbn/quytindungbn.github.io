@@ -554,7 +554,7 @@ export function nextInstallmentInfo(contract, asOf = new Date()) {
  * LẪN "Kỳ tới" của phân kỳ trả nợ (nếu có), lấy nguồn NÀO QUÁ HẠN NHIỀU HƠN
  * (y hệt cách contractStatusInfo() ưu tiên "quá hạn" ở dưới) — dùng để xếp
  * NHÓM NỢ theo đúng quy định phân loại nợ (Thông tư 02/2013 NHNN): Nhóm 1 =
- * quá hạn 0-10 ngày, Nhóm 2 = 11-90, Nhóm 3 = 91-180, Nhóm 4 = 181-360, Nhóm
+ * quá hạn dưới 10 ngày, Nhóm 2 = 10-90, Nhóm 3 = 91-180, Nhóm 4 = 181-360, Nhóm
  * 5 = trên 360 ngày — xem debtGroup() ngay bên dưới. Trả về null nếu hợp
  * đồng đã tất toán (không xếp nhóm nợ cho hợp đồng đã trả hết).
  */
