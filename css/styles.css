@@ -203,26 +203,22 @@ svg { display: block; }
 .filter-card .filter-seg button.active .seg-n { background: rgba(255, 255, 255, .25); }
 .filter-card .filter-seg [data-urgency="qua_han"]:not(.active) .seg-n { background: var(--danger-bg); color: var(--danger); }
 /* Điện thoại: [Tìm kiếm | Lọc | +] rồi 3 nhóm lọc có số đếm; Thôn/Xóm/Sắp xếp nằm trong bảng "Bộ lọc", Tạo/Nhập nằm trong menu "+". */
-.filter-open-btn, .filter-plus-btn { height: 44px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; position: relative; font-size: 13.5px; font-weight: 700; }
+.filter-open-btn, .filter-import-btn { height: 44px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; position: relative; font-size: 13.5px; font-weight: 700; }
 .filter-open-btn { padding: 0 12px; }
-.filter-plus-btn { width: 44px; background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.filter-import-btn { width: 44px; padding: 0; }
 .filter-open-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #e53935; color: #fff; font-size: 11px; font-weight: 700; font-style: normal; display: flex; align-items: center; justify-content: center; }
 .filter-open-badge[hidden] { display: none; }
-.filter-plus-menu { position: absolute; right: 0; top: 52px; z-index: 30; min-width: 240px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .22); padding: 6px; }
-.filter-plus-menu[hidden] { display: none; }
-.filter-plus-menu button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px; border: 0; background: none; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; color: var(--text); }
-.filter-plus-menu button + button { border-top: 1px solid var(--border); }
 .fsheet-clear { display: flex; justify-content: flex-end; margin: -4px 0 8px; }
 .fsheet-clear button { border: 0; background: none; color: var(--color-primary); font-weight: 700; font-size: 13.5px; cursor: pointer; padding: 4px 0; }
 .fsheet-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); padding: 10px 12px; margin-bottom: 10px; text-align: left; cursor: pointer; color: var(--text); }
 .fsheet-row small { display: block; color: var(--text-muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 2px; }
 .fsheet-row b { font-size: 14.5px; }
 @media (max-width: 899px) {
-  .filter-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px 8px; align-items: center; grid-template-areas: "search open plus" "seg seg seg"; padding-bottom: 4px; }
+  .filter-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px 8px; align-items: center; grid-template-areas: "search open import" "seg seg seg"; padding-bottom: 4px; }
   .filter-card.no-actions { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "search open" "seg seg"; }
   .filter-card > .search-box { grid-area: search; margin: 0; height: 44px; border-radius: 12px; padding: 0 12px; }
   .filter-card > .filter-open-btn { grid-area: open; }
-  .filter-card > .filter-plus-btn { grid-area: plus; }
+  .filter-card > .filter-import-btn { grid-area: import; }
   .filter-card > .filter-seg { grid-area: seg; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; max-width: none; margin: 0; background: #eef4f1; border-radius: 12px; padding: 3px; }
   .filter-card .filter-seg button { border: 0; background: transparent; padding: 9px 2px; border-radius: 10px; font-size: 12.5px; gap: 5px; overflow: visible; }
   .filter-card .filter-seg button.active { background: var(--color-primary); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
@@ -231,7 +227,7 @@ svg { display: block; }
 .filter-card > .filter-pills { padding: 0 0 8px; }
 /* Máy tính — thanh lọc gọn trong 1 khung, 2 hàng: [Tìm kiếm | Nhập Excel | Tạo tài khoản] rồi [Tất cả/Quá hạn/Gần đến hạn có số đếm | Thôn/Xóm/Sắp xếp]. Điện thoại giữ nguyên. */
 @media (min-width: 900px) {
-  .filter-open-btn, .filter-plus-btn, .filter-plus-menu { display: none !important; }
+  .filter-open-btn, .filter-import-btn { display: none !important; }
   .filter-card {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 10px; align-items: center;
     grid-template-areas: "search actions" "seg seg" "pills pills";

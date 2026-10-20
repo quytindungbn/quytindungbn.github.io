@@ -84,11 +84,7 @@ export function render(contentEl, filterEl) {
     <div class="filter-align-content"><div class="filter-card${isStaff ? ' no-actions' : ''}">
       ${searchBoxHtml('search-input', window.matchMedia('(max-width: 899px)').matches ? 'Tìm tên, CCCD, SĐT, số HĐ...' : 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
       <button type="button" class="filter-open-btn" id="btn-filter-open">${icon('filter', 'icon-sm')}<span>Lọc</span><i class="filter-open-badge" hidden></i></button>
-      ${!isStaff ? `<button type="button" class="filter-plus-btn" id="btn-filter-plus" aria-label="Thêm">${icon('plus')}</button>
-      <div class="filter-plus-menu" id="filter-plus-menu" hidden>
-        <button type="button" data-plus-act="add">${icon('plus', 'icon-sm')} Tạo tài khoản khách hàng</button>
-        <button type="button" data-plus-act="import">${icon('paperclip', 'icon-sm')} Nhập từ Excel</button>
-      </div>` : ''}
+      ${!isStaff ? `<button type="button" class="filter-import-btn" id="btn-filter-import" aria-label="Nhập từ Excel" title="Nhập từ Excel">${icon('paperclip')}</button>` : ''}
       <div class="filter-row filter-pills" id="filter-pills-row"></div>
       <div class="segmented-row filter-seg mb-8">
         <button class="${urgencyFilter === 'all' ? 'active' : ''}" data-urgency="all">Tất cả <i class="seg-n"></i></button>
@@ -98,7 +94,6 @@ export function render(contentEl, filterEl) {
       ${!isStaff ? `
       <div class="flex gap-8 mb-8 filter-actions">
         <button class="btn btn-outline btn-sm" id="btn-import">${icon('paperclip', 'icon-sm')} Nhập từ Excel</button>
-        <button class="btn btn-primary btn-sm" id="btn-add">${icon('plus', 'icon-sm')} Tạo tài khoản khách hàng</button>
       </div>` : ''}
     </div></div>
   `;
@@ -106,7 +101,7 @@ export function render(contentEl, filterEl) {
   mountScrollTopButton(filterEl); // nút nhỏ về đầu trang khi kéo xuống danh sách dài
   if (!isStaff) {
     filterEl.querySelector('#btn-import').addEventListener('click', openImportModal);
-    filterEl.querySelector('#btn-add').addEventListener('click', () => openCustomerForm());
+    filterEl.querySelector('#btn-filter-import').addEventListener('click', openImportModal); // nút nhập Excel dạng biểu tượng trên điện thoại
   }
   filterEl.querySelectorAll('[data-urgency]').forEach((chip) => {
     chip.addEventListener('click', () => {
@@ -199,24 +194,8 @@ export function render(contentEl, filterEl) {
   }
   renderFilterPills();
 
-  // ---- Điện thoại: nút "Lọc" mở bảng Thôn/Xóm/Sắp xếp; nút "+" mở menu Tạo/Nhập (máy tính vẫn hiện thẳng, 2 nút này bị ẩn bằng CSS) ----
+  // ---- Điện thoại: nút "Lọc" mở bảng Thôn/Xóm/Sắp xếp; nút kẹp giấy = Nhập từ Excel (máy tính vẫn hiện thẳng các ô lọc, 2 nút này bị ẩn bằng CSS) ----
   filterEl.querySelector('#btn-filter-open').addEventListener('click', openFilterSheet);
-  const plusBtn = filterEl.querySelector('#btn-filter-plus');
-  if (plusBtn) {
-    const menu = filterEl.querySelector('#filter-plus-menu');
-    const closeMenu = () => { menu.hidden = true; document.removeEventListener('click', onOutside, true); };
-    function onOutside(e) { if (!menu.contains(e.target) && e.target !== plusBtn && !plusBtn.contains(e.target)) closeMenu(); }
-    plusBtn.addEventListener('click', () => {
-      if (!menu.hidden) { closeMenu(); return; }
-      menu.hidden = false;
-      document.addEventListener('click', onOutside, true);
-    });
-    menu.querySelectorAll('[data-plus-act]').forEach((item) => item.addEventListener('click', () => {
-      closeMenu();
-      filterEl.querySelector(item.dataset.plusAct === 'add' ? '#btn-add' : '#btn-import').click(); // dùng đúng nút gốc đã có sẵn
-    }));
-  }
-
   function openFilterSheet() {
     const valueOf = {
       thon: () => (filterThon.length ? filterThon.join(', ') : 'Tất cả'),
