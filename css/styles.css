@@ -199,6 +199,37 @@ svg { display: block; }
 /* Thanh lọc phía trên danh sách (Khách hàng & Hợp đồng): cùng bề rộng, căn giữa và cùng lề với .app-content để thẳng hàng với khung danh sách bên dưới. */
 .filter-align-content { max-width: 1180px; margin: 0 auto; padding: 10px 14px 0; }
 @media (min-width: 900px) { .filter-align-content { padding-left: 28px; padding-right: 28px; } } /* khớp lề 28px của .app-content trên máy tính */
+.filter-card > .filter-pills { padding: 0 0 8px; }
+.seg-n { display: none; }
+/* Máy tính — thanh lọc gọn trong 1 khung, 2 hàng: [Tìm kiếm | Nhập Excel | Tạo tài khoản] rồi [Tất cả/Quá hạn/Gần đến hạn có số đếm | Thôn/Xóm/Sắp xếp]. Điện thoại giữ nguyên. */
+@media (min-width: 900px) {
+  .filter-card {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 10px; align-items: center;
+    grid-template-areas: "search actions" "seg seg" "pills pills";
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; padding: 14px;
+  }
+  .filter-card.no-actions { grid-template-areas: "search search" "seg seg" "pills pills"; }
+  .filter-card > .search-box { grid-area: search; margin: 0; height: 42px; border-radius: 10px; padding: 0 12px; }
+  .filter-card > .filter-actions { grid-area: actions; margin: 0; flex-wrap: nowrap; }
+  .filter-card .filter-actions .btn { height: 42px; padding: 0 16px; font-size: 14px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .filter-card > .filter-seg {
+    grid-area: seg; justify-self: start; display: inline-flex; gap: 2px; max-width: none; margin: 0;
+    background: #eef4f1; border-radius: 11px; padding: 3px;
+  }
+  .filter-card .filter-seg button { border: 0; background: transparent; padding: 8px 14px; border-radius: 9px; font-size: 13.5px; gap: 7px; overflow: visible; }
+  .filter-card .filter-seg button.active { background: var(--color-primary); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+  .seg-n { display: inline-block; font-style: normal; font-size: 11.5px; line-height: 1.5; padding: 0 7px; border-radius: 999px; background: rgba(0, 0, 0, .08); }
+  .filter-card .filter-seg button.active .seg-n { background: rgba(255, 255, 255, .22); }
+  .filter-card .filter-seg [data-urgency="qua_han"]:not(.active) .seg-n { background: var(--danger-bg); color: var(--danger); }
+  .filter-card > .filter-pills { grid-area: pills; padding: 0; overflow: visible; flex-wrap: wrap; justify-content: flex-start; }
+  .filter-pills .pill-select { height: 42px; padding: 0 12px; border-radius: 10px; font-size: 13.5px; }
+}
+/* Màn hình đủ rộng: gộp hàng 2 — nhóm lọc bên trái, Thôn/Xóm/Sắp xếp sát phải. */
+@media (min-width: 1220px) {
+  .filter-card { grid-template-areas: "search actions" "seg pills"; }
+  .filter-card.no-actions { grid-template-areas: "search search" "seg pills"; }
+  .filter-card > .filter-pills { justify-content: flex-end; }
+}
 
 /* ---------------- Bottom nav ---------------- */
 .bottom-nav {

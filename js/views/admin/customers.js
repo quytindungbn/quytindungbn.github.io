@@ -80,20 +80,20 @@ export function render(contentEl, filterEl) {
   // trước (2 biến đó cũng không hề bị reset ở render()).
 
   filterEl.innerHTML = `
-    <div class="filter-align-content">
+    <div class="filter-align-content"><div class="filter-card${isStaff ? ' no-actions' : ''}">
       ${searchBoxHtml('search-input', 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
-      <div class="filter-row" style="padding:0 0 8px" id="filter-pills-row"></div>
-      <div class="segmented-row mb-8">
-        <button class="${urgencyFilter === 'all' ? 'active' : ''}" data-urgency="all">Tất cả</button>
-        <button class="${urgencyFilter === 'qua_han' ? 'active' : ''}" data-urgency="qua_han">${icon('alert', 'icon-sm')} Nợ quá hạn</button>
-        <button class="${urgencyFilter === 'gan_den_han' ? 'active' : ''}" data-urgency="gan_den_han">Gần đến hạn</button>
+      <div class="filter-row filter-pills" id="filter-pills-row"></div>
+      <div class="segmented-row filter-seg mb-8">
+        <button class="${urgencyFilter === 'all' ? 'active' : ''}" data-urgency="all">Tất cả <i class="seg-n"></i></button>
+        <button class="${urgencyFilter === 'qua_han' ? 'active' : ''}" data-urgency="qua_han">${icon('alert', 'icon-sm')} Nợ quá hạn <i class="seg-n"></i></button>
+        <button class="${urgencyFilter === 'gan_den_han' ? 'active' : ''}" data-urgency="gan_den_han">Gần đến hạn <i class="seg-n"></i></button>
       </div>
       ${!isStaff ? `
-      <div class="flex gap-8 mb-8">
+      <div class="flex gap-8 mb-8 filter-actions">
         <button class="btn btn-outline btn-sm" id="btn-import">${icon('paperclip', 'icon-sm')} Nhập từ Excel</button>
         <button class="btn btn-primary btn-sm" id="btn-add">${icon('plus', 'icon-sm')} Tạo tài khoản khách hàng</button>
       </div>` : ''}
-    </div>
+    </div></div>
   `;
   bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(); });
   mountScrollTopButton(filterEl); // nút nhỏ về đầu trang khi kéo xuống danh sách dài
@@ -233,6 +233,12 @@ export function render(contentEl, filterEl) {
     // — dù hồ sơ/tài khoản Use của họ vẫn được giữ (xem Quản lý User), chỉ
     // là không còn hiện trong danh sách khách hàng đang vay này.
     enriched = enriched.filter((e) => e.totalBalance > 0);
+    // Số khách của từng nhóm (theo đúng tìm kiếm/Thôn/Xóm đang chọn) hiện cạnh 3 nút lọc.
+    const urgencyCounts = { all: enriched.length, qua_han: enriched.filter((e) => e.hasOverdue).length, gan_den_han: enriched.filter((e) => e.hasNearDue).length };
+    filterEl.querySelectorAll('[data-urgency]').forEach((btn) => {
+      const badge = btn.querySelector('.seg-n');
+      if (badge) badge.textContent = urgencyCounts[btn.dataset.urgency] ?? 0;
+    });
     if (urgencyFilter === 'qua_han') enriched = enriched.filter((e) => e.hasOverdue);
     // "Gần đến hạn" dùng ngưỡng RỘNG 45 ngày (isWideNearDue), không phải
     // đúng 15 ngày của contractUrgency() — xem giải thích ở WIDE_NEAR_DUE_DAYS.
