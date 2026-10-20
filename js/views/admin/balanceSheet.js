@@ -473,7 +473,7 @@ function draw(contentEl) {
   const dateText = report ? reportDate(report.period_end) : '';
   // Thanh cố định (dính dưới tiêu đề khi cuộn): số liệu đến ngày + kỳ báo cáo + nút làm mới/nạp cân đối.
   const barHtml = `<div class="bs-bar">
-    ${report ? `<div class="bs-bar-date"><small><span class="bs-d-only">Số liệu </span>đến ngày</small><b>${dateText}</b></div>` : ''}
+    ${report ? `<div class="bs-bar-date"><small><span class="bs-wide-only">Số liệu </span>đến ngày</small><b>${dateText}</b></div>` : ''}
     ${reports.length ? `<label class="bs-bar-period"><small>Kỳ báo cáo</small><select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select></label>` : ''}
     <div class="bs-bar-tools"><button type="button" class="bs-ibtn" id="bs-refresh" title="Làm mới" aria-label="Làm mới">${icon('refresh')}</button>${superAdmin ? `<button type="button" class="bs-ibtn" id="bs-import" title="Nạp cân đối" aria-label="Nạp cân đối">${icon('upload')}</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>` : ''}</div></div>`;
   const ratiosHtml = report ? ratiosSection(end) : '';
