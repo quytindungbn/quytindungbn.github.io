@@ -82,7 +82,7 @@ export function render(contentEl, filterEl) {
 
   filterEl.innerHTML = `
     <div class="filter-align-content"><div class="filter-card${isStaff ? ' no-actions' : ''}">
-      ${searchBoxHtml('search-input', window.matchMedia('(max-width: 899px)').matches ? 'Tìm tên, CCCD, SĐT, số HĐ...' : 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
+      ${searchBoxHtml('search-input', window.matchMedia('(max-width: 899px)').matches ? 'Tìm tên, CCCD, SĐT, HĐ...' : 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
       <button type="button" class="filter-open-btn" id="btn-filter-open">${icon('filter', 'icon-sm')}<span>Lọc</span><i class="filter-open-badge" hidden></i></button>
       ${!isStaff ? `<button type="button" class="filter-import-btn" id="btn-filter-import" aria-label="Nhập từ Excel" title="Nhập từ Excel">${icon('paperclip')}</button>` : ''}
       <div class="filter-row filter-pills" id="filter-pills-row"></div>
@@ -95,6 +95,7 @@ export function render(contentEl, filterEl) {
       <div class="flex gap-8 mb-8 filter-actions">
         <button class="btn btn-outline btn-sm" id="btn-import">${icon('paperclip', 'icon-sm')} Nhập từ Excel</button>
       </div>` : ''}
+      <div class="filter-sum"></div>
     </div></div>
   `;
   bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(); });
@@ -305,6 +306,9 @@ export function render(contentEl, filterEl) {
         <button type="button" data-jump="bottom" title="Xuống cuối trang" aria-label="Xuống cuối trang">↓</button>
       </nav>` : ''}
     `;
+    // Điện thoại: dòng tóm tắt nằm ngay trong khung lọc (máy tính vẫn hiện phía trên danh sách — xem CSS .filter-sum).
+    const filterSumEl = filterEl.querySelector('.filter-sum');
+    if (filterSumEl) filterSumEl.innerHTML = `${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong>`;
     bindCustomerLedger(contentEl, { readOnly: isStaff });
     contentEl.querySelectorAll('.customer-page-jump [data-jump]').forEach((button) => {
       button.addEventListener('click', () => {

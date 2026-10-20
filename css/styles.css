@@ -214,8 +214,11 @@ svg { display: block; }
 .fsheet-row small { display: block; color: var(--text-muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 2px; }
 .fsheet-row b { font-size: 14.5px; }
 @media (max-width: 899px) {
-  .filter-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px 8px; align-items: center; grid-template-areas: "search open import" "seg seg seg"; padding-bottom: 4px; }
-  .filter-card.no-actions { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "search open" "seg seg"; }
+  .filter-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px 8px; align-items: center; grid-template-areas: "search open import" "seg seg seg" "sum sum sum"; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; padding: 12px 12px 0; }
+  .filter-card.no-actions { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "search open" "seg seg" "sum sum"; }
+  .filter-card > .filter-sum { display: block; grid-area: sum; margin: 2px -12px 0; padding: 10px 14px; background: #eef4f1; border-top: 1px solid var(--border); border-radius: 0 0 15px 15px; font-size: 12.5px; color: var(--text-muted); }
+  .filter-sum strong { color: var(--color-primary-dark); }
+  .customer-list-summary { display: none; }
   .filter-card > .search-box { grid-area: search; margin: 0; height: 44px; border-radius: 12px; padding: 0 12px; }
   .filter-card > .filter-open-btn { grid-area: open; }
   .filter-card > .filter-import-btn { grid-area: import; }
@@ -225,6 +228,7 @@ svg { display: block; }
   .filter-card > .filter-pills, .filter-card > .filter-actions { display: none; }
 }
 .filter-card > .filter-pills { padding: 0 0 8px; }
+.filter-sum { display: none; }
 /* Máy tính — thanh lọc gọn trong 1 khung, 2 hàng: [Tìm kiếm | Nhập Excel | Tạo tài khoản] rồi [Tất cả/Quá hạn/Gần đến hạn có số đếm | Thôn/Xóm/Sắp xếp]. Điện thoại giữ nguyên. */
 @media (min-width: 900px) {
   .filter-open-btn, .filter-import-btn { display: none !important; }
