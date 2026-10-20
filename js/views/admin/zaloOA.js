@@ -20,7 +20,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, openPicker, pillSelectHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatDateTime, formatVND, colorFor, initials } from '../../utils.js';
+import { formatDateTime, formatDate, formatVND, colorFor, initials } from '../../utils.js';
 import { openCustomerDetail, openContractView } from './customers.js';
 
 const AUTO_SEND_SECTIONS = [
@@ -36,10 +36,16 @@ let oaQuery = ''; // ô tìm kiếm tên/SĐT ở tab "Danh sách OA"
 let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
+// "Quản lý gửi tin": mặc định chỉ hiện 1 tháng gần nhất; bấm "Xem thêm" hoặc chọn "Từ ngày" cũ hơn thì tải thêm log cũ từ máy chủ (giữ tạm trong bộ nhớ).
+let extraLogs = [];        // log cũ hơn khoảng đã tải sẵn lúc đăng nhập
+let logCoveredFrom = null; // mốc thời gian (ms) cũ nhất mà dữ liệu đã tải phủ kín; -Infinity = đã tải hết
+let logViewFrom = null;    // sau khi bấm "Xem thêm": hiện từ mốc này trở đi (null = 1 tháng gần nhất)
+const LOG_PAGE = 500;
 
 /** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
 export function resetFilters() {
   activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; logStatusFilter = 'all'; logFromDate = ''; logToDate = '';
+  extraLogs = []; logCoveredFrom = null; logViewFrom = null;
 }
 
 export function renderHeader(headerEl) {
@@ -624,7 +630,40 @@ function bindDayInputClamp(inputEl) {
 // ------------------------------------------------------------
 // Tab "Quản lý gửi tin" (log)
 // ------------------------------------------------------------
+
+const logTime = (l) => new Date(l.sentAt).getTime();
+function allLoadedLogs() {
+  const seen = new Set();
+  const out = [];
+  for (const l of [...S.listZaloSendLog(), ...extraLogs]) {
+    if (seen.has(l.id)) continue;
+    seen.add(l.id);
+    out.push(l);
+  }
+  return out.sort((a, b) => logTime(b) - logTime(a));
+}
+/** Mốc cũ nhất mà dữ liệu đã tải phủ kín. Lúc đăng nhập chỉ tải 31 ngày gần nhất (tối đa 1.000 dòng) — đủ 1.000 dòng thì mốc là dòng cũ nhất. */
+function logCoverage() {
+  if (logCoveredFrom !== null) return logCoveredFrom;
+  const recent = S.listZaloSendLog();
+  return recent.length >= 1000 ? Math.min(...recent.map(logTime)) : Date.now() - 31 * 86400000;
+}
+/** Tải thêm log cũ: tới tận `untilMs` (chọn "Từ ngày"), hoặc đúng 1 trang tiếp theo khi `untilMs` = null ("Xem thêm"). */
+async function loadOlderLogs(untilMs) {
+  for (let guard = 0; guard < 40 && logCoveredFrom !== -Infinity; guard++) {
+    const from = logCoverage();
+    if (untilMs !== null && from <= untilMs) break;
+    const { rows, hasMore } = await S.fetchOlderZaloSendLog({ before: new Date(from).toISOString(), limit: LOG_PAGE });
+    extraLogs.push(...rows);
+    if (!hasMore) { logCoveredFrom = -Infinity; break; }
+    const oldest = Math.min(...rows.map(logTime));
+    logCoveredFrom = oldest < from ? oldest : from - 1; // luôn tiến lùi được, không kẹt khi nhiều dòng cùng 1 mốc giờ
+    if (untilMs === null) break;
+  }
+}
+
 function drawLogTab(slot) {
+  const failedFrom = new Set(); // các mốc "Từ ngày" đã thử tải log cũ mà lỗi — không tự thử lại vô hạn
   slot.innerHTML = `
     <div class="segmented-row mb-8" id="log-status-filter">
       <button class="${logStatusFilter === 'all' ? 'active' : ''}" data-status="all">Tất cả</button>
@@ -649,19 +688,32 @@ function drawLogTab(slot) {
   drawList();
 
   function drawList() {
-    // Nguồn dữ liệu là 200 lần gửi GẦN NHẤT (toàn hệ thống, xem state.js) —
-    // lọc theo khoảng ngày cũ hơn phạm vi đó sẽ không thấy đủ, chấp nhận
-    // được với quy mô hiện tại.
-    const monthAgo = Date.now() - 30 * 86400000; // chỉ hiển thị các lần gửi trong 1 tháng gần nhất
-    let logs = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= monthAgo);
+    // Mặc định chỉ hiện 1 tháng gần nhất. Chọn "Từ ngày" cũ hơn → tự tải log cũ về rồi hiện bình thường;
+    // bấm "Xem thêm" → tải thêm 1 trang log cũ hơn nữa.
+    const fromMs = logFromDate ? new Date(`${logFromDate}T00:00:00`).getTime() : null;
+    if (fromMs !== null && !failedFrom.has(fromMs) && logCoveredFrom !== -Infinity && fromMs < logCoverage()) {
+      slot.querySelector('#log-list').innerHTML = '<div class="text-sm text-muted" style="padding:16px 4px">Đang tải lịch sử gửi tin cũ hơn...</div>';
+      loadOlderLogs(fromMs).then(drawList, (err) => {
+        failedFrom.add(fromMs);
+        toast(err.message || 'Không tải được lịch sử cũ hơn', 'error');
+        drawList();
+      });
+      return;
+    }
+    const viewFromMs = fromMs !== null ? fromMs : (logViewFrom !== null ? logViewFrom : Date.now() - 30 * 86400000);
+    let logs = allLoadedLogs().filter((l) => logTime(l) >= viewFromMs);
     if (logStatusFilter !== 'all') logs = logs.filter((l) => l.status === logStatusFilter);
-    if (logFromDate) logs = logs.filter((l) => new Date(l.sentAt) >= new Date(`${logFromDate}T00:00:00`));
     if (logToDate) logs = logs.filter((l) => new Date(l.sentAt) <= new Date(`${logToDate}T23:59:59`));
     const successCount = logs.filter((l) => l.status === 'success').length;
     const errorCount = logs.filter((l) => l.status === 'error').length;
     const hasFilter = logStatusFilter !== 'all' || logFromDate || logToDate;
+    // Nút "Xem thêm" (khi không chọn "Từ ngày"): còn log cũ hơn để tải thì hiện nút, hết thì báo đã hiện toàn bộ.
+    const canLoadMore = fromMs === null && logCoveredFrom !== -Infinity;
+    const moreHtml = fromMs !== null ? '' : (canLoadMore
+      ? '<button type="button" class="btn btn-outline btn-block mt-8" id="log-more">Xem thêm lịch sử cũ hơn</button>'
+      : '<div class="text-sm text-muted" style="text-align:center;padding:12px 4px">Đã hiển thị toàn bộ lịch sử gửi tin.</div>');
     slot.querySelector('#log-list').innerHTML = `
-      <div class="text-sm text-muted mb-8">${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ''} trong 1 tháng gần nhất · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
+      <div class="text-sm text-muted mb-8">${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ''}${fromMs === null ? (logViewFrom === null ? ' trong 1 tháng gần nhất' : (logCoveredFrom === -Infinity && viewFromMs <= 0 ? ' (toàn bộ lịch sử)' : ` từ ${formatDate(new Date(viewFromMs))} đến nay`)) : ''} · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
       ${logs.length ? logs.map((l) => {
         const customer = S.getCustomer(l.customerId);
         const contract = l.contractId ? S.getContract(l.contractId) : null;
@@ -674,7 +726,20 @@ function drawLogTab(slot) {
           </div>
         </div>`;
       }).join('') : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt bộ lọc trạng thái/thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
+      ${moreHtml}
     `;
+    const moreBtn = slot.querySelector('#log-more');
+    if (moreBtn) {
+      moreBtn.addEventListener('click', async () => {
+        moreBtn.disabled = true;
+        moreBtn.textContent = 'Đang tải...';
+        try {
+          await loadOlderLogs(null); // tải thêm 1 trang log cũ hơn, rồi hiện từ mốc đó trở đi
+          logViewFrom = logCoveredFrom === -Infinity ? 0 : logCoveredFrom;
+        } catch (err) { toast(err.message || 'Không tải được thêm lịch sử', 'error'); }
+        drawList();
+      });
+    }
   }
 }
 

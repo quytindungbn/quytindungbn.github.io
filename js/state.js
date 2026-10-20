@@ -1090,6 +1090,21 @@ export async function getZaloAutoSendStatus(contractId) {
 export function listZaloAutoSend() { return state.zaloAutoSendList || []; }
 export function listZaloAutoSendByKind(kind) { return (state.zaloAutoSendList || []).filter((r) => r.kind === kind); }
 export function listZaloSendLog() { return state.zaloSendLog || []; }
+
+/**
+ * Tải thêm lịch sử gửi tin CŨ HƠN (trang "Quản lý gửi tin" bấm "Xem thêm" hoặc chọn
+ * "Từ ngày" xa hơn 1 tháng). Chỉ trả về cho nơi gọi giữ tạm trong bộ nhớ — KHÔNG
+ * ghi vào state/localStorage để khỏi phình bộ nhớ trình duyệt.
+ * `before` (ISO): lấy các dòng có sent_at <= mốc này, mới → cũ, tối đa `limit` dòng.
+ */
+export async function fetchOlderZaloSendLog({ before, limit = 500 }) {
+  const session = getSession();
+  const sb = getSupabaseClient(session?.sbToken);
+  const { data, error } = await sb.from('zalo_send_log').select('*').lte('sent_at', before).order('sent_at', { ascending: false }).limit(limit);
+  if (error) throw new Error('Không tải được thêm lịch sử gửi tin, thử lại sau.');
+  const rows = (data || []).map(mapZaloSendLogRow);
+  return { rows, hasMore: rows.length >= limit };
+}
 /** Lần gửi Zalo THÀNH CÔNG gần nhất của 1 hợp đồng (từ cache log, tối đa 200 dòng gần nhất) — dùng hiện cảnh báo "còn N ngày mới gửi lại được" trước khi bấm gửi tay. Trả về null nếu chưa gửi lần nào (trong phạm vi cache). */
 export function lastSuccessfulZaloSend(contractId) {
   const rows = (state.zaloSendLog || []).filter((l) => l.contractId === contractId && l.status === 'success');
