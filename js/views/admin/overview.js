@@ -3,7 +3,7 @@ import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
-import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor, escapeHtml } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor, escapeHtml, compactParts } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
 import { monthlyTrendLineChartSvg, compositionDonutHtml } from '../../components/charts.js';
@@ -362,14 +362,8 @@ const GROUP_COLORS = { 1: '#0c4a3f', 2: '#b08d3c', 3: '#d49a8a', 4: '#a8402f', 5
 // Tên gọi phân loại nợ theo Thông tư 02/2013 — hiện cạnh số nhóm ở "Dư nợ theo nhóm nợ".
 const GROUP_NAMES = { 1: 'Đủ tiêu chuẩn', 2: 'Cần chú ý', 3: 'Dưới tiêu chuẩn', 4: 'Nghi ngờ', 5: 'Có khả năng mất vốn' };
 
-/** Số tiền rút gọn cho số lớn: 48,62 tỷ ₫ / 236,48 triệu ₫ / 950.000 ₫ (số đầy đủ vẫn hiện ngay dưới). */
-function compactVnd(n) {
-  const v = Math.round(Number(n) || 0);
-  const comma = (x) => x.toFixed(2).replace('.', ',');
-  if (v >= 1e9) return { num: comma(v / 1e9), unit: 'tỷ ₫' };
-  if (v >= 1e6) return { num: comma(v / 1e6), unit: 'triệu ₫' };
-  return { num: formatNumber(v), unit: '₫' };
-}
+/** Số tiền rút gọn cho số lớn: 48,62 tỷ đ / 236,48 triệu đ / 429 triệu đ (tròn thì bỏ ",00") / 950.000 đ. */
+function compactVnd(n) { return compactParts(n); }
 /** Đường xu hướng nhỏ (tối đa 6 tháng gần nhất) cho thẻ Tổng dư nợ. */
 function sparklineSvg(values) {
   const w = 340, h = 52;

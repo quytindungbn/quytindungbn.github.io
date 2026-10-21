@@ -7,7 +7,7 @@ import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
 import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
 import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
-import { escapeHtml, formatNumber, formatVND, formatCompact } from '../../utils.js';
+import { escapeHtml, formatNumber, formatVND, formatCompact, compactParts } from '../../utils.js';
 import { icon } from '../../icons.js';
 
 let reports = [];
@@ -151,15 +151,8 @@ export async function render(contentEl) {
   draw(contentEl);
 }
 
-/** Số lớn gọn ở đầu trang: từ 1 tỷ trở lên hiện "x,xx tỷ", dưới 1 tỷ hiện "x,x triệu" (số đầy đủ vẫn nằm ngay dòng bên dưới). */
-function compactMoney(value) {
-  const n = Number(value) || 0;
-  const big = Math.abs(n) >= 1e9;
-  return {
-    num: new Intl.NumberFormat('vi-VN', { minimumFractionDigits: big ? 2 : 1, maximumFractionDigits: big ? 2 : 1 }).format(big ? n / 1e9 : n / 1e6),
-    unit: big ? 'tỷ đ' : 'triệu đ',
-  };
-}
+/** Số lớn gọn ở đầu trang: "95,61 tỷ đ", "429 triệu đ" (tròn thì bỏ ",00"); số đầy đủ không còn hiện thêm ở dòng dưới. */
+function compactMoney(value) { return compactParts(value); }
 
 function stat(label, value, startValue, color, clickable = false) {
   const tag = clickable ? 'button' : 'div';

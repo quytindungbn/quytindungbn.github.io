@@ -14,18 +14,23 @@ export function formatVND(n) {
   return `${formatNumber(n)} ₫`;
 }
 
-/** Định dạng rút gọn cho số liệu nổi bật: 1020000 -> "1,02 triệu" */
-export function formatCompact(n) {
-  const v = Math.round(n || 0);
+/**
+ * Số tiền rút gọn kèm đơn vị: 429000000 -> { num: '429', unit: 'triệu đ' }, 95610000000 -> { num: '95,61', unit: 'tỷ đ' }.
+ * Tối đa 2 số lẻ và bỏ số 0 thừa: 429,00 -> "429", 429,50 -> "429,5". Dưới 1 triệu hiện số đầy đủ: 950.000 đ.
+ */
+export function compactParts(n) {
+  const v = Math.round(Number(n) || 0);
   const abs = Math.abs(v);
-  if (abs >= 1e9) return `${trimNum(v / 1e9)} tỷ`;
-  if (abs >= 1e6) return `${trimNum(v / 1e6)} triệu`;
-  if (abs >= 1e3) return formatNumber(v);
-  return formatNumber(v);
+  const fmt = (x) => x.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+  if (abs >= 1e9 || Math.round(abs / 1e4) / 100 >= 1000) return { num: fmt(v / 1e9), unit: 'tỷ đ' }; // 999,999 triệu làm tròn thành 1 tỷ
+  if (abs >= 1e6) return { num: fmt(v / 1e6), unit: 'triệu đ' };
+  return { num: formatNumber(v), unit: 'đ' };
 }
 
-function trimNum(n) {
-  return n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',');
+/** Định dạng rút gọn cho số liệu nổi bật: 1020000 -> "1,02 triệu đ", 429000000 -> "429 triệu đ". Dưới 1 triệu: số đầy đủ, không đơn vị. */
+export function formatCompact(n) {
+  const { num, unit } = compactParts(n);
+  return Math.abs(Math.round(Number(n) || 0)) >= 1e6 ? `${num} ${unit}` : num;
 }
 
 const WEEKDAYS = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
