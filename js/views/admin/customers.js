@@ -398,33 +398,39 @@ export function bindCustomerLedger(root, { readOnly = false } = {}) {
 
 let closeContractNoticeMenu = null;
 
-function showContractNoticeMenu(contractId, clientX, clientY) {
+/** anchor: nút bấm mở menu (nút "In giấy báo" trên tiêu đề chi tiết hợp đồng) — menu canh mép phải theo nút và bấm lại nút thì đóng; không có anchor là menu chuột phải. */
+function showContractNoticeMenu(contractId, clientX, clientY, { anchor = null } = {}) {
   closeContractNoticeMenu?.();
   const contract = S.getContract(contractId);
   const customer = contract && S.getCustomer(contract.customerId);
   if (!contract || !customer) return;
   const menu = document.createElement('div');
-  menu.className = 'customer-notice-menu';
+  menu.className = anchor ? 'customer-notice-menu from-button' : 'customer-notice-menu';
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', `In giấy báo hợp đồng ${contract.code}`);
+  const itemIcon = anchor ? icon('printer') : '';
   menu.innerHTML = `
-    <div class="customer-notice-menu-heading">HĐTD ${escapeHtml(contract.code)}</div>
-    <button type="button" role="menuitem" data-notice="interest">In thông báo nộp lãi</button>
-    <button type="button" role="menuitem" data-notice="due">In giấy báo hợp đồng đến hạn</button>`;
+    <div class="customer-notice-menu-heading">${anchor ? 'Giấy báo – ' : ''}HĐTD ${escapeHtml(contract.code)}</div>
+    <button type="button" role="menuitem" data-notice="interest">${itemIcon}<span>In thông báo nộp lãi</span></button>
+    <button type="button" role="menuitem" data-notice="due">${itemIcon}<span>In giấy báo hợp đồng đến hạn</span></button>`;
   document.body.append(menu);
   const bounds = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(8, Math.min(clientX, window.innerWidth - bounds.width - 8))}px`;
+  const left = anchor ? clientX - bounds.width : clientX;
+  menu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - bounds.width - 8))}px`;
   menu.style.top = `${Math.max(8, Math.min(clientY, window.innerHeight - bounds.height - 8))}px`;
   function close() {
     menu.remove();
+    if (anchor) { anchor.classList.remove('is-open'); anchor.setAttribute('aria-expanded', 'false'); }
     document.removeEventListener('pointerdown', outside);
     document.removeEventListener('keydown', escape);
     window.removeEventListener('scroll', close, true);
     if (closeContractNoticeMenu === close) closeContractNoticeMenu = null;
   }
-  function outside(event) { if (!menu.contains(event.target)) close(); }
-  function escape(event) { if (event.key === 'Escape') close(); }
+  function outside(event) { if (!menu.contains(event.target) && !(anchor && anchor.contains(event.target))) close(); }
+  // Dừng Escape tại đây để chỉ đóng menu, không đóng luôn cả khung chi tiết hợp đồng đang mở phía sau.
+  function escape(event) { if (event.key === 'Escape') { event.stopPropagation(); close(); } }
   closeContractNoticeMenu = close;
+  if (anchor) { anchor.classList.add('is-open'); anchor.setAttribute('aria-expanded', 'true'); }
   document.addEventListener('pointerdown', outside);
   document.addEventListener('keydown', escape);
   window.addEventListener('scroll', close, true);
@@ -1097,6 +1103,17 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     `,
     footHtml: readOnly ? '' : `<button class="btn btn-danger-outline btn-block" id="del-contract">${icon('trash', 'icon-sm')} Xóa hợp đồng</button>`,
     onMount(sheet, closeFn) {
+      // Máy tính (có chuột): nút "In giấy báo" ở góc phải tiêu đề, cạnh nút đóng — bấm ra 2 loại giấy báo giống menu chuột phải. Điện thoại không hiện.
+      const closeBtn = sheet.querySelector('.modal-head [data-close]');
+      if (customer && closeBtn && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+        closeBtn.insertAdjacentHTML('beforebegin', `<button type="button" class="notice-print-btn" id="btn-print-notice" aria-haspopup="menu" aria-expanded="false" title="In giấy báo">${icon('printer')}<span>In giấy báo</span>${icon('chevronDown')}</button>`);
+        const printBtn = sheet.querySelector('#btn-print-notice');
+        printBtn.addEventListener('click', () => {
+          if (printBtn.classList.contains('is-open')) { closeContractNoticeMenu?.(); return; }
+          const r = printBtn.getBoundingClientRect();
+          showContractNoticeMenu(contract.id, r.right, r.bottom + 6, { anchor: printBtn });
+        });
+      }
       const zaloAutoStatus = sheet.querySelector('#zalo-auto-status-ct');
       if (zaloAutoStatus) {
         S.getZaloAutoSendStatus(contract.id)

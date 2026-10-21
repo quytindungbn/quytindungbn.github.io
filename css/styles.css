@@ -2026,3 +2026,12 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .copy-info-btn:hover { background: var(--color-primary-light); border-color: var(--color-primary); }
 .copy-info-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .copy-info-btn.is-done { background: #e9f6ef; border-color: #7cbf9c; color: #0b6b3f; }
+/* Nút "In giấy báo" ở góc phải tiêu đề chi tiết hợp đồng (chỉ máy tính, thêm bằng JS) + menu chọn loại giấy báo. */
+.notice-print-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; margin: 0 6px 0 auto; padding: 0 11px; border: 1px solid #b0c7b9; border-radius: 999px; background: var(--surface); color: var(--color-primary-dark); font: inherit; font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
+.notice-print-btn .icon { width: 16px; height: 16px; stroke-width: 1.9; }
+.notice-print-btn .icon:last-child { width: 13px; height: 13px; stroke-width: 2.2; opacity: .75; margin-left: -1px; }
+.notice-print-btn:hover, .notice-print-btn.is-open { background: var(--color-primary-light); border-color: var(--color-primary); }
+.notice-print-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.customer-notice-menu.from-button { min-width: 262px; }
+.customer-notice-menu.from-button button { display: flex; align-items: center; gap: 9px; font-weight: 500; }
+.customer-notice-menu.from-button button .icon { width: 15px; height: 15px; color: var(--color-primary); }
