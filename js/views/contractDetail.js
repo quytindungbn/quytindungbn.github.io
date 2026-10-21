@@ -86,10 +86,30 @@ export function buildVietQrUrl({ bin, accountNo, amount, content, accountName })
 
 const qrParams = new Map(); // link QR chuẩn hóa -> thông tin tạo QR
 const qrCards = new Map(); // link QR chuẩn hóa -> canvas "thẻ QR" đã vẽ
-let qrLogo = null; // logo quỹ (icons/icon-192.png) — tải sẵn lúc mở app để vẽ lên ảnh QR
+/** Cắt bỏ phần viền trắng quanh logo để logo hiện to rõ trong ô nhỏ giữa mã QR. */
+function trimBlank(img) {
+  try {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (d[i + 3] > 20 && (d[i] < 245 || d[i + 1] < 245 || d[i + 2] < 245)) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) return img;
+    const o = document.createElement('canvas'); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
+    o.getContext('2d').drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
+    return o;
+  } catch (e) {
+    return img;
+  }
+}
+let qrLogo = null; // logo quỹ (icons/icon-192.png) — tải sẵn lúc mở app để đặt giữa mã QR
 if (typeof Image === 'function') {
   const img = new Image();
-  img.onload = () => { qrLogo = img; qrCards.clear(); qrPngCache.clear(); }; // đã có logo: các ảnh vẽ trước đó (nếu có) vẽ lại cho có logo
+  img.onload = () => { qrLogo = trimBlank(img); qrCards.clear(); qrPngCache.clear(); }; // đã có logo: các ảnh vẽ trước đó (nếu có) vẽ lại cho có logo
   img.src = new URL('icons/icon-192.png', document.baseURI).href;
 }
 const qrDataKeys = new Map(); // data URL ảnh đã hiện trong popup -> link QR gốc (để Chia sẻ/Tải ảnh tìm lại đúng thông tin)
@@ -111,7 +131,7 @@ function qrCardCanvas(url) {
 
 /**
  * Ảnh để hiện trong ô QR của popup — luôn tự vẽ ngay trên máy (nhanh, không phụ thuộc img.vietqr.io,
- * giống hệt ảnh khi Chia sẻ/Tải). `compact`: khung gọn (logo quỹ + mã QR + vài dòng thông tin), dùng cho ô nhỏ. Lỗi bất ngờ thì trả lại link ảnh VietQR như cũ.
+ * giống hệt ảnh khi Chia sẻ/Tải). `compact`: khung gọn (mã QR có logo quỹ ở giữa + vài dòng thông tin), dùng cho ô nhỏ. Lỗi bất ngờ thì trả lại link ảnh VietQR như cũ.
  * Truyền kết quả này (img.src) cho shareQrImage/downloadQrImage như bình thường.
  */
 export function qrImageSrc(rawUrl, { compact = false } = {}) {

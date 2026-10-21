@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeQr, __test as T } from '../js/lib/qrEncode.js';
-import { crc16, buildVietQrPayload } from '../js/lib/vietQrLocal.js';
+import { crc16, buildVietQrPayload, logoBoxModules } from '../js/lib/vietQrLocal.js';
 
 test('Reed-Solomon, thông tin định dạng/phiên bản và dung lượng khớp bảng chuẩn QR', () => {
   // ví dụ chuẩn "HELLO WORLD" 1-M
@@ -105,4 +105,49 @@ test('mã QR tạo ra đọc ngược đúng nội dung (mọi phiên bản 1-10
     }
   }
   assert.throws(() => encodeQr('w'.repeat(300)));
+});
+
+// Logo đặt giữa mã QR che một ô vuông ở giữa: đếm số "mã" (byte) của từng khối bị che, phải nằm trong sức bù của mã sửa lỗi.
+function logoDamage(qr) {
+  const { size, version: ver, ecl } = qr;
+  const E = { M: { per: [0,10,16,26,18,24,16,18,22,22,26], nb: [0,1,1,1,2,2,4,4,4,5,5] }, L: { per: [0,7,10,15,20,26,18,20,24,30,18], nb: [0,1,1,1,1,1,2,2,2,2,4] } }[ecl];
+  const fn = Array.from({ length: size }, () => new Array(size).fill(false));
+  const mark = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < size && y < size) fn[y][x] = true; };
+  mark(0, 0, 9, 9); mark(size - 8, 0, 8, 9); mark(0, size - 8, 9, 8);
+  for (let i = 0; i < size; i++) { fn[6][i] = true; fn[i][6] = true; }
+  const ap = { 1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34], 7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46], 10: [6, 28, 50] }[ver];
+  ap.forEach((cx, i) => ap.forEach((cy, j) => { if ((i === 0 && j === 0) || (i === 0 && j === ap.length - 1) || (i === ap.length - 1 && j === 0)) return; mark(cx - 2, cy - 2, 5, 5); }));
+  if (ver >= 7) { mark(size - 11, 0, 3, 6); mark(0, size - 11, 6, 3); }
+  const box = logoBoxModules(size), lo = (size - box) / 2, hi = lo + box;
+  const hit = new Set(); let bit = 0, upward = true;
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col--;
+    for (let n = 0; n < size; n++) {
+      const y = upward ? size - 1 - n : n;
+      for (const x of [col, col - 1]) {
+        if (fn[y][x]) continue;
+        if (x >= lo && x < hi && y >= lo && y < hi) hit.add(bit >> 3);
+        bit++;
+      }
+    }
+    upward = !upward;
+  }
+  const total = bit >> 3, per = E.per[ver], nb = E.nb[ver];
+  const shortBlocks = nb - (total % nb), shortLen = Math.floor(total / nb);
+  const owner = [];
+  for (let i = 0; i <= shortLen; i++) for (let j = 0; j < nb; j++) { if (i === shortLen - per && j < shortBlocks) continue; owner.push(j); }
+  const perBlock = new Array(nb).fill(0);
+  hit.forEach((k) => perBlock[owner[k]]++);
+  return { worst: Math.max(...perBlock), allowed: Math.floor(per / 2) };
+}
+
+test('logo giữa mã QR chỉ che tối đa nửa sức bù của mã sửa lỗi ở mọi khối', () => {
+  const contents = ['', 'A', 'TRA LAI HDTD 455', 'TRA LAI HDTD 455 26 PHAM THI TAI', 'TAT TOAN HDTD HD20261001 NGUYEN THI HOA THON BINH NGUYEN'];
+  for (const content of contents) {
+    for (const amount of [0, 5000, 1446000, 120000000]) {
+      const qr = encodeQr(buildVietQrPayload({ bin: '970446', accountNo: '5200000000825012', amount, content }), 'M');
+      const { worst, allowed } = logoDamage(qr);
+      assert.ok(worst * 2 <= allowed, `v${qr.version}: che ${worst} mã/khối, sức bù ${allowed}`);
+    }
+  }
 });

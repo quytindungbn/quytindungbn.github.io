@@ -56,6 +56,29 @@ function wrapLines(ctx, text, maxWidth) {
   return lines.length ? lines : [''];
 }
 
+/**
+ * Cạnh (tính bằng số ô) của ô logo đặt giữa mã QR. Nhỏ (~14% bề ngang) và là số lẻ để cân giữa: phần bị che chỉ
+ * chiếm vài byte mỗi khối, mã sửa lỗi mức M bù thừa — xem tests/qrEncode.test.mjs.
+ */
+export function logoBoxModules(size) {
+  let b = Math.round(size * 0.14);
+  if (b % 2 === 0) b++;
+  return Math.max(5, b);
+}
+
+/** Đặt logo vào chính giữa mã QR (trên ô nền trắng). (x, y) là góc trái-trên của khung QR gồm cả viền trắng. */
+function paintLogo(ctx, qr, x, y, mod, quiet, logo) {
+  if (!logo) return;
+  const box = logoBoxModules(qr.size);
+  const side = box * mod;
+  const lx = x + (quiet + (qr.size - box) / 2) * mod, ly = y + (quiet + (qr.size - box) / 2) * mod;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(lx, ly, side, side);
+  const pad = Math.max(1, Math.round(mod * 0.4));
+  const iw = logo.naturalWidth || logo.width, ih = logo.naturalHeight || logo.height;
+  const k = Math.min((side - pad * 2) / iw, (side - pad * 2) / ih);
+  ctx.drawImage(logo, lx + (side - iw * k) / 2, ly + (side - ih * k) / 2, iw * k, ih * k);
+}
+
 /** Vẽ mã QR từng ô vuông nguyên pixel (nét, không nhòe) trên nền trắng, có viền trắng `quiet` ô xung quanh. */
 function paintQr(ctx, qr, x, y, mod, quiet) {
   const box = mod * (qr.size + quiet * 2);
@@ -69,31 +92,32 @@ function paintQr(ctx, qr, x, y, mod, quiet) {
 }
 
 /**
- * Khung QR nhỏ gọn (cho ô nhỏ trong popup nhân viên): logo quỹ, mã QR, rồi vài dòng thông tin chính như ảnh VietQR cũ
+ * Khung QR nhỏ gọn (cho ô nhỏ trong popup nhân viên): mã QR có logo quỹ ở giữa, rồi vài dòng thông tin chính như ảnh VietQR cũ
  * (chủ tài khoản, số tài khoản, số tiền).
  * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string }} p
  * @param {{ logo?: CanvasImageSource | null }} [opts] logo quỹ (ảnh đã tải xong), không có thì bỏ qua
  */
 export function drawVietQrCompact(p, { logo = null } = {}) {
   const qr = encodeQr(buildVietQrPayload(p), 'M');
-  const W = 400, PAD = 16, QUIET = 2, LOGO = 66;
+  const W = 400, PAD = 16, QUIET = 2;
   const mod = Math.max(3, Math.floor((W - PAD * 2) / (qr.size + QUIET * 2)));
   const qrBox = mod * (qr.size + QUIET * 2);
   const money = Math.round(Number(p.amount) || 0);
   const lines = [];
-  if (p.accountName) lines.push({ text: String(p.accountName), size: 23, weight: 700, color: '#12231e' });
+  if (p.accountName) lines.push({ text: String(p.accountName), size: 23, weight: 700, color: GREEN });
   lines.push({ text: String(p.accountNo), size: 27, weight: 700, color: '#12231e' });
   if (money > 0) lines.push({ text: `${money.toLocaleString('vi-VN')} đ`, size: 34, weight: 800, color: GREEN });
   const gap = (l) => Math.round(l.size * 1.45);
-  const H = PAD + (logo ? LOGO + 8 : 0) + qrBox + 12 + lines.reduce((sum, l) => sum + gap(l), 0) + PAD - 4;
+  const H = PAD + qrBox + 12 + lines.reduce((sum, l) => sum + gap(l), 0) + PAD - 4;
 
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
   let y = PAD;
-  if (logo) { ctx.drawImage(logo, Math.round((W - LOGO) / 2), y, LOGO, LOGO); y += LOGO + 8; }
-  paintQr(ctx, qr, Math.round((W - qrBox) / 2), y, mod, QUIET);
+  const qx = Math.round((W - qrBox) / 2);
+  paintQr(ctx, qr, qx, y, mod, QUIET);
+  paintLogo(ctx, qr, qx, y, mod, QUIET, logo);
   y += qrBox + 12;
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   lines.forEach((l) => {
@@ -110,7 +134,7 @@ export function drawVietQrCompact(p, { logo = null } = {}) {
 /**
  * Vẽ "thẻ" QR chuyển khoản (tên quỹ, mã QR, chủ tài khoản, số tài khoản, số tiền, nội dung) lên canvas, nền trắng.
  * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string, bankName?: string, orgName?: string }} p
- * @param {{ logo?: CanvasImageSource | null }} [opts] logo quỹ (ảnh đã tải xong) vẽ phía trên tên quỹ
+ * @param {{ logo?: CanvasImageSource | null }} [opts] logo quỹ (ảnh đã tải xong) đặt giữa mã QR
  */
 export function drawVietQrCard(p, { logo = null } = {}) {
   const qr = encodeQr(buildVietQrPayload(p), 'M');
@@ -120,19 +144,18 @@ export function drawVietQrCard(p, { logo = null } = {}) {
   const money = Math.round(Number(p.amount) || 0);
   const rows = [];
   if (p.bankName) rows.push(['Ngân hàng', p.bankName]);
-  if (p.accountName) rows.push(['Chủ tài khoản', p.accountName]);
+  if (p.accountName) rows.push(['Chủ tài khoản', p.accountName, false, true]);
   rows.push(['Số tài khoản', String(p.accountNo)]);
   if (money > 0) rows.push(['Số tiền', `${money.toLocaleString('vi-VN')} đ`, true]);
   if (p.content) rows.push(['Nội dung', asciiOnly(p.content, 50)]);
 
   const measure = document.createElement('canvas').getContext('2d');
   measure.font = `700 26px ${SANS}`;
-  const laid = rows.map(([label, value, big]) => {
+  const laid = rows.map(([label, value, big, green]) => {
     measure.font = `700 ${big ? 34 : 26}px ${SANS}`;
-    return { label, big, lines: wrapLines(measure, value, W - PAD * 2) };
+    return { label, big, green, lines: wrapLines(measure, value, W - PAD * 2) };
   });
-  const LOGO = 76;
-  let H = PAD + (logo ? LOGO + 4 : 0) + 40 + 30 + 26 + qrBox + 28; // logo + tên quỹ + dòng hướng dẫn + khung QR
+  let H = PAD + 40 + 30 + 26 + qrBox + 28; // tên quỹ + dòng hướng dẫn + khung QR
   laid.forEach((r) => { H += 26 + r.lines.length * (r.big ? 42 : 34) + 14; });
   H += PAD - 6;
 
@@ -142,7 +165,6 @@ export function drawVietQrCard(p, { logo = null } = {}) {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   let y = PAD + 32;
-  if (logo) { ctx.drawImage(logo, Math.round((W - LOGO) / 2), PAD, LOGO, LOGO); y += LOGO + 4; }
   if (p.orgName) {
     ctx.fillStyle = GREEN; ctx.font = `800 30px ${SANS}`;
     ctx.fillText(String(p.orgName), W / 2, y, W - PAD * 2);
@@ -151,7 +173,9 @@ export function drawVietQrCard(p, { logo = null } = {}) {
   ctx.fillStyle = '#6a7a73'; ctx.font = `500 21px ${SANS}`;
   ctx.fillText('Quét mã bằng app ngân hàng để chuyển khoản', W / 2, y, W - PAD * 2);
   y += 26;
-  paintQr(ctx, qr, Math.round((W - qrBox) / 2), y, mod, QUIET);
+  const qx = Math.round((W - qrBox) / 2);
+  paintQr(ctx, qr, qx, y, mod, QUIET);
+  paintLogo(ctx, qr, qx, y, mod, QUIET, logo);
   y += qrBox + 28;
   ctx.textAlign = 'left';
   laid.forEach((row) => {
@@ -160,7 +184,7 @@ export function drawVietQrCard(p, { logo = null } = {}) {
     ctx.fillStyle = '#6a7a73'; ctx.font = `600 19px ${SANS}`;
     ctx.fillText(row.label.toUpperCase(), PAD, y + 14, W - PAD * 2);
     y += 26;
-    ctx.fillStyle = row.big ? GREEN : '#12231e'; ctx.font = `700 ${row.big ? 34 : 26}px ${SANS}`;
+    ctx.fillStyle = row.big || row.green ? GREEN : '#12231e'; ctx.font = `700 ${row.big ? 34 : 26}px ${SANS}`;
     row.lines.forEach((ln) => { y += row.big ? 42 : 34; ctx.fillText(ln, PAD, y - 8, W - PAD * 2); });
     y += 14;
   });
