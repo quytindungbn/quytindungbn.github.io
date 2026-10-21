@@ -169,7 +169,7 @@ const trendSeries = [
 
 function trendMonthDetail(report) {
   return `<strong>${monthName(report.year_month)}</strong><div>${trendSeries.map((s) =>
-    `<span><i style="background:${s.color}"></i>${s.label}: <b>${money(report.figures.end[s.key])}</b></span>`).join('')}</div>`;
+    `<span><em><i style="background:${s.color}"></i>${s.label}</em><b>${money(report.figures.end[s.key])}</b></span>`).join('')}</div>`;
 }
 
 function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
