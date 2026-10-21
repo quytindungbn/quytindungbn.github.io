@@ -822,6 +822,11 @@ function buildDebtDashboardData() {
  * chỉ tiêu, không phải màu cảnh báo mức độ.
  */
 function monthDetailTableHtml(m, prevMonthOf, yearStartOf, months = []) {
+  // Máy tính: 3 thẻ chỉ tiêu; điện thoại: giữ bảng gọn như cũ (CSS ẩn/hiện theo cỡ màn hình).
+  return `<div class="lux-diff-desktop">${monthDetailCardsHtml(m, prevMonthOf, yearStartOf, months)}</div><div class="lux-diff-mobile">${monthDetailMobileHtml(m, prevMonthOf, yearStartOf)}</div>`;
+}
+
+function monthDetailCardsHtml(m, prevMonthOf, yearStartOf, months = []) {
   const prev = prevMonthOf(m.yearMonth);
   const yearStart = yearStartOf(m.yearMonth);
   // Đường xu hướng: tối đa 6 tháng, kết thúc ở tháng đang xem.
@@ -846,6 +851,38 @@ function monthDetailTableHtml(m, prevMonthOf, yearStartOf, months = []) {
         </div>
       </article>`;
   }).join('')}</div>`;
+}
+
+/** Bảng gọn cho điện thoại (dạng cũ): mỗi dòng 1 chỉ tiêu, cột số dư, % so tháng trước và so sánh năm. */
+function monthDetailMobileHtml(m, prevMonthOf, yearStartOf) {
+  const prev = prevMonthOf(m.yearMonth);
+  const yearStart = yearStartOf(m.yearMonth);
+  const rows = [
+    { label: 'Dư nợ', color: '#0c4a3f', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, mode: 'better' },
+    { label: 'Nợ xấu', color: '#a8402f', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, mode: 'worse' },
+    { label: 'Lãi phải thu', color: '#8a6a22', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, mode: 'better' },
+  ];
+  const th = 'padding:0 8px 8px 0;text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#b08d3c;font-weight:600;white-space:nowrap;border-bottom:1px solid #dccb99';
+  const td = 'padding:10px 8px 10px 0;border-top:1px solid var(--border);white-space:nowrap';
+  const bodyRows = rows.map((r) => `
+    <tr>
+      <td style="${td}font-weight:700;color:${r.color}">${r.label}</td>
+      <td style="${td}font-weight:700">${formatVND(r.value)}${r.extra ? ` <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">(${r.extra})</span>` : ''}</td>
+      <td style="${td}">${deltaChip(pct(r.value, r.prevV), { mode: r.mode })}</td>
+      <td style="${td}">${r.yearStartV != null ? deltaChip(pct(r.value, r.yearStartV), { mode: r.mode }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
+    </tr>`).join('');
+  return `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr>
+          <th style="${th}">Chỉ tiêu</th>
+          <th style="${th}">Số dư</th>
+          <th style="${th}">So tháng trước</th>
+          <th style="${th}">So sánh năm</th>
+        </tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
 }
 
 /** Đường xu hướng nhỏ của 1 chỉ tiêu qua các tháng gần nhất; chấm tròn ở tháng đang xem, kèm nhãn tháng đầu/cuối. */

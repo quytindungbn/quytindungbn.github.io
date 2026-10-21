@@ -223,7 +223,7 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
       const value = Number(r.figures.end[s.key]) || 0;
       const cx = x(i), cy = pointYs[seriesIndex][i];
       const { dotX, labelY } = positions[i][seriesIndex];
-      return `<g class="bs-trend-point" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 10.5 : 13}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="3" paint-order="stroke">${s.rightAxis ? formatTrieuDong(value) : `${formatTyDong(value)} tỷ`}</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
+      return `<g class="bs-trend-point${r.year_month === selectedMonth ? ' is-active' : ''}" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 10.5 : 13}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="3" paint-order="stroke">${s.rightAxis ? formatTrieuDong(value) : `${formatTyDong(value)} tỷ`}</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
     }).join('') };
   });
   const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 240 : 352}" text-anchor="middle" font-size="${mobile ? 10 : 13}" font-weight="700" fill="#475569">${r.year_month.slice(5, 7)}/${r.year_month.slice(2, 4)}</text>`).join('');
@@ -249,24 +249,24 @@ function trendChart(list) {
     <div class="bs-trend-detail" id="bs-trend-detail" aria-live="polite">${trendMonthDetail(selected)}</div>`;
 }
 
-function bindTrendPoints(root) {
+let trendScrollLeft = null; // vị trí cuộn ngang của biểu đồ trước khi vẽ lại (để giữ nguyên sau khi chọn tháng)
+
+/** Bấm (hoặc Enter/Space khi đang chọn bằng bàn phím) vào một điểm tháng thì cả trang chuyển sang số liệu tháng đó; di chuột qua chỉ để xem, không đổi gì. */
+function bindTrendPoints(root, onSelect) {
   const chart = root.querySelector('.bs-chart-scroll');
-  const detail = root.querySelector('#bs-trend-detail');
-  if (!chart || !detail) return;
-  const show = (target) => {
+  if (!chart) return;
+  const pick = (target) => {
     const point = target?.closest?.('[data-trend-month]');
-    if (!point) return;
-    const report = reports.find((r) => r.year_month === point.dataset.trendMonth);
-    if (!report || detail.dataset.month === report.year_month) return;
-    detail.dataset.month = report.year_month;
-    detail.innerHTML = trendMonthDetail(report);
-    chart.querySelectorAll('[data-trend-month]').forEach((el) =>
-      el.classList.toggle('is-active', el.dataset.trendMonth === report.year_month));
+    if (point) onSelect(point.dataset.trendMonth);
   };
-  chart.addEventListener('pointerover', (event) => show(event.target));
-  chart.addEventListener('click', (event) => show(event.target));
-  chart.addEventListener('focusin', (event) => show(event.target));
-  chart.scrollLeft = chart.scrollWidth;
+  chart.addEventListener('click', (event) => pick(event.target));
+  chart.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    pick(event.target);
+  });
+  chart.scrollLeft = trendScrollLeft ?? chart.scrollWidth;
+  trendScrollLeft = null;
 }
 
 function composition(items, total, centerLabel, { grossShares = false } = {}) {
@@ -470,7 +470,15 @@ function draw(contentEl) {
   if (report && !superAdmin && !S.provisionFromSnapshot(S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month))) {
     void loadRemoteProvision(report.year_month, contentEl);
   }
-  bindTrendPoints(contentEl);
+  bindTrendPoints(contentEl, (yearMonth) => {
+    if (yearMonth === selectedMonth) return;
+    trendScrollLeft = contentEl.querySelector('.bs-chart-scroll')?.scrollLeft ?? null;
+    const scrollY = window.scrollY;
+    selectedMonth = yearMonth;
+    remoteProvisions.delete(selectedMonth);
+    draw(contentEl);
+    window.scrollTo(0, scrollY);
+  });
   contentEl.querySelector('#bs-profit-details')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelector('[data-profit-details]')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelectorAll('[data-account-details]').forEach((button) => {
