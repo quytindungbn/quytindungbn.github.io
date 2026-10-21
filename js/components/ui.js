@@ -298,3 +298,23 @@ export function mountScrollTopButton(hostEl) {
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
 }
+
+/**
+ * Hai nút nhỏ xếp dọc đặt ngay sau ô "Kỳ báo cáo" (chỉ hiện trên máy tính — CSS .period-step): mũi tên lên = tháng sau
+ * (tăng), mũi tên xuống = tháng trước (giảm). Bấm để chuyển nhanh thay vì mở danh sách chọn tháng.
+ * Nơi dùng tự gắn click vào `.period-step-btn` (data-step = +1 / -1) và gọi syncPeriodStepper() khi kỳ đổi.
+ */
+export function periodStepperHtml({ canPrev, canNext }) {
+  return `<span class="period-step" role="group" aria-label="Chuyển nhanh kỳ báo cáo">
+    <button type="button" class="period-step-btn" data-step="1" title="Tháng sau" aria-label="Chuyển sang tháng sau" ${canNext ? '' : 'disabled'}>${icon('chevronDown')}</button>
+    <button type="button" class="period-step-btn" data-step="-1" title="Tháng trước" aria-label="Chuyển sang tháng trước" ${canPrev ? '' : 'disabled'}>${icon('chevronDown')}</button>
+  </span>`;
+}
+
+/** Bật/tắt hai nút theo vị trí kỳ đang chọn (index) trong danh sách `count` kỳ xếp từ cũ đến mới. */
+export function syncPeriodStepper(root, index, count) {
+  const next = root.querySelector('.period-step-btn[data-step="1"]');
+  const prev = root.querySelector('.period-step-btn[data-step="-1"]');
+  if (next) next.disabled = index >= count - 1;
+  if (prev) prev.disabled = index <= 0;
+}

@@ -9,6 +9,7 @@ import { compareBalance, yearOpeningReport, previousDecemberReport, historicAcco
 import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, formatCompact, compactParts } from '../../utils.js';
 import { icon } from '../../icons.js';
+import { periodStepperHtml } from '../../components/ui.js';
 
 let reports = [];
 let selectedMonth = null;
@@ -434,9 +435,10 @@ function draw(contentEl) {
   ] : [];
   const dateText = report ? reportDate(report.period_end) : '';
   // Thanh cố định (dính dưới tiêu đề khi cuộn): số liệu đến ngày + kỳ báo cáo + nút làm mới/nạp cân đối.
+  const periodIndex = reports.findIndex((r) => r.year_month === selectedMonth);
   const barHtml = `<div class="bs-bar">
     ${report ? `<div class="bs-bar-date"><small><span class="bs-wide-only">Số liệu </span>đến ngày</small><b>${dateText}</b></div>` : ''}
-    ${reports.length ? `<label class="bs-bar-period"><small>Kỳ báo cáo</small><select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select></label>` : ''}
+    ${reports.length ? `<label class="bs-bar-period"><small>Kỳ báo cáo</small><span class="bs-period-row"><select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select>${periodStepperHtml({ canPrev: periodIndex > 0, canNext: periodIndex < reports.length - 1 })}</span></label>` : ''}
     <div class="bs-bar-tools"><button type="button" class="bs-ibtn" id="bs-refresh" title="Làm mới" aria-label="Làm mới">${icon('refresh')}</button>${superAdmin ? `<button type="button" class="bs-ibtn" id="bs-import" title="Nạp cân đối" aria-label="Nạp cân đối">${icon('upload')}</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>` : ''}</div></div>`;
   const ratiosHtml = report ? ratiosSection(end) : '';
   // Thứ tự trang: khối tổng hợp -> biến động -> cơ cấu -> cân đối rút gọn -> dự phòng -> chỉ số quản trị (đặt cuối).
@@ -463,6 +465,16 @@ function draw(contentEl) {
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
     ${provisionComparison(report)}
     ${ratiosHtml}`}</div></div>`;
+  // Nút tăng/giảm cạnh ô Kỳ báo cáo (máy tính): chuyển sang tháng sau/trước, giữ nguyên vị trí cuộn.
+  contentEl.querySelectorAll('.bs-bar .period-step-btn').forEach((button) => button.addEventListener('click', () => {
+    const target = reports[reports.findIndex((r) => r.year_month === selectedMonth) + Number(button.dataset.step)];
+    if (!target) return;
+    const scrollY = window.scrollY;
+    selectedMonth = target.year_month;
+    remoteProvisions.delete(selectedMonth);
+    draw(contentEl);
+    window.scrollTo(0, scrollY);
+  }));
   contentEl.querySelector('#bs-month')?.addEventListener('change', (event) => {
     selectedMonth = event.target.value;
     remoteProvisions.delete(selectedMonth);

@@ -2,7 +2,7 @@ import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
 import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { emptyState, statusBadge, installmentHintHtml } from '../../components/ui.js';
+import { emptyState, statusBadge, installmentHintHtml, periodStepperHtml, syncPeriodStepper } from '../../components/ui.js';
 import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor, escapeHtml, compactParts } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
@@ -788,6 +788,7 @@ function buildDebtDashboardData() {
       generalProvision: null, specificProvision: null,
     });
   }
+  months.sort((a, b) => a.yearMonth.localeCompare(b.yearMonth)); // luôn xếp cũ -> mới (biểu đồ, nút tăng/giảm kỳ báo cáo đều dựa vào thứ tự này)
   const byYearMonth = new Map(months.map((m) => [m.yearMonth, m]));
   /** Tháng liền trước (so sánh hàng tháng) — tra trực tiếp theo year_month, không giả định mảng liền mạch (có thể thiếu tháng nếu app mới dùng tính năng giữa chừng). */
   function prevMonthOf(ym) {
@@ -839,11 +840,10 @@ function monthDetailCardsHtml(m, prevMonthOf, yearStartOf, months = []) {
   ];
   return `<div class="lux-kpis">${items.map((it) => {
     const value = Number(m[it.key]) || 0;
-    const big = compactParts(value);
     return `
       <article class="lux-kpi lux-kpi--${it.tone}">
         <header class="lux-kpi-head"><span class="lux-kpi-name">${it.label}</span>${it.ratio != null ? `<span class="lux-kpi-ratio">${formatPercent(it.ratio)} dư nợ</span>` : ''}</header>
-        <div class="lux-kpi-val">${big.num}<small>${big.unit}</small></div>
+        <div class="lux-kpi-val">${formatNumber(value)}<small>đồng</small></div>
         ${kpiSparkHtml(trail, it.key)}
         <div class="lux-kpi-cmp">
           ${kpiCompareHtml('So tháng trước', value, prev ? Number(prev[it.key]) : null, it.mode)}
@@ -990,6 +990,7 @@ function openMonthlyDetailModal() {
  * lịch sử, không đụng gì tới hợp đồng thật).
  */
 function monthSelectorHtml(months, selectedYm, isSuper) {
+  const ascending = months; // cũ -> mới; danh sách chọn bên dưới xếp ngược (mới nhất trên cùng)
   const options = months
     .slice()
     .reverse()
@@ -1000,6 +1001,7 @@ function monthSelectorHtml(months, selectedYm, isSuper) {
       <div class="overview-period-controls">
         <label for="month-select" class="lux-eyebrow">Kỳ báo cáo tháng</label>
         <select id="month-select" class="lux-select">${options}</select>
+        ${periodStepperHtml({ canPrev: ascending.findIndex((m) => m.yearMonth === selectedYm) > 0, canNext: ascending.findIndex((m) => m.yearMonth === selectedYm) < ascending.length - 1 })}
       </div>
       ${isSuper ? `<button type="button" id="btn-import-historical" class="lux-icon-btn" title="Nạp dữ liệu cũ" aria-label="Nạp dữ liệu cũ">${icon('upload')}</button>` : ''}
     </div>`;
@@ -1052,6 +1054,12 @@ function bindMonthSelector(root) {
   const sel = root.querySelector('#month-select');
   if (!sel) return;
   sel.addEventListener('change', () => selectMonth(root, sel.value));
+  // Nút tăng/giảm cạnh ô Kỳ báo cáo (máy tính): chuyển sang tháng sau/trước.
+  root.querySelectorAll('.period-step-btn').forEach((button) => button.addEventListener('click', () => {
+    const { months } = buildDebtDashboardData();
+    const target = months[months.findIndex((m) => m.yearMonth === sel.value) + Number(button.dataset.step)];
+    if (target) selectMonth(root, target.yearMonth);
+  }));
 }
 
 /** Dò dòng "Đến ngày DD/MM/YYYY" (mẫu "Sao kê hợp đồng tín dụng" luôn ghi ở vài dòng đầu file, TRƯỚC dòng tiêu đề cột "STT") trong dữ liệu THÔ đọc từ Excel (chưa qua remapReportTemplateRows — hàm đó đã bỏ các dòng này) — đây là ngày quyết định số liệu vừa nạp thuộc về THÁNG NÀO. null nếu không tìm thấy. */
@@ -1187,6 +1195,7 @@ function selectMonth(root, ym) {
   root.querySelectorAll('#trend-chart-slot .trend-scroll').forEach((el, i) => { el.scrollLeft = oldScrollLeft[i] || 0; });
   const sel = root.querySelector('#month-select');
   if (sel) sel.value = ym;
+  syncPeriodStepper(root, months.findIndex((x) => x.yearMonth === ym), months.length);
   bindNhomNoClicks(root);
   bindProvisionDetails(root);
   bindMonthClicks(root);

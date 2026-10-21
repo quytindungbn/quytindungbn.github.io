@@ -1635,7 +1635,8 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-sticky { margin: -20px -28px 22px; background: #fff; border-bottom: 1px solid var(--bsl-line); }
   .bs-bar { gap: 16px; padding: 9px 28px; }
   .bs-bar-date { display: flex; align-items: baseline; gap: 8px; padding: 0; border: 0; font-family: var(--font-serif); }
-  .bs-bar-date small, .bs-bar-date b { margin: 0; font: 700 16px/1.2 var(--font-serif); letter-spacing: 0; text-transform: none; color: var(--em); }
+  .bs-bar-date small, .bs-bar-date b { margin: 0; font: 400 16px/1.2 var(--font-serif); letter-spacing: 0; text-transform: none; color: var(--em); }
+  .bs-bar-date small { color: var(--g); }
   .bs-bar-period { display: flex; align-items: center; flex: none; gap: 10px; margin-left: auto; }
   .bs-bar-period select { width: 140px; margin-top: 0; font-size: 14px; }
   .bs-bar-tools { margin-left: 0; gap: 8px; }
@@ -1824,8 +1825,8 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 @media (min-width: 900px) { .lux-kpi-head { min-height: 26px; } }
 .lux-kpi-name { font: 700 11px var(--lux-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--k); white-space: nowrap; }
 .lux-kpi-ratio { padding: 2px 9px; border-radius: 999px; background: #eef3f0; color: var(--lux-mut); font: 600 11px var(--lux-sans); white-space: nowrap; }
-.lux-kpi-val { font-family: var(--lux-display); font-size: 36px; line-height: 1.05; font-weight: 800; letter-spacing: -.02em; color: var(--k); white-space: nowrap; }
-.lux-kpi-val small { margin-left: 6px; font: 600 13px var(--lux-sans); letter-spacing: 0; color: var(--lux-mut); }
+.lux-kpi-val { font-family: var(--lux-display); font-size: clamp(18px, 2vw, 26px); line-height: 1.15; font-weight: 700; letter-spacing: -.01em; color: var(--k); }
+.lux-kpi-val small { display: inline-block; margin-left: 6px; font: 600 12.5px var(--lux-sans); letter-spacing: 0; color: var(--lux-mut); }
 .lux-kpi-spark { margin-top: 2px; }
 .lux-kpi-spark svg { display: block; width: 100%; height: 58px; overflow: visible; }
 .lux-kpi-spark .ln { stroke: var(--k); }
@@ -1934,4 +1935,19 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .bs-lux .bs-doc .bs-ratio-detail { align-self: start; font-size: 13px; line-height: 1.4; }
   .bs-lux .bs-doc .bs-ratio-advice { justify-self: start; margin-top: 8px; padding: 5px 13px; border-radius: 14px; background: #e3f3ec; font-size: 12.5px; line-height: 1.4; font-weight: 600; }
   .bs-lux .bs-doc .bs-ratio-alert .bs-ratio-advice { background: #fbe9e6; }
+}
+
+/* ===== Nút tăng/giảm cạnh ô "Kỳ báo cáo" (chỉ máy tính) ===== */
+.bs-period-row { display: block; }
+.period-step { display: none; }
+@media (min-width: 900px) {
+  .bs-period-row, .overview-period-controls { display: flex; align-items: center; gap: 8px; }
+  .period-step { display: inline-flex; flex-direction: column; flex: none; border: 1px solid var(--g2, #dccb99); border-radius: 7px; overflow: hidden; background: #fffdf8; }
+  .period-step-btn { display: grid; place-items: center; width: 24px; height: 15px; padding: 0; border: 0; background: transparent; color: #b08d3c; cursor: pointer; }
+  .period-step-btn + .period-step-btn { border-top: 1px solid var(--g2, #dccb99); }
+  .period-step-btn svg { width: 11px; height: 11px; stroke-width: 2.6; }
+  .period-step-btn[data-step="1"] svg { transform: rotate(180deg); }
+  .period-step-btn:hover:not(:disabled) { background: #fbf6e6; }
+  .period-step-btn:focus-visible { outline: 2px solid #b08d3c; outline-offset: -2px; }
+  .period-step-btn:disabled { opacity: .3; cursor: default; }
 }
