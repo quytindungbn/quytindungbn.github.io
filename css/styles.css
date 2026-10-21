@@ -1625,8 +1625,8 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-wide-only { display: revert; }
   .bs-sticky { margin: -20px -28px 22px; background: #fff; border-bottom: 1px solid var(--bsl-line); }
   .bs-bar { gap: 16px; padding: 9px 28px; }
-  .bs-bar-date { display: flex; align-items: baseline; gap: 8px; padding: 0; border: 0; font-family: 'Source Serif 4', Charter, Georgia, serif; }
-  .bs-bar-date small, .bs-bar-date b { margin: 0; font: 700 16px/1.2 'Source Serif 4', Charter, Georgia, serif; letter-spacing: 0; text-transform: none; color: var(--em); }
+  .bs-bar-date { display: flex; align-items: baseline; gap: 8px; padding: 0; border: 0; font-family: var(--font-serif); }
+  .bs-bar-date small, .bs-bar-date b { margin: 0; font: 700 16px/1.2 var(--font-serif); letter-spacing: 0; text-transform: none; color: var(--em); }
   .bs-bar-period { display: flex; align-items: center; flex: none; gap: 10px; margin-left: auto; }
   .bs-bar-period select { width: 140px; margin-top: 0; font-size: 14px; }
   .bs-bar-tools { margin-left: 0; gap: 8px; }
@@ -1635,17 +1635,17 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 
 /* ===== Tờ báo cáo (máy tính và điện thoại) ===== */
   /* tờ báo cáo */
-  .bs-doc { counter-reset: bsec; max-width: 900px; margin: 0 auto; padding: 38px 46px 44px; border: 1px solid var(--bsl-line); border-radius: 6px; background: #fff; box-shadow: 0 14px 40px rgba(12, 74, 63, .08); font-family: 'Source Serif 4', Charter, Georgia, serif; }
+  .bs-doc { counter-reset: bsec; max-width: 900px; margin: 0 auto; padding: 38px 46px 44px; border: 1px solid var(--bsl-line); border-radius: 6px; background: #fff; box-shadow: 0 14px 40px rgba(12, 74, 63, .08); font-family: var(--font-serif); }
   .bs-doc-head { display: block; padding-bottom: 20px; border-bottom: 3px double var(--g); text-align: center; }
   .bs-doc-org { font: 600 11px 'Inter', sans-serif; letter-spacing: .26em; text-transform: uppercase; color: #8a6a22; }
   .bs-doc-head h1 { margin: 10px 0 4px; font-size: 36px; font-weight: 700; letter-spacing: -.01em; color: var(--em); }
   .bs-doc-asof { font-size: 14px; font-style: italic; color: var(--mut); }
-  .bs-lux .bs-doc .bs-sec-h { display: flex; align-items: baseline; gap: 12px; margin: 32px 0 14px; padding: 0 0 8px; border: 0; border-bottom: 1px solid var(--ink); font: 700 19px/1.3 'Source Serif 4', Charter, Georgia, serif; letter-spacing: 0; color: var(--em); }
+  .bs-lux .bs-doc .bs-sec-h { display: flex; align-items: baseline; gap: 12px; margin: 32px 0 14px; padding: 0 0 8px; border: 0; border-bottom: 1px solid var(--ink); font: 700 19px/1.3 var(--font-serif); letter-spacing: 0; color: var(--em); }
   .bs-lux .bs-doc .bs-sec-h::before { content: counter(bsec, upper-roman) "."; counter-increment: bsec; flex: none; width: auto; height: auto; min-width: 30px; border-radius: 0; background: none; color: var(--g); font-style: normal; }
   .bs-lux .bs-doc .bs-sec-h::after { display: none; }
   .bs-lux .bs-doc .bs-management-title { display: flex; align-items: baseline; gap: 12px; margin: 32px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--ink); }
   .bs-lux .bs-doc .bs-management-title .bs-sec-h { flex: 1; margin: 0; padding: 0; border: 0; }
-  .bs-lux .bs-doc .bs-management-title span { font: italic 12px 'Source Serif 4', Charter, Georgia, serif; color: var(--mut); }
+  .bs-lux .bs-doc .bs-management-title span { font: italic 12px var(--font-serif); color: var(--mut); }
   .bs-lux .bs-doc .card, .bs-lux .bs-doc .bs-two-col > .card, .bs-lux .bs-doc .bs-provision-section { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
   .bs-lux .bs-doc .bs-section { margin-bottom: 0; }
 
@@ -1656,7 +1656,7 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-lux .bs-doc .bs-hero .bs-stats .stat-tile, .bs-lux .bs-doc .bs-hero .bs-stats .stat-tile:first-child { grid-column: auto; margin: 0; padding: 2px 16px; border: 0; border-left: 1px solid var(--bsl-line); color: var(--ink); }
   .bs-lux .bs-doc .bs-hero .bs-stats .stat-tile:first-child { padding-left: 0; border-left: 0; }
   .bs-lux .bs-doc .bs-hero .bs-stats .stat-label { color: #8a6a22; font-size: 10px; letter-spacing: .14em; }
-  .bs-lux .bs-doc .bs-hero .bs-stats .stat-value, .bs-lux .bs-doc .bs-hero .bs-stats .stat-tile:first-child .stat-value { margin-top: 4px; font: 700 31px/1.1 'Source Serif 4', Charter, Georgia, serif !important; letter-spacing: -.02em; color: var(--em); text-shadow: none; }
+  .bs-lux .bs-doc .bs-hero .bs-stats .stat-value, .bs-lux .bs-doc .bs-hero .bs-stats .stat-tile:first-child .stat-value { margin-top: 4px; font: 700 31px/1.1 var(--font-serif) !important; letter-spacing: -.02em; color: var(--em); text-shadow: none; }
   .bs-lux .bs-doc .bs-hero .bs-stats .stat-value small { margin-left: 4px; color: #8a6a22; font: 700 12px 'Inter', sans-serif; letter-spacing: 0; }
   .bs-lux .bs-doc .bs-hero .bs-stats .bs-positive { color: #0f7a5c; } .bs-lux .bs-doc .bs-hero .bs-stats .bs-negative { color: #b4372d; }
   .bs-lux .bs-doc .bs-hero .bs-stats .bs-change-separator { color: #b9c4bf; }
@@ -1668,30 +1668,30 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-lux .bs-doc .bs-ratio-card { display: grid; grid-template-columns: 24% minmax(0, 1fr) 130px 30%; grid-template-areas: "n d v a"; gap: 0 14px; align-items: start; height: auto; padding: 10px 6px; border: 0; border-bottom: 1px dotted var(--g2); border-radius: 0; background: none; box-shadow: none; font-family: 'Inter', sans-serif; }
   .bs-lux .bs-doc .bs-ratio-card::before { display: none; }
   .bs-lux .bs-doc .bs-ratio-head { display: contents; }
-  .bs-lux .bs-doc .bs-ratio-head h4 { grid-area: n; margin: 0; font: 700 15px/1.3 'Source Serif 4', Charter, Georgia, serif; letter-spacing: 0; text-transform: none; color: var(--ink); }
+  .bs-lux .bs-doc .bs-ratio-head h4 { grid-area: n; margin: 0; font: 700 15px/1.3 var(--font-serif); letter-spacing: 0; text-transform: none; color: var(--ink); }
   .bs-lux .bs-doc .bs-ratio-head strong { grid-area: v; justify-self: end; font: 700 17px/1.2 'Inter', sans-serif; letter-spacing: 0; color: var(--em); white-space: nowrap; }
   .bs-lux .bs-doc .bs-ratio-detail { grid-area: d; margin: 0; font-size: 13px; color: var(--mut); }
   .bs-lux .bs-doc .bs-ratio-advice { grid-area: a; margin: 0; font-size: 12px; font-weight: 500; color: #0f7a5c; }
   .bs-lux .bs-doc .bs-ratio-alert { background: none; }
   .bs-lux .bs-doc .bs-ratio-alert .bs-ratio-head strong, .bs-lux .bs-doc .bs-ratio-alert .bs-ratio-advice { color: #a8402f; }
-  .bs-lux .bs-doc .bs-ratios > .bs-chart-note { margin: 10px 0 0; font: italic 12px 'Source Serif 4', Charter, Georgia, serif; }
+  .bs-lux .bs-doc .bs-ratios > .bs-chart-note { margin: 10px 0 0; font: italic 12px var(--font-serif); }
 
   /* III-IV. Biến động, cơ cấu */
   .bs-lux .bs-doc .bs-trend-detail { border-radius: 4px; background: #fbf8ee; font-family: 'Inter', sans-serif; }
   .bs-lux .bs-doc .bs-comp-wrap .bs-two-col { grid-template-columns: 1fr 1fr; gap: 20px; margin: 0; }
-  .bs-lux .bs-doc .bs-two-col .bs-section > h3 { display: block; margin: 0 0 6px; padding: 0; font: 700 14px 'Source Serif 4', Charter, Georgia, serif; color: var(--ink); }
+  .bs-lux .bs-doc .bs-two-col .bs-section > h3 { display: block; margin: 0 0 6px; padding: 0; font: 700 14px var(--font-serif); color: var(--ink); }
   .bs-lux .bs-doc .bs-two-col .bs-section > h3::before, .bs-lux .bs-doc .bs-two-col .bs-section > h3::after { display: none; }
   .bs-lux .bs-doc .bs-comp-wrap .bs-donut { width: 160px; margin: 0 auto; }
   .bs-lux .bs-doc .bs-comp-wrap .bs-composition { flex-direction: column; align-items: stretch; gap: 14px; }
 
   /* V. Cân đối rút gọn: sổ kế toán */
   .bs-lux .bs-doc .bs-management-section { margin: 0 0 26px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
-  .bs-lux .bs-doc .bs-management-section > h4 { display: block; margin: 0 0 8px; padding: 0; border: 0; background: none; font: 700 15px 'Source Serif 4', Charter, Georgia, serif; color: var(--ink); }
+  .bs-lux .bs-doc .bs-management-section > h4 { display: block; margin: 0 0 8px; padding: 0; border: 0; background: none; font: 700 15px var(--font-serif); color: var(--ink); }
   .bs-lux .bs-doc .bs-management-section > h4::before, .bs-lux .bs-doc .bs-management-section > h4::after { display: none; }
   .bs-lux .bs-doc .bs-management-head { margin: 0; padding: 7px 6px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); background: none; color: #3f524b; font: 700 10px 'Inter', sans-serif; letter-spacing: .1em; text-transform: uppercase; }
   .bs-lux .bs-doc .bs-management-row { padding: 8px 6px; border-bottom: 1px dotted var(--g2); background: none; font-family: 'Inter', sans-serif; font-size: 13px; }
-  .bs-lux .bs-doc .bs-management-name { font: 400 14.5px 'Source Serif 4', Charter, Georgia, serif; }
-  .bs-lux .bs-doc .bs-roman { flex: 0 0 34px; width: 34px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; color: var(--g); font: 700 14.5px 'Source Serif 4', Charter, Georgia, serif; justify-content: flex-start; }
+  .bs-lux .bs-doc .bs-management-name { font: 400 14.5px var(--font-serif); }
+  .bs-lux .bs-doc .bs-roman { flex: 0 0 34px; width: 34px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; color: var(--g); font: 700 14.5px var(--font-serif); justify-content: flex-start; }
   .bs-lux .bs-doc .bs-management-end strong { font-size: 13px; }
   .bs-lux .bs-doc .bs-management-value .bs-change { display: grid; justify-items: end; gap: 1px; font-size: 13px; }
   .bs-lux .bs-doc .bs-management-value .bs-change strong { font-weight: 400; }
@@ -1705,7 +1705,7 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-lux .bs-doc .bs-balance-note { margin: 8px 0 0; text-align: right; font: 600 12.5px 'Inter', sans-serif; color: #0f7a5c; }
 
   /* VI. Trích lập dự phòng */
-  .bs-lux .bs-doc .bs-provision-pending { font: italic 12px 'Source Serif 4', Charter, Georgia, serif; }
+  .bs-lux .bs-doc .bs-provision-pending { font: italic 12px var(--font-serif); }
   .bs-lux .bs-doc .bs-table thead { background: none; }
   .bs-lux .bs-doc .bs-table thead th { padding: 8px 6px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); background: none; color: #3f524b; font: 700 10px 'Inter', sans-serif; letter-spacing: .1em; }
   .bs-lux .bs-doc .bs-table td, .bs-lux .bs-doc .bs-table tbody th { padding: 9px 6px; border-bottom: 1px dotted var(--g2); font: 400 13px 'Inter', sans-serif; }
@@ -1770,7 +1770,7 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   /* VI. Trích lập dự phòng: từng khoản xếp dọc */
   .bs-lux .bs-doc .bs-table tbody tr { padding: 11px 0; border-bottom: 1px dotted var(--g2); }
   .bs-lux .bs-doc .bs-table tbody tr:last-child { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); }
-  .bs-lux .bs-doc .bs-table tbody th { padding: 0 0 5px; border: 0; font: 700 14px 'Source Serif 4', Charter, Georgia, serif; }
+  .bs-lux .bs-doc .bs-table tbody th { padding: 0 0 5px; border: 0; font: 700 14px var(--font-serif); }
   .bs-lux .bs-doc .bs-table td { padding: 2px 0; border: 0; font-size: 12.5px; }
   .bs-lux .bs-doc .bs-table tbody tr:last-child { background: none; color: var(--em); }
   .bs-lux .bs-doc .bs-table tbody tr:last-child td, .bs-lux .bs-doc .bs-table tbody tr:last-child th { border: 0; background: none; }
@@ -1780,8 +1780,8 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 
 /* ===== Kiểu chữ "báo cáo" của trang Quản trị dùng cho TOÀN BỘ app =====
    Chữ có chân (serif) cho tiêu đề, tên mục, tên khách hàng và các con số lớn; chữ không chân (Inter / chữ hệ thống)
-   giữ cho nhãn nhỏ, nút, ô nhập và số trong bảng. Cùng bộ chữ với trang Quản trị: 'Source Serif 4' nếu máy có, không thì Charter / Georgia. */
-:root { --font-serif: 'Source Serif 4', Charter, Georgia, 'Times New Roman', serif; }
+   giữ cho nhãn nhỏ, nút, ô nhập và số trong bảng. Cùng bộ chữ với trang Quản trị: 'Source Serif 4' (tải từ Google Fonts trong index.html, số đều hàng trên mọi máy); chưa tải được thì dùng Noto Serif / Cambria / Times New Roman — các font này đều có số đều hàng, khác Georgia (số nhấp nhô). */
+:root { --font-serif: 'Source Serif 4', 'Noto Serif', Cambria, 'Times New Roman', serif; font-variant-numeric: lining-nums; }
 .lux-root, .lux-period { --lux-display: var(--font-serif); }
 h1, h2, h3,
 .app-header h1, .modal-head h3, .section-head h2, .login-card h1, .login-card h2,
