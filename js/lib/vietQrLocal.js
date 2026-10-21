@@ -42,7 +42,7 @@ export function buildVietQrPayload({ bin, accountNo, amount, content }) {
 }
 
 const SANS = '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-const SERIF = '"Source Serif 4", Charter, Georgia, "Times New Roman", serif';
+const GREEN = '#0c4a3f'; // xanh đậm của tên quỹ và số tiền
 
 function wrapLines(ctx, text, maxWidth) {
   const words = String(text).split(/\s+/).filter(Boolean);
@@ -68,21 +68,51 @@ function paintQr(ctx, qr, x, y, mod, quiet) {
   }
 }
 
-/** Chỉ riêng mã QR (hình vuông, nền trắng) — dùng cho ô QR nhỏ trong popup nhân viên. */
-export function drawVietQrOnly(p) {
+/**
+ * Khung QR nhỏ gọn (cho ô nhỏ trong popup nhân viên): logo quỹ, mã QR, rồi vài dòng thông tin chính như ảnh VietQR cũ
+ * (chủ tài khoản, số tài khoản, số tiền).
+ * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string }} p
+ * @param {{ logo?: CanvasImageSource | null }} [opts] logo quỹ (ảnh đã tải xong), không có thì bỏ qua
+ */
+export function drawVietQrCompact(p, { logo = null } = {}) {
   const qr = encodeQr(buildVietQrPayload(p), 'M');
-  const QUIET = 3, mod = Math.max(4, Math.floor(480 / (qr.size + QUIET * 2)));
+  const W = 400, PAD = 16, QUIET = 2, LOGO = 66;
+  const mod = Math.max(3, Math.floor((W - PAD * 2) / (qr.size + QUIET * 2)));
+  const qrBox = mod * (qr.size + QUIET * 2);
+  const money = Math.round(Number(p.amount) || 0);
+  const lines = [];
+  if (p.accountName) lines.push({ text: String(p.accountName), size: 23, weight: 700, color: '#12231e' });
+  lines.push({ text: String(p.accountNo), size: 27, weight: 700, color: '#12231e' });
+  if (money > 0) lines.push({ text: `${money.toLocaleString('vi-VN')} đ`, size: 34, weight: 800, color: GREEN });
+  const gap = (l) => Math.round(l.size * 1.45);
+  const H = PAD + (logo ? LOGO + 8 : 0) + qrBox + 12 + lines.reduce((sum, l) => sum + gap(l), 0) + PAD - 4;
+
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = mod * (qr.size + QUIET * 2);
-  paintQr(canvas.getContext('2d'), qr, 0, 0, mod, QUIET);
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  let y = PAD;
+  if (logo) { ctx.drawImage(logo, Math.round((W - LOGO) / 2), y, LOGO, LOGO); y += LOGO + 8; }
+  paintQr(ctx, qr, Math.round((W - qrBox) / 2), y, mod, QUIET);
+  y += qrBox + 12;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  lines.forEach((l) => {
+    let size = l.size;
+    ctx.font = `${l.weight} ${size}px ${SANS}`;
+    while (size > 13 && ctx.measureText(l.text).width > W - PAD * 2) { size -= 1; ctx.font = `${l.weight} ${size}px ${SANS}`; } // tên dài thì thu nhỏ chữ cho vừa khung
+    ctx.fillStyle = l.color;
+    ctx.fillText(l.text, W / 2, y + l.size, W - PAD * 2);
+    y += gap(l);
+  });
   return canvas;
 }
 
 /**
  * Vẽ "thẻ" QR chuyển khoản (tên quỹ, mã QR, chủ tài khoản, số tài khoản, số tiền, nội dung) lên canvas, nền trắng.
  * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string, bankName?: string, orgName?: string }} p
+ * @param {{ logo?: CanvasImageSource | null }} [opts] logo quỹ (ảnh đã tải xong) vẽ phía trên tên quỹ
  */
-export function drawVietQrCard(p) {
+export function drawVietQrCard(p, { logo = null } = {}) {
   const qr = encodeQr(buildVietQrPayload(p), 'M');
   const W = 720, PAD = 40, QUIET = 4;
   const mod = Math.max(4, Math.floor((W - PAD * 2 - 24) / (qr.size + QUIET * 2)));
@@ -101,7 +131,8 @@ export function drawVietQrCard(p) {
     measure.font = `700 ${big ? 34 : 26}px ${SANS}`;
     return { label, big, lines: wrapLines(measure, value, W - PAD * 2) };
   });
-  let H = PAD + 40 + 30 + 26 + qrBox + 28; // tên quỹ + dòng hướng dẫn + khung QR
+  const LOGO = 76;
+  let H = PAD + (logo ? LOGO + 4 : 0) + 40 + 30 + 26 + qrBox + 28; // logo + tên quỹ + dòng hướng dẫn + khung QR
   laid.forEach((r) => { H += 26 + r.lines.length * (r.big ? 42 : 34) + 14; });
   H += PAD - 6;
 
@@ -111,8 +142,9 @@ export function drawVietQrCard(p) {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   let y = PAD + 32;
+  if (logo) { ctx.drawImage(logo, Math.round((W - LOGO) / 2), PAD, LOGO, LOGO); y += LOGO + 4; }
   if (p.orgName) {
-    ctx.fillStyle = '#0c4a3f'; ctx.font = `700 30px ${SERIF}`;
+    ctx.fillStyle = GREEN; ctx.font = `800 30px ${SANS}`;
     ctx.fillText(String(p.orgName), W / 2, y, W - PAD * 2);
   }
   y += 34;
@@ -128,7 +160,7 @@ export function drawVietQrCard(p) {
     ctx.fillStyle = '#6a7a73'; ctx.font = `600 19px ${SANS}`;
     ctx.fillText(row.label.toUpperCase(), PAD, y + 14, W - PAD * 2);
     y += 26;
-    ctx.fillStyle = row.big ? '#0c4a3f' : '#12231e'; ctx.font = `700 ${row.big ? 34 : 26}px ${SANS}`;
+    ctx.fillStyle = row.big ? GREEN : '#12231e'; ctx.font = `700 ${row.big ? 34 : 26}px ${SANS}`;
     row.lines.forEach((ln) => { y += row.big ? 42 : 34; ctx.fillText(ln, PAD, y - 8, W - PAD * 2); });
     y += 14;
   });
