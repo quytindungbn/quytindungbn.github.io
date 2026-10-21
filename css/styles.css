@@ -1953,3 +1953,5 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .period-step-btn:disabled { opacity: .3; cursor: default; }
 }
 .btn-qr-pay { color: var(--color-primary-dark, var(--color-primary)); border-color: var(--color-primary); font-weight: 700; }
+/* Trang Khách hàng & Hợp đồng: viền nhẹ quanh từng khách hàng, cùng màu viền với khung lọc phía trên. Viền lùi vào trong (outline-offset âm) nên chữ và các cột không bị xê dịch; hai danh sách ở Tổng quan không bật is-framed nên giữ nguyên. */
+.customer-ledger-wrap.is-framed .customer-ledger-group { outline: 1px solid var(--border-strong); outline-offset: -1px; }

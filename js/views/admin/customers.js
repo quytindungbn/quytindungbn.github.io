@@ -303,7 +303,7 @@ export function render(contentEl, filterEl) {
 
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
-      ${enriched.length ? customerLedgerHtml(enriched, canManageZalo) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
+      ${enriched.length ? customerLedgerHtml(enriched, canManageZalo, { framed: true }) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
       ${enriched.length ? `<nav class="customer-page-jump" aria-label="Di chuyển trong danh sách khách hàng">
         <button type="button" data-jump="top" title="Lên đầu trang" aria-label="Lên đầu trang">↑</button>
         <button type="button" data-jump="bottom" title="Xuống cuối trang" aria-label="Xuống cuối trang">↓</button>
@@ -327,8 +327,8 @@ export function render(contentEl, filterEl) {
 }
 
 /** Cùng một bảng hợp đồng cho trang Khách hàng và hai danh sách cảnh báo ở Tổng quan. */
-export function customerLedgerHtml(groups, canManageZalo) {
-  return `<div class="customer-ledger-wrap ${canManageZalo ? 'has-oa-actions' : ''}">
+export function customerLedgerHtml(groups, canManageZalo, { framed = false } = {}) {
+  return `<div class="customer-ledger-wrap ${framed ? 'is-framed' : ''} ${canManageZalo ? 'has-oa-actions' : ''}">
     <div class="customer-ledger-heading">
       <div class="customer-ledger-columns" aria-hidden="true">
         <div class="customer-ledger-column-main">
