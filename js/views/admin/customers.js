@@ -931,6 +931,16 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = originalLabel;
 }
 
+/**
+ * Số tiền luôn nằm gọn trên MỘT dòng: chữ to sẵn theo giao diện, nếu số tiền dài (VD hàng chục tỷ) vượt chỗ chứa thì thu nhỏ dần cho vừa
+ * — không bao giờ tụt xuống dòng dưới hay tràn ra ngoài khung. Gọi lại mỗi khi số đổi hoặc khung đổi kích thước.
+ */
+function fitOneLine(el, minPx = 9) {
+  el.style.fontSize = '';
+  let size = parseFloat(getComputedStyle(el).fontSize) || 16;
+  while (el.scrollWidth > el.clientWidth + 0.5 && size > minPx) { size -= 0.5; el.style.fontSize = `${size}px`; }
+}
+
 /** Dòng "Cách tính lãi": số dư × số ngày × lãi suất ÷ 365 = tiền lãi — dùng cả lúc mở popup lẫn lúc sửa ngày/số ngày. */
 function contractFormulaHtml(contract, days, accrued) {
   return `${formatVND(contract.balance)} × ${days} ngày × ${contract.interestRate}%<br class="cf-br"> ÷ 365 ngày = <strong>${formatVND(accrued)}</strong>`;
@@ -1001,7 +1011,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
               <div class="ct-row"><span>DƯ NỢ HIỆN TẠI</span><strong>${formatVND(contract.balance)}</strong></div>
               <small>Số gốc còn phải trả</small>
             </div>
-            <div class="ct-paid" title="Số tiền vay ban đầu trừ dư nợ hiện tại"><span>SỐ TIỀN ĐÃ TRẢ</span><strong class="${paidText.length > 14 ? 'is-long' : ''}">${paidText}</strong></div>
+            <div class="ct-paid" title="Số tiền vay ban đầu trừ dư nợ hiện tại"><span>SỐ TIỀN ĐÃ TRẢ</span><strong>${paidText}</strong></div>
           </div>
           <div class="customer-contract-metric ct-calc">
             <div class="ct-row"><span>LÃI CỘNG DỒN</span><strong id="ct-accrued">${formatVND(accrued)}</strong></div>
@@ -1018,7 +1028,6 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             <div class="ct-row"><span>SỐ NGÀY LÃI</span><span class="ct-valgrp"><label class="ct-inp ct-days"><input type="text" id="ct-days" inputmode="numeric" autocomplete="off" maxlength="4" value="${interestDays}" aria-label="Số ngày tính lãi"/>${icon('edit')}</label><span class="ct-unit">ngày</span></span></div>
             <small class="ct-from"><span class="d">Từ kỳ đã trả lãi (${formatDate(interestPaidUntil)})</span><span class="p">Từ ${formatDate(interestPaidUntil)}</span></small>
           </div>
-          <div class="ct-resetrow" id="ct-resetrow" hidden>Đang tính lãi đến <b id="ct-resetdate"></b> · <button type="button" class="ct-reset" id="ct-reset2">${icon('undo')} Về hôm nay</button></div>
         </div>
         <div class="customer-contract-info-grid">
           <section class="customer-contract-panel customer-contract-details">
@@ -1143,8 +1152,6 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const nativeDate = sheet.querySelector('#ct-asof-native');
       const daysInput = sheet.querySelector('#ct-days');
       const calBtn = sheet.querySelector('#ct-cal');
-      const resetRow = sheet.querySelector('#ct-resetrow');
-      const resetRowDate = sheet.querySelector('#ct-resetdate');
       const formulaEl = sheet.querySelector('.customer-contract-formula');
       if (accruedEl && asOfInput && daysInput) {
         const today = startOfDay(new Date());
@@ -1165,10 +1172,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           if (from !== 'date') asOfInput.value = formatDate(asOf);
           if (from !== 'days') { daysInput.value = String(days); sizeDays(); }
           accruedEl.textContent = formatVND(accrued);
+          fitOneLine(accruedEl);
           if (formulaEl) formulaEl.innerHTML = contractFormulaHtml(contract, days, accrued);
-          const edited = daysBetween(today, asOf) !== 0;
-          if (resetRow) resetRow.hidden = !edited;
-          if (resetRowDate) resetRowDate.textContent = formatDate(asOf);
           // Ô Lãi (và tổng chuyển khoản/mã QR) theo ngày đã chọn
           laiAmount = accrued;
           if (laiInput) laiInput.value = accrued ? formatNumber(accrued) : '';
@@ -1212,11 +1217,14 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           asOf = clamp(new Date(y, m - 1, dd));
           render();
         });
-        const resetToday = () => { asOf = today; render(); };
-        const resetBtn = sheet.querySelector('#ct-reset2');
-        if (resetBtn) resetBtn.addEventListener('click', resetToday);
         sizeDays();
       }
+      // Số tiền (Dư nợ / Số tiền đã trả / Lãi cộng dồn) luôn gọn trên 1 dòng dù số lớn: thu nhỏ chữ cho vừa, tính lại khi đổi kích thước hoặc font tải xong.
+      const moneyEls = [...sheet.querySelectorAll('.customer-contract-metrics strong')];
+      const fitMoney = () => moneyEls.forEach((el) => fitOneLine(el));
+      fitMoney();
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitMoney);
+      if (typeof ResizeObserver === 'function') new ResizeObserver(fitMoney).observe(sheet.querySelector('.customer-contract-metrics'));
       const notiBtn = sheet.querySelector('#btn-noti-app-ct');
       if (notiBtn) notiBtn.addEventListener('click', () => {
         if (!customer) return;
