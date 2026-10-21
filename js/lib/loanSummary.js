@@ -1,11 +1,40 @@
 // Nội dung "Thông tin khoản vay" để quản trị bấm SAO CHÉP rồi dán gửi khách (Zalo OA...) — văn bản thuần, đọc gọn trên điện thoại.
 // Hàm thuần (không đụng mạng/DOM) nên kiểm thử được bằng node, xem tests/loanSummary.test.mjs.
-import { formatVND, formatDate, boldDigits, boldText } from '../utils.js';
+import { formatVND, formatDate, boldDigits } from '../utils.js';
 
-const LINE = '────────────────────────';
-// Tiêu đề mục: số La Mã + tên mục in ĐẬM (kiểu chữ đậm Unicode, xem boldText()).
-const HEAD_LOAN = `${boldText('I')}. ${boldText('KHOẢN VAY')}`;
-const HEAD_INTEREST = `${boldText('II')}. ${boldText('TIỀN LÃI')}`;
+// Ngắn vừa phải để không bị xuống dòng trong khung tin nhắn trên điện thoại.
+const LINE = '──────────────';
+// Tiêu đề mục viết HOA. Không dùng chữ đậm Unicode cho chữ tiếng Việt vì dấu bị lệch/mất trên Zalo.
+const HEAD_LOAN = 'I. KHOẢN VAY';
+const HEAD_INTEREST = 'II. TIỀN LÃI';
+
+// Zalo dán vào là chữ thường, phông tỉ lệ (mỗi chữ một độ rộng) nên không canh cột bằng dấu cách thường được.
+// Độ rộng chữ (1/1000 em) của phông không chân phổ biến (Arial/Roboto) để tính số khoảng trắng cần đệm cho thẳng cột.
+const GLYPH_WIDTH = {
+  ijl: 222, 'ftI :.,/\u00a0': 278, 'r-()': 333, '•': 350, cksvxyzJ: 500, '₫': 513,
+  '0123456789abdeghnopquLđ': 556, FTZ: 611, ABEKPSVXY: 667, 'wCDHNRUĐ': 722, GOQ: 778, mM: 833, '%': 889, W: 944, '—': 1000,
+};
+const WIDTH_OF = {};
+for (const [chars, w] of Object.entries(GLYPH_WIDTH)) for (const ch of chars) WIDTH_OF[ch] = w;
+const SPACE = WIDTH_OF[' '];
+const NBSP = '\u00a0'; // khoảng trắng không bị Zalo/ứng dụng gộp lại như dấu cách thường
+
+/** Độ rộng ước lượng (1/1000 em); chữ có dấu tính bằng chữ gốc. */
+export function textWidth(text) {
+  let w = 0;
+  for (const ch of String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')) w += WIDTH_OF[ch] ?? 556;
+  return w;
+}
+
+/** Canh phần giá trị (sau dấu ":") của các dòng thẳng một cột, đệm khoảng trắng theo độ rộng chữ. rows = [[nhãn, giá trị], ...] */
+export function alignRows(rows, prefix = '') {
+  const labels = rows.map(([label]) => `${prefix}${label}:`);
+  const column = Math.max(...labels.map(textWidth)) + SPACE;
+  return rows.map(([, value], i) => {
+    const gap = Math.max(1, Math.round((column - textWidth(labels[i])) / SPACE));
+    return `${labels[i]} ${NBSP.repeat(gap - 1)}${value}`;
+  });
+}
 
 /** Tên khách IN HOA; có thêm người đồng vay (khác tên khách) thì nối bằng chữ "và" viết thường, chỉ 1 tên thì không có chữ "và". */
 export function customerDisplay(customerName, heirName) {
@@ -44,34 +73,43 @@ export function buildLoanSummaryText({ orgName, hotline, customerName, heirName,
   const paidUntil = contract.interestPaidUntil || contract.disbursedDate;
   const settled = balance <= 0;
   const L = [];
-  // Tên quỹ viết HOA làm tiêu đề. Zalo chỉ nhận chữ thường khi dán nên không in đậm thật được chữ tiếng Việt; chỉ chữ SỐ tiền có kiểu đậm riêng.
+  // Tên quỹ viết HOA làm tiêu đề. Zalo chỉ nhận chữ thường khi dán nên chỉ chữ SỐ tiền có kiểu đậm riêng (boldDigits).
   L.push(String(orgName || '').toUpperCase());
   L.push('THÔNG TIN KHOẢN VAY');
   L.push(`(tính đến ${formatDate(asOf)})`);
   L.push(LINE);
-  L.push(`Khách hàng: ${customerDisplay(customerName, heirName)}`);
-  L.push(`Hợp đồng số: ${contract.code}`);
   const status = loanStatusText(info);
-  if (status) L.push(`Tình trạng: ${status}`);
+  L.push(...alignRows([
+    ['Khách hàng', customerDisplay(customerName, heirName)],
+    ['Hợp đồng số', contract.code],
+    ...(status ? [['Tình trạng', status]] : []),
+  ]));
   L.push('');
-  L.push(HEAD_LOAN);
+  // Hai mục dưới dùng chung một cột để giá trị thẳng hàng từ trên xuống.
+  const loanRows = [];
   if (principal > 0) {
-    L.push(`• Số tiền vay ban đầu: ${formatVND(principal)}`);
-    L.push(`• Gốc đã trả: ${formatVND(Math.max(0, principal - balance))}`);
+    loanRows.push(['Số tiền vay', formatVND(principal)]);
+    loanRows.push(['Gốc đã trả', formatVND(Math.max(0, principal - balance))]);
   }
-  L.push(`• Dư nợ gốc hiện tại: ${settled ? formatVND(0) : boldDigits(formatVND(balance))}`);
-  L.push(`• Lãi suất: ${rate}%/năm`);
-  L.push(`• Ngày vay: ${formatDate(contract.disbursedDate)}`);
-  L.push(`• Ngày đến hạn: ${formatDate(contract.dueDate)}`);
+  loanRows.push(['Dư nợ gốc hiện tại', settled ? formatVND(0) : boldDigits(formatVND(balance))]);
+  loanRows.push(['Lãi suất', `${rate}%/năm`]);
+  loanRows.push(['Ngày vay', formatDate(contract.disbursedDate)]);
+  loanRows.push(['Ngày đến hạn', formatDate(contract.dueDate)]);
   if (nextInstallment && Number(nextInstallment.amount) > 0) {
-    L.push(`• Kỳ trả gốc tới: ${formatDate(nextInstallment.date)} — ${formatVND(nextInstallment.amount)}`);
+    loanRows.push(['Kỳ trả gốc tới', `${formatDate(nextInstallment.date)} — ${formatVND(nextInstallment.amount)}`]);
   }
-  if (!settled) {
+  const interestRows = settled ? [] : [
+    ['Đã trả lãi đến ngày', formatDate(paidUntil)],
+    ['Số ngày tính lãi', `${days} ngày`],
+    ['Tiền lãi phải trả', boldDigits(formatVND(accrued))],
+  ];
+  const aligned = alignRows([...loanRows, ...interestRows], '• ');
+  L.push(HEAD_LOAN);
+  L.push(...aligned.slice(0, loanRows.length));
+  if (interestRows.length) {
     L.push('');
     L.push(HEAD_INTEREST);
-    L.push(`• Đã trả lãi đến ngày: ${formatDate(paidUntil)}`);
-    L.push(`• Số ngày tính lãi: ${days} ngày`);
-    L.push(`• Tiền lãi phải trả: ${boldDigits(formatVND(accrued))}`);
+    L.push(...aligned.slice(loanRows.length));
   }
   L.push(LINE);
   L.push('Trân trọng!');

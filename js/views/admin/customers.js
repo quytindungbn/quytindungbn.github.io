@@ -1246,7 +1246,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             nextInstallment: inst && inst.next ? { date: inst.next.dueDate, amount: inst.next.dueAmount } : null,
           });
           if (await copyText(text)) {
-            toast('Đã sao chép thông tin khoản vay — dán vào Zalo gửi khách', 'success');
+            toast('Đã sao chép thông tin khoản vay', 'success');
             copyBtn.classList.add('is-done'); copyBtn.innerHTML = icon('check');
             setTimeout(() => { copyBtn.classList.remove('is-done'); copyBtn.innerHTML = icon('copy'); }, 1800);
           } else openCopyFallback(text);
