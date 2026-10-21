@@ -1011,7 +1011,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
               <div class="ct-row"><span>DƯ NỢ HIỆN TẠI</span><strong>${formatVND(contract.balance)}</strong></div>
               <small>Số gốc còn phải trả</small>
             </div>
-            <div class="ct-paid" title="Số tiền vay ban đầu trừ dư nợ hiện tại"><span>SỐ TIỀN ĐÃ TRẢ</span><strong>${paidText}</strong></div>
+            <div class="ct-paid" title="Gốc đã trả = số tiền vay ban đầu trừ dư nợ hiện tại"><span>GỐC ĐÃ TRẢ</span><strong>${paidText}</strong></div>
           </div>
           <div class="customer-contract-metric ct-calc">
             <div class="ct-row"><span>LÃI CỘNG DỒN</span><strong id="ct-accrued">${formatVND(accrued)}</strong></div>
