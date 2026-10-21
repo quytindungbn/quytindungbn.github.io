@@ -54,6 +54,8 @@ const PATHS = {
   message: '<path d="M4 5h16v11H8l-4 4V5Z"/><path d="M8 9h8M8 12h5"/>',
   send: '<path d="m3 20 18-8L3 4v6l13 2-13 2v6Z"/>',
   sort: '<path d="M6 4v16M6 4 3 7M6 4l3 3"/><path d="M18 20V4M18 20l-3-3M18 20l3-3"/>',
+  calendar: '<rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/>',
+  undo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
 };
 
 /** Trả về chuỗi SVG icon theo tên. `extraCls` bổ sung thêm (vd: 'icon-sm', 'icon-lg'). */

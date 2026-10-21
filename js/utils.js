@@ -43,6 +43,27 @@ export function formatDate(d) {
   return `${dd}/${mm}/${dt.getFullYear()}`;
 }
 
+/** "dd/mm/yyyy" -> Date (00:00 giờ địa phương); sai định dạng hoặc ngày không có thật (VD 31/02/2026) -> null. */
+export function parseViDate(text) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(text ?? '').trim());
+  if (!m) return null;
+  const day = Number(m[1]), month = Number(m[2]), year = Number(m[3]);
+  const dt = new Date(year, month - 1, day);
+  return dt.getFullYear() === year && dt.getMonth() === month - 1 && dt.getDate() === day ? dt : null;
+}
+
+/** Gõ số liền (VD "25102026") tự chèn dấu "/" thành "25/10/2026"; bỏ ký tự không phải số, tối đa 8 số. */
+export function maskViDate(raw) {
+  const digits = String(raw ?? '').replace(/\D/g, '').slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join('/');
+}
+
+/** Date -> "YYYY-MM-DD" theo giờ địa phương (giá trị của ô <input type="date">; KHÔNG dùng toISOString vì lệch múi giờ). */
+export function toDateInputValue(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
 // Thông báo đẩy hệ thống (Notification API) KHÔNG hỗ trợ chữ đậm/HTML thật —
 // mọi trình duyệt/điện thoại chỉ hiện được chữ thường, không có cách nào bật
 // bold/markdown ở đó (giới hạn của chuẩn Web Push/Notification, không phải

@@ -10,6 +10,7 @@
 // thị TẠM lúc app chưa kết nối được mạng, không phải nguồn sự thật nữa.
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
+import { interestDaysBetween } from './lib/interestDays.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
 import { specificProvisionForLoan, SPECIFIC_PROVISION_RATE, GENERAL_PROVISION_RATE, inheritCurrentCollateral } from './lib/collateral.js';
 export { GENERAL_PROVISION_RATE, provisionFromSnapshot } from './lib/collateral.js';
@@ -351,25 +352,9 @@ export function contractUrgency(contract, asOf = new Date()) {
   return null;
 }
 
-/**
- * Số ngày tính lãi — tính bình thường (số ngày từ "Thu lãi đến ngày" tới hôm
- * nay), TRỪ trường hợp đặc biệt "Thu lãi đến ngày" = ngày giải ngân + 1 ngày
- * (quy ước thu lãi ngày đầu ngay lúc giải ngân) thì cộng thêm 1 ngày nữa.
- * VD: giải ngân 17/08, thu lãi đến ngày 18/08 (= giải ngân + 1), hôm nay
- * 19/08 -> bình thường ra 1 ngày, cộng thêm 1 ngày đặc biệt = 2 ngày.
- */
+/** Số ngày tính lãi từ "Thu lãi đến ngày" tới `asOf` (mặc định hôm nay) — cách tính + quy ước ngày đặc biệt xem js/lib/interestDays.js. */
 export function interestDaysAccrued(contract, asOf = new Date()) {
-  const paidUntil = contract.interestPaidUntil || contract.disbursedDate;
-  // LƯU Ý: phải cộng thêm 1 ngày đặc biệt (nếu có) TRƯỚC khi chặn số âm về 0
-  // — chặn về 0 trước rồi mới cộng sẽ sai lệch 1 ngày so với thực tế. VD:
-  // "Thu lãi đến ngày" 21/08, hôm nay 20/08 (chưa tới ngày đó) -> ra -1 ngày,
-  // rơi đúng vào trường hợp đặc biệt (= giải ngân + 1) nên cộng thêm 1 ngày
-  // -> -1 + 1 = 0 ngày mới đúng, KHÔNG PHẢI chặn -1 về 0 trước rồi mới +1 = 1.
-  let days = daysBetween(new Date(paidUntil), asOf);
-  if (contract.disbursedDate && daysBetween(new Date(contract.disbursedDate), new Date(paidUntil)) === 1) {
-    days += 1;
-  }
-  return Math.max(0, days);
+  return interestDaysBetween(contract, asOf);
 }
 /**
  * Lãi phát sinh từ ngày đã trả lãi đến ngày hiện tại.

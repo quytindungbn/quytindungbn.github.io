@@ -4,11 +4,12 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox, installmentHintHtml, mountScrollTopButton } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, startOfDay, parseViDate, maskViDate, toDateInputValue, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xlsxLite.js';
 import { buildVietQrUrl, qrImageSrc, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 import { transferContent } from '../../lib/transferContent.js';
+import { interestAsOfForDays, MAX_INTEREST_DAYS } from '../../lib/interestDays.js';
 import { printNotice } from '../../lib/printNotices.js';
 import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
 
@@ -303,7 +304,7 @@ export function render(contentEl, filterEl) {
 
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
-      ${enriched.length ? customerLedgerHtml(enriched, canManageZalo) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
+      ${enriched.length ? customerLedgerHtml(enriched, canManageZalo, { framed: true }) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
       ${enriched.length ? `<nav class="customer-page-jump" aria-label="Di chuyển trong danh sách khách hàng">
         <button type="button" data-jump="top" title="Lên đầu trang" aria-label="Lên đầu trang">↑</button>
         <button type="button" data-jump="bottom" title="Xuống cuối trang" aria-label="Xuống cuối trang">↓</button>
@@ -327,8 +328,8 @@ export function render(contentEl, filterEl) {
 }
 
 /** Cùng một bảng hợp đồng cho trang Khách hàng và hai danh sách cảnh báo ở Tổng quan. */
-export function customerLedgerHtml(groups, canManageZalo) {
-  return `<div class="customer-ledger-wrap ${canManageZalo ? 'has-oa-actions' : ''}">
+export function customerLedgerHtml(groups, canManageZalo, { framed = false } = {}) {
+  return `<div class="customer-ledger-wrap ${framed ? 'is-framed' : ''} ${canManageZalo ? 'has-oa-actions' : ''}">
     <div class="customer-ledger-heading">
       <div class="customer-ledger-columns" aria-hidden="true">
         <div class="customer-ledger-column-main">
@@ -930,6 +931,11 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = originalLabel;
 }
 
+/** Dòng "Cách tính lãi": số dư × số ngày × lãi suất ÷ 365 = tiền lãi — dùng cả lúc mở popup lẫn lúc sửa ngày/số ngày. */
+function contractFormulaHtml(contract, days, accrued) {
+  return `${formatVND(contract.balance)} × ${days} ngày × ${contract.interestRate}%<br class="cf-br"> ÷ 365 ngày = <strong>${formatVND(accrued)}</strong>`;
+}
+
 /**
  * Xem chi tiết hợp đồng — hiển thị đầy đủ giống hệt trang khách hàng thấy khi
  * họ bấm vào. Dữ liệu lấy từ Excel, quản trị viên KHÔNG chỉnh sửa trực tiếp
@@ -945,7 +951,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const info = S.contractStatusInfo(contract);
   const interestPaidUntil = contract.interestPaidUntil || contract.disbursedDate;
   const interestDays = S.interestDaysAccrued(contract);
-  const accrued = S.accruedInterest(contract);
+  let accrued = S.accruedInterest(contract); // đổi được khi quản trị sửa "Tính đến ngày"/"Số ngày lãi" (chỉ để xem, không lưu)
   const collateralName = contract.hasCollateral ? COLLATERAL_NAMES[contract.collateralType] : null;
   const canPay = S.effectiveContractStatus(contract) !== 'da_tat_toan';
   const session = S.getSession();
@@ -977,6 +983,9 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   // Người thừa kế/đồng vay (cột D file số 1): có thì nối thêm " và <tên>" vào tiêu đề, không có (hoặc trùng tên khách) thì để nguyên như cũ.
   const heirName = String(contract.heirName || '').trim();
   const heirTitle = heirName && customer && heirName.toLowerCase() !== String(customer.name || '').trim().toLowerCase() ? ` và ${escapeHtml(heirName)}` : '';
+  // Số tiền đã trả = số tiền vay ban đầu trừ dư nợ hiện tại (gốc đã trả); hợp đồng không có số tiền vay thì hiện "—".
+  const principalNum = Number(contract.principal) || 0;
+  const paidText = principalNum > 0 ? formatVND(Math.max(0, principalNum - (Number(contract.balance) || 0))) : '—';
 
   const close = openModal({
     // Kèm thêm tên khách hàng vào tiêu đề để đỡ nhầm giữa nhiều hợp đồng đang
@@ -987,9 +996,29 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     bodyHtml: `
       <div class="customer-contract-view">
         <div class="customer-contract-metrics">
-          <div class="customer-contract-metric is-primary"><span>DƯ NỢ HIỆN TẠI</span><strong>${formatVND(contract.balance)}</strong><small>Số gốc còn phải trả</small></div>
-          <div class="customer-contract-metric"><span>LÃI CỘNG DỒN</span><strong>${formatVND(accrued)}</strong><small>Tính đến ${formatDate(new Date())}</small></div>
-          <div class="customer-contract-metric"><span>SỐ NGÀY LÃI</span><strong>${interestDays} ngày</strong><small>Từ kỳ đã trả lãi</small></div>
+          <div class="customer-contract-metric is-primary ct-balance">
+            <div class="ct-bal-main">
+              <div class="ct-row"><span>DƯ NỢ HIỆN TẠI</span><strong>${formatVND(contract.balance)}</strong></div>
+              <small>Số gốc còn phải trả</small>
+            </div>
+            <div class="ct-paid" title="Số tiền vay ban đầu trừ dư nợ hiện tại"><span>SỐ TIỀN ĐÃ TRẢ</span><strong class="${paidText.length > 14 ? 'is-long' : ''}">${paidText}</strong></div>
+          </div>
+          <div class="customer-contract-metric ct-calc">
+            <div class="ct-row"><span>LÃI CỘNG DỒN</span><strong id="ct-accrued">${formatVND(accrued)}</strong></div>
+            <div class="ct-sub">
+              <span class="ct-sub-lbl"><i class="d">Tính đến</i><i class="p">Đến</i></span>
+              <span class="ct-inp ct-date">
+                <input type="text" id="ct-asof" inputmode="numeric" autocomplete="off" maxlength="10" value="${formatDate(new Date())}" aria-label="Tính lãi đến ngày"/>
+                <button type="button" class="ct-ico-btn" id="ct-cal" aria-label="Chọn ngày trên lịch">${icon('calendar')}</button>
+                <input type="date" class="ct-native" id="ct-asof-native" tabindex="-1" aria-hidden="true"/>
+              </span>
+            </div>
+          </div>
+          <div class="customer-contract-metric ct-calc">
+            <div class="ct-row"><span>SỐ NGÀY LÃI</span><span class="ct-valgrp"><label class="ct-inp ct-days"><input type="text" id="ct-days" inputmode="numeric" autocomplete="off" maxlength="4" value="${interestDays}" aria-label="Số ngày tính lãi"/>${icon('edit')}</label><span class="ct-unit">ngày</span></span></div>
+            <small class="ct-from"><span class="d">Từ kỳ đã trả lãi (${formatDate(interestPaidUntil)})</span><span class="p">Từ ${formatDate(interestPaidUntil)}</span></small>
+          </div>
+          <div class="ct-resetrow" id="ct-resetrow" hidden>Đang tính lãi đến <b id="ct-resetdate"></b> · <button type="button" class="ct-reset" id="ct-reset2">${icon('undo')} Về hôm nay</button></div>
         </div>
         <div class="customer-contract-info-grid">
           <section class="customer-contract-panel customer-contract-details">
@@ -1008,7 +1037,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             </section>
             <section class="customer-contract-panel customer-contract-calculation">
               <h4>Cách tính lãi</h4>
-              <div class="customer-contract-formula">${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%<br class="cf-br"> ÷ 365 ngày = <strong>${formatVND(accrued)}</strong></div>
+              <div class="customer-contract-formula">${contractFormulaHtml(contract, interestDays, accrued)}</div>
               ${canPay && info.source !== 'installment' && info.status !== 'dang_vay' ? `<div class="customer-contract-alert ${info.status === 'qua_han' ? 'is-overdue' : ''}">${info.status === 'qua_han' ? `Đã quá hạn ${info.days} ngày` : `Còn ${info.days} ngày đến hạn thanh toán`}</div>` : ''}
             </section>
           </div>
@@ -1108,6 +1137,86 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`));
       const shareQrBtn = sheet.querySelector('#btn-share-qr-ct');
       if (shareQrBtn) shareQrBtn.addEventListener('click', () => shareQrImage(qrImgEl.src, qrContent(gocAmount, laiAmount, settleFull).shown));
+      // ---- Sửa "Tính đến ngày" / "Số ngày lãi": CHỈ ĐỂ TÍNH XEM (không lưu vào hợp đồng, mở lại là về hôm nay). Sửa ngày -> số ngày tự tính lại và ngược lại; lãi, "Cách tính lãi", ô Lãi và mã QR đổi theo. ----
+      const accruedEl = sheet.querySelector('#ct-accrued');
+      const asOfInput = sheet.querySelector('#ct-asof');
+      const nativeDate = sheet.querySelector('#ct-asof-native');
+      const daysInput = sheet.querySelector('#ct-days');
+      const calBtn = sheet.querySelector('#ct-cal');
+      const resetRow = sheet.querySelector('#ct-resetrow');
+      const resetRowDate = sheet.querySelector('#ct-resetdate');
+      const formulaEl = sheet.querySelector('.customer-contract-formula');
+      if (accruedEl && asOfInput && daysInput) {
+        const today = startOfDay(new Date());
+        const minAsOf = interestAsOfForDays(contract, 0);
+        const maxAsOf = interestAsOfForDays(contract, MAX_INTEREST_DAYS);
+        let asOf = today;
+        const clamp = (dt) => (dt < minAsOf ? minAsOf : dt > maxAsOf ? maxAsOf : dt);
+        const sizeDays = () => { daysInput.style.width = `${Math.max(2, daysInput.value.length) + 0.9}ch`; };
+        // Điện thoại (cảm ứng): chạm vào ô ngày là mở lịch chọn luôn, không bật bàn phím. Máy tính: gõ trực tiếp hoặc bấm biểu tượng lịch.
+        const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        asOfInput.readOnly = coarse;
+        nativeDate.min = toDateInputValue(minAsOf);
+        nativeDate.max = toDateInputValue(maxAsOf);
+        /** `from`: ô đang được gõ ('date' | 'days') — không ghi đè lại chính ô đó khi vẽ lại. */
+        function render(from) {
+          const days = S.interestDaysAccrued(contract, asOf);
+          accrued = S.accruedInterest(contract, asOf);
+          if (from !== 'date') asOfInput.value = formatDate(asOf);
+          if (from !== 'days') { daysInput.value = String(days); sizeDays(); }
+          accruedEl.textContent = formatVND(accrued);
+          if (formulaEl) formulaEl.innerHTML = contractFormulaHtml(contract, days, accrued);
+          const edited = daysBetween(today, asOf) !== 0;
+          if (resetRow) resetRow.hidden = !edited;
+          if (resetRowDate) resetRowDate.textContent = formatDate(asOf);
+          // Ô Lãi (và tổng chuyển khoản/mã QR) theo ngày đã chọn
+          laiAmount = accrued;
+          if (laiInput) laiInput.value = accrued ? formatNumber(accrued) : '';
+          updateQrTotal();
+          refreshQrDebounced();
+        }
+        asOfInput.addEventListener('input', () => {
+          const masked = maskViDate(asOfInput.value);
+          if (masked !== asOfInput.value) asOfInput.value = masked;
+          const parsed = parseViDate(masked);
+          asOfInput.closest('.ct-inp').classList.toggle('is-invalid', masked.length === 10 && !parsed);
+          if (!parsed) return;
+          const fixed = clamp(parsed);
+          asOf = fixed;
+          render(fixed.getTime() === parsed.getTime() ? 'date' : undefined);
+        });
+        asOfInput.addEventListener('focus', () => { if (!coarse) asOfInput.select(); });
+        asOfInput.addEventListener('blur', () => { asOfInput.closest('.ct-inp').classList.remove('is-invalid'); asOfInput.value = formatDate(asOf); });
+        daysInput.addEventListener('input', () => {
+          const digits = daysInput.value.replace(/\D/g, '').slice(0, 4);
+          let n = digits === '' ? null : Math.min(MAX_INTEREST_DAYS, Number(digits));
+          daysInput.value = n === null ? '' : String(n);
+          sizeDays();
+          if (n === null) return;
+          asOf = interestAsOfForDays(contract, n);
+          render('days');
+        });
+        daysInput.addEventListener('focus', () => daysInput.select());
+        daysInput.addEventListener('blur', () => { daysInput.value = String(S.interestDaysAccrued(contract, asOf)); sizeDays(); });
+        [asOfInput, daysInput].forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.blur(); }));
+        function openCalendar() {
+          nativeDate.value = toDateInputValue(asOf);
+          try { if (nativeDate.showPicker) nativeDate.showPicker(); else { nativeDate.focus(); nativeDate.click(); } }
+          catch { nativeDate.focus(); }
+        }
+        if (calBtn) calBtn.addEventListener('click', openCalendar);
+        if (coarse) asOfInput.addEventListener('click', openCalendar);
+        nativeDate.addEventListener('change', () => {
+          const [y, m, dd] = nativeDate.value.split('-').map(Number);
+          if (!y) return;
+          asOf = clamp(new Date(y, m - 1, dd));
+          render();
+        });
+        const resetToday = () => { asOf = today; render(); };
+        const resetBtn = sheet.querySelector('#ct-reset2');
+        if (resetBtn) resetBtn.addEventListener('click', resetToday);
+        sizeDays();
+      }
       const notiBtn = sheet.querySelector('#btn-noti-app-ct');
       if (notiBtn) notiBtn.addEventListener('click', () => {
         if (!customer) return;
