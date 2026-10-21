@@ -239,10 +239,12 @@ export function render(contentEl, filterEl) {
       const q = query.trim().toLowerCase();
       // Tìm được cả theo SỐ HỢP ĐỒNG (Số HĐTD, VD "455/26"): giữ các khách có hợp
       // đồng ĐANG CÒN DƯ NỢ khớp số đó — cùng tập hợp đồng đang hiển thị bên dưới
-      // (hợp đồng đã tất toán không hiện nên không dùng để tìm).
+      // (hợp đồng đã tất toán không hiện nên không dùng để tìm). Tìm được cả theo tên
+      // NGƯỜI CÙNG ĐỨNG VAY (heirName, VD hợp đồng "PHẠM THỊ TÀI và NGUYỄN DUY HUY" thì
+      // gõ NGUYỄN DUY HUY vẫn ra hợp đồng đó).
       const contractMatchedCustomerIds = new Set(
         S.getState().contracts
-          .filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan' && String(ct.code || '').toLowerCase().includes(q))
+          .filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan' && (String(ct.code || '').toLowerCase().includes(q) || String(ct.heirName || '').toLowerCase().includes(q)))
           .map((ct) => ct.customerId)
       );
       list = list.filter((c) => c.name.toLowerCase().includes(q) || c.cccd.includes(q) || (c.phone || '').includes(q) || contractMatchedCustomerIds.has(c.id));
