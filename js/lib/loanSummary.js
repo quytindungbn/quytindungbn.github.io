@@ -20,7 +20,14 @@ const WIDTH_OF = {};
 for (const [chars, w] of Object.entries(GLYPH_WIDTH)) for (const ch of chars) WIDTH_OF[ch] = w;
 const PAD_SPACES = [['\u2002', 500], ['\u2004', 333], ['\u2005', 250], ['\u2006', 167]]; // en, 1/3, 1/4, 1/6 em
 for (const [ch, w] of PAD_SPACES) WIDTH_OF[ch] = w;
-const COLUMN_GAP = 330; // khoảng cách tối thiểu từ nhãn dài nhất tới giá trị
+const COLUMN_GAP_MIN = 330; // khoảng cách tối thiểu từ nhãn dài nhất tới giá trị
+// Hiệu chỉnh độ rộng từng nhãn (1/1000 em) theo ảnh chụp thực tế trên Zalo Android: phông máy có kerning nên một số nhãn
+// ("Ngày vay", "Số tiền vay"...) hẹp hơn bảng ước lượng, một số ("Dư nợ hiện tại", "Lãi suất") rộng hơn.
+const LABEL_FIX = {
+  'Khách hàng': -69, 'Hợp đồng số': 54, 'Tình trạng': 16,
+  'Số tiền vay': -59, 'Gốc đã trả': 5, 'Dư nợ hiện tại': 71, 'Lãi suất': 52, 'Ngày vay': -120, 'Ngày đến hạn': 11,
+  'Đã trả lãi đến': 14, 'Số ngày tính lãi': 16, 'Tiền lãi phải trả': 11,
+};
 
 /** Độ rộng ước lượng (1/1000 em); chữ có dấu tính bằng chữ gốc. */
 export function textWidth(text) {
@@ -29,22 +36,35 @@ export function textWidth(text) {
   return w;
 }
 
-/** Chuỗi khoảng trắng có độ rộng gần nhất với `width` (sai số nhỏ nhất, rồi ít ký tự nhất). */
+/** Độ rộng ước lượng của "<tiền tố><nhãn>:" kèm hiệu chỉnh theo nhãn. */
+export function labelWidth(label, prefix = '') {
+  return textWidth(`${prefix}${label}:`) + (LABEL_FIX[label] ?? 0);
+}
+
+/** Khoảng trắng có độ rộng gần `width` nhất (sai số nhỏ nhất, rồi ít ký tự nhất) → { text, width }. */
 function padding(width) {
   let best = null;
   for (let a = 0; a <= 12; a++) for (let b = 0; b <= 2; b++) for (let c = 0; c <= 3; c++) for (let d = 0; d <= 3; d++) {
     const w = a * 500 + b * 333 + c * 250 + d * 167;
     const score = Math.abs(w - width) * 20 + a + b + c + d;
-    if (!best || score < best.score) best = { score, a, b, c, d };
+    if (!best || score < best.score) best = { score, a, b, c, d, w };
   }
-  return '\u2002'.repeat(best.a) + '\u2004'.repeat(best.b) + '\u2005'.repeat(best.c) + '\u2006'.repeat(best.d);
+  return { text: '\u2002'.repeat(best.a) + '\u2004'.repeat(best.b) + '\u2005'.repeat(best.c) + '\u2006'.repeat(best.d), width: best.w };
 }
 
-/** Canh phần giá trị (sau dấu ":") của các dòng thẳng một cột. rows = [[nhãn, giá trị], ...] */
+/**
+ * Canh phần giá trị (sau dấu ":") của các dòng thẳng một cột. rows = [[nhãn, giá trị], ...]
+ * Khoảng cách cột được chọn (trong 1/12 em) sao cho sai số làm tròn khoảng trắng của các dòng là nhỏ nhất.
+ */
 export function alignRows(rows, prefix = '') {
-  const labels = rows.map(([label]) => `${prefix}${label}:`);
-  const column = Math.max(...labels.map(textWidth)) + COLUMN_GAP;
-  return rows.map(([, value], i) => `${labels[i]}${padding(column - textWidth(labels[i]))}${value}`);
+  const widths = rows.map(([label]) => labelWidth(label, prefix));
+  let best = null;
+  for (let gap = COLUMN_GAP_MIN; gap < COLUMN_GAP_MIN + 84; gap += 3) {
+    const column = Math.max(...widths) + gap;
+    const error = Math.max(...widths.map((w) => Math.abs(padding(column - w).width - (column - w))));
+    if (!best || error < best.error) best = { column, error };
+  }
+  return rows.map(([label, value], i) => `${prefix}${label}:${padding(best.column - widths[i]).text}${value}`);
 }
 
 /** Tên khách IN HOA; có thêm người đồng vay (khác tên khách) thì nối bằng chữ "và" viết thường, chỉ 1 tên thì không có chữ "và". */

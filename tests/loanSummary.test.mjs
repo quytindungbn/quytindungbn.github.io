@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLoanSummaryText, loanStatusText, customerDisplay, textWidth, alignRows } from '../js/lib/loanSummary.js';
+import { buildLoanSummaryText, loanStatusText, customerDisplay, textWidth, labelWidth, alignRows } from '../js/lib/loanSummary.js';
 import { boldDigits } from '../js/utils.js';
 
 // Bỏ phần đệm khoảng trắng canh cột để kiểm tra nội dung chữ.
@@ -33,14 +33,15 @@ test('gạch ngang chia dòng ngắn, không bị xuống dòng trong khung tin 
   for (const l of lines) assert.ok(l.length <= 16, `gạch ngang dài ${l.length}`);
 });
 
-test('phần giá trị sau dấu ":" thẳng hàng một cột (ước lượng lệch không quá 1/12 em, khoảng 1px)', () => {
-  const t = buildLoanSummaryText({ ...base, nextInstallment: { date: new Date(2026, 11, 31), amount: 50e6 } });
-  const spread = (lines, re) => { const w = lines.map((l) => textWidth(l.match(re)[1])); return Math.max(...w) - Math.min(...w); };
-  const lines = t.split('\n');
+test('phần giá trị sau dấu ":" thẳng hàng một cột (ước lượng lệch không quá 1/12 em, khoảng 1–2px)', () => {
+  const out = buildLoanSummaryText({ ...base, nextInstallment: { date: new Date(2026, 11, 31), amount: 50e6 } });
+  const lines = out.split('\n');
+  const start = (l, prefix) => { const m = l.match(new RegExp(`^${prefix}([^:]+):([ \\u2000-\\u200a]+)`)); return labelWidth(m[1], prefix) + textWidth(m[2]); };
+  const spread = (ws) => Math.max(...ws) - Math.min(...ws);
   const bullets = lines.filter((l) => l.startsWith('• '));
   assert.equal(bullets.length, 10);
-  assert.ok(spread(bullets, /^(• [^:]+:[ \u2000-\u200a]+)/) <= 84, 'cột mục I/II lệch ' + spread(bullets, /^(• [^:]+:[ \u2000-\u200a]+)/));
-  assert.ok(spread(lines.slice(4, 7), /^([^:]+:[ \u2000-\u200a]+)/) <= 84, 'khối Khách hàng/Hợp đồng/Tình trạng cũng thẳng cột');
+  assert.ok(spread(bullets.map((l) => start(l, '• '))) <= 84, 'cột mục I/II lệch ' + spread(bullets.map((l) => start(l, '• '))));
+  assert.ok(spread(lines.slice(4, 7).map((l) => start(l, ''))) <= 84, 'khối Khách hàng/Hợp đồng/Tình trạng cũng thẳng cột');
 });
 
 test('alignRows: nhãn ngắn được đệm bằng khoảng trắng cố định theo em (không bị gộp), giữ đúng nội dung', () => {
