@@ -821,35 +821,73 @@ function buildDebtDashboardData() {
  * LUÔN tô màu đỏ (không đổi theo tỷ lệ nghiêm trọng) — đây là nhãn NHẬN DIỆN
  * chỉ tiêu, không phải màu cảnh báo mức độ.
  */
-function monthDetailTableHtml(m, prevMonthOf, yearStartOf) {
+function monthDetailTableHtml(m, prevMonthOf, yearStartOf, months = []) {
   const prev = prevMonthOf(m.yearMonth);
   const yearStart = yearStartOf(m.yearMonth);
-  const rows = [
-    { label: 'Dư nợ', color: '#0c4a3f', value: m.balance, prevV: prev?.balance ?? null, yearStartV: yearStart ? yearStart.balance : null, mode: 'better' },
-    { label: 'Nợ xấu', color: '#a8402f', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, mode: 'worse' },
-    { label: 'Lãi phải thu', color: '#8a6a22', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, mode: 'better' },
+  // Đường xu hướng: tối đa 6 tháng, kết thúc ở tháng đang xem.
+  const at = months.findIndex((x) => x.yearMonth === m.yearMonth);
+  const trail = at >= 0 ? months.slice(Math.max(0, at - 5), at + 1) : [m];
+  const items = [
+    { key: 'balance', label: 'Dư nợ', tone: 'green', mode: 'better' },
+    { key: 'badDebt', label: 'Nợ xấu', tone: 'red', mode: 'worse', ratio: m.badDebtRatio },
+    { key: 'interest', label: 'Lãi phải thu', tone: 'gold', mode: 'better', ratio: m.interestRatio },
   ];
-  const th = 'padding:0 8px 8px 0;text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#b08d3c;font-weight:600;white-space:nowrap;border-bottom:1px solid #dccb99';
-  const td = 'padding:10px 8px 10px 0;border-top:1px solid var(--border);white-space:nowrap';
-  const bodyRows = rows.map((r) => `
-    <tr>
-      <td style="${td}font-weight:700;color:${r.color}">${r.label}</td>
-      <td style="${td}font-weight:700">${formatVND(r.value)}${r.extra ? ` <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">(${r.extra})</span>` : ''}</td>
-      <td style="${td}">${deltaChip(pct(r.value, r.prevV), { mode: r.mode })}</td>
-      <td style="${td}">${r.yearStartV != null ? deltaChip(pct(r.value, r.yearStartV), { mode: r.mode }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
-    </tr>`).join('');
-  return `
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-        <thead><tr>
-          <th style="${th}">Chỉ tiêu</th>
-          <th style="${th}">Số dư</th>
-          <th style="${th}">So tháng trước</th>
-          <th style="${th}">So sánh năm</th>
-        </tr></thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
-    </div>`;
+  return `<div class="lux-kpis">${items.map((it) => {
+    const value = Number(m[it.key]) || 0;
+    const big = compactParts(value);
+    return `
+      <article class="lux-kpi lux-kpi--${it.tone}">
+        <header class="lux-kpi-head"><span class="lux-kpi-name">${it.label}</span>${it.ratio != null ? `<span class="lux-kpi-ratio">${formatPercent(it.ratio)} dư nợ</span>` : ''}</header>
+        <div class="lux-kpi-val">${big.num}<small>${big.unit}</small></div>
+        ${kpiSparkHtml(trail, it.key)}
+        <div class="lux-kpi-cmp">
+          ${kpiCompareHtml('So tháng trước', value, prev ? Number(prev[it.key]) : null, it.mode)}
+          ${kpiCompareHtml('So đầu năm', value, yearStart ? Number(yearStart[it.key]) : null, it.mode)}
+        </div>
+      </article>`;
+  }).join('')}</div>`;
+}
+
+/** Đường xu hướng nhỏ của 1 chỉ tiêu qua các tháng gần nhất; chấm tròn ở tháng đang xem, kèm nhãn tháng đầu/cuối. */
+function kpiSparkHtml(trail, key) {
+  const pts = trail.map((t) => Number(t[key]) || 0);
+  if (pts.length < 2) return '<div class="lux-kpi-spark is-empty"></div>';
+  const w = 200, h = 56;
+  const min = Math.min(...pts), max = Math.max(...pts);
+  const span = max - min || 1;
+  const xy = pts.map((v, i) => [(i * (w - 12)) / (pts.length - 1) + 6, max === min ? h / 2 : h - 8 - ((v - min) / span) * (h - 18)]);
+  const d = xy.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const last = xy[xy.length - 1];
+  const fill = `lux-kpi-fill-${key}`;
+  const label = (t) => `${t.yearMonth.slice(5, 7)}/${t.yearMonth.slice(2, 4)}`;
+  return `<div class="lux-kpi-spark">
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="${fill}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" style="stop-color:var(--k);stop-opacity:.22"/><stop offset="1" style="stop-color:var(--k);stop-opacity:0"/></linearGradient></defs>
+      <path d="${d} L${w - 6} ${h} L6 ${h} Z" fill="url(#${fill})"/>
+      <path d="${d}" class="ln" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      ${xy.slice(0, -1).map((p) => `<path d="M${p[0].toFixed(1)} ${p[1].toFixed(1)}h0" class="pt" stroke-width="5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`).join('')}
+      <path d="M${last[0].toFixed(1)} ${last[1].toFixed(1)}h0" stroke="#fff" stroke-width="13" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <path d="M${last[0].toFixed(1)} ${last[1].toFixed(1)}h0" class="pt" stroke-width="9" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="lux-kpi-axis"><span>${label(trail[0])}</span><span>${label(trail.at(-1))}</span></div>
+  </div>`;
+}
+
+/** Một ô so sánh (so tháng trước / so đầu năm): nhãn, % thay đổi dạng thẻ màu (xanh = tốt, đỏ = xấu) và số tiền tăng/giảm. */
+function kpiCompareHtml(label, value, base, mode) {
+  if (base === null || base === undefined || Number.isNaN(base)) {
+    return `<div class="lux-cmp"><span class="lux-cmp-l">${label}</span><span class="lux-cmp-na">Chưa có số liệu</span></div>`;
+  }
+  const diff = value - base;
+  const p = pct(value, base);
+  const flat = p === null ? diff === 0 : Math.abs(p) < 0.05;
+  const up = diff > 0;
+  const good = mode === 'better' ? up : !up;
+  const tone = flat ? 'flat' : good ? 'good' : 'bad';
+  const arrow = flat ? '·' : up ? '▲' : '▼';
+  const amt = compactParts(Math.abs(diff));
+  const amount = flat ? 'Không đổi' : `${up ? '+' : '-'}${amt.num} ${amt.unit}`;
+  return `<div class="lux-cmp"><span class="lux-cmp-l">${label}</span><span class="lux-pill ${tone}">${arrow} ${p === null ? '—' : `${Math.abs(p).toFixed(1).replace('.', ',')}%`}</span><span class="lux-cmp-amt">${amount}</span></div>`;
 }
 
 /**
@@ -972,7 +1010,7 @@ function debtDashboardHtml({ months, prevMonthOf, yearStartOf }, initial) {
       <h3 class="lux-h"><span>Tổng hợp tăng giảm</span>
         <span class="lux-h-end"><span id="month-detail-label">${monthLabelWithNote(initial)}</span><a href="javascript:void(0)" id="btn-monthly-detail" class="lux-link">Xem chi tiết</a></span>
       </h3>
-      <div id="month-detail-slot">${monthDetailTableHtml(initial, prevMonthOf, yearStartOf)}</div>
+      <div id="month-detail-slot">${monthDetailTableHtml(initial, prevMonthOf, yearStartOf, months)}</div>
     </section>
   `;
 }
@@ -1108,7 +1146,7 @@ function selectMonth(root, ym) {
   nhomNoSlot.innerHTML = nhomNoBarHtml(m);
   root.querySelector('#provision-slot').innerHTML = provisionRowsHtml(provisionForMonth(m));
   root.querySelector('#composition-slot').innerHTML = compositionPanelHtml(m);
-  root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf);
+  root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf, months);
   root.querySelector('#month-detail-label').textContent = monthLabelWithNote(m);
   // Tổng dư nợ, khách hàng, hợp đồng, nợ xấu và "Cần chú ý" cũng đổi theo tháng đang chọn.
   const ctx = { live: computeLiveOverview(), dashboardData: { months, prevMonthOf, yearStartOf } };

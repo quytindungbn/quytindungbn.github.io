@@ -1812,3 +1812,40 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .badge, .nav-badge, .bottom-nav-badge, .tb-rn { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 .lux-eyebrow, .stat-label, .nav-group-title, .customer-ledger-columns, .bs-bar small { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 .lux-num small, .lux-attn-row .v small, .lux-leg .v b small { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+/* ===== Tổng hợp tăng giảm: 3 thẻ chỉ tiêu (Dư nợ / Nợ xấu / Lãi phải thu), mỗi thẻ có số lớn, đường xu hướng và 2 ô so sánh ===== */
+.lux-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.lux-kpi { --k: #0c4a3f; position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 16px 16px 14px; border: 1px solid var(--lux-line); border-radius: 12px; background: #fbfdfc; }
+.lux-kpi::before { content: ''; position: absolute; left: 16px; right: 16px; top: -1px; height: 3px; border-radius: 0 0 3px 3px; background: var(--k); }
+.lux-kpi--red { --k: #a8402f; }
+.lux-kpi--gold { --k: #8a6a22; }
+.lux-kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+@media (min-width: 900px) { .lux-kpi-head { min-height: 26px; } }
+.lux-kpi-name { font: 700 11px var(--lux-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--k); white-space: nowrap; }
+.lux-kpi-ratio { padding: 2px 9px; border-radius: 999px; background: #eef3f0; color: var(--lux-mut); font: 600 11px var(--lux-sans); white-space: nowrap; }
+.lux-kpi-val { font-family: var(--lux-display); font-size: 36px; line-height: 1.05; font-weight: 800; letter-spacing: -.02em; color: var(--k); white-space: nowrap; }
+.lux-kpi-val small { margin-left: 6px; font: 600 13px var(--lux-sans); letter-spacing: 0; color: var(--lux-mut); }
+.lux-kpi-spark { margin-top: 2px; }
+.lux-kpi-spark svg { display: block; width: 100%; height: 58px; overflow: visible; }
+.lux-kpi-spark .ln { stroke: var(--k); }
+.lux-kpi-spark .pt { stroke: var(--k); }
+.lux-kpi-axis { display: flex; justify-content: space-between; margin-top: 3px; font: 500 10.5px var(--lux-sans); color: var(--lux-mut); }
+.lux-kpi-cmp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: auto; padding-top: 12px; border-top: 1px dotted var(--lux-gold2); }
+.lux-cmp { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.lux-cmp-l { font: 600 11px var(--lux-sans); color: var(--lux-mut); }
+.lux-cmp-amt { font: 500 12px var(--lux-sans); color: var(--lux-mut); font-variant-numeric: tabular-nums; }
+.lux-cmp-na { font: 500 12px var(--lux-sans); color: #9aa8a2; }
+.lux-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font: 700 12.5px var(--lux-sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lux-pill.good { background: #e3f3ec; color: #0f7a5c; }
+.lux-pill.bad { background: #fbe9e6; color: #b4372d; }
+.lux-pill.flat { background: #eef3f0; color: #6a7a73; }
+@media (max-width: 899px) {
+  /* Điện thoại: mỗi chỉ tiêu một thẻ ngang — tên và số lớn cùng hàng, đường xu hướng rồi hai ô so sánh */
+  .lux-kpis { grid-template-columns: 1fr; gap: 12px; }
+  .lux-kpi { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head val" "spark spark" "cmp cmp"; align-items: center; column-gap: 12px; row-gap: 6px; padding: 14px 14px 12px; }
+  .lux-kpi-head { grid-area: head; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .lux-kpi-val { grid-area: val; font-size: 30px; text-align: right; }
+  .lux-kpi-spark { grid-area: spark; }
+  .lux-kpi-spark svg { height: 46px; }
+  .lux-kpi-cmp { grid-area: cmp; margin-top: 4px; }
+}
