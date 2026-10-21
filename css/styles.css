@@ -1920,3 +1920,18 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .bs-lux .bs-doc .bs-composition-list { gap: 9px; }
 .bs-lux .bs-doc .bs-composition-list > div { font-size: 14.5px; padding-bottom: 8px; }
 .bs-lux .bs-doc .bs-composition-list small { font-size: 13px; }
+
+/* ===== Chỉ số quản trị (máy tính): lưới 2x2 cân đối — tên + công thức bên trái, số lớn bên phải, nhận xét nằm dưới; điện thoại giữ nguyên ===== */
+@media (max-width: 899px) { .bs-ratio-detail--calc { display: none; } }
+@media (min-width: 900px) {
+  .bs-lux .bs-doc .bs-ratio-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+  .bs-lux .bs-doc .bs-ratio-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "n v" "d v" "a a"; align-content: start; align-items: center; gap: 4px 20px; padding: 20px 30px; border: 0; border-bottom: 1px dotted var(--g2); }
+  .bs-lux .bs-doc .bs-ratio-card:nth-child(odd) { padding-left: 4px; border-right: 1px dotted var(--g2); }
+  .bs-lux .bs-doc .bs-ratio-card:nth-child(even) { padding-right: 4px; }
+  .bs-lux .bs-doc .bs-ratio-card:nth-last-child(-n+2) { border-bottom: 0; }
+  .bs-lux .bs-doc .bs-ratio-head h4 { align-self: end; font: 700 16px/1.3 var(--font-serif); color: var(--ink); }
+  .bs-lux .bs-doc .bs-ratio-head strong { align-self: center; font: 700 30px/1.1 var(--font-serif); letter-spacing: -.01em; }
+  .bs-lux .bs-doc .bs-ratio-detail { align-self: start; font-size: 13px; line-height: 1.4; }
+  .bs-lux .bs-doc .bs-ratio-advice { justify-self: start; margin-top: 8px; padding: 5px 13px; border-radius: 14px; background: #e3f3ec; font-size: 12.5px; line-height: 1.4; font-weight: 600; }
+  .bs-lux .bs-doc .bs-ratio-alert .bs-ratio-advice { background: #fbe9e6; }
+}

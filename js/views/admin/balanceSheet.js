@@ -86,15 +86,16 @@ function ratiosSection(end) {
       : '';
   const profitWarning = Number(end.profit) < 0 ? 'Lợi nhuận lũy kế âm; cần rà soát doanh thu và chi phí.'
     : '';
-  const tile = (label, value, detail, advice, alert = false) => `<article class="bs-ratio-card ${alert ? 'bs-ratio-alert' : ''}">
+  // calc = true: dòng công thức chỉ hiện trên máy tính (để 4 ô cùng có tên - số - công thức; điện thoại giữ như cũ)
+  const tile = (label, value, detail, advice, alert = false, calc = false) => `<article class="bs-ratio-card ${alert ? 'bs-ratio-alert' : ''}">
     <div class="bs-ratio-head"><h4>${label}</h4><strong>${value}</strong></div>
-    ${detail ? `<p class="bs-ratio-detail">${detail}</p>` : ''}${advice ? `<p class="bs-ratio-advice">${advice}</p>` : ''}</article>`;
+    ${detail ? `<p class="bs-ratio-detail${calc ? ' bs-ratio-detail--calc' : ''}">${detail}</p>` : ''}${advice ? `<p class="bs-ratio-advice">${advice}</p>` : ''}</article>`;
   return `<section class="bs-ratios bs-section" id="bs-sec-ratios"><div class="bs-management-title"><h3 class="bs-sec-h">Chỉ số quản trị</h3><span>Lũy kế từ đầu năm · không quy đổi năm</span></div>
     <div class="bs-ratio-grid">
       ${tile('ROE', ratioFormat(ratios.roe, '%'), 'Lợi nhuận lũy kế / vốn chủ sở hữu', profitWarning, Number(end.profit) < 0)}
       ${tile('ROA', ratioFormat(ratios.roa, '%'), 'Lợi nhuận lũy kế / tổng tài sản', profitWarning, Number(end.profit) < 0)}
-      ${tile('Cho vay / tiền gửi', ratioFormat(ratios.loanDeposit, '%'), '', loanWarning, ratios.loanDeposit > 100)}
-      ${tile('Tiền gửi / vốn chủ sở hữu', ratioFormat(ratios.depositCapital, ' lần'), '', depositsWarning, ratios.depositCapital > 20)}
+      ${tile('Cho vay / tiền gửi', ratioFormat(ratios.loanDeposit, '%'), 'Dư nợ cho vay / tiền gửi khách hàng', loanWarning, ratios.loanDeposit > 100, true)}
+      ${tile('Tiền gửi / vốn chủ sở hữu', ratioFormat(ratios.depositCapital, ' lần'), 'Tiền gửi khách hàng / vốn chủ sở hữu', depositsWarning, ratios.depositCapital > 20, true)}
     </div><p class="bs-chart-note">ROA và ROE dùng lợi nhuận lũy kế và số dư cuối kỳ của tháng được chọn; đây là tỷ lệ quản trị tạm tính, chưa dùng tài sản/vốn bình quân hoặc lợi nhuận sau thuế.</p></section>`;
 }
 
