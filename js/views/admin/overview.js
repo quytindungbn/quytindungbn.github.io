@@ -172,13 +172,15 @@ function heroInnerHtml(m, ctx) {
       </div>`;
 }
 
+/** Tiêu đề trong thẻ "Cần chú ý" — chỉ hiện trên máy tính (điện thoại dùng tiêu đề rời phía trên thẻ). */
+const ATTN_TITLE = '<h3 class="lux-h lux-attn-title"><span>Cần chú ý</span></h3>';
 /** Hai dòng "Cần chú ý" — tháng hiện tại tính sống; tháng đã chốt lấy từ bản chốt (xem snapshotOverview()). */
 function attentionInnerHtml(m, ctx) {
   if (isCurrentMonth(m)) {
     const L = ctx.live;
     const overdueMoney = compactVnd(L.overdueTotal);
     const nearDueMoney = compactVnd(L.nearDueTotal);
-    return `
+    return `${ATTN_TITLE}
       <button type="button" class="lux-attn-row" id="tile-overdue">
         <span class="mk red"></span>
         <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(L.overdue.length)} hợp đồng</small></span>
@@ -193,7 +195,7 @@ function attentionInnerHtml(m, ctx) {
   const snap = snapshotOverview(m);
   const overdueMoney = compactVnd(snap.hasDetail ? snap.overdueTotal : 0);
   const nearMoney = compactVnd(snap.hasAttention ? snap.nearTotal : 0);
-  return `
+  return `${ATTN_TITLE}
       ${snap.hasDetail ? `<button type="button" class="lux-attn-row" id="tile-overdue">
         <span class="mk red"></span>
         <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(snap.overdueRows.length)} hợp đồng · tại ${m.label}</small></span>
@@ -375,8 +377,9 @@ function sparklineSvg(values) {
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" aria-hidden="true">
     <defs><linearGradient id="lux-spark-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#0c4a3f" stop-opacity=".28"/><stop offset="1" stop-color="#0c4a3f" stop-opacity="0"/></linearGradient></defs>
     <path d="${d} L${w - 5} ${h} L5 ${h} Z" fill="url(#lux-spark-fill)"/>
-    <path d="${d}" fill="none" stroke="#0c4a3f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4.5" fill="#b08d3c" stroke="#fffdf8" stroke-width="1.5"/></svg>`;
+    <path d="${d}" fill="none" stroke="#0c4a3f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <path d="M${last[0].toFixed(1)} ${last[1].toFixed(1)}h0" stroke="#fffdf8" stroke-width="12" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <path d="M${last[0].toFixed(1)} ${last[1].toFixed(1)}h0" stroke="#b08d3c" stroke-width="8.5" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
 }
 const LUX_CHEVRON = '<svg class="lux-chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 

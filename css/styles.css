@@ -1370,6 +1370,7 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 .lux-trio b { display: block; font-family: var(--lux-display); font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin-top: 3px; }
 .lux-trio b.bad { color: var(--lux-red); }
 .lux-attn { padding: 4px 16px; }
+.lux-attn-title { display: none; }
 .lux-attn-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 0; border: 0; border-bottom: 1px solid var(--lux-line); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .lux-attn-row:last-child { border-bottom: 0; }
 .lux-attn-row:focus-visible, .lux-leg:focus-visible, .lux-root .provision-row:focus-visible { outline: 2px solid var(--lux-gold); outline-offset: 2px; }
@@ -1408,18 +1409,25 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 .lux-root .composition-metrics button.active { color: var(--lux-em); border-color: var(--lux-gold); background: #eef5f1; }
 .lux-root .composition-legend-share { color: var(--lux-em); }
 @media (min-width: 900px) {
-  .lux-root { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  /* Lưới 12 cột, các thẻ cùng hàng cao bằng nhau (stretch) để không còn khoảng trống lệch:
+     hàng 1-2: Tổng dư nợ (trái, cao 2 hàng) | Cần chú ý + Dự phòng rủi ro (phải, xếp chồng);
+     hàng 3: Dư nợ theo nhóm nợ | Yêu cầu mới nhất; hàng 4-6: Biến động, Tỷ trọng, Tổng hợp tăng giảm (cả bề ngang). */
+  .lux-root { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
   .lux-root > * { grid-column: 1 / -1; }
   .lux-num { font-size: 60px; }
-  .lux-root > .lux-c-hero { grid-column: 1 / 9; grid-row: 2 / span 2; align-self: stretch; display: flex; flex-direction: column; }
-  .lux-c-hero .lux-spark { margin-top: auto; padding-top: 10px; }
-  .lux-root > .lux-c-attn-h { grid-column: 9 / 13; grid-row: 2; margin: 0 0 -6px; align-self: end; }
-  .lux-root > .lux-c-attn { grid-column: 9 / 13; grid-row: 3; align-self: start; }
-  .lux-root > .lux-c-nhom { grid-column: 1 / 8; }
-  .lux-root > .lux-c-prov { grid-column: 8 / 13; }
-  .lux-root > .lux-c-comp { grid-column: 1 / -1; }
-  .lux-root > .lux-c-diff { grid-column: 1 / 8; }
-  .lux-root > .lux-c-req { grid-column: 8 / 13; }
+  .lux-root > .lux-c-hero { grid-column: 1 / 9; grid-row: 1 / span 2; display: flex; flex-direction: column; }
+  .lux-c-hero .lux-spark { flex: 1; display: flex; margin-top: 8px; }
+  .lux-c-hero .lux-spark svg { flex: 1; height: auto; min-height: 90px; }
+  .lux-root > .lux-c-attn-h { display: none; }
+  .lux-root > .lux-c-attn { grid-column: 9 / 13; grid-row: 1; display: flex; flex-direction: column; padding: 16px 16px 8px; }
+  .lux-attn-title { display: flex; }
+  .lux-c-attn .lux-attn-row { flex: 1; }
+  .lux-root > .lux-c-prov { grid-column: 9 / 13; grid-row: 2; }
+  .lux-root > .lux-c-nhom { grid-column: 1 / 9; grid-row: 3; }
+  .lux-root > .lux-c-req { grid-column: 9 / 13; grid-row: 3; }
+  .lux-root > .lux-c-trend { grid-column: 1 / -1; grid-row: 4; }
+  .lux-root > .lux-c-comp { grid-column: 1 / -1; grid-row: 5; }
+  .lux-root > .lux-c-diff { grid-column: 1 / -1; grid-row: 6; }
 }
 
 /* ============ Trang Quản trị — phong cách "kem & vàng đồng" (xem js/views/admin/balanceSheet.js, draw()) ============ */

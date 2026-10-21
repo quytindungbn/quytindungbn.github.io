@@ -289,7 +289,9 @@ export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceCol
     const viewport = mobile ? 330 : 1080;
     const visible = mobile ? 6 : 12;
     const left = mobile ? 25 : 45;
-    const step = (viewport - left - 32) / (visible - 1);
+    // Máy tính: ít tháng thì dàn đều ra hết bề ngang thay vì dồn về bên trái (từ 12 tháng trở lên thì cuộn ngang như cũ).
+    const slots = mobile ? visible : Math.min(visible, Math.max(months.length, 2));
+    const step = (viewport - left - 32) / (slots - 1);
     const width = Math.max(viewport, left + step * (months.length - 1) + 32);
     const top = 30, bottom = mobile ? 185 : 220, height = mobile ? 220 : 260;
     const x = (i) => left + i * step;
