@@ -67,12 +67,9 @@ export function alignRows(rows, prefix = '') {
   return rows.map(([label, value], i) => `${prefix}${label}:${padding(best.column - widths[i]).text}${value}`);
 }
 
-/** Tên khách IN HOA; có thêm người đồng vay (khác tên khách) thì nối bằng chữ "và" viết thường, chỉ 1 tên thì không có chữ "và". */
-export function customerDisplay(customerName, heirName) {
-  const main = String(customerName || '').trim();
-  const heir = String(heirName || '').trim();
-  const names = [main, heir && heir.toLowerCase() !== main.toLowerCase() ? heir : ''].filter(Boolean).map((n) => n.toUpperCase());
-  return names.join(' và ');
+/** Tên khách IN HOA — chỉ lấy tên MỘT người (khách hàng), không ghi thêm người đồng vay. */
+export function customerDisplay(customerName) {
+  return String(customerName || '').trim().toUpperCase();
 }
 
 /** "Trong hạn" / "Quá hạn N ngày" / "Còn N ngày đến hạn" / "Đã tất toán" — cách nói dành cho khách. */
@@ -89,7 +86,6 @@ export function loanStatusText(info) {
  * @param {string} p.orgName      tên quỹ (VD "Quỹ Tín Dụng Nhân Dân Bình Nguyên")
  * @param {string} [p.hotline]
  * @param {string} p.customerName tên khách hàng
- * @param {string} [p.heirName]   người đồng vay/thừa kế (nếu có và khác tên khách thì ghi thêm "và <tên>")
  * @param {object} p.contract     { code, principal, balance, interestRate, disbursedDate, dueDate, interestPaidUntil }
  * @param {object} [p.info]       kết quả contractStatusInfo()
  * @param {Date}   p.asOf         "tính đến ngày" đang hiện trên màn hình
@@ -97,7 +93,7 @@ export function loanStatusText(info) {
  * @param {number} p.accrued      tiền lãi tương ứng
  * @param {{date:(Date|string), amount:number}|null} [p.nextInstallment] kỳ trả gốc tới (hợp đồng có phân kỳ)
  */
-export function buildLoanSummaryText({ orgName, hotline, customerName, heirName, contract, info, asOf, days, accrued, nextInstallment }) {
+export function buildLoanSummaryText({ orgName, hotline, customerName, contract, info, asOf, days, accrued, nextInstallment }) {
   const balance = Number(contract.balance) || 0;
   const principal = Number(contract.principal) || 0;
   const rate = String(contract.interestRate).replace('.', ',');
@@ -111,7 +107,7 @@ export function buildLoanSummaryText({ orgName, hotline, customerName, heirName,
   L.push(LINE);
   const status = loanStatusText(info);
   L.push(...alignRows([
-    ['Khách hàng', customerDisplay(customerName, heirName)],
+    ['Khách hàng', customerDisplay(customerName)],
     ['Hợp đồng số', contract.code],
     ...(status ? [['Tình trạng', status]] : []),
   ]));

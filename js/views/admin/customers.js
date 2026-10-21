@@ -1258,7 +1258,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           const inst = S.nextInstallmentInfo(contract, asOf);
           const text = buildLoanSummaryText({
             orgName: org.name || 'Quỹ Tín Dụng Nhân Dân Bình Nguyên', hotline: org.hotline,
-            customerName: customer ? customer.name : '', heirName: contract.heirName, contract,
+            customerName: customer ? customer.name : '', contract,
             info: S.contractStatusInfo(contract, asOf), asOf, days: S.interestDaysAccrued(contract, asOf), accrued: S.accruedInterest(contract, asOf),
             nextInstallment: inst && inst.next ? { date: inst.next.dueDate, amount: inst.next.dueAmount } : null,
           });

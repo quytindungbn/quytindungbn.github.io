@@ -7,12 +7,12 @@ import { boldDigits } from '../js/utils.js';
 const flat = (t) => t.replace(/[ \u00a0\u2000-\u200a]+/g, ' ');
 
 const contract = { code: '457/26', principal: 320e6, balance: 200e6, interestRate: 10.95, disbursedDate: '2025-12-25', dueDate: '2026-12-20', interestPaidUntil: '2026-05-11' };
-const base = { orgName: 'Quỹ Tín Dụng Nhân Dân Bình Nguyên', hotline: '0255 3 800 800', customerName: 'Phan Thắng', heirName: 'ĐỖ THỊ KIM PHƯƠNG', contract, info: { status: 'dang_vay', days: 60 }, asOf: new Date(2026, 9, 21), days: 163, accrued: 9780000 };
+const base = { orgName: 'Quỹ Tín Dụng Nhân Dân Bình Nguyên', hotline: '0255 3 800 800', customerName: 'Phan Thắng', contract, info: { status: 'dang_vay', days: 60 }, asOf: new Date(2026, 9, 21), days: 163, accrued: 9780000 };
 
 test('mẫu A: đủ thông tin khoản vay, tên quỹ viết hoa làm tiêu đề, không có công thức tính lãi', () => {
   const t = flat(buildLoanSummaryText(base));
   assert.equal(t.split('\n')[0], 'QUỸ TÍN DỤNG NHÂN DÂN BÌNH NGUYÊN');
-  for (const s of ['THÔNG TIN KHOẢN VAY', '(tính đến 21/10/2026)', 'Khách hàng: PHAN THẮNG và ĐỖ THỊ KIM PHƯƠNG', 'Hợp đồng số: 457/26', 'Tình trạng: Trong hạn',
+  for (const s of ['THÔNG TIN KHOẢN VAY', '(tính đến 21/10/2026)', 'Khách hàng: PHAN THẮNG', 'Hợp đồng số: 457/26', 'Tình trạng: Trong hạn',
     '• Số tiền vay: 320.000.000 ₫', '• Gốc đã trả: 120.000.000 ₫', `• Dư nợ hiện tại: ${boldDigits('200.000.000 ₫')}`, '• Lãi suất: 10,95%/năm',
     '• Ngày vay: 25/12/2025', '• Ngày đến hạn: 20/12/2026', '• Đã trả lãi đến: 11/05/2026', '• Số ngày tính lãi: 163 ngày', `• Tiền lãi phải trả: ${boldDigits('9.780.000 ₫')}`,
     '\nI. KHOẢN VAY\n', '\nII. TIỀN LÃI\n', 'Hotline: 0255 3 800 800']) assert.ok(t.includes(s), s);
@@ -71,11 +71,10 @@ test('cách nói tình trạng dành cho khách', () => {
   assert.equal(loanStatusText({ status: 'dang_vay', days: 100 }), 'Trong hạn');
 });
 
-test('tên khách IN HOA, chữ "và" viết thường; chỉ 1 tên thì không có chữ "và"', () => {
-  assert.equal(customerDisplay('Phan Thắng', 'ĐỖ THỊ KIM PHƯƠNG'), 'PHAN THẮNG và ĐỖ THỊ KIM PHƯƠNG');
-  assert.equal(customerDisplay('Phan Thắng', ''), 'PHAN THẮNG');
-  assert.equal(customerDisplay('Phan Thắng', undefined), 'PHAN THẮNG');
-  assert.equal(customerDisplay('Phan Thắng', 'phan thắng'), 'PHAN THẮNG', 'đồng vay trùng tên khách thì không lặp');
-  const one = flat(buildLoanSummaryText({ ...base, heirName: '' }));
-  assert.ok(one.includes('Khách hàng: PHAN THẮNG\n') && !one.includes(' và '));
+test('tên khách IN HOA và chỉ lấy tên MỘT người (không ghi thêm người đồng vay)', () => {
+  assert.equal(customerDisplay('Phan Thắng'), 'PHAN THẮNG');
+  assert.equal(customerDisplay('  lê thị thanh '), 'LÊ THỊ THANH');
+  assert.equal(customerDisplay(undefined), '');
+  const t = flat(buildLoanSummaryText({ ...base, heirName: 'ĐỖ THỊ KIM PHƯƠNG' }));
+  assert.ok(t.includes('Khách hàng: PHAN THẮNG\n') && !t.includes(' và ') && !t.includes('KIM PHƯƠNG'));
 });
