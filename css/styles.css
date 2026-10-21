@@ -1308,7 +1308,7 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 .imp-tag { display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 999px; background: var(--surface-alt); color: var(--text-muted); font-size: 12px; }
 
 /* ============ Trang Tổng quan — phong cách "kem & vàng đồng" (xem js/views/admin/overview.js) ============ */
-.lux-root, .lux-period {
+.lux-root, .lux-period, .modal-sheet.month-detail-sheet {
   --lux-display: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --lux-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --lux-line: #dbe6e0; --lux-em: #0c4a3f; --lux-gold: #b08d3c; --lux-gold2: #dccb99; --lux-red: #a8402f; --lux-mut: #6c7a74;
@@ -1870,4 +1870,48 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 @media (max-width: 899px) {
   .lux-diff-desktop { display: none; }
   .lux-diff-mobile { display: block; }
+}
+
+/* ===== Modal "Chi tiết theo từng tháng": tab chỉ tiêu + bảng tháng có so sánh (máy tính và điện thoại cùng dạng hàng/cột) ===== */
+.modal-sheet.month-detail-sheet { max-width: 880px; }
+@media (min-width: 640px) { .modal-sheet.month-detail-sheet { width: min(880px, calc(100vw - 40px)); } }
+.modal-sheet.month-detail-sheet .modal-body { padding-top: 14px; }
+.mdl-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.mdl-tab { flex: 1; padding: 9px 10px; border: 1px solid var(--lux-line); border-radius: 999px; background: #fff; color: var(--lux-mut); font: 600 13px var(--lux-sans); cursor: pointer; white-space: nowrap; }
+.mdl-tab[aria-selected="true"] { color: #fff; border-color: transparent; }
+.mdl-tab--green[aria-selected="true"] { background: #0c4a3f; }
+.mdl-tab--red[aria-selected="true"] { background: #a8402f; }
+.mdl-tab--gold[aria-selected="true"] { background: #8a6a22; }
+.mdl-tab:focus-visible { outline: 2px solid var(--lux-gold); outline-offset: 2px; }
+.mdl-panel { --k: #0c4a3f; }
+.mdl-panel--red { --k: #a8402f; }
+.mdl-panel--gold { --k: #8a6a22; }
+.mdl-list { border-top: 2px solid var(--k); }
+.mdl-head, .mdl-row { display: grid; grid-template-columns: minmax(150px, 1.2fr) minmax(130px, 1fr) minmax(0, 1.3fr) minmax(0, 1.3fr); align-items: center; column-gap: 16px; }
+.mdl-head { padding: 10px 4px; border-bottom: 1px solid var(--lux-line); font: 700 10.5px var(--lux-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--lux-gold); }
+.mdl-row { padding: 12px 4px; border-bottom: 1px dotted var(--lux-gold2); }
+.mdl-head + .mdl-row { background: linear-gradient(90deg, rgba(12, 74, 63, .04), transparent); }
+.mdl-m b { display: block; font: 700 14px var(--lux-sans); color: var(--text); }
+.mdl-m small { font: 500 11.5px var(--lux-sans); color: var(--lux-mut); }
+.mdl-v b, .mdl-v .mdl-u { font: 800 15px var(--lux-sans); color: var(--k); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mdl-v small { display: block; font: 500 11.5px var(--lux-sans); color: var(--lux-mut); }
+.mdl-row .lux-cmp { flex-direction: row; align-items: center; gap: 10px; }
+.mdl-row .lux-cmp-l { display: none; }
+@media (max-width: 639px) {
+  /* Điện thoại: vẫn hàng và cột — Tháng | Số dư | So tháng trước | So đầu năm — vừa trọn khung, không cuộn ngang */
+  .mdl-tab { padding: 9px 6px; font-size: 12.5px; }
+  .mdl-head, .mdl-row { grid-template-columns: 58px 74px minmax(0, 1fr) minmax(0, 1fr); column-gap: 6px; }
+  .mdl-head { padding: 8px 0; font-size: 9px; letter-spacing: .04em; line-height: 1.25; align-items: end; }
+  .mdl-row { padding: 10px 0; align-items: start; }
+  .mdl-m b { font-size: 12.5px; }
+  .mdl-t { display: none; }
+  .mdl-m small { display: block; font-size: 10px; line-height: 1.2; }
+  .mdl-v b { font-size: 13px; }
+  .mdl-v .mdl-u { display: block; font-size: 10.5px; font-weight: 600; color: var(--lux-mut); }
+  .mdl-v small { font-size: 10px; }
+  .mdl-row .lux-cmp { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .mdl-row .lux-pill { padding: 2px 6px; font-size: 11.5px; }
+  .mdl-row .lux-cmp-amt { font-size: 10.5px; line-height: 1.2; }
+  .mdl-row .lux-cmp-na { font-size: 10.5px; line-height: 1.2; }
+  .mdl-row .lux-cmp-d { display: none; }
 }

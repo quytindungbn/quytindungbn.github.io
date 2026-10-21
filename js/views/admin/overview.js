@@ -923,68 +923,57 @@ function kpiCompareHtml(label, value, base, mode) {
   const tone = flat ? 'flat' : good ? 'good' : 'bad';
   const arrow = flat ? '·' : up ? '▲' : '▼';
   const amt = compactParts(Math.abs(diff));
-  const amount = flat ? 'Không đổi' : `${up ? '+' : '-'}${amt.num} ${amt.unit}`;
+  const amount = flat ? 'Không đổi' : `${up ? '+' : '-'}${amt.num} ${amt.unit.replace(/ đ$/, '<span class="lux-cmp-d"> đ</span>')}`;
   return `<div class="lux-cmp"><span class="lux-cmp-l">${label}</span><span class="lux-pill ${tone}">${arrow} ${p === null ? '—' : `${Math.abs(p).toFixed(1).replace('.', ',')}%`}</span><span class="lux-cmp-amt">${amount}</span></div>`;
 }
 
 /**
- * Modal "Xem chi tiết" — bảng ĐẦY ĐỦ toàn bộ lịch sử các tháng (mới nhất lên
- * đầu), mỗi cột 1 chỉ tiêu (Dư nợ/Nợ xấu/Lãi phải thu) kèm % so với tháng
- * trước ngay dưới số — khác bảng "Tổng hợp tăng giảm" ở ngoài (CHỈ hiện 1
- * tháng đang chọn): ở đây xem được NHIỀU tháng cùng lúc để so sánh xu hướng.
- * Bấm vào 1 dòng tháng (chỉ những tháng ĐÃ có đủ dữ liệu để so — 31/12 năm
- * liền trước) để MỞ RỘNG thêm 1 dòng phụ ngay dưới, hiện "So sánh năm" của
- * đúng tháng đó — không hiện sẵn hết để bảng gọn, chỉ mở khi cần xem.
+ * Modal "Xem chi tiết" của Tổng hợp tăng giảm: xem lại TOÀN BỘ các tháng của từng chỉ tiêu. Chọn chỉ tiêu bằng 3 tab
+ * (Dư nợ / Nợ xấu / Lãi phải thu), bên dưới là bảng tháng (mới nhất lên đầu) gồm số dư, so tháng trước và so đầu năm — hiện sẵn thẻ % xanh/đỏ và số tiền tăng/giảm, không phải bấm mở rộng từng dòng.
  */
+const DETAIL_METRICS = [
+  { key: 'balance', label: 'Dư nợ', tone: 'green', mode: 'better' },
+  { key: 'badDebt', label: 'Nợ xấu', tone: 'red', mode: 'worse', ratioKey: 'badDebtRatio' },
+  { key: 'interest', label: 'Lãi phải thu', tone: 'gold', mode: 'better', ratioKey: 'interestRatio' },
+];
+
+function monthlyDetailPanelHtml(metric, months, prevMonthOf, yearStartOf) {
+  const rows = [...months].reverse().map((x) => {
+    const value = Number(x[metric.key]) || 0;
+    const prev = prevMonthOf(x.yearMonth);
+    const yearStart = yearStartOf(x.yearMonth);
+    const big = compactParts(value);
+    return `<div class="mdl-row">
+      <div class="mdl-m"><b><span class="mdl-t">Tháng </span>${x.yearMonth.slice(5, 7)}/${x.yearMonth.slice(0, 4)}</b>${x.live ? '<small>đang cập nhật</small>' : ''}</div>
+      <div class="mdl-v"><b>${big.num}</b> <span class="mdl-u">${big.unit}</span>${metric.ratioKey ? `<small>${formatPercent(x[metric.ratioKey])} dư nợ</small>` : ''}</div>
+      ${kpiCompareHtml('So tháng trước', value, prev ? Number(prev[metric.key]) : null, metric.mode)}
+      ${kpiCompareHtml('So đầu năm', value, yearStart ? Number(yearStart[metric.key]) : null, metric.mode)}
+    </div>`;
+  }).join('');
+  return `
+    <div class="mdl-list">
+      <div class="mdl-head"><span>Tháng</span><span>Số dư</span><span>So tháng trước</span><span>So đầu năm</span></div>
+      ${rows}
+    </div>`;
+}
+
 function openMonthlyDetailModal() {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
-  const rows = [...months].reverse();
-  const td = 'padding:8px 10px 8px 0;border-bottom:1px solid var(--border);white-space:nowrap';
-  const bodyRows = rows.map((m) => {
-    const prev = prevMonthOf(m.yearMonth);
-    const yearStart = yearStartOf(m.yearMonth);
-    // 4 ô riêng (KHÔNG colspan) — xếp thẳng hàng đúng dưới 4 cột phía trên
-    // (Tháng/Dư nợ/Nợ xấu/Lãi phải thu), thay vì dồn chung 1 dòng chữ như
-    // trước — dễ nhìn hơn, theo đúng yêu cầu. "So với đầu năm:" vẫn nằm ở ô
-    // đầu dòng (cột "Tháng").
-    const yoyTd = 'padding:2px 10px 10px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)';
-    const yoyRow = yearStart ? `
-      <tr data-yoy-row="${m.yearMonth}" hidden>
-        <td style="${yoyTd}">So với đầu năm:</td>
-        <td style="${yoyTd}">${deltaChip(pct(m.balance, yearStart.balance), { mode: 'better' })}</td>
-        <td style="${yoyTd}">${deltaChip(pct(m.badDebt, yearStart.badDebt), { mode: 'worse' })}</td>
-        <td style="${yoyTd}">${deltaChip(pct(m.interest, yearStart.interest), { mode: 'better' })}</td>
-      </tr>` : '';
-    return `
-      <tr data-toggle-yoy="${m.yearMonth}" style="${yearStart ? 'cursor:pointer' : ''}">
-        <td style="${td}font-weight:700">${m.label}${m.live ? ' <span style="font-weight:400;color:var(--text-faint)">(đang cập nhật)</span>' : ''}${yearStart ? ' <span style="font-size:9px;color:var(--text-faint)">▾</span>' : ''}</td>
-        <td style="${td}">${formatVND(m.balance)}<br>${deltaChip(pct(m.balance, prev?.balance ?? null), { mode: 'better' })}</td>
-        <td style="${td}">${formatVND(m.badDebt)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.badDebtRatio)})</span><br>${deltaChip(pct(m.badDebt, prev?.badDebt ?? null), { mode: 'worse' })}</td>
-        <td style="${td}">${formatVND(m.interest)} <span style="color:var(--text-muted);font-size:10.5px">(${formatPercent(m.interestRatio)})</span><br>${deltaChip(pct(m.interest, prev?.interest ?? null), { mode: 'better' })}</td>
-      </tr>${yoyRow}`;
-  }).join('');
   openModal({
     title: 'Chi tiết theo từng tháng',
+    sheetClass: 'month-detail-sheet',
     bodyHtml: `
-      <p class="text-sm text-muted mb-8">Bấm vào 1 tháng để xem thêm so với đầu năm.</p>
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-          <thead>
-            <tr style="color:var(--text-muted);font-size:11px;text-align:left">
-              <th style="padding:0 10px 6px 0">Tháng</th>
-              <th style="padding:0 10px 6px 0">Dư nợ</th>
-              <th style="padding:0 10px 6px 0">Nợ xấu</th>
-              <th style="padding:0 10px 6px 0">Lãi phải thu</th>
-            </tr>
-          </thead>
-          <tbody>${bodyRows}</tbody>
-        </table>
-      </div>`,
+      <div class="mdl-tabs" role="tablist" aria-label="Chọn chỉ tiêu">${DETAIL_METRICS.map((mt, i) => `<button type="button" role="tab" class="mdl-tab mdl-tab--${mt.tone}" data-metric="${i}" aria-selected="${i === 0}">${mt.label}</button>`).join('')}</div>
+      <div id="mdl-panel" class="mdl-panel mdl-panel--${DETAIL_METRICS[0].tone}">${monthlyDetailPanelHtml(DETAIL_METRICS[0], months, prevMonthOf, yearStartOf)}</div>`,
     onMount(sheet) {
-      sheet.querySelectorAll('[data-toggle-yoy]').forEach((row) => {
-        const detail = sheet.querySelector(`[data-yoy-row="${row.dataset.toggleYoy}"]`);
-        if (!detail) return;
-        row.addEventListener('click', () => { detail.hidden = !detail.hidden; });
+      const panel = sheet.querySelector('#mdl-panel');
+      sheet.querySelectorAll('.mdl-tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          const metric = DETAIL_METRICS[Number(tab.dataset.metric)];
+          sheet.querySelectorAll('.mdl-tab').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+          panel.className = `mdl-panel mdl-panel--${metric.tone}`;
+          panel.innerHTML = monthlyDetailPanelHtml(metric, months, prevMonthOf, yearStartOf);
+        });
       });
     },
   });
