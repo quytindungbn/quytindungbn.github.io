@@ -4,12 +4,13 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox, installmentHintHtml, mountScrollTopButton } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, startOfDay, parseViDate, maskViDate, toDateInputValue, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
+import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, startOfDay, parseViDate, maskViDate, toDateInputValue, copyText, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xlsxLite.js';
 import { buildVietQrUrl, qrImageSrc, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 import { transferContent } from '../../lib/transferContent.js';
 import { interestAsOfForDays, MAX_INTEREST_DAYS } from '../../lib/interestDays.js';
+import { buildLoanSummaryText } from '../../lib/loanSummary.js';
 import { printNotice } from '../../lib/printNotices.js';
 import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
 
@@ -941,6 +942,15 @@ function fitOneLine(el, minPx = 9) {
   while (el.scrollWidth > el.clientWidth + 0.5 && size > minPx) { size -= 0.5; el.style.fontSize = `${size}px`; }
 }
 
+/** Máy không cho sao chép tự động thì hiện khung chữ đã chọn sẵn để người dùng tự chạm giữ → Sao chép. */
+function openCopyFallback(text) {
+  openModal({
+    title: 'Sao chép thông tin khoản vay',
+    bodyHtml: `<p class="text-sm text-muted mb-8">Máy chưa cho sao chép tự động. Chạm giữ vào khung bên dưới, chọn "Chọn tất cả" rồi "Sao chép".</p><textarea id="loan-copy-ta" readonly rows="14" style="width:100%;border:1px solid var(--border-strong);border-radius:8px;padding:10px;font:13px/1.5 inherit">${escapeHtml(text)}</textarea>`,
+    onMount(sheet) { const ta = sheet.querySelector('#loan-copy-ta'); if (ta) { ta.focus(); ta.select(); } },
+  });
+}
+
 /** Dòng "Cách tính lãi": số dư × số ngày × lãi suất ÷ 365 = tiền lãi — dùng cả lúc mở popup lẫn lúc sửa ngày/số ngày. */
 function contractFormulaHtml(contract, days, accrued) {
   return `${formatVND(contract.balance)} × ${days} ngày × ${contract.interestRate}%<br class="cf-br"> ÷ 365 ngày = <strong>${formatVND(accrued)}</strong>`;
@@ -1001,7 +1011,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     // Kèm thêm tên khách hàng vào tiêu đề để đỡ nhầm giữa nhiều hợp đồng đang
     // mở/xem liên tiếp (VD: khách có nhiều hợp đồng, hoặc mở hợp đồng từ danh
     // sách quá hạn/gần đến hạn ở Tổng quan) — trước đây chỉ có mã hợp đồng.
-    title: `Hợp đồng ${escapeHtml(contract.code)}${customer ? ` - ${escapeHtml(customer.name)}${heirTitle}` : ''}`,
+    title: `Hợp đồng ${escapeHtml(contract.code)}${customer ? ` - ${escapeHtml(customer.name)}${heirTitle}` : ''}<button type="button" class="copy-info-btn" id="btn-copy-loan" title="Sao chép thông tin khoản vay để gửi khách" aria-label="Sao chép thông tin khoản vay để gửi khách">${icon('copy')}</button>`,
     sheetClass: 'customer-contract-sheet',
     bodyHtml: `
       <div class="customer-contract-view">
@@ -1225,6 +1235,22 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         });
         const resetBtn = sheet.querySelector('#ct-reset2');
         if (resetBtn) resetBtn.addEventListener('click', () => { asOf = today; render(); });
+        // Nút "Sao chép" ở tiêu đề: tạo tin "Thông tin khoản vay" đúng số liệu đang hiện (kể cả khi đã chỉnh "Tính đến ngày") để dán gửi khách.
+        const copyBtn = sheet.querySelector('#btn-copy-loan');
+        if (copyBtn) copyBtn.addEventListener('click', async () => {
+          const inst = S.nextInstallmentInfo(contract, asOf);
+          const text = buildLoanSummaryText({
+            orgName: org.name || 'Quỹ Tín Dụng Nhân Dân Bình Nguyên', hotline: org.hotline,
+            customerName: customer ? customer.name : '', heirName: contract.heirName, contract,
+            info: S.contractStatusInfo(contract, asOf), asOf, days: S.interestDaysAccrued(contract, asOf), accrued: S.accruedInterest(contract, asOf),
+            nextInstallment: inst && inst.next ? { date: inst.next.dueDate, amount: inst.next.dueAmount } : null,
+          });
+          if (await copyText(text)) {
+            toast('Đã sao chép thông tin khoản vay — dán vào Zalo gửi khách', 'success');
+            copyBtn.classList.add('is-done'); copyBtn.innerHTML = icon('check');
+            setTimeout(() => { copyBtn.classList.remove('is-done'); copyBtn.innerHTML = icon('copy'); }, 1800);
+          } else openCopyFallback(text);
+        });
         sizeDays();
       }
       // Số tiền (Dư nợ / Số tiền đã trả / Lãi cộng dồn) luôn gọn trên 1 dòng dù số lớn: thu nhỏ chữ cho vừa, tính lại khi đổi kích thước hoặc font tải xong.

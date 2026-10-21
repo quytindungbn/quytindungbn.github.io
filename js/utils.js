@@ -77,6 +77,44 @@ export function boldDigits(s) {
   return String(s ?? '').replace(/[0-9]/g, (d) => BOLD_DIGITS[Number(d)]);
 }
 
+/**
+ * Chữ La-tinh + chữ số sang kiểu ĐẬM (Unicode "Mathematical Bold") để dán vào Zalo vẫn thấy đậm — dấu tiếng Việt giữ bằng dấu ghép.
+ * Chữ không dấu và chữ số luôn đẹp; chữ có dấu đẹp hay lệch dấu tuỳ phông của máy xem. Chữ "Đ" không có bản đậm nên giữ nguyên.
+ */
+export function boldText(s) {
+  let out = '';
+  for (const ch of String(s ?? '').normalize('NFD')) {
+    const c = ch.codePointAt(0);
+    if (c >= 0x41 && c <= 0x5a) out += String.fromCodePoint(0x1d400 + c - 0x41);
+    else if (c >= 0x61 && c <= 0x7a) out += String.fromCodePoint(0x1d41a + c - 0x61);
+    else if (c >= 0x30 && c <= 0x39) out += String.fromCodePoint(0x1d7ce + c - 0x30);
+    else out += ch;
+  }
+  return out.normalize('NFC');
+}
+
+/** Sao chép văn bản vào bộ nhớ tạm — thử API hiện đại trước, không được thì dùng cách cũ (textarea + execCommand). Trả true/false. */
+export async function copyText(text) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof window !== 'undefined' && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* thử cách dự phòng bên dưới */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch { return false; }
+}
+
 export function formatDateTime(d) {
   const dt = d instanceof Date ? d : new Date(d);
   const hh = String(dt.getHours()).padStart(2, '0');

@@ -2019,3 +2019,10 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .ct-sub-lbl { display: none; }
   .ct-date input[type="text"] { width: 70px; font-size: 12px; }
 }
+
+/* Nút sao chép thông tin khoản vay (icon nhỏ, nằm ngay sau tiêu đề hợp đồng) */
+.copy-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: 8px; padding: 0; vertical-align: middle; border: 1px solid #b0c7b9; border-radius: 50%; background: var(--surface); color: var(--color-primary-dark); cursor: pointer; }
+.copy-info-btn svg { width: 15px; height: 15px; }
+.copy-info-btn:hover { background: var(--color-primary-light); border-color: var(--color-primary); }
+.copy-info-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.copy-info-btn.is-done { background: #e9f6ef; border-color: #7cbf9c; color: #0b6b3f; }
