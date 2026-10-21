@@ -1915,3 +1915,8 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .mdl-row .lux-cmp-na { font-size: 10.5px; line-height: 1.2; }
   .mdl-row .lux-cmp-d { display: none; }
 }
+
+/* Cơ cấu tài sản / nguồn vốn: chữ các dòng (tên, tỷ lệ, số tiền) to bằng các dòng của "Cân đối rút gọn" (tên 14,5px, số 13px) */
+.bs-lux .bs-doc .bs-composition-list { gap: 9px; }
+.bs-lux .bs-doc .bs-composition-list > div { font-size: 14.5px; padding-bottom: 8px; }
+.bs-lux .bs-doc .bs-composition-list small { font-size: 13px; }
