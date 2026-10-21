@@ -174,27 +174,28 @@ function trendMonthDetail(report) {
 
 function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
   const viewport = mobile ? 320 : 1120;
-  const visible = mobile ? 6 : 12;
-  const height = mobile ? 215 : 330;
-  const left = mobile ? 45 : 80;
-  const step = (viewport - left - (mobile ? 55 : 100)) / (visible - 1);
-  const width = Math.max(viewport, left + step * (shown.length - 1) + (mobile ? 55 : 100));
-  const right = width - (mobile ? 55 : 100);
+  const visible = mobile ? 5 : 12;
+  const height = mobile ? 255 : 372; // cao hơn để nhãn số (đã to hơn) có chỗ tách nhau
+  const edge = mobile ? 28 : 44; // chừa chỗ cho nhãn số của tháng đầu/cuối; không còn số ở hai đầu trục
+  const left = edge;
+  const step = (viewport - left - edge) / (visible - 1);
+  const width = Math.max(viewport, left + step * (shown.length - 1) + edge);
+  const right = width - edge;
   const top = mobile ? 20 : 24;
-  const bottom = mobile ? 170 : 278;
+  const bottom = mobile ? 208 : 316;
   const x = (i) => left + i * step;
   const y = (v) => bottom - (v - base) / span * (bottom - top);
   const profitY = (v) => bottom - (v - profitBase) / profitSpan * (bottom - top);
   const lines = [0, 0.5, 1].map((p) => {
     const yy = bottom - (bottom - top) * p;
-    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/><text x="${left - (mobile ? 5 : 8)}" y="${yy + 4}" text-anchor="end" font-size="${mobile ? 9 : 11}" fill="#64748b">${formatCompact(base + span * p)}</text><text x="${right + 7}" y="${yy + 4}" font-size="${mobile ? 8 : 11}" fill="#a8402f">${formatTrieuDong(profitBase + profitSpan * p)}</text>`;
+    return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/>`;
   }).join('');
   const pointYs = trendSeries.map((s) => shown.map((r) =>
     (s.rightAxis ? profitY : y)(Number(r.figures.end[s.key]) || 0)));
   const positions = shown.map((_, monthIndex) => {
     const points = trendSeries.map((_, seriesIndex) => ({ seriesIndex, rawY: pointYs[seriesIndex][monthIndex] }))
       .sort((a, b) => a.rawY - b.rawY);
-    const minGap = mobile ? 17 : 21;
+    const minGap = mobile ? 21 : 25;
     const labelTop = top + 12;
     const labelBottom = bottom - 5;
     points.forEach((point, index) => {
@@ -222,10 +223,10 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
       const value = Number(r.figures.end[s.key]) || 0;
       const cx = x(i), cy = pointYs[seriesIndex][i];
       const { dotX, labelY } = positions[i][seriesIndex];
-      return `<g class="bs-trend-point" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 8 : 10}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="2.5" paint-order="stroke">${s.rightAxis ? formatTrieuDong(value) : formatTyDong(value)}</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
+      return `<g class="bs-trend-point" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 10.5 : 13}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="3" paint-order="stroke">${s.rightAxis ? formatTrieuDong(value) : `${formatTyDong(value)} tỷ`}</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
     }).join('') };
   });
-  const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 200 : 314}" text-anchor="middle" font-size="${mobile ? 9 : 13}" font-weight="700" fill="#475569">${r.year_month.slice(5, 7)}${mobile ? '' : `/${r.year_month.slice(2, 4)}`}</text>`).join('');
+  const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 240 : 352}" text-anchor="middle" font-size="${mobile ? 10 : 13}" font-weight="700" fill="#475569">${r.year_month.slice(5, 7)}/${r.year_month.slice(2, 4)}</text>`).join('');
   return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" style="width:${shown.length > visible ? (width / viewport * 100).toFixed(2) : 100}%" role="img" aria-label="Biến động theo các tháng đã nạp: tổng tài sản, tiền gửi và dư nợ tính bằng tỷ đồng; lợi nhuận tính bằng triệu đồng">${lines}${plots.map((plot) => plot.line).join('')}${plots.map((plot) => plot.dots).join('')}${labels}</svg>`;
 }
 
@@ -437,7 +438,7 @@ function draw(contentEl) {
     ${reports.length ? `<label class="bs-bar-period"><small>Kỳ báo cáo</small><select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select></label>` : ''}
     <div class="bs-bar-tools"><button type="button" class="bs-ibtn" id="bs-refresh" title="Làm mới" aria-label="Làm mới">${icon('refresh')}</button>${superAdmin ? `<button type="button" class="bs-ibtn" id="bs-import" title="Nạp cân đối" aria-label="Nạp cân đối">${icon('upload')}</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>` : ''}</div></div>`;
   const ratiosHtml = report ? ratiosSection(end) : '';
-  // Thứ tự trang: khối tổng hợp -> chỉ số -> biến động -> cơ cấu -> cân đối rút gọn -> dự phòng.
+  // Thứ tự trang: khối tổng hợp -> biến động -> cơ cấu -> cân đối rút gọn -> dự phòng -> chỉ số quản trị (đặt cuối).
   contentEl.innerHTML = `<div class="bs-lux">
     <div class="bs-sticky">${barHtml}</div>
     <div class="bs-doc">
@@ -450,7 +451,6 @@ function draw(contentEl) {
         ${stat('Lợi nhuận lũy kế', end.profit, start.profit, 'c-pink', true)}
       </div>` : ''}</div>
     ${!report ? `<div class="card card-pad"><p>Chưa có bảng cân đối nào. Quản trị viên toàn quyền có thể nạp file .xls hoặc .xlsx của từng tháng.</p></div>` : `
-    ${ratiosHtml}
     <div class="card card-pad bs-section bs-trend-section" id="bs-sec-trend"><h3 class="bs-sec-h">Biến động</h3>${trendChart(reports)}</div>
     <div class="bs-comp-wrap" id="bs-sec-comp"><h3 class="bs-sec-h bs-d-only">Cơ cấu</h3><div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
       <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div></div>
@@ -460,7 +460,8 @@ function draw(contentEl) {
       ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, fundingYearStart)}
         ${managementRow('Tổng nguồn vốn', 'liabilities', start, end, yearStart, { total: true })}`)}
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
-    ${provisionComparison(report)}`}</div></div>`;
+    ${provisionComparison(report)}
+    ${ratiosHtml}`}</div></div>`;
   contentEl.querySelector('#bs-month')?.addEventListener('change', (event) => {
     selectedMonth = event.target.value;
     remoteProvisions.delete(selectedMonth);
