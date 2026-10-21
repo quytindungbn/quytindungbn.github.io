@@ -107,11 +107,11 @@ function trimBlank(img) {
     return img;
   }
 }
-let qrLogo = null; // logo quỹ (icons/icon-192.png) — tải sẵn lúc mở app để đặt giữa mã QR
+let qrLogo = null; // logo quỹ gốc (icons/logo-pcf.png, nền trắng — KHÔNG phải icon app) — tải sẵn lúc mở app để đặt giữa mã QR
 if (typeof Image === 'function') {
   const img = new Image();
   img.onload = () => { qrLogo = trimBlank(img); qrCards.clear(); qrPngCache.clear(); }; // đã có logo: các ảnh vẽ trước đó (nếu có) vẽ lại cho có logo
-  img.src = new URL('icons/icon-192.png', document.baseURI).href;
+  img.src = new URL('icons/logo-pcf.png', document.baseURI).href;
 }
 const qrDataKeys = new Map(); // data URL ảnh đã hiện trong popup -> link QR gốc (để Chia sẻ/Tải ảnh tìm lại đúng thông tin)
 const QR_FETCH_TIMEOUT_MS = 8000; // chỉ dùng khi phải lấy ảnh từ dịch vụ ngoài (dự phòng)

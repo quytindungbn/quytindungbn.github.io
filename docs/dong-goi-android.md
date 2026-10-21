@@ -8,7 +8,7 @@ kiểu lập trình Android truyền thống** (không cần Android Studio/Java
 | **1. Thêm vào Màn hình chính** | Chrome tự đóng gói tạm, mở như app (toàn màn hình, có icon riêng) | **Không cần làm gì thêm — dùng được ngay hôm nay** | Không — chỉ là lối tắt, vẫn cần vào lại trang web mỗi lần dùng (có mạng) |
 | **2. File APK cài thật** | Đóng gói thành APK thật, cài như app tải từ Play Store | Dùng công cụ **PWABuilder** (miễn phí, không cần biết code) — ~15 phút | Có — file `.apk` gửi qua Zalo/USB để cài trực tiếp, hoặc đăng lên Google Play |
 
-App đã có sẵn `manifest.json` + icon PNG chuẩn (`icons/icon-192.png`, `icons/icon-512.png`) —
+App đã có sẵn `manifest.json` + icon PNG chuẩn (`icons/icon-192.png`, `icons/icon-512.png` bo góc kiểu 3D; `icons/icon-maskable-*.png` cho Android; `icons/apple-touch-icon.png` cho iPhone) —
 điều kiện bắt buộc cho cả 2 mức đều đã đủ, không cần chuẩn bị gì thêm trước khi làm theo bên dưới.
 
 ## Mức 1 — Thêm vào Màn hình chính (dùng ngay, khuyên dùng trước)
