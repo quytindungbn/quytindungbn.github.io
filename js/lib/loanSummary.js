@@ -9,31 +9,42 @@ const HEAD_LOAN = 'I. KHOẢN VAY';
 const HEAD_INTEREST = 'II. TIỀN LÃI';
 
 // Zalo dán vào là chữ thường, phông tỉ lệ (mỗi chữ một độ rộng) nên không canh cột bằng dấu cách thường được.
-// Độ rộng chữ (1/1000 em) của phông không chân phổ biến (Arial/Roboto) để tính số khoảng trắng cần đệm cho thẳng cột.
+// Cách làm: ước lượng độ rộng chữ (1/1000 em, trung bình của hai phông không chân phổ biến) rồi đệm khoảng trắng
+// có độ rộng CỐ ĐỊNH theo em (1/2, 1/3, 1/4, 1/6 em) cho phần sau dấu ":" bắt đầu cùng một cột.
 const GLYPH_WIDTH = {
-  ijl: 222, 'ftI :.,/\u00a0': 278, 'r-()': 333, '•': 350, cksvxyzJ: 500, '₫': 513,
-  '0123456789abdeghnopquLđ': 556, FTZ: 611, ABEKPSVXY: 667, 'wCDHNRUĐ': 722, GOQ: 778, mM: 833, '%': 889, W: 944, '—': 1000,
+  ijl: 230, I: 270, ' :.,': 280, t: 300, 'f/': 320, 'r()': 350, '-': 400, '•': 460, s: 510, kx: 520, vyz: 530, cJ: 540,
+  'aL₫': 560, ehnu: 570, 'bdgopqđ': 580, F: 600, Z: 620, ET: 630, PS: 650, B: 660, KXY: 670, ARV: 680, 'DĐ': 720,
+  CHU: 730, N: 740, G: 760, wOQ: 770, m: 850, M: 870, '%': 940, W: 960, '—': 1000,
 };
 const WIDTH_OF = {};
 for (const [chars, w] of Object.entries(GLYPH_WIDTH)) for (const ch of chars) WIDTH_OF[ch] = w;
-const SPACE = WIDTH_OF[' '];
-const NBSP = '\u00a0'; // khoảng trắng không bị Zalo/ứng dụng gộp lại như dấu cách thường
+const PAD_SPACES = [['\u2002', 500], ['\u2004', 333], ['\u2005', 250], ['\u2006', 167]]; // en, 1/3, 1/4, 1/6 em
+for (const [ch, w] of PAD_SPACES) WIDTH_OF[ch] = w;
+const COLUMN_GAP = 330; // khoảng cách tối thiểu từ nhãn dài nhất tới giá trị
 
 /** Độ rộng ước lượng (1/1000 em); chữ có dấu tính bằng chữ gốc. */
 export function textWidth(text) {
   let w = 0;
-  for (const ch of String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')) w += WIDTH_OF[ch] ?? 556;
+  for (const ch of String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')) w += WIDTH_OF[ch] ?? 560;
   return w;
 }
 
-/** Canh phần giá trị (sau dấu ":") của các dòng thẳng một cột, đệm khoảng trắng theo độ rộng chữ. rows = [[nhãn, giá trị], ...] */
+/** Chuỗi khoảng trắng có độ rộng gần nhất với `width` (sai số nhỏ nhất, rồi ít ký tự nhất). */
+function padding(width) {
+  let best = null;
+  for (let a = 0; a <= 12; a++) for (let b = 0; b <= 2; b++) for (let c = 0; c <= 3; c++) for (let d = 0; d <= 3; d++) {
+    const w = a * 500 + b * 333 + c * 250 + d * 167;
+    const score = Math.abs(w - width) * 20 + a + b + c + d;
+    if (!best || score < best.score) best = { score, a, b, c, d };
+  }
+  return '\u2002'.repeat(best.a) + '\u2004'.repeat(best.b) + '\u2005'.repeat(best.c) + '\u2006'.repeat(best.d);
+}
+
+/** Canh phần giá trị (sau dấu ":") của các dòng thẳng một cột. rows = [[nhãn, giá trị], ...] */
 export function alignRows(rows, prefix = '') {
   const labels = rows.map(([label]) => `${prefix}${label}:`);
-  const column = Math.max(...labels.map(textWidth)) + SPACE;
-  return rows.map(([, value], i) => {
-    const gap = Math.max(1, Math.round((column - textWidth(labels[i])) / SPACE));
-    return `${labels[i]} ${NBSP.repeat(gap - 1)}${value}`;
-  });
+  const column = Math.max(...labels.map(textWidth)) + COLUMN_GAP;
+  return rows.map(([, value], i) => `${labels[i]}${padding(column - textWidth(labels[i]))}${value}`);
 }
 
 /** Tên khách IN HOA; có thêm người đồng vay (khác tên khách) thì nối bằng chữ "và" viết thường, chỉ 1 tên thì không có chữ "và". */
@@ -91,7 +102,7 @@ export function buildLoanSummaryText({ orgName, hotline, customerName, heirName,
     loanRows.push(['Số tiền vay', formatVND(principal)]);
     loanRows.push(['Gốc đã trả', formatVND(Math.max(0, principal - balance))]);
   }
-  loanRows.push(['Dư nợ gốc hiện tại', settled ? formatVND(0) : boldDigits(formatVND(balance))]);
+  loanRows.push(['Dư nợ hiện tại', settled ? formatVND(0) : boldDigits(formatVND(balance))]);
   loanRows.push(['Lãi suất', `${rate}%/năm`]);
   loanRows.push(['Ngày vay', formatDate(contract.disbursedDate)]);
   loanRows.push(['Ngày đến hạn', formatDate(contract.dueDate)]);
@@ -99,7 +110,7 @@ export function buildLoanSummaryText({ orgName, hotline, customerName, heirName,
     loanRows.push(['Kỳ trả gốc tới', `${formatDate(nextInstallment.date)} — ${formatVND(nextInstallment.amount)}`]);
   }
   const interestRows = settled ? [] : [
-    ['Đã trả lãi đến ngày', formatDate(paidUntil)],
+    ['Đã trả lãi đến', formatDate(paidUntil)],
     ['Số ngày tính lãi', `${days} ngày`],
     ['Tiền lãi phải trả', boldDigits(formatVND(accrued))],
   ];

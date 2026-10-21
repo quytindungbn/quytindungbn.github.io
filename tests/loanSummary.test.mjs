@@ -4,7 +4,7 @@ import { buildLoanSummaryText, loanStatusText, customerDisplay, textWidth, align
 import { boldDigits } from '../js/utils.js';
 
 // Bỏ phần đệm khoảng trắng canh cột để kiểm tra nội dung chữ.
-const flat = (t) => t.replace(/[ \u00a0]+/g, ' ');
+const flat = (t) => t.replace(/[ \u00a0\u2000-\u200a]+/g, ' ');
 
 const contract = { code: '457/26', principal: 320e6, balance: 200e6, interestRate: 10.95, disbursedDate: '2025-12-25', dueDate: '2026-12-20', interestPaidUntil: '2026-05-11' };
 const base = { orgName: 'Quỹ Tín Dụng Nhân Dân Bình Nguyên', hotline: '0255 3 800 800', customerName: 'Phan Thắng', heirName: 'ĐỖ THỊ KIM PHƯƠNG', contract, info: { status: 'dang_vay', days: 60 }, asOf: new Date(2026, 9, 21), days: 163, accrued: 9780000 };
@@ -13,10 +13,10 @@ test('mẫu A: đủ thông tin khoản vay, tên quỹ viết hoa làm tiêu đ
   const t = flat(buildLoanSummaryText(base));
   assert.equal(t.split('\n')[0], 'QUỸ TÍN DỤNG NHÂN DÂN BÌNH NGUYÊN');
   for (const s of ['THÔNG TIN KHOẢN VAY', '(tính đến 21/10/2026)', 'Khách hàng: PHAN THẮNG và ĐỖ THỊ KIM PHƯƠNG', 'Hợp đồng số: 457/26', 'Tình trạng: Trong hạn',
-    '• Số tiền vay: 320.000.000 ₫', '• Gốc đã trả: 120.000.000 ₫', `• Dư nợ gốc hiện tại: ${boldDigits('200.000.000 ₫')}`, '• Lãi suất: 10,95%/năm',
-    '• Ngày vay: 25/12/2025', '• Ngày đến hạn: 20/12/2026', '• Đã trả lãi đến ngày: 11/05/2026', '• Số ngày tính lãi: 163 ngày', `• Tiền lãi phải trả: ${boldDigits('9.780.000 ₫')}`,
+    '• Số tiền vay: 320.000.000 ₫', '• Gốc đã trả: 120.000.000 ₫', `• Dư nợ hiện tại: ${boldDigits('200.000.000 ₫')}`, '• Lãi suất: 10,95%/năm',
+    '• Ngày vay: 25/12/2025', '• Ngày đến hạn: 20/12/2026', '• Đã trả lãi đến: 11/05/2026', '• Số ngày tính lãi: 163 ngày', `• Tiền lãi phải trả: ${boldDigits('9.780.000 ₫')}`,
     '\nI. KHOẢN VAY\n', '\nII. TIỀN LÃI\n', 'Hotline: 0255 3 800 800']) assert.ok(t.includes(s), s);
-  assert.ok(!t.includes('ban đầu'), 'nhãn là "Số tiền vay", không còn "ban đầu"');
+  assert.ok(!t.includes('ban đầu') && !t.includes('gốc hiện tại') && !t.includes('đến ngày:'), 'nhãn ngắn gọn: "Số tiền vay", "Dư nợ hiện tại", "Đã trả lãi đến"');
   assert.ok(!t.includes('÷ 365') && !t.includes('×'), 'đã bỏ công thức tính lãi');
   assert.ok(!/[▌▶━┈]/.test(t), 'không dùng ký hiệu trang trí');
 });
@@ -33,21 +33,22 @@ test('gạch ngang chia dòng ngắn, không bị xuống dòng trong khung tin 
   for (const l of lines) assert.ok(l.length <= 16, `gạch ngang dài ${l.length}`);
 });
 
-test('phần giá trị sau dấu ":" thẳng hàng một cột (các dòng lệch nhau không quá một dấu cách)', () => {
+test('phần giá trị sau dấu ":" thẳng hàng một cột (ước lượng lệch không quá 1/12 em, khoảng 1px)', () => {
   const t = buildLoanSummaryText({ ...base, nextInstallment: { date: new Date(2026, 11, 31), amount: 50e6 } });
-  const space = textWidth(' ');
-  const columns = t.split('\n').filter((l) => l.startsWith('• ')).map((l) => textWidth(l.match(/^(• [^:]+:[ \u00a0]+)/)[1]));
-  assert.equal(columns.length, 10);
-  assert.ok(Math.max(...columns) - Math.min(...columns) <= space + 1, `cột lệch ${Math.max(...columns) - Math.min(...columns)}`);
-  const head = t.split('\n').slice(4, 7).map((l) => textWidth(l.match(/^([^:]+:[ \u00a0]+)/)[1]));
-  assert.ok(Math.max(...head) - Math.min(...head) <= space + 1, 'khối Khách hàng/Hợp đồng/Tình trạng cũng thẳng cột');
+  const spread = (lines, re) => { const w = lines.map((l) => textWidth(l.match(re)[1])); return Math.max(...w) - Math.min(...w); };
+  const lines = t.split('\n');
+  const bullets = lines.filter((l) => l.startsWith('• '));
+  assert.equal(bullets.length, 10);
+  assert.ok(spread(bullets, /^(• [^:]+:[ \u2000-\u200a]+)/) <= 84, 'cột mục I/II lệch ' + spread(bullets, /^(• [^:]+:[ \u2000-\u200a]+)/));
+  assert.ok(spread(lines.slice(4, 7), /^([^:]+:[ \u2000-\u200a]+)/) <= 84, 'khối Khách hàng/Hợp đồng/Tình trạng cũng thẳng cột');
 });
 
-test('alignRows: nhãn ngắn được đệm bằng khoảng trắng không bị gộp, giữ đúng nội dung', () => {
-  const out = alignRows([['Ngày', 'A'], ['Dư nợ gốc hiện tại', 'B']]);
-  assert.ok(out[0].includes('\u00a0') && !out[1].includes('\u00a0'));
+test('alignRows: nhãn ngắn được đệm bằng khoảng trắng cố định theo em (không bị gộp), giữ đúng nội dung', () => {
+  const out = alignRows([['Ngày', 'A'], ['Dư nợ hiện tại', 'B']]);
+  assert.ok(/[\u2002-\u2006]/.test(out[0]));
   assert.equal(flat(out[0]), 'Ngày: A');
-  assert.equal(flat(out[1]), 'Dư nợ gốc hiện tại: B');
+  assert.equal(flat(out[1]), 'Dư nợ hiện tại: B');
+  assert.ok(!/[ \u00a0]/.test(out[0]), 'không dùng dấu cách thường/NBSP để đệm (dễ bị gộp hoặc lệch)');
 });
 
 test('có kỳ trả gốc tới thì thêm dòng; không có thì không thêm', () => {
