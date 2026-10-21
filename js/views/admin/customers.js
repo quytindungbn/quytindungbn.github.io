@@ -1028,6 +1028,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             <div class="ct-row"><span>SỐ NGÀY LÃI</span><span class="ct-valgrp"><label class="ct-inp ct-days"><input type="text" id="ct-days" inputmode="numeric" autocomplete="off" maxlength="4" value="${interestDays}" aria-label="Số ngày tính lãi"/>${icon('edit')}</label><span class="ct-unit">ngày</span></span></div>
             <small class="ct-from"><span class="d">Từ kỳ đã trả lãi (${formatDate(interestPaidUntil)})</span><span class="p">Từ ${formatDate(interestPaidUntil)}</span></small>
           </div>
+          <div class="ct-resetrow" id="ct-resetrow" hidden>Đang tính lãi đến <b id="ct-resetdate"></b> · <button type="button" class="ct-reset" id="ct-reset2">${icon('undo')} Về hôm nay</button></div>
         </div>
         <div class="customer-contract-info-grid">
           <section class="customer-contract-panel customer-contract-details">
@@ -1153,6 +1154,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const daysInput = sheet.querySelector('#ct-days');
       const calBtn = sheet.querySelector('#ct-cal');
       const formulaEl = sheet.querySelector('.customer-contract-formula');
+      const resetRow = sheet.querySelector('#ct-resetrow');
+      const resetRowDate = sheet.querySelector('#ct-resetdate');
       if (accruedEl && asOfInput && daysInput) {
         const today = startOfDay(new Date());
         const minAsOf = interestAsOfForDays(contract, 0);
@@ -1174,6 +1177,9 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           accruedEl.textContent = formatVND(accrued);
           fitOneLine(accruedEl);
           if (formulaEl) formulaEl.innerHTML = contractFormulaHtml(contract, days, accrued);
+          const edited = daysBetween(today, asOf) !== 0;
+          if (resetRow) resetRow.hidden = !edited;
+          if (resetRowDate) resetRowDate.textContent = formatDate(asOf);
           // Ô Lãi (và tổng chuyển khoản/mã QR) theo ngày đã chọn
           laiAmount = accrued;
           if (laiInput) laiInput.value = accrued ? formatNumber(accrued) : '';
@@ -1217,6 +1223,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           asOf = clamp(new Date(y, m - 1, dd));
           render();
         });
+        const resetBtn = sheet.querySelector('#ct-reset2');
+        if (resetBtn) resetBtn.addEventListener('click', () => { asOf = today; render(); });
         sizeDays();
       }
       // Số tiền (Dư nợ / Số tiền đã trả / Lãi cộng dồn) luôn gọn trên 1 dòng dù số lớn: thu nhỏ chữ cho vừa, tính lại khi đổi kích thước hoặc font tải xong.
