@@ -673,7 +673,7 @@ svg { display: block; }
 }
 .customer-ledger-contract-main { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; font-size: inherit; }
 .customer-ledger-contract .customer-ledger-oa { flex: 0 0 64px; margin-left: 6px; padding: 6px 2px; border-radius: 999px; border-color: #c5dbd0; background: #f4faf7; color: #0c4a3f; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.customer-ledger-code { border-left: 4px solid #0d6b34; padding-left: 9px; font-weight: 700; color: #12231e; font-size: 13px; }
+.customer-ledger-code { border-left: 4px solid #0d6b34; padding-left: 9px; font-weight: 400; color: #12231e; font-size: 13px; }
 .customer-ledger-code-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .customer-ledger-code-line .badge { padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; }
 .customer-ledger-contract.is-near .customer-ledger-code { border-left-color: var(--warning); }
