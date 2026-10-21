@@ -6,6 +6,7 @@ import { openModal } from '../components/modal.js';
 import { formatVND, formatDate, formatNumber, stripDiacritics, debounce } from '../utils.js';
 import { toast } from '../components/toast.js';
 import { drawVietQrCard, drawVietQrCompact } from '../lib/vietQrLocal.js';
+import { transferContent } from '../lib/transferContent.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Chi tiết hợp đồng', back: true });
@@ -70,13 +71,13 @@ export function render(contentEl, filterEl, params) {
   bindInstallmentNextBox(contentEl, contract);
 }
 
-export function buildVietQrUrl({ bin, accountNo, amount, content, accountName }) {
+export function buildVietQrUrl({ bin, accountNo, amount, content, accountName, displayContent, displayAccountName }) {
   const info = encodeURIComponent(content);
   const name = encodeURIComponent(accountName);
   const url = `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?amount=${Math.round(amount)}&addInfo=${info}&accountName=${name}`;
   // Ghi nhớ thông tin của link này để tự vẽ ảnh QR ngay trên máy (xem qrImageSrc / localQrFile).
   const org = S.getOrg() || {};
-  qrParams.set(new URL(url, location.href).href, { bin, accountNo, amount, content, accountName, bankName: org.bankName, orgName: org.name });
+  qrParams.set(new URL(url, location.href).href, { bin, accountNo, amount, content, accountName, displayContent, displayAccountName, bankName: org.bankName, orgName: org.name });
   trimMap(qrParams, 40);
   // Chuẩn bị sẵn file PNG THẬT ngay từ lúc dựng link (xem getQrPngFile) để lúc
   // bấm "Chia sẻ"/"Tải ảnh" có ngay.
@@ -298,37 +299,34 @@ function openPaymentModal(contract, customer, accrued) {
     onMount(sheet) {
       const body = sheet.querySelector('#pay-body');
 
+      // `text` = nội dung KHÔNG DẤU nằm trong mã QR (đúng yêu cầu ngân hàng); `shown` = cùng nội dung có dấu để người xem đọc cho dễ.
       function content() {
         if (payType === 'tat_toan') {
           const total = contract.balance + accrued;
-          const text = stripDiacritics(`TAT TOAN HDTD ${contract.code} ${customer.name}`);
-          return { total, text };
+          return { total, ...transferContent('tat_toan', contract, customer) };
         }
         const total = payType === 'goc' ? principalAmount + accrued : interestAmount;
-        const loai = payType === 'goc' ? 'GOC' : 'LAI';
         // Không nhúng số tiền vào nội dung — số tiền đã có ở dòng riêng + mã QR, tránh trùng lặp.
-        // "TRA..." đứng trước, Tên khách ghép sau. stripDiacritics() áp
-        // dụng cho CẢ CHUỖI (không chỉ riêng tên) để tự thay mọi ký tự đặc biệt
-        // (VD: dấu "/" trong mã hợp đồng) bằng dấu cách — nội dung chuyển
-        // khoản không nên có ký tự lạ, dễ gây lỗi khi ngân hàng xử lý.
-        const text = stripDiacritics(`TRA ${loai} HDTD ${contract.code} ${customer.name}`);
-        return { total, text };
+        return { total, ...transferContent(payType === 'goc' ? 'goc' : 'lai', contract, customer) };
       }
 
       const hasBank = org.bankBin && org.bankAccountNo;
 
       /** Cập nhật phần số tiền/nội dung chữ — luôn tức thì, không phụ thuộc mạng. */
       function updateAmountText() {
+        // Bảng thông tin ngân hàng chỉ còn khi chưa có mã QR (khách tự chuyển khoản tay) — lúc đó hiện nội dung KHÔNG DẤU để gõ vào app ngân hàng.
         const { total, text } = content();
-        body.querySelector('#sum-amount').textContent = formatVND(total);
-        body.querySelector('#sum-content').textContent = text;
+        const amountEl = body.querySelector('#sum-amount');
+        const contentEl = body.querySelector('#sum-content');
+        if (amountEl) amountEl.textContent = formatVND(total);
+        if (contentEl) contentEl.textContent = text;
       }
       function updateQrNow() {
         if (!hasBank) return;
         const img = body.querySelector('#qr-img');
         if (!img) return;
-        const { total, text } = content();
-        img.src = qrImageSrc(buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: total, content: text, accountName: org.bankAccountName }));
+        const { total, text, shown } = content();
+        img.src = qrImageSrc(buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: total, content: text, accountName: org.bankAccountName, displayContent: shown, displayAccountName: org.bankAccountDisplayName }));
       }
       // Ảnh QR tải từ dịch vụ ngoài (img.vietqr.io) — mỗi lần đổi src là 1
       // request mạng render ảnh mới, gọi thẳng theo từng phím gõ (VD: gõ 9
@@ -363,17 +361,18 @@ function openPaymentModal(contract, customer, accrued) {
               <div class="oc-line"><span>Trả lãi</span><b>${formatVND(accrued)}</b></div>
             </div>
           `}
+          ${hasBank ? '' : `
           <div class="card card-pad mb-16" style="background:var(--surface-alt)">
             <div class="oc-line"><span>Ngân hàng</span><b>${org.bankName || '—'}</b></div>
             <div class="oc-line"><span>Số tài khoản</span><b>${org.bankAccountNo || '—'}</b></div>
-            <div class="oc-line"><span>Chủ tài khoản</span><b>${org.bankAccountName || '—'}</b></div>
+            <div class="oc-line"><span>Chủ tài khoản</span><b>${org.bankAccountDisplayName || org.bankAccountName || '—'}</b></div>
             <div class="oc-line"><span>Số tiền</span><b id="sum-amount" style="color:var(--color-primary)"></b></div>
             <div class="oc-line" style="align-items:flex-start"><span>Nội dung</span><b id="sum-content" style="text-align:right;max-width:65%"></b></div>
           </div>
+          `}
           ${hasBank ? `
             <div style="text-align:center">
-              <div class="fw-700 mb-8" style="font-size:15px;color:var(--color-primary)">Tải mã QR này để thực hiện thanh toán</div>
-              <button type="button" class="btn btn-outline btn-block mb-8" id="btn-download-qr">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
+              <button type="button" class="btn btn-outline btn-block btn-qr-pay mb-8" id="btn-download-qr">${icon('download', 'icon-sm')} Tải mã QR này để thực hiện thanh toán</button>
               <img id="qr-img" alt="Mã QR chuyển khoản" style="max-width:320px;width:100%;border:1px solid var(--border);border-radius:12px"/>
               <button type="button" class="btn btn-outline btn-block mt-8" id="btn-share-qr">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
             </div>
@@ -390,8 +389,8 @@ function openPaymentModal(contract, customer, accrued) {
         if (iInput) bindMoneyInput(iInput, interestAmount, (v) => { interestAmount = v; updateSummaryTyping(); });
         const shareBtn = body.querySelector('#btn-share-qr');
         if (shareBtn) shareBtn.addEventListener('click', () => {
-          const { text } = content();
-          shareQrImage(body.querySelector('#qr-img').src, text);
+          const { shown } = content();
+          shareQrImage(body.querySelector('#qr-img').src, shown);
         });
         const downloadBtn = body.querySelector('#btn-download-qr');
         if (downloadBtn) downloadBtn.addEventListener('click', () => {

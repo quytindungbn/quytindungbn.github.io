@@ -1952,3 +1952,4 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .period-step-btn:focus-visible { outline: 2px solid #b08d3c; outline-offset: -2px; }
   .period-step-btn:disabled { opacity: .3; cursor: default; }
 }
+.btn-qr-pay { color: var(--color-primary-dark, var(--color-primary)); border-color: var(--color-primary); font-weight: 700; }

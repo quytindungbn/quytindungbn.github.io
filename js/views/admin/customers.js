@@ -8,6 +8,7 @@ import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, colorFor, 
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xlsxLite.js';
 import { buildVietQrUrl, qrImageSrc, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
+import { transferContent } from '../../lib/transferContent.js';
 import { printNotice } from '../../lib/printNotices.js';
 import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
 
@@ -961,16 +962,17 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   // phần gốc).
   const org = S.getOrg();
   const hasBank = canPay && org.bankBin && org.bankAccountNo;
-  // "TRA..." đứng trước, Tên khách ghép sau. stripDiacritics() áp dụng
-  // cho CẢ CHUỖI (không chỉ riêng tên) để tự thay mọi ký tự đặc biệt (VD: dấu
-  // "/" trong mã hợp đồng) bằng dấu cách — nội dung chuyển khoản không nên có
-  // ký tự lạ, dễ gây lỗi khi ngân hàng xử lý.
-  function buildQrContent(goc, lai, settle = false) {
-    if (settle) return customer ? stripDiacritics(`TAT TOAN HDTD ${contract.code} ${customer.name}`) : '';
-    const loai = goc > 0 && lai > 0 ? 'GOC LAI' : goc > 0 ? 'GOC' : 'LAI';
-    return customer ? stripDiacritics(`TRA ${loai} HDTD ${contract.code} ${customer.name}`) : '';
+  // Nội dung chuyển khoản: `text` KHÔNG DẤU nằm trong mã QR (đúng yêu cầu ngân hàng), `shown` có dấu để người xem đọc cho dễ
+  // — xem transferContent(). Dấu "/" trong số hợp đồng ở bản không dấu tự thành dấu cách.
+  function qrContent(goc, lai, settle = false) {
+    const kind = settle ? 'tat_toan' : goc > 0 && lai > 0 ? 'goc_lai' : goc > 0 ? 'goc' : 'lai';
+    return transferContent(kind, contract, customer);
   }
-  const qrUrl = hasBank ? buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: accrued, content: buildQrContent(0, accrued), accountName: org.bankAccountName }) : '';
+  const qrParamsFor = (amount, goc, lai, settle = false) => {
+    const qc = qrContent(goc, lai, settle);
+    return { bin: org.bankBin, accountNo: org.bankAccountNo, amount, content: qc.text, accountName: org.bankAccountName, displayContent: qc.shown, displayAccountName: org.bankAccountDisplayName };
+  };
+  const qrUrl = hasBank ? buildVietQrUrl(qrParamsFor(accrued, 0, accrued)) : '';
 
   // Người thừa kế/đồng vay (cột D file số 1): có thì nối thêm " và <tên>" vào tiêu đề, không có (hoặc trùng tên khách) thì để nguyên như cũ.
   const heirName = String(contract.heirName || '').trim();
@@ -1064,7 +1066,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       }
       function refreshQr() {
         if (!qrImgEl) return;
-        qrImgEl.src = qrImageSrc(buildVietQrUrl({ bin: org.bankBin, accountNo: org.bankAccountNo, amount: gocAmount + laiAmount, content: buildQrContent(gocAmount, laiAmount, settleFull), accountName: org.bankAccountName }), { compact: true });
+        qrImgEl.src = qrImageSrc(buildVietQrUrl(qrParamsFor(gocAmount + laiAmount, gocAmount, laiAmount, settleFull)), { compact: true });
       }
       // Ảnh QR tải từ dịch vụ ngoài — mỗi lần đổi src là 1 request mạng render
       // ảnh mới, gọi thẳng theo từng phím gõ làm popup nặng/giật. Debounce lại,
@@ -1105,7 +1107,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const downloadQrBtn = sheet.querySelector('#btn-download-qr-ct');
       if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`));
       const shareQrBtn = sheet.querySelector('#btn-share-qr-ct');
-      if (shareQrBtn) shareQrBtn.addEventListener('click', () => shareQrImage(qrImgEl.src, buildQrContent(gocAmount, laiAmount, settleFull)));
+      if (shareQrBtn) shareQrBtn.addEventListener('click', () => shareQrImage(qrImgEl.src, qrContent(gocAmount, laiAmount, settleFull).shown));
       const notiBtn = sheet.querySelector('#btn-noti-app-ct');
       if (notiBtn) notiBtn.addEventListener('click', () => {
         if (!customer) return;

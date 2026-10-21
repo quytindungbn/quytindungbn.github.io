@@ -46,13 +46,15 @@ export const NEAR_DUE_DAYS = 15;
 // trước đây vẫn đổi được số tài khoản ngay trong app — đổi vào đây thì phải
 // sửa code + deploy lại (qua Claude Code), kẻ gian có điện thoại tuyệt đối
 // không tự đổi được nữa. Muốn đổi ngân hàng/số tài khoản thật thì báo lại để
-// sửa 4 dòng dưới đây rồi deploy lại (KHÔNG cần chạy SQL gì, xem docs mục
+// sửa các dòng dưới đây rồi deploy lại (KHÔNG cần chạy SQL gì, xem docs mục
 // 10.18).
 export const BANK_INFO = Object.freeze({
   bankName: 'Ngân hàng Hợp tác xã Việt Nam (Co-op Bank)',
   bankBin: '970446',
   bankAccountNo: '5200000000825012',
   bankAccountName: 'QUY TIN DUNG NHAN DAN BINH NGUYEN',
+  // Cùng tên chủ tài khoản nhưng CÓ DẤU — chỉ để HIỆN cho người xem (ảnh QR, popup thanh toán); mã QR vẫn dùng bản không dấu ở trên.
+  bankAccountDisplayName: 'QUỸ TÍN DỤNG NHÂN DÂN BÌNH NGUYÊN',
 });
 
 let state = null;

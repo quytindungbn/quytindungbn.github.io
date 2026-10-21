@@ -23,6 +23,17 @@ function asciiOnly(text, max) {
     .replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+/**
+ * Cắt chuỗi hiển thị (có dấu) sao cho khi bỏ dấu/in hoa/bỏ ký tự lạ thì dài không quá `max` — đúng bằng phần nội dung
+ * thật sự nằm trong mã QR (buildVietQrPayload cắt ở 50 ký tự), để chữ người xem đọc không dài hơn thứ ngân hàng nhận được.
+ */
+export function clipDisplay(display, max = 50) {
+  const norm = (t) => asciiOnly(t, Infinity).toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  let out = String(display || '').replace(/\s+/g, ' ').trim();
+  while (out && norm(out).length > max) out = out.slice(0, -1);
+  return out.trim();
+}
+
 /** Chuỗi nội dung của mã QR chuyển khoản VietQR. */
 export function buildVietQrPayload({ bin, accountNo, amount, content }) {
   const money = Math.round(Number(amount) || 0);
@@ -104,7 +115,8 @@ export function drawVietQrCompact(p, { logo = null } = {}) {
   const qrBox = mod * (qr.size + QUIET * 2);
   const money = Math.round(Number(p.amount) || 0);
   const lines = [];
-  if (p.accountName) lines.push({ text: String(p.accountName), size: 23, weight: 700, color: GREEN });
+  const holder = p.displayAccountName || p.accountName;
+  if (holder) lines.push({ text: String(holder), size: 23, weight: 700, color: GREEN });
   lines.push({ text: String(p.accountNo), size: 27, weight: 700, color: '#12231e' });
   if (money > 0) lines.push({ text: `${money.toLocaleString('vi-VN')} đ`, size: 34, weight: 800, color: GREEN });
   const gap = (l) => Math.round(l.size * 1.45);
@@ -133,7 +145,8 @@ export function drawVietQrCompact(p, { logo = null } = {}) {
 
 /**
  * Vẽ "thẻ" QR chuyển khoản (tên quỹ, mã QR, chủ tài khoản, số tài khoản, số tiền, nội dung) lên canvas, nền trắng.
- * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string, bankName?: string, orgName?: string }} p
+ * `content` / `accountName` là bản KHÔNG DẤU đi vào mã QR; `displayContent` / `displayAccountName` (nếu có) là bản CÓ DẤU chỉ để hiện chữ trên thẻ.
+ * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string, displayContent?: string, displayAccountName?: string, bankName?: string, orgName?: string }} p
  * @param {{ logo?: CanvasImageSource | null }} [opts] logo quỹ (ảnh đã tải xong) đặt giữa mã QR
  */
 export function drawVietQrCard(p, { logo = null } = {}) {
@@ -144,10 +157,12 @@ export function drawVietQrCard(p, { logo = null } = {}) {
   const money = Math.round(Number(p.amount) || 0);
   const rows = [];
   if (p.bankName) rows.push(['Ngân hàng', p.bankName]);
-  if (p.accountName) rows.push(['Chủ tài khoản', p.accountName, false, true]);
+  const holder = p.displayAccountName || p.accountName;
+  if (holder) rows.push(['Chủ tài khoản', holder, false, true]);
   rows.push(['Số tài khoản', String(p.accountNo)]);
   if (money > 0) rows.push(['Số tiền', `${money.toLocaleString('vi-VN')} đ`, true]);
-  if (p.content) rows.push(['Nội dung', asciiOnly(p.content, 50)]);
+  const note = p.displayContent ? clipDisplay(p.displayContent, 50) : asciiOnly(p.content, 50);
+  if (note) rows.push(['Nội dung', note]);
 
   const measure = document.createElement('canvas').getContext('2d');
   measure.font = `700 26px ${SANS}`;
