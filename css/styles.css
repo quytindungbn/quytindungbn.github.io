@@ -1966,7 +1966,7 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 /* "Số tiền đã trả": nửa phải (1/3) của cùng một khung Dư nợ, ngăn cách bằng một đường kẻ dọc mảnh — không phải khung nhỏ lồng vào trong */
 .ct-paid { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; padding: 10px 14px; border-left: 1px solid #cbded3; }
 .ct-paid > span { color: var(--text-muted); font-size: 11px; font-weight: 700; line-height: 1.2; }
-.customer-contract-metric .ct-paid strong { color: var(--text); font-size: 16px; line-height: 1.25; white-space: nowrap; }
+.customer-contract-metric .ct-paid strong { color: var(--text); font-size: 16px; line-height: 1.25; white-space: nowrap; margin-bottom: 2.5px; } /* nâng nhẹ cho chân chữ thẳng hàng với số Dư nợ (cỡ chữ to hơn) */
 .ct-row #ct-accrued { color: var(--color-primary-dark); }
 .customer-contract-metric .ct-row > strong, .customer-contract-metric .ct-paid strong { display: block; min-width: 0; overflow: hidden; white-space: nowrap; }
 .customer-contract-metric .ct-row > span:first-child { flex: none; }
@@ -1997,13 +1997,17 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .customer-contract-metric .ct-row > strong { flex: 1 1 0; text-align: right; }
   .customer-contract-metric { padding: 10px 14px; gap: 8px; }
   .customer-contract-metric strong { font-size: 22px; }
+  /* Dư nợ hiện tại (máy tính): bỏ dòng "Số gốc còn phải trả"; tiêu đề ở trên, số tiền ở dưới — cân đều với "Số tiền đã trả" */
+  .ct-bal-main small { display: none; }
+  .customer-contract-metric .ct-bal-main .ct-row { flex: 1; flex-direction: column; justify-content: space-between; align-items: flex-start; gap: 0; }
+  .customer-contract-metric .ct-bal-main .ct-row > strong { flex: none; width: 100%; text-align: left; }
 }
 @media (max-width: 639px) {
   .customer-contract-metric .ct-row { display: contents; }
   .ct-bal-main { gap: 3px; padding: 9px 11px; }
   .ct-paid { gap: 3px; padding: 9px 11px; }
   .ct-paid > span { font-size: 9.5px; }
-  .customer-contract-metric .ct-paid strong { font-size: 13.5px; }
+  .customer-contract-metric .ct-paid strong { font-size: 13.5px; margin-bottom: 2px; }
   .ct-sub { flex-wrap: nowrap; gap: 6px; }
   .ct-sub .d, .ct-from .d { display: none; }
   .ct-sub .p, .ct-from .p { display: inline; }
