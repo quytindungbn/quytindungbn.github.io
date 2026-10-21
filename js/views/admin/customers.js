@@ -1004,7 +1004,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             </section>
             <section class="customer-contract-panel customer-contract-calculation">
               <h4>Cách tính lãi</h4>
-              <div class="customer-contract-formula">${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%<br>÷ 365 ngày = <strong>${formatVND(accrued)}</strong></div>
+              <div class="customer-contract-formula">${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%<br class="cf-br"> ÷ 365 ngày = <strong>${formatVND(accrued)}</strong></div>
               ${canPay && info.source !== 'installment' && info.status !== 'dang_vay' ? `<div class="customer-contract-alert ${info.status === 'qua_han' ? 'is-overdue' : ''}">${info.status === 'qua_han' ? `Đã quá hạn ${info.days} ngày` : `Còn ${info.days} ngày đến hạn thanh toán`}</div>` : ''}
             </section>
           </div>
