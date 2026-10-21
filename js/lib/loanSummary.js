@@ -9,12 +9,12 @@ const HEAD_LOAN = 'I. KHOẢN VAY';
 const HEAD_INTEREST = 'II. TIỀN LÃI';
 
 // Zalo dán vào là chữ thường, phông tỉ lệ (mỗi chữ một độ rộng) nên không canh cột bằng dấu cách thường được.
-// Cách làm: ước lượng độ rộng chữ (1/1000 em, trung bình của hai phông không chân phổ biến) rồi đệm khoảng trắng
-// có độ rộng CỐ ĐỊNH theo em (1/2, 1/3, 1/4, 1/6 em) cho phần sau dấu ":" bắt đầu cùng một cột.
+// Cách làm: ước lượng độ rộng chữ (1/1000 em, trung bình các phông không chân kiểu Android/Windows: Arial, Helvetica, Noto Sans)
+// rồi đệm khoảng trắng có độ rộng CỐ ĐỊNH theo em (1/2, 1/3, 1/4, 1/6 em) cho phần sau dấu ":" bắt đầu cùng một cột.
 const GLYPH_WIDTH = {
-  ijl: 230, I: 270, ' :.,': 280, t: 300, 'f/': 320, 'r()': 350, '-': 400, '•': 460, s: 510, kx: 520, vyz: 530, cJ: 540,
-  'aL₫': 560, ehnu: 570, 'bdgopqđ': 580, F: 600, Z: 620, ET: 630, PS: 650, B: 660, KXY: 670, ARV: 680, 'DĐ': 720,
-  CHU: 730, N: 740, G: 760, wOQ: 770, m: 850, M: 870, '%': 940, W: 960, '—': 1000,
+  il: 240, j: 250, ' .': 260, ':,': 270, 't/': 280, fI: 300, 'r-()': 330, '•': 370, s: 460, J: 470, cz: 480, xy: 490, kv: 500,
+  ae: 510, '₫': 520, hnou: 530, 'bdgpqđ': 540, L: 580, F: 590, Z: 610, T: 620, PS: 630, E: 640, B: 670, VX: 680, AKY: 690,
+  CR: 700, D: 710, 'wHNUĐ': 720, G: 750, OQ: 760, m: 810, M: 860, '%': 870, W: 940, '—': 1000,
 };
 const WIDTH_OF = {};
 for (const [chars, w] of Object.entries(GLYPH_WIDTH)) for (const ch of chars) WIDTH_OF[ch] = w;
