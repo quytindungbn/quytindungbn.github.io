@@ -316,21 +316,56 @@ function toLocalISODateZalo(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/**
+ * Y HỆT restoreLeadingInstallment() trong js/lib/installmentPlan.js (xem ghi chú đầy đủ ở đó) — dựng lại kỳ ĐẦU đã trả đủ
+ * mà file nhập ghi 0 nên không còn được lưu, để tiền đã trả không bị tính nhầm vào kỳ kế và "Kỳ tới" không bị nhảy qua kỳ còn phải trả.
+ */
+function restoreLeadingInstallment(
+  entries: { year: number; amount: number; restored?: boolean }[],
+  info: { principal: number; balance: number; disbursedYear: number },
+): { year: number; amount: number; restored?: boolean }[] {
+  if (!entries.length || !Number.isFinite(info.disbursedYear)) return entries;
+  const amountPaid = (Number(info.principal) || 0) - (Number(info.balance) || 0);
+  const missing = (Number(info.principal) || 0) - entries.reduce((sum, e) => sum + e.amount, 0);
+  if (entries[0].year === info.disbursedYear + 2 && missing > 0 && missing <= amountPaid) {
+    return [{ year: info.disbursedYear + 1, amount: missing, restored: true }, ...entries];
+  }
+  return entries;
+}
+
+/**
+ * Y HỆT mergeInstallmentSchedule() trong js/lib/installmentPlan.js — gộp phân kỳ của file mới vào phân kỳ đã lưu: GIỮ NGUYÊN
+ * các kỳ cũ đứng trước kỳ có số tiền đầu tiên của file mới (kỳ đã trả đủ nên file ghi 0, trước đây bị mất), từ kỳ đó trở đi lấy theo file mới.
+ * `incoming` chỉ chứa năm có số tiền > 0; incoming rỗng -> trả lại phân kỳ đã lưu.
+ */
+function mergeInstallmentSchedule(existing: any, incoming: Record<string, number>): Record<string, number> | null {
+  const years = Object.keys(incoming || {}).map(Number).filter(Number.isFinite);
+  if (!years.length) return existing || null;
+  const firstYear = Math.min(...years);
+  const merged: Record<string, number> = {};
+  for (const [year, amount] of Object.entries(existing || {})) {
+    if (Number(year) < firstYear && Number(amount) > 0) merged[year] = Number(amount);
+  }
+  for (const [year, amount] of Object.entries(incoming)) merged[year] = amount;
+  return merged;
+}
+
 type InstallmentEntryZalo = { year: number; dueDate: string; amount: number; dueAmount: number; daysLeft: number };
 
 /** Y HỆT computeInstallmentPlan() trong js/state.js / send-due-reminders/index.ts (xem ghi chú đầy đủ ở 2 nơi đó) — dùng để tính đúng số tiền GỐC của "Kỳ tới" cho Zalo OA gửi tay. */
 function computeInstallmentPlanZalo(contract: any, asOf: Date): InstallmentEntryZalo[] | null {
   const schedule = contract.installment_schedule;
   if (!schedule) return null;
-  const entries = Object.entries(schedule as Record<string, any>)
+  const stored = Object.entries(schedule as Record<string, any>)
     .map(([year, amount]) => ({ year: Number(year), amount: Number(amount) }))
     .filter((e) => Number.isFinite(e.year) && e.amount > 0)
     .sort((a, b) => a.year - b.year);
-  if (entries.length < 2) return null;
+  if (stored.length < 2) return null;
 
   const disbursed = new Date(contract.disbursed_date);
   const balance = Number(contract.balance) || 0;
   const amountPaid = (Number(contract.principal) || 0) - balance;
+  const entries = restoreLeadingInstallment(stored, { principal: Number(contract.principal) || 0, balance, disbursedYear: Number(String(contract.disbursed_date || '').slice(0, 4)) });
   const sumBeforeLast = entries.slice(0, -1).reduce((s, e) => s + e.amount, 0);
   let cumulativeRequired = 0;
   return entries.map((e, idx) => {
@@ -2108,6 +2143,8 @@ Deno.serve(async (req) => {
         suppDetails.unmatched.push({ code: row.code, reason: sameCode.length ? 'Hợp đồng đã tất toán (dư nợ 0)' : 'Không có hợp đồng này trong hệ thống' });
         continue;
       }
+      // Kỳ đã trả đủ nên file ghi 0 (không có trong file mới) vẫn được GIỮ LẠI, không bị xóa khỏi lịch đã lưu — xem mergeInstallmentSchedule().
+      if (Object.keys(row.installmentSchedule).length) row.installmentSchedule = mergeInstallmentSchedule(ct.installment_schedule, row.installmentSchedule) || row.installmentSchedule;
       // Đúng cách apply_contract_supplement() tính: khế ước trống giữ giá trị cũ; phân kỳ {} nghĩa là xóa lịch cũ.
       const after = {
         ...ct,
@@ -2328,7 +2365,7 @@ Deno.serve(async (req) => {
         heir_name: heirName,
         agreement_code: bal > 0 ? (row.agreementCode || ct?.agreement_code || code) : code,
         installment_schedule: bal > 0
-          ? (row.installmentSchedule && Object.keys(row.installmentSchedule).length ? row.installmentSchedule : ct?.installment_schedule || null)
+          ? (row.installmentSchedule && Object.keys(row.installmentSchedule).length ? mergeInstallmentSchedule(ct?.installment_schedule, row.installmentSchedule) : ct?.installment_schedule || null)
           : null,
       };
       contractByCode.set(code, contractRow);

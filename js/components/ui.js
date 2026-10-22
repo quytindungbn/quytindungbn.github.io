@@ -244,9 +244,9 @@ export function openInstallmentPlanModal(contract) {
         <thead><tr><th>Kỳ hạn trả nợ</th><th>Ngày</th><th>Số tiền trả nợ gốc</th></tr></thead>
         <tbody>
           ${plan.map((p, i) => {
-            // Kỳ đã trả đủ (dueAmount = 0) -> hiện số ghi trong Excel để tham
-            // khảo, không cần tô màu cảnh báo. Kỳ còn thiếu tiền (dueAmount >
-            // 0) -> LUÔN hiện đúng dueAmount (số thực còn phải trả), tô màu
+            // Kỳ đã trả đủ (dueAmount = 0) -> vẫn giữ nguyên kỳ trong danh sách, số tiền
+            // ghi trong kỳ hiện MỜ và GẠCH NGANG, không tô màu cảnh báo. Kỳ còn thiếu tiền
+            // (dueAmount > 0) -> LUÔN hiện đúng dueAmount (số thực còn phải trả), tô màu
             // theo đúng mức cảnh báo y hệt hạn hợp đồng gốc (NEAR_DUE_DAYS).
             const amountToShow = p.dueAmount > 0 ? p.dueAmount : p.amount;
             const urgency = p.dueAmount > 0 ? (p.daysLeft < 0 ? 'qua_han' : p.daysLeft <= S.NEAR_DUE_DAYS ? 'gan_den_han' : null) : null;
@@ -260,10 +260,10 @@ export function openInstallmentPlanModal(contract) {
               ? `<tr class="${i === nextIdx ? 'is-next-due' : ''}"><td colspan="3" class="field-hint" style="text-align:right;padding-top:0">(kỳ ghi ${formatVND(p.amount)}, đã trừ phần trả dư từ trước)</td></tr>`
               : '';
             return `
-            <tr class="${i === nextIdx ? 'is-next-due' : ''}">
+            <tr class="${i === nextIdx ? 'is-next-due' : ''}${p.paid ? ' is-paid' : ''}">
               <td>Kỳ ${i + 1}${i === nextIdx ? ` <span class="field-hint" style="display:inline">(kỳ tới)</span>` : ''}</td>
               <td>${formatDate(p.dueDate)}</td>
-              <td style="color:${color};font-weight:600">${formatVND(amountToShow)}${badge}</td>
+              <td style="color:${color};font-weight:600">${p.paid ? `<s class="installment-paid" title="Đã trả đủ kỳ này">${formatVND(amountToShow)}</s>` : `${formatVND(amountToShow)}${badge}`}</td>
             </tr>
             ${diffNote}
           `;

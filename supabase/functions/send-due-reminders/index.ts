@@ -170,6 +170,23 @@ function toLocalISODate(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/**
+ * Y HỆT restoreLeadingInstallment() trong js/lib/installmentPlan.js (xem ghi chú đầy đủ ở đó) — dựng lại kỳ ĐẦU đã trả đủ
+ * mà file nhập ghi 0 nên không còn được lưu, để tiền đã trả không bị tính nhầm vào kỳ kế và "Kỳ tới" không bị nhảy qua kỳ còn phải trả.
+ */
+function restoreLeadingInstallment(
+  entries: { year: number; amount: number; restored?: boolean }[],
+  info: { principal: number; balance: number; disbursedYear: number },
+): { year: number; amount: number; restored?: boolean }[] {
+  if (!entries.length || !Number.isFinite(info.disbursedYear)) return entries;
+  const amountPaid = (Number(info.principal) || 0) - (Number(info.balance) || 0);
+  const missing = (Number(info.principal) || 0) - entries.reduce((sum, e) => sum + e.amount, 0);
+  if (entries[0].year === info.disbursedYear + 2 && missing > 0 && missing <= amountPaid) {
+    return [{ year: info.disbursedYear + 1, amount: missing, restored: true }, ...entries];
+  }
+  return entries;
+}
+
 type InstallmentEntry = { year: number; dueDate: string; amount: number; dueAmount: number; daysLeft: number; shouldWarn: boolean };
 
 /**
@@ -181,15 +198,16 @@ type InstallmentEntry = { year: number; dueDate: string; amount: number; dueAmou
 function computeInstallmentPlan(contract: any, asOf: Date): InstallmentEntry[] | null {
   const schedule = contract.installment_schedule;
   if (!schedule) return null;
-  const entries = Object.entries(schedule as Record<string, any>)
+  const stored = Object.entries(schedule as Record<string, any>)
     .map(([year, amount]) => ({ year: Number(year), amount: Number(amount) }))
     .filter((e) => Number.isFinite(e.year) && e.amount > 0)
     .sort((a, b) => a.year - b.year);
-  if (entries.length < 2) return null;
+  if (stored.length < 2) return null;
 
   const disbursed = new Date(contract.disbursed_date);
   const balance = Number(contract.balance) || 0;
   const amountPaid = (Number(contract.principal) || 0) - balance;
+  const entries = restoreLeadingInstallment(stored, { principal: Number(contract.principal) || 0, balance, disbursedYear: Number(String(contract.disbursed_date || '').slice(0, 4)) });
   const sumBeforeLast = entries.slice(0, -1).reduce((s, e) => s + e.amount, 0);
   let cumulativeRequired = 0;
   return entries.map((e, idx) => {

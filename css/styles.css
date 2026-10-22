@@ -2046,3 +2046,7 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .ld-amt { font-weight: 700; white-space: nowrap; }
 .ld-chip { white-space: nowrap; }
 .ld-ratio { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 400; color: var(--text-muted); }
+
+/* Kế hoạch trả nợ: kỳ đã trả đủ — số tiền mờ và gạch ngang */
+.installment-table .installment-paid { color: var(--text-faint); font-weight: 500; text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.installment-table tr.is-paid td:not(:last-child) { color: var(--text-muted); }

@@ -11,6 +11,7 @@
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { interestDaysBetween } from './lib/interestDays.js';
+import { restoreLeadingInstallment } from './lib/installmentPlan.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
 import { specificProvisionForLoan, SPECIFIC_PROVISION_RATE, GENERAL_PROVISION_RATE, inheritCurrentCollateral } from './lib/collateral.js';
 export { GENERAL_PROVISION_RATE, provisionFromSnapshot } from './lib/collateral.js';
@@ -462,15 +463,18 @@ function toLocalISODate(date) {
 export function computeInstallmentPlan(contract, asOf = new Date()) {
   const schedule = contract.installmentSchedule;
   if (!schedule) return null;
-  const entries = Object.entries(schedule)
+  const stored = Object.entries(schedule)
     .map(([year, amount]) => ({ year: Number(year), amount: Number(amount) }))
     .filter((e) => Number.isFinite(e.year) && e.amount > 0)
     .sort((a, b) => a.year - b.year);
-  if (entries.length < 2) return null;
+  if (stored.length < 2) return null;
 
   const disbursed = new Date(contract.disbursedDate);
   const balance = Number(contract.balance) || 0;
   const amountPaid = (Number(contract.principal) || 0) - balance; // đã trả lũy kế tới hiện tại
+  // Kỳ đầu đã trả đủ (file ghi 0 nên không còn lưu) được dựng lại để vẫn hiện là "Kỳ 1" (số tiền gạch ngang) và
+  // "Kỳ tới" không bị nhảy qua kỳ còn phải trả — xem restoreLeadingInstallment().
+  const entries = restoreLeadingInstallment(stored, { principal: contract.principal, balance, disbursedYear: Number(String(contract.disbursedDate || '').slice(0, 4)) });
   const sumBeforeLast = entries.slice(0, -1).reduce((s, e) => s + e.amount, 0); // tổng các kỳ TRƯỚC kỳ cuối
   let cumulativeRequired = 0;
   return entries.map((e, idx) => {
@@ -508,6 +512,8 @@ export function computeInstallmentPlan(contract, asOf = new Date()) {
       dueDate: toLocalISODate(dueDate),
       amount: e.amount, // số tiền GHI TRONG kỳ theo file Excel (tham khảo)
       dueAmount, // số tiền THỰC SỰ cần báo/hiển thị cho kỳ này (xem quy tắc ở trên)
+      paid: dueAmount <= 0, // kỳ đã trả đủ (giao diện gạch ngang số tiền)
+      restored: !!e.restored, // kỳ đã trả đủ được dựng lại vì file nhập không còn lưu (số tiền suy ra từ tổng)
       daysLeft,
       shouldWarn: isPastOrToday && dueAmount > 0,
     };
