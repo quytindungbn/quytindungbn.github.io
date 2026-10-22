@@ -294,7 +294,8 @@ function drawOATab(slot, admin) {
       return `${k.has('lai_hang_thang_auto') ? '<span class="oa-chip g">Báo lãi tự động</span>' : ''}${k.has('lai_hang_thang_custom_day') ? '<span class="oa-chip b">Ngày cụ thể</span>' : ''}`;
     };
     listEl.innerHTML = `
-      <div class="text-sm text-muted mb-8">${rows.length} khách hàng trong danh sách OA</div>
+      <div class="card card-pad mb-16">
+      <div class="oa-sec-h"><h2>Khách hàng trong danh sách OA <span class="oa-cnt">(${rows.length})</span></h2></div>
       ${rows.length ? rows.map(({ r, customer }) => `
         <div class="list-row" data-open="${customer.id}" style="cursor:pointer">
           <div class="row-thumb" style="background:${colorFor(customer.id)}">${initials(customer.name)}</div>
@@ -304,6 +305,7 @@ function drawOATab(slot, admin) {
           </div>
         </div>
       `).join('') : emptyState({ iconName: 'message', title: 'Chưa có khách hàng nào', message: 'Bấm "Thêm khách hàng vào OA" ở trên, hoặc thêm ở chi tiết khách hàng (mục Khách hàng & Hợp đồng).' })}
+      </div>
     `;
     listEl.querySelectorAll('[data-open]').forEach((row) => {
       row.addEventListener('click', () => openCustomerDetail(row.dataset.open, { readOnly: false, context: 'customer' }));
@@ -909,6 +911,8 @@ function drawLogTab(slot) {
       ? '<button type="button" class="btn btn-outline btn-block mt-8" id="log-more">Xem thêm lịch sử cũ hơn</button>'
       : '<div class="text-sm text-muted" style="text-align:center;padding:12px 4px">Đã hiển thị toàn bộ lịch sử gửi tin.</div>');
     slot.querySelector('#log-list').innerHTML = `
+      <div class="card card-pad mb-16">
+      <div class="oa-sec-h"><h2>Lịch sử gửi tin</h2></div>
       <div class="text-sm text-muted mb-8">${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ''}${fromMs === null ? (logViewFrom === null ? ' trong 1 tháng gần nhất' : (logCoveredFrom === -Infinity && viewFromMs <= 0 ? ' (toàn bộ lịch sử)' : ` từ ${formatDate(new Date(viewFromMs))} đến nay`)) : ''} · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
       ${logs.length ? (() => {
         const kindLabel = (k) => (k === 'den_han' ? 'Đến hạn' : 'Báo lãi');
@@ -937,6 +941,7 @@ function drawLogTab(slot) {
         }).join('');
       })() : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt bộ lọc trạng thái/thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
       ${moreHtml}
+      </div>
     `;
     const moreBtn = slot.querySelector('#log-more');
     if (moreBtn) {

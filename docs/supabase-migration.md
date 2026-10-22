@@ -2929,6 +2929,11 @@ cả (vô hại).
 - **Hàng tab Quản lý OA**: khai báo `font: 700 11.5px/1 inherit` sai cú pháp (từ khóa `inherit` không được dùng trong `font` rút gọn) nên trình duyệt bỏ cả dòng, chữ tab rơi về mặc định (mảnh, 13px). Nay khai báo đúng: font Inter, tab đang chọn 700, các tab khác 600.
   Còn 5 chỗ khác ở Quản lý OA mắc cùng lỗi cú pháp (`.oa-ban-go`, `.oa-flt`, `.oa-sadd`, `.oa-more`, `.oa-cfg-row select/input`) — chưa sửa, chờ duyệt kiểu chữ.
 
+### 10.67. Quản lý OA: Danh sách OA + Lịch sử gửi vào khung; khe giữa hai khách rõ hơn (chỉ giao diện, KHÔNG cần deploy hay SQL)
+
+- Tab **Danh sách OA** và **Lịch sử gửi** nay nằm trong khung trắng bo góc (cùng thẻ `card card-pad` với các khung của tab Gửi tự động), có tiêu đề kiểu chữ có chân: "Khách hàng trong danh sách OA (N)" và "Lịch sử gửi tin" (dòng tổng kết số lần gửi/thành công/lỗi nằm ngay dưới tiêu đề). Bộ lọc/ô tìm kiếm vẫn ở phía trên khung.
+- Trang Khách hàng: khe giữa hai khách vẫn rộng 8px nhưng màu sẫm hơn (xanh xám) và hai mép có viền xanh đậm 2px, bóng đổ xuống từ khung trên — để thấy rõ ranh giới.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
