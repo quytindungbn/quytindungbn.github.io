@@ -1216,11 +1216,22 @@ export async function addZaloAutoSend(contractId, kind = 'lai_hang_thang_auto', 
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'add-zalo-auto-send', contractId, kind, customDay, intervalMonths });
   if (!res.ok) throw new Error(res.reason || 'Không thêm được vào danh sách gửi tự động.');
-  // Server có thể tự tạo thêm dòng Tầng 1 (nếu khách chưa có) — tải lại
-  // session data thay vì tự vá cache cục bộ, tránh lệch dữ liệu.
-  await refreshSessionData();
-  // Cập nhật luôn tổng quan của mọi người (nhãn Danh sách OA, số tổng) — lỗi thì thôi, không làm hỏng thao tác vừa xong.
-  if (await refreshZaloAutoOverview()) notify();
+  // CHỈ đọc đúng dòng vừa tạo (1 truy vấn nhỏ) rồi vá thẳng vào bộ nhớ — KHÔNG tải lại toàn bộ dữ liệu phiên nữa (10 bảng, kể cả
+  // số liệu chốt các tháng rất nặng) nên thêm hợp đồng nhanh hơn hẳn. Danh sách tổng hợp của mọi người (nhãn Danh sách OA, số tổng)
+  // tự tính từ dòng này (xem listZaloAutoOverview) và được làm mới lúc mở trang. Không đọc được dòng vừa tạo thì mới tải lại đầy đủ như cũ.
+  try {
+    const sb = getSupabaseClient(session?.sbToken);
+    const { data, error } = await sb.from('zalo_auto_send_list').select('*').eq('contract_id', contractId).maybeSingle();
+    if (error || !data) throw new Error('không đọc được dòng vừa tạo');
+    const row = mapZaloAutoSendRow(data);
+    state.zaloAutoSendList = (state.zaloAutoSendList || []).filter((r) => r.id !== row.id && r.contractId !== row.contractId).concat(row);
+    if (!state.zaloCustomers.some((r) => r.customerId === row.customerId)) {
+      state.zaloCustomers.push({ customerId: row.customerId, addedBy: session?.id || null, addedAt: new Date().toISOString() }); // server tự thêm khách vào Danh sách OA nếu chưa có
+    }
+    notify();
+  } catch {
+    await refreshSessionData();
+  }
 }
 export async function removeZaloAutoSend(id) {
   const session = getSession();

@@ -733,15 +733,24 @@ function openAddAutoSendModal(kind, admin, onDone) {
         sheet.querySelector('#add-auto-more').style.display = all.length > visibleCount ? '' : 'none';
         sheet.querySelectorAll('[data-add]').forEach((row) => {
           row.addEventListener('click', async () => {
+            if (row.classList.contains('is-busy')) return; // đang thêm, bấm thêm lần nữa không có tác dụng
             const customDay = isCustomDay ? clampDay(sheet.querySelector('#day-input').value) : null;
             const intervalMonths = Number(sheet.querySelector('#interval-input').value) || 1;
+            // Báo ngay cho người bấm biết đã nhận lệnh (dòng mờ đi, ghi "Đang thêm…") thay vì im lặng chờ máy chủ.
+            row.classList.add('is-busy');
+            const amountEl = row.querySelector('b');
+            if (amountEl) amountEl.textContent = 'Đang thêm…';
             try {
               await S.addZaloAutoSend(row.dataset.add, kind, customDay, intervalMonths);
               toast('Đã thêm vào danh sách gửi tự động', 'success');
               if (onDone) onDone();
               usedContractIds.add(row.dataset.add);
               draw(); // cho thêm tiếp hợp đồng khác liền tay, không cần mở lại popup
-            } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+            } catch (err) {
+              row.classList.remove('is-busy');
+              draw();
+              toast(err.message || 'Có lỗi xảy ra', 'error');
+            }
           });
         });
       }

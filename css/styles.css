@@ -2257,3 +2257,6 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .oa-nm { min-width: 0; overflow-wrap: anywhere; }
 .oa-ttl .oa-chip { flex: none; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: 600; }
 @media (max-width: 480px) { .oa-ttl .oa-chip { height: 19px; padding: 0 7px; font-size: 10.5px; } }
+
+/* Dòng đang được thêm vào gửi tự động (chờ máy chủ): mờ đi, không bấm lại được */
+.list-row.is-busy { opacity: .5; pointer-events: none; }

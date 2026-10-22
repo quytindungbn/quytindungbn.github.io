@@ -2879,6 +2879,7 @@ cả (vô hại).
 - Ô **Tự động** ở đầu trang = tổng số hợp đồng đang gửi tự động của TẤT CẢ mọi người (ví dụ 64), ai có quyền quản lý OA cũng thấy cùng số (nhân viên cần đã deploy bản
   `create-account` của mục 10.60 mới thấy được phần của người khác). Tổng không lọc theo khách nằm trong địa bàn của nhân viên.
   **Chỉ quản trị toàn quyền (super) bấm được vào ô này** để xem từng người bao nhiêu hợp đồng (ví dụ quản trị viên 63, Ba 1); nhân viên chỉ thấy con số tổng, ô không bấm được.
+- Thêm hợp đồng vào gửi tự động chạy nhanh hơn: sau khi máy chủ báo xong, app chỉ đọc đúng dòng vừa tạo (1 truy vấn) rồi vá vào bộ nhớ, không tải lại cả 10 bảng dữ liệu phiên như trước; dòng đang thêm mờ đi và ghi "Đang thêm…". Không cần deploy thêm.
 - Danh sách OA: nhãn "Báo lãi tự động / Ngày cụ thể" nằm ngay sau tên khách (hết chỗ trên điện thoại thì xuống dòng ngay dưới tên), dòng dưới chỉ còn địa chỉ.
 
 ---
