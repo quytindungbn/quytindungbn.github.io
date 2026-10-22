@@ -1430,7 +1430,8 @@ export async function importFromPastedTable(text, { fullSync = false, fileName =
   // Tải lại toàn bộ khách hàng/hợp đồng từ Supabase để đồng bộ đúng dữ liệu
   // thật sau khi nhập — chắc chắn đúng hơn tự tính lại ở trình duyệt vì mọi
   // quyết định thêm/sửa/xóa đều đã xảy ra ở server.
-  await loadAdminSessionData(session.sbToken);
+  // Số liệu chốt các tháng (nặng) chỉ tải lại khi máy chủ báo có sửa; máy chủ cũ không báo gì (undefined) thì vẫn tải lại như trước.
+  await loadAdminSessionData(session.sbToken, { snapshots: res.snapshotsChanged !== false });
   // BẮT BUỘC gọi notify() để lưu dữ liệu vừa tải về vào localStorage — thiếu
   // dòng này thì màn hình vẫn hiện đúng dữ liệu mới (nhờ redraw thủ công ở
   // UI), nhưng dữ liệu mới đó CHỈ nằm trong bộ nhớ tạm của tab đang mở; bấm
@@ -1481,7 +1482,7 @@ export async function importSupplementRows(rawRows, { fileName = '' } = {}) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-supplement', rows, fileName });
   if (!res.ok) throw new Error(res.reason || 'Không bổ sung được file số 2.');
-  await loadAdminSessionData(session.sbToken);
+  await loadAdminSessionData(session.sbToken, { snapshots: false }); // file số 2 không đụng tới số liệu chốt các tháng
   notify();
   return {
     updated: res.updated || 0, unmatched: res.unmatched || 0, errors: res.errors || [],
@@ -1781,7 +1782,11 @@ export async function checkForceLogout() {
   pendingForceLogoutSignal = signal; // thấy lần đầu -> chờ đúng tín hiệu này lặp lại ở lượt kế tiếp mới đăng xuất thật
 }
 
-async function loadAdminSessionData(token) {
+/**
+ * Tải lại số liệu cho trang quản trị. snapshots=false: giữ nguyên số liệu chốt các tháng đang có trong bộ nhớ (loại dữ liệu NẶNG nhất —
+ * chi tiết từng hợp đồng của từng tháng) — dùng sau khi nhập file, lúc máy chủ báo số liệu chốt không đổi.
+ */
+async function loadAdminSessionData(token, { snapshots = true } = {}) {
   const sb = getSupabaseClient(token);
   const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes, zaloCustRes, zaloListRes, zaloLogRes, chatUnreadRes, snapshotRes] = await Promise.all([
     sb.from('admins').select('*'),
@@ -1813,13 +1818,13 @@ async function loadAdminSessionData(token) {
     // quản trị viên toàn quyền (role='super'), nhân viên thường sẽ tự nhận
     // mảng rỗng (không phải lỗi) — không sao, dashboard này vốn CHỈ hiện cho
     // super (xem overview.js). Bọc an toàn phòng lúc chưa chạy SQL tạo bảng.
-    sb.from('monthly_snapshots').select('*').order('year_month').then((r) => r, () => ({ data: [] })),
+    snapshots ? sb.from('monthly_snapshots').select('*').order('year_month').then((r) => r, () => ({ data: [] })) : Promise.resolve(null),
   ]);
   state.admins = (adminRows || []).map(mapAdminRow);
   state.customers = (customerRows || []).map(mapCustomerRow);
   state.contracts = (contractRows || []).map(mapContractRow);
   state.requests = (requestRows || []).map(mapRequestRow);
-  state.monthlySnapshots = (snapshotRes?.data || []).map(mapMonthlySnapshotRow);
+  if (snapshotRes) state.monthlySnapshots = (snapshotRes.data || []).map(mapMonthlySnapshotRow);
   // Mảng thường (KHÔNG phải Set) — state được JSON.stringify() vào
   // localStorage mỗi lần persist()/notify(), Set sẽ bị mất sạch dữ liệu khi
   // serialize (JSON.stringify(new Set(...)) ra "{}"), lần tải lại từ cache sẽ

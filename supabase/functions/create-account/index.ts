@@ -754,6 +754,19 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 }
+/** Chạy fn cho từng phần tử với tối đa `limit` việc cùng lúc (giữ nguyên thứ tự kết quả) — dùng cho các lượt đọc nhỏ độc lập, thay vì chờ lần lượt từng lượt. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
 /** Kiểm tra bảng import_history đã được tạo (chạy SQL) trước khi ghi bất cứ thứ gì. */
 async function importHistoryReady(): Promise<string | null> {
   const { error } = await admin.from('import_history').select('id').limit(1);
@@ -2120,15 +2133,16 @@ Deno.serve(async (req) => {
     }
     // Đọc trước các hợp đồng khớp Số HĐTD để cho thấy CỤ THỂ sẽ đổi gì (và để quay lại bản trước được).
     const contractsByCode = new Map<string, any[]>();
-    for (const part of chunkArray(rows.map((r) => r.code), 150)) {
-      const { data: found, error: foundError } = await admin.from('contracts').select('*').in('code', part);
-      if (foundError) return json({ ok: false, reason: 'Không đọc được hợp đồng hiện có; chưa thay đổi dữ liệu.' }, 500);
+    // Các lô 150 mã đọc song song (tối đa 6 lô cùng lúc) thay vì chờ lần lượt từng lô.
+    const foundParts = await mapLimit(chunkArray(rows.map((r) => r.code), 150), 6, (part) => admin.from('contracts').select('*').in('code', part));
+    if (foundParts.some((p: any) => p.error)) return json({ ok: false, reason: 'Không đọc được hợp đồng hiện có; chưa thay đổi dữ liệu.' }, 500);
+    for (const { data: found } of foundParts as any[]) {
       for (const ct of found || []) contractsByCode.set(ct.code, [...(contractsByCode.get(ct.code) || []), ct]);
     }
     const ownerIds = [...new Set([...contractsByCode.values()].flat().map((ct: any) => ct.customer_id as string))];
     const ownerById = new Map<string, any>();
-    for (const part of chunkArray(ownerIds, 150)) {
-      const { data: owners } = await admin.from('customers').select('id, name, cccd').in('id', part);
+    const ownerParts = await mapLimit(chunkArray(ownerIds, 150), 6, (part) => admin.from('customers').select('id, name, cccd').in('id', part));
+    for (const { data: owners } of ownerParts as any[]) {
       for (const o of owners || []) ownerById.set(o.id, o);
     }
     const suppDetails = { matched: [] as any[], unchangedContracts: 0, unmatched: [] as any[] };
@@ -2169,12 +2183,14 @@ Deno.serve(async (req) => {
     if (error) return json({ ok: false, reason: `Không lưu được file bổ sung: ${error.message}` }, 500);
     const updated = Number(data?.updated) || 0;
     const unmatched = Number(data?.unmatched) || 0;
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import-supplement',
-      `Bổ sung khế ước và phân kỳ: **${updated} hợp đồng**${unmatched ? `, **${unmatched} dòng** không khớp hoặc đã tất toán` : ''}`);
-    const savedSupp = await saveImportHistory({
-      adminId: callerAdmin.id, adminName: callerAdmin.name || callerAdmin.username, kind: 'supplement', fileName, fullSync: false,
-      summary: suppSummary, details: suppDetails, snapshot: suppSnapshot,
-    });
+    const [, savedSupp] = await Promise.all([
+      logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import-supplement',
+        `Bổ sung khế ước và phân kỳ: **${updated} hợp đồng**${unmatched ? `, **${unmatched} dòng** không khớp hoặc đã tất toán` : ''}`),
+      saveImportHistory({
+        adminId: callerAdmin.id, adminName: callerAdmin.name || callerAdmin.username, kind: 'supplement', fileName, fullSync: false,
+        summary: suppSummary, details: suppDetails, snapshot: suppSnapshot,
+      }),
+    ]);
     return json({
       ok: true, updated, unmatched,
       errors: savedSupp.error ? ['Đã bổ sung xong nhưng chưa lưu được lịch sử nhập: ' + savedSupp.error] : [],
@@ -2208,13 +2224,6 @@ Deno.serve(async (req) => {
         codes.add(code);
       }
     }
-    // Chặn trước mọi thao tác ghi nếu migration chưa được chạy trên Supabase.
-    const { error: schemaError } = await admin.from('contracts').select('id, collateral_type, loan_term, loan_purpose, heir_name').limit(1);
-    if (schemaError) return json({ ok: false, reason: 'Chưa cập nhật cấu trúc bảng contracts trên Supabase; chưa thay đổi dữ liệu.' }, 500);
-    if (!isPreview) {
-      const notReady = await importHistoryReady();
-      if (notReady) return json({ ok: false, reason: notReady }, 500);
-    }
     const result = {
       newProfiles: 0, existingCustomers: 0, contracts: 0,
       deletedContracts: 0, deletedCustomers: 0, skipped: 0, zaloAutoSendMigrated: 0,
@@ -2233,9 +2242,16 @@ Deno.serve(async (req) => {
         if ((data || []).length < 1000) return { data: all, error: null };
       }
     }
-    const [{ data: allCustomers, error: customersError }, { data: allContracts, error: contractsError }] = await Promise.all([
-      readAll('customers'), readAll('contracts'),
+    // Kiểm tra cấu trúc bảng, bảng lịch sử nhập và đọc dữ liệu hiện có chạy CÙNG LÚC (trước đây chờ lần lượt từng lệnh). Chưa lệnh nào ghi gì;
+    // nếu cấu trúc/bảng lịch sử chưa sẵn sàng thì báo lỗi và dừng trước mọi thao tác ghi, y như trước.
+    const [schemaCheck, historyNotReady, [{ data: allCustomers, error: customersError }, { data: allContracts, error: contractsError }]] = await Promise.all([
+      admin.from('contracts').select('id, collateral_type, loan_term, loan_purpose, heir_name').limit(1),
+      isPreview ? Promise.resolve(null) : importHistoryReady(),
+      Promise.all([readAll('customers'), readAll('contracts')]),
     ]);
+    // Chặn trước mọi thao tác ghi nếu migration chưa được chạy trên Supabase.
+    if (schemaCheck.error) return json({ ok: false, reason: 'Chưa cập nhật cấu trúc bảng contracts trên Supabase; chưa thay đổi dữ liệu.' }, 500);
+    if (historyNotReady) return json({ ok: false, reason: historyNotReady }, 500);
     if (customersError || contractsError) return json({ ok: false, reason: 'Không đọc được dữ liệu hiện có; chưa thay đổi dữ liệu.' }, 500);
     const customerByCccd = new Map((allCustomers || []).map((c: any) => [c.cccd, c]));
     const contractByCode = new Map((allContracts || []).filter((c: any) => c.code).map((c: any) => [c.code, c]));
@@ -2419,18 +2435,27 @@ Deno.serve(async (req) => {
       kind: 'import', createdContractIds: [], createdCustomerIds: [], updatedContracts: [], updatedCustomers: [],
       deletedContracts: [], deletedCustomers: [], zaloCustomers: [], zaloAutoSend: [], logLinks: { notification_log: [], zalo_send_log: [] },
     };
+    // Chỉ GHI những hợp đồng mới hoặc có thay đổi (các hợp đồng y nguyên không cần ghi lại — file thật thường có hàng nghìn dòng
+    // nhưng chỉ vài chục dòng đổi). collateralChanged: lần nhập này có tạo/đổi TSBĐ của hợp đồng nào không.
+    const contractWrites: any[] = [];
+    let collateralChanged = false;
+    const COLLATERAL_FIELDS = new Set(['has_collateral', 'collateral_value', 'collateral_type']);
     for (const row of contractUpsertsDeduped as any[]) {
       const before = allContractById.get(row.id);
       const person = personOf(row.customer_id);
       if (!before) {
         importDetails.newContracts.push({ code: row.code, name: person.name || '', cccd: person.cccd || '', balance: row.balance, principal: row.principal, dueDate: row.due_date });
         importSnapshot.createdContractIds.push(row.id);
+        contractWrites.push(row);
+        if (row.has_collateral || Number(row.collateral_value) > 0) collateralChanged = true;
         continue;
       }
       const changes = diffFields(CONTRACT_FIELD_META, before, row);
       if (!changes.length) { importDetails.unchangedContracts++; continue; }
       importDetails.changedContracts.push({ code: row.code, name: person.name || '', cccd: person.cccd || '', changes });
       importSnapshot.updatedContracts.push(pickCols(before, CONTRACT_WRITE_COLS));
+      contractWrites.push(row);
+      if (changes.some((c) => COLLATERAL_FIELDS.has(c.field))) collateralChanged = true;
     }
     for (const id of toDeleteIds) {
       const ct = allContractById.get(id);
@@ -2455,6 +2480,7 @@ Deno.serve(async (req) => {
       importSnapshot.updatedCustomers.push({ id: cust.id, ...pickCols(originalCustomerByCccd.get(cccd), CUSTOMER_PROFILE_COLS) });
     }
     // Dự đoán những hồ sơ khách sẽ bị dọn (hết hợp đồng, chưa có tài khoản) — đúng điều kiện dọn thật ở bước cuối.
+    const predictedPrune: any[] = [];
     if (fullSync || toDeleteIds.length) {
       const finalContracts = new Map<string, any>(allContractById);
       for (const id of toDeleteIds) finalContracts.delete(id);
@@ -2464,7 +2490,10 @@ Deno.serve(async (req) => {
       const finalCustomers = new Map<string, any>(allCustomerById);
       for (const [id, c] of finalCustomerById) finalCustomers.set(id, c);
       for (const c of finalCustomers.values()) {
-        if ((balByCustomer.get(c.id) || 0) <= 0 && !(c.salt && c.hash)) importDetails.deletedCustomers.push({ name: c.name || '', cccd: c.cccd || '' });
+        if ((balByCustomer.get(c.id) || 0) <= 0 && !(c.salt && c.hash)) {
+          importDetails.deletedCustomers.push({ name: c.name || '', cccd: c.cccd || '' });
+          predictedPrune.push(c);
+        }
       }
     }
     const buildImportSummary = () => ({
@@ -2476,22 +2505,30 @@ Deno.serve(async (req) => {
     });
     if (isPreview) return json({ ok: true, preview: true, fullSync, summary: buildImportSummary(), details: importDetails });
 
+    // Khách đã có sẵn: chỉ ghi lại khi hồ sơ (tên, SĐT, địa chỉ và các cột tách từ địa chỉ) thật sự đổi.
+    const existingCustomerWrites = existingCustomerUpserts.filter((cust: any) => {
+      const orig = originalCustomerByCccd.get(cust.cccd);
+      return !orig || CUSTOMER_PROFILE_COLS.some((col) => String(orig[col] ?? '') !== String(cust[col] ?? ''));
+    });
+
     if (newCustomerUpserts.length) {
       const { error } = await admin.from('customers').upsert(newCustomerUpserts, { onConflict: 'id' });
       if (error) return json({ ok: false, reason: 'Lỗi ghi hồ sơ khách hàng mới; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
-    if (existingCustomerUpserts.length) {
-      const { error } = await admin.from('customers').upsert(existingCustomerUpserts, { onConflict: 'id' });
+    if (existingCustomerWrites.length) {
+      const { error } = await admin.from('customers').upsert(existingCustomerWrites, { onConflict: 'id' });
       if (error) return json({ ok: false, reason: 'Lỗi cập nhật hồ sơ khách hàng; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
-    if (contractUpsertsDeduped.length) {
-      const { error } = await admin.from('contracts').upsert(contractUpsertsDeduped, { onConflict: 'id' });
+    if (contractWrites.length) {
+      const { error } = await admin.from('contracts').upsert(contractWrites, { onConflict: 'id' });
       if (error) return json({ ok: false, reason: 'Lỗi ghi hợp đồng; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
 
     // Ghi TSBĐ mới vào lịch sử trước khi dọn hợp đồng đã tất toán. Những kỳ
     // không có chi tiết đầy đủ được giữ nguyên để tránh tính sai dự phòng.
-    const historySync = await syncHistoricalCollateral(admin);
+    // Việc này đọc TOÀN BỘ số liệu chốt các tháng (rất nặng) nên chỉ chạy khi lần nhập này tạo/đổi TSBĐ của hợp đồng nào đó;
+    // không đổi TSBĐ thì các tháng đã chốt vẫn đang khớp, khỏi đọc lại.
+    const historySync: { updated: number; error?: string } = collateralChanged ? await syncHistoricalCollateral(admin) : { updated: 0 };
     if (historySync.error) result.errors.push('Chưa đồng bộ TSBĐ lịch sử: ' + historySync.error);
 
     if (toDeleteIds.length) {
@@ -2560,13 +2597,20 @@ Deno.serve(async (req) => {
         result.deletedContracts = toDeleteIds.length;
     }
     if (fullSync || toDeleteIds.length) {
-      const { data: remaining, error: remainingError } = await readAll('contracts');
-      if (remainingError) return json({ ok: false, reason: 'Không kiểm tra được hợp đồng còn lại; chưa dọn hồ sơ khách hàng.' }, 500);
-      const balByCust = new Map<string, number>();
-      for (const c of remaining || []) balByCust.set(c.customer_id, (balByCust.get(c.customer_id) || 0) + (Number(c.balance) || 0));
-      const { data: custNow, error: custNowError } = await readAll('customers');
-      if (custNowError) return json({ ok: false, reason: 'Không kiểm tra được hồ sơ; chưa dọn hồ sơ khách hàng.' }, 500);
-      const pruneRows = (custNow || []).filter((c: any) => (balByCust.get(c.id) || 0) <= 0 && !(c.salt && c.hash));
+      // Danh sách hồ sơ cần dọn đã được tính ở bước lập kế hoạch (đúng điều kiện: hết dư nợ và chưa có tài khoản) và đã hiện trong bản xem trước,
+      // nên không đọc lại toàn bộ 2 bảng nữa; chỉ kiểm tra lại đúng các hồ sơ ứng viên xem có ai vừa có thêm hợp đồng còn dư nợ không.
+      let pruneRows = predictedPrune;
+      if (pruneRows.length) {
+        const stillOwning = new Set<string>();
+        let checkFailed = false;
+        for (const part of chunkArray(pruneRows.map((c: any) => c.id as string), 150)) {
+          const { data, error } = await admin.from('contracts').select('customer_id').in('customer_id', part).gt('balance', 0);
+          if (error) { checkFailed = true; break; }
+          for (const r of data || []) stillOwning.add((r as any).customer_id);
+        }
+        if (checkFailed) return json({ ok: false, reason: 'Không kiểm tra được hợp đồng còn lại; chưa dọn hồ sơ khách hàng.' }, 500);
+        pruneRows = pruneRows.filter((c: any) => !stillOwning.has(c.id));
+      }
       importDetails.deletedCustomers = [];
       if (pruneRows.length) {
         const deletedIds = new Set<string>();
@@ -2583,18 +2627,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import',
-      `Nhập dữ liệu Excel${fullSync ? ' (đồng bộ toàn bộ)' : ''}: **${result.contracts} hợp đồng, ${result.newAccounts.length} tài khoản mới**` +
-      (result.deletedContracts ? `, xóa **${result.deletedContracts} hợp đồng**` : '') +
-      (result.deletedCustomers ? `, xóa **${result.deletedCustomers} khách hàng**` : '') +
-      (result.skipped ? `, bỏ qua **${result.skipped} dòng lỗi**` : ''));
     const importSummary = buildImportSummary();
-    const savedHistory = await saveImportHistory({
-      adminId: callerAdmin.id, adminName: callerAdmin.name || callerAdmin.username, kind: 'import', fileName, fullSync,
-      summary: importSummary, details: importDetails, snapshot: importSnapshot,
-    });
+    // Ghi nhật ký sử dụng và lưu lịch sử nhập CÙNG LÚC (2 việc độc lập nhau).
+    const [, savedHistory] = await Promise.all([
+      logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import',
+        `Nhập dữ liệu Excel${fullSync ? ' (đồng bộ toàn bộ)' : ''}: **${result.contracts} hợp đồng, ${result.newAccounts.length} tài khoản mới**` +
+        (result.deletedContracts ? `, xóa **${result.deletedContracts} hợp đồng**` : '') +
+        (result.deletedCustomers ? `, xóa **${result.deletedCustomers} khách hàng**` : '') +
+        (result.skipped ? `, bỏ qua **${result.skipped} dòng lỗi**` : '')),
+      saveImportHistory({
+        adminId: callerAdmin.id, adminName: callerAdmin.name || callerAdmin.username, kind: 'import', fileName, fullSync,
+        summary: importSummary, details: importDetails, snapshot: importSnapshot,
+      }),
+    ]);
     if (savedHistory.error) result.errors.push('Đã nhập xong nhưng chưa lưu được lịch sử nhập: ' + savedHistory.error);
-    return json({ ok: true, ...result, summary: importSummary, details: importDetails, historyId: savedHistory.id });
+    // snapshotsChanged: số liệu chốt các tháng có bị sửa không — app chỉ tải lại số liệu chốt (nặng) khi true.
+    return json({ ok: true, ...result, summary: importSummary, details: importDetails, historyId: savedHistory.id, snapshotsChanged: historySync.updated > 0 });
   }
 
   return json({ ok: false, reason: 'Thiếu hoặc sai "type".' }, 400);
