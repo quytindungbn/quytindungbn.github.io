@@ -168,7 +168,7 @@ export function openResetPasswordModal({ title = 'Cấp lại mật khẩu', onC
 }
 
 /**
- * Dòng nhỏ "Kỳ trễ hạn/Kỳ gần đến hạn: Kỳ N — số tiền" (nếu hợp đồng đang có
+ * Dòng nhỏ "Kỳ N: số tiền" (nếu hợp đồng đang có
  * 1 kỳ là NGUỒN cảnh báo — S.contractAttentionInfo(ct).source === 'installment')
  * — chữ nhãn bình thường (field-hint), CHỈ riêng số tiền in đậm + tô màu
  * theo đúng mức cảnh báo (đỏ = trễ hạn, vàng = gần đến hạn) để dễ nhìn ra
@@ -188,7 +188,8 @@ export function installmentHintHtml(ct) {
   const inst = S.nextInstallmentInfo(ct);
   if (!inst) return '';
   const color = info.level === 'qua_han' ? 'var(--danger)' : 'var(--warning)';
-  return `<div class="field-hint" style="margin-top:3px">${info.level === 'qua_han' ? 'Kỳ trễ hạn' : 'Kỳ gần đến hạn'}: Kỳ ${inst.idx + 1} — <b style="color:${color}">${formatVND(info.dueAmount)}</b></div>`;
+  // Chỉ ghi "Kỳ N: số tiền" cho gọn (một dòng trên điện thoại); mức cảnh báo đã có ở huy hiệu và màu của số tiền (đỏ = trễ hạn, vàng = gần đến hạn).
+  return `<div class="field-hint" style="margin-top:3px">Kỳ ${inst.idx + 1}: <b style="color:${color}">${formatVND(info.dueAmount)}</b></div>`;
 }
 
 /**
