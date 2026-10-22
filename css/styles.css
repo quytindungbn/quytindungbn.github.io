@@ -2239,6 +2239,7 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .oa-kp-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .oa-kp-btn em { color: #0b5148; font-weight: 600; white-space: nowrap; }
 .modal-sheet.sheet-oa-add .modal-head h3 { color: #0c4a3f; }
+@media (max-width: 380px) { .modal-sheet.sheet-oa-add .modal-head h3 { font-size: 14px; } }
 @media (max-width: 480px) {
   .oa-kps { gap: 8px; }
   .oa-kp { padding: 10px 9px 9px; }

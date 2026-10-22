@@ -680,7 +680,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
   const isCustomDay = kind === 'lai_hang_thang_custom_day';
 
   const close = openModal({
-    title: isCustomDay ? 'Chọn để "Gửi theo ngày cụ thể"' : 'Chọn để "Báo lãi tự động hàng tháng"',
+    title: 'Click chọn hợp đồng để thêm vào danh sách',
     sheetClass: 'sheet-search sheet-oa-add',
     bodyHtml: `
       <div class="oa-cfg">
