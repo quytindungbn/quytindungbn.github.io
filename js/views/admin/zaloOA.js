@@ -998,19 +998,6 @@ function drawConfigTab(slot) {
 
       <button class="btn btn-primary btn-block" type="submit">Lưu cấu hình</button>
     </form>
-
-    <section class="oa-step mt-16">
-      <div class="oa-sn">3</div>
-      <div class="oa-sb">
-        <h2>Kết nối kỹ thuật <span class="oa-st ok">Thiết lập qua máy chủ</span></h2>
-        <p class="oa-hint">
-          Vì lý do an toàn, 4 thông tin này (App ID, Secret Key, Access Token, Refresh Token) KHÔNG cấu
-          hình qua màn hình này — chúng chỉ được lưu ở phía máy chủ (Supabase Secrets + 1 bảng riêng chỉ
-          server đọc được), không hiện ra trình duyệt kể cả với quản trị viên toàn quyền. Việc thiết lập
-          ban đầu đã làm cùng nhau qua chat — nếu cần đổi App/Token mới, báo lại để cập nhật.
-        </p>
-      </div>
-    </section>
   `;
 
   slot.querySelector('#zalo-form').addEventListener('submit', async (e) => {
