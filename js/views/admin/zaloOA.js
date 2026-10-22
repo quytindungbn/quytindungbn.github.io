@@ -75,8 +75,8 @@ function summaryHtml(isSuper) {
   const autoSub = S.hasZaloAutoOverview() ? 'cả nhóm' : 'của bạn';
   // Chỉ quản trị toàn quyền bấm vào ô để xem từng người bao nhiêu hợp đồng; nhân viên chỉ thấy con số tổng.
   const autoTile = isSuper
-    ? `<button type="button" class="oa-kp oa-kp-btn g" data-auto-breakdown aria-label="Xem số hợp đồng gửi tự động theo từng người"><b>${autoCount}</b><span>Tự động</span><em>${autoSub} ›</em></button>`
-    : tile(autoCount, 'Tự động', autoSub, 'g');
+    ? `<button type="button" class="oa-kp oa-kp-btn g" data-auto-breakdown aria-label="Xem số hợp đồng gửi tự động theo từng người"><b>${autoCount} <small>HĐTD</small></b><span>Báo lãi tự động</span><em>${autoSub} ›</em></button>`
+    : tile(`${autoCount} <small>HĐTD</small>`, 'Báo lãi tự động', autoSub, 'g');
   return `${banner}<div class="oa-kps">
     ${tile(S.listZaloCustomers().length, 'Khách OA', 'đã thêm')}
     ${autoTile}
@@ -680,8 +680,8 @@ function openAddAutoSendModal(kind, admin, onDone) {
   const isCustomDay = kind === 'lai_hang_thang_custom_day';
 
   const close = openModal({
-    title: isCustomDay ? 'Thêm vào "Gửi theo ngày cụ thể"' : 'Thêm vào "Báo lãi tự động hàng tháng"',
-    sheetClass: 'sheet-search',
+    title: isCustomDay ? 'Chọn để "Gửi theo ngày cụ thể"' : 'Chọn để "Báo lãi tự động hàng tháng"',
+    sheetClass: 'sheet-search sheet-oa-add',
     bodyHtml: `
       <div class="oa-cfg">
         ${isCustomDay
