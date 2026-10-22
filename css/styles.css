@@ -2063,13 +2063,13 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-row.c4 { grid-template-columns: 1.5fr 1fr 1fr 1fr; align-items: start; }
 .lc-row.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .lc-row.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.lc-f label, .lc-lab { display: block; margin-bottom: 5px; font: 600 11px var(--lux-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--lux-gold); }
+.lc-f label, .lc-lab { display: block; margin-bottom: 5px; font: 600 11px/14px var(--lux-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--lux-gold); }
 .lc-f .box { position: relative; display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 12px; border: 1px solid #b9cbc5; border-radius: 10px; background: #fff; }
 .lc-f .box:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(15, 111, 97, .18); }
 .lc-f .box input { flex: 1; min-width: 0; width: 100%; height: 100%; border: 0; outline: 0; padding: 0; background: transparent; font: 600 16px var(--lux-sans); color: var(--text); font-variant-numeric: tabular-nums; }
 .lc-f .box i { font: 500 12.5px var(--lux-sans); font-style: normal; color: var(--lux-mut); white-space: nowrap; }
 .lc-f .hint { margin-top: 4px; font: 500 11.5px var(--lux-sans); color: var(--lux-mut); }
-.lc-f.w > .lc-f.nested { margin: 0; }
+.lc-f.pw > .lc-f.nested { margin: 0; }
 .lc-cal { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--color-primary-dark); cursor: pointer; }
 .lc-cal:hover { background: var(--color-primary-light); }
 #lc-date-native { position: absolute; right: 8px; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -2124,11 +2124,11 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 @media (max-width: 899px) {
   .lc-row.c4, .lc-row.c3, .lc-row.c2 { grid-template-columns: 1fr 1fr; }
   .lc-row .w { grid-column: 1 / -1; }
-  /* Cách tính theo thời hạn: hàng 1 = Số tiền vay | Ngày vay, hàng 2 = Lãi suất | Thời hạn vay (trên máy tính vẫn một hàng 4 ô) */
-  .lc-row.term .lc-f:nth-child(1) { order: 1; }
-  .lc-row.term .lc-f.dt { order: 2; }
-  .lc-row.term .lc-f:nth-child(2) { order: 3; }
-  .lc-row.term .lc-f:nth-child(3) { order: 4; }
+  /* Cả hai cách tính cùng thứ tự: hàng 1 = Số tiền vay | Ngày vay, hàng 2 = Lãi suất | Thời hạn vay (hoặc Số tiền trả mỗi tháng). Trên máy tính vẫn một hàng 4 ô: Số tiền vay, Lãi suất, Thời hạn/Số tiền trả, Ngày vay */
+  .lc-row.q .lc-f:nth-child(1) { order: 1; }
+  .lc-row.q .lc-f.dt { order: 2; }
+  .lc-row.q .lc-f:nth-child(2) { order: 3; }
+  .lc-row.q .lc-f:nth-child(3) { order: 4; }
   /* Ô hẹp hơn một chút để ngày dd/mm/yyyy và số tiền dài hiện trọn (chữ còn tự thu nhỏ nếu vẫn chưa vừa) */
   .lc-f .box { padding: 0 10px; gap: 4px; }
   .lc-cal { width: 26px; height: 26px; margin-right: -4px; }
@@ -2152,4 +2152,11 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .lc .lux-h:has(.lc-tools) > .lux-h-end { order: 3; flex: 1 1 100%; }
   .lc-tools { display: flex; width: 100%; gap: 8px; }
   .lc-tools .lc-tool { flex: 1 1 0; justify-content: center; padding: 0 6px; }
+}
+/* Nhãn "Số tiền trả mỗi tháng" nằm trong ô nửa hàng: giữ trên một dòng để hai ô cùng hàng thẳng nhau */
+@media (max-width: 480px) {
+  .lc-f.pw label { white-space: nowrap; font-size: 10px; letter-spacing: .03em; }
+}
+@media (max-width: 345px) {
+  .lc-f.pw label { font-size: 9px; letter-spacing: .01em; }
 }
