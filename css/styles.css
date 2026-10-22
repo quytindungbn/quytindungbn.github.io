@@ -1994,6 +1994,13 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .customer-ledger-wrap .customer-ledger-contract .customer-ledger-oa:active:not(:disabled) { transform: translateY(1px); }
 .customer-ledger-wrap .customer-ledger-contract .customer-ledger-oa:disabled { opacity: 1; background: #f5f7f6; border-color: #e1e9e5; color: #a9b7b0; box-shadow: none; cursor: not-allowed; }
 .customer-ledger-oa:disabled .icon { color: #b5c2bb; }
+/* Máy tính: nút Gửi OA nằm ngang (biểu tượng + chữ trên một dòng) và dòng hợp đồng thấp lại, không còn cao vì nút xếp dọc. */
+@media (min-width: 961px) {
+  .customer-ledger-wrap .customer-ledger-contract .customer-ledger-oa { flex: 0 0 74px; width: 74px; min-width: 0; flex-direction: row; gap: 5px; height: 30px; padding: 0 6px; border-radius: 10px; font-size: 11.5px; }
+  .customer-ledger-wrap .customer-ledger-contract .customer-ledger-oa .icon { width: 13px; height: 13px; }
+  .customer-ledger-wrap .customer-ledger-contract { padding: 11px 0; }
+  .customer-ledger-wrap.has-oa-actions .customer-ledger-oa-heading { flex: 0 0 74px; margin-left: 10px; }
+}
 @media (max-width: 960px) {
   .customer-ledger-wrap .customer-ledger-contract .customer-ledger-oa { min-width: 50px; padding: 6px 6px; font-size: 10px; }
   .customer-ledger-wrap.has-oa-actions .customer-ledger-contract .customer-ledger-oa { margin-left: 8px; }

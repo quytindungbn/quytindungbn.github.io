@@ -934,7 +934,7 @@ function drawLogTab(slot) {
           <div class="row-thumb" style="background:${l.status === 'success' ? 'var(--success)' : 'var(--danger)'}">${icon(l.status === 'success' ? 'check' : 'x', 'icon-sm')}</div>
           <div class="row-main">
             <div class="row-title">${customer ? customer.name : '—'}${contract ? ' · ' + contract.code : ''}</div>
-            <div class="row-sub oa-sub"><span>${hh}</span><span class="oa-chip${l.triggeredBy === 'manual' ? ' b' : ''}">${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}</span><span class="oa-chip">${kindLabel(l.kind)}</span></div>
+            <div class="row-sub oa-sub"><span>${hh}</span><span class="oa-chip ${l.triggeredBy === 'manual' ? 'b' : 'g'}">${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}</span><span class="oa-chip ${l.kind === 'den_han' ? 'b' : 'g'}">${kindLabel(l.kind)}</span></div>
             ${l.status === 'error' && l.errorMessage ? `<div class="oa-err">${l.errorMessage}</div>` : ''}
           </div>
         </div>`;

@@ -2934,6 +2934,11 @@ cả (vô hại).
 - Tab **Danh sách OA** và **Lịch sử gửi** nay nằm trong khung trắng bo góc (cùng thẻ `card card-pad` với các khung của tab Gửi tự động), có tiêu đề kiểu chữ có chân: "Khách hàng trong danh sách OA (N)" và "Lịch sử gửi tin" (dòng tổng kết số lần gửi/thành công/lỗi nằm ngay dưới tiêu đề). Bộ lọc/ô tìm kiếm vẫn ở phía trên khung.
 - Trang Khách hàng: khe giữa hai khách vẫn rộng 8px nhưng màu sẫm hơn (xanh xám) và hai mép có viền xanh đậm 2px, bóng đổ xuống từ khung trên — để thấy rõ ranh giới.
 
+### 10.68. Lịch sử gửi: nhãn màu; trang Khách hàng trên máy tính: dòng hợp đồng thấp lại (chỉ giao diện, KHÔNG cần deploy hay SQL)
+
+- Tab **Lịch sử gửi** (Quản lý OA): nhãn **"Báo lãi"** và **"Tự động"** màu xanh, nhãn **"Đến hạn"** màu vàng; **"Gửi tay"** giữ màu vàng như cũ.
+- Trang **Khách hàng & Hợp đồng** trên máy tính (≥ 961px): nút Gửi OA nằm ngang (biểu tượng + chữ trên một dòng, rộng 74px, cao 30px) thay vì xếp dọc, khoảng đệm dòng 11px — dòng hợp đồng từ 72px xuống 53px; tiêu đề cột "GỬI OA" căn thẳng hàng với nút. Điện thoại giữ nút xếp dọc như trước.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
