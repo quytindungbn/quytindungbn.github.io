@@ -131,9 +131,9 @@ export function buildLoanCalcXlsx({ org, inputs, result, printedOn = new Date() 
       span(row, 6, 7, { v: right[i][1], style: 'pval' });
       lines = Math.max(lines, Math.ceil(String(right[i][1]).length / (mergedWidth(6, 7) * 1.05)));
     }
+    if (!right[i]) { span(row, 4, 5, { v: '', style: 'plabel' }); span(row, 6, 7, { v: '', style: 'pval' }); } // ô trống vẫn có kẻ để đường kẻ liền mạch
     r = push(row, Math.max(19, 17 * lines + 2));
-    mergeRow(r, 0, 1); mergeRow(r, 2, 3);
-    if (right[i]) { mergeRow(r, 4, 5); mergeRow(r, 6, 7); }
+    mergeRow(r, 0, 1); mergeRow(r, 2, 3); mergeRow(r, 4, 5); mergeRow(r, 6, 7);
   }
   push([], 8);
 
@@ -209,8 +209,8 @@ body{margin:0;background:#fff;color:#12231e;font:500 9.5pt/1.4 ${SANS_STACK};fon
 h1{margin:3.6mm 0 0;font:700 26pt/1.1 ${SERIF_STACK};letter-spacing:-.01em;color:#0c4a3f}
 .sub{margin:1.5mm 0 0;font-size:9.5pt;color:#6a7a73}
 .info{display:grid;grid-template-columns:142mm 1fr;gap:0 8mm;margin-top:4mm}
-.params h2{margin:0;padding:0 0 1.6mm;border-bottom:.2mm solid #dbe6e0;font:700 7.5pt ${SANS_STACK};letter-spacing:.12em;text-transform:uppercase;color:#8a6a22}
-.prow{display:grid;grid-template-columns:44mm 1fr;align-items:baseline;padding:1.4mm 0;border-bottom:.15mm solid #e6ece9}
+.params h2{margin:0;padding:0 0 1.6mm;border-bottom:.2mm solid #c9d6cf;font:700 7.5pt ${SANS_STACK};letter-spacing:.12em;text-transform:uppercase;color:#8a6a22}
+.prow{display:grid;grid-template-columns:44mm 1fr;align-items:baseline;padding:1.4mm 0;border-bottom:.2mm solid #c9d6cf}
 .prow span{font-size:9pt;color:#8a6a22}.prow b{font-weight:600;font-size:9.5pt}
 .tiles{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content;gap:4mm}
 .tile{padding:2.4mm 4mm 2.8mm;background:#f7f1df;border-top:.7mm solid #b08d3c}.tile.hi{background:#e9f3ee;border-top-color:#0c4a3f}

@@ -68,7 +68,7 @@ export function buildPdf(pages, { title = '' } = {}) {
 }
 
 // ---- Vẽ từng trang bằng canvas ----
-const C = { ink: '#12231e', em: '#0c4a3f', gold: '#b08d3c', goldDark: '#8a6a22', muted: '#6a7a73', cream: '#f7f1df', hi: '#e9f3ee', zebra: '#f8faf8', rowLine: '#a3b8ae', paramLine: '#e6ece9', secLine: '#dbe6e0', total: '#f1e7c6', white: '#ffffff' };
+const C = { ink: '#12231e', em: '#0c4a3f', gold: '#b08d3c', goldDark: '#8a6a22', muted: '#6a7a73', cream: '#f7f1df', hi: '#e9f3ee', zebra: '#f8faf8', rowLine: '#a3b8ae', paramLine: '#c9d6cf', secLine: '#c9d6cf', total: '#f1e7c6', white: '#ffffff' };
 const px = (mm) => mm * S;
 const fontStr = (weight, sizePt, family, italic = false) => `${italic ? 'italic ' : ''}${weight} ${(sizePt * PT * S).toFixed(2)}px ${family}`;
 
@@ -148,7 +148,7 @@ function drawFirstPageHead(ctx, m) {
     const t = top + 5.5 + 0.2 + i * 7.64;
     text(ctx, label, X0, t + 4.96, { weight: 500, size: 9, color: C.goldDark });
     text(ctx, value, X0 + 44, t + 4.96, { weight: 600, size: 9.5, color: C.ink, maxW: 142 - 44 });
-    hline(ctx, X0, X0 + 142, t + 7.64 - 0.075, 0.15, C.paramLine);
+    hline(ctx, X0, X0 + 142, t + 7.64 - 0.1, 0.2, C.paramLine);
   });
   // Bốn ô tổng (phải)
   const tw = 57.5, tx0 = X0 + 142 + 8;

@@ -76,6 +76,7 @@ test('bản in: A4 ngang, kiểu chữ của app, đủ tiêu đề, điều ki�
   assert.equal((html.match(/class="tile( hi)?"/g) || []).length, 4);
   assert.match(html, /Lập ngày 22\/10\/2026/);
   assert.match(html, /\.t td\{[^}]*border-bottom:\.3mm solid #a3b8ae\}/, 'kẻ từng dòng của bảng đủ đậm để rà theo hàng');
+  assert.match(html, /\.prow\{[^}]*border-bottom:\.2mm solid #c9d6cf\}/, 'mục Điều kiện vay có kẻ nhẹ dưới từng dòng');
   assert.ok(!html.includes('<A>'), 'tên quỹ có ký tự đặc biệt không lọt thô vào HTML (kể cả trong khối CSS)');
   assert.equal((buildLoanCalcPrintHtml({ org: { name: 'x</style><script>1</script>' }, inputs: term, result: termRes, printedOn: start }).match(/<\/style>/g) || []).length, 1, 'tên quỹ không đóng sớm thẻ style');
   const cssTitle = /@top-left\{content:"((?:[^"\\]|\\.)*)"/.exec(buildLoanCalcPrintHtml({ org: { name: 'Quỹ "X" \\ Y' }, inputs: term, result: termRes, printedOn: start }));
@@ -103,6 +104,10 @@ test('file Excel: A4 ngang, vừa chiều ngang, có bảng đủ kỳ, ngày th
   assert.ok(styles.includes('Cambria') && styles.includes('Calibri'));
   assert.ok(styles.includes('formatCode="dd/mm/yyyy"'));
   assert.ok(styles.includes('<bottom style="thin"><color rgb="FF98AEA3"/></bottom>'), 'kẻ từng dòng của bảng đủ đậm');
+  assert.ok(styles.includes('<bottom style="thin"><color rgb="FFC9D6CF"/></bottom>'), 'mục Điều kiện vay có kẻ nhẹ dưới từng dòng');
+  const sheetXml = files['xl/worksheets/sheet1.xml'];
+  const condRows = [...sheetXml.matchAll(/<row r="(\d+)"[^>]*>(.*?)<\/row>/g)].filter((m) => /Số tiền vay|Lãi suất|Ngày vay|Thời hạn vay|Cách trả|Số tiền trả mỗi tháng|Số tiền này là/.test(m[2]) || /<c r="[E-H]\d+" s="\d+"\/>/.test(m[2]));
+  assert.ok(condRows.length >= 3 && condRows.every((m) => (m[2].match(/<c r="[A-H]\d+" s="\d+"/g) || []).length === 8), 'mọi dòng điều kiện vay đủ 8 ô có kẻ, kể cả ô trống bên phải');
   const term2 = unzipEntries(buildLoanCalcXlsx({ org, inputs: term, result: termRes, printedOn: start }))['xl/worksheets/sheet1.xml'];
   assert.ok(term2.includes('Gốc trả đều mỗi tháng') && term2.includes('Thời hạn vay'));
 });

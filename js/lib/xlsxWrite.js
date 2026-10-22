@@ -60,6 +60,7 @@ const COLOR = { em: 'FF0C4A3F', gold: 'FFB08D3C', goldDark: 'FF8A6A22', ink: 'FF
 const SANS = 'Calibri', SERIF = 'Cambria';
 const f = (extra) => ({ name: SANS, sz: 11, color: COLOR.ink, ...extra });
 const hair = ['thin', COLOR.line];
+const softLine = ['thin', 'FFC9D6CF']; // kẻ nhẹ dưới từng dòng "Điều kiện vay"
 const rowLine = ['thin', 'FF98AEA3']; // kẻ từng dòng của bảng — đậm hơn để dễ rà theo hàng
 const STYLE_DEFS = {
   normal: { font: { name: SANS, sz: 11 } },
@@ -68,9 +69,9 @@ const STYLE_DEFS = {
   org: { font: f({ b: 1, sz: 11, color: COLOR.em }), align: { v: 'center' } },
   meta: { font: f({ i: 1, sz: 10, color: COLOR.muted }), align: { h: 'right', v: 'center' } },
   rule: { border: { bottom: ['medium', COLOR.gold] } },
-  section: { font: f({ b: 1, sz: 9, color: COLOR.goldDark }), border: { bottom: hair }, align: { v: 'center' } },
-  plabel: { font: f({ sz: 10.5, color: COLOR.goldDark }), align: { v: 'center' } },
-  pval: { font: f({ b: 1, sz: 11 }), align: { h: 'left', v: 'center', wrap: 1 } },
+  section: { font: f({ b: 1, sz: 9, color: COLOR.goldDark }), border: { bottom: softLine }, align: { v: 'center' } },
+  plabel: { font: f({ sz: 10.5, color: COLOR.goldDark }), border: { bottom: softLine }, align: { v: 'center' } },
+  pval: { font: f({ b: 1, sz: 11 }), border: { bottom: softLine }, align: { h: 'left', v: 'center', wrap: 1 } },
   tileLabel: { font: f({ b: 1, sz: 9, color: COLOR.goldDark }), fill: COLOR.cream, border: { top: ['medium', COLOR.gold] }, align: { h: 'center', v: 'center' } },
   tileValue: { font: f({ name: SERIF, b: 1, sz: 15, color: COLOR.em }), fill: COLOR.cream, align: { h: 'center', v: 'center', wrap: 1 } },
   tileSub: { font: f({ sz: 9, color: COLOR.muted }), fill: COLOR.cream, align: { h: 'center', v: 'center' } },
