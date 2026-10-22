@@ -746,7 +746,7 @@ export function contractAttentionInfo(contract, asOf = new Date()) {
 export async function loginCustomer(identifier, password) {
   const res = await callLoginFunction({ role: 'customer', identifier, password });
   if (!res.ok) return { ok: false, reason: res.reason };
-  await loadCustomerSessionData(res.id, res.token);
+  await loadWithRetry(() => loadCustomerSessionData(res.id, res.token));
   return { ok: true, customerId: res.id, mustChangePassword: !!res.mustChangePassword, sbToken: res.token };
 }
 
@@ -768,7 +768,7 @@ export async function requestPasswordReset(cccd, phone) {
 /** Tải hồ sơ + toàn bộ hợp đồng của 1 khách hàng từ Supabase, thay hoàn toàn state.customers/state.contracts. */
 async function loadCustomerSessionData(customerId, token) {
   const sb = getSupabaseClient(token);
-  const [{ data: custRow }, { data: contractRows }, { data: requestRows }, chatUnreadRes] = await Promise.all([
+  const [custRes, contractRes, requestRes, chatUnreadRes] = await Promise.all([
     sb.from('customers').select('*').eq('id', customerId).maybeSingle(),
     sb.from('contracts').select('*').eq('customer_id', customerId),
     sb.from('requests').select('*').eq('customer_id', customerId),
@@ -781,10 +781,33 @@ async function loadCustomerSessionData(customerId, token) {
       .eq('customer_id', customerId).eq('sender_role', 'admin').is('read_at', null)
       .then((r) => r, () => ({ count: 0 })),
   ]);
-  state.customers = custRow ? [mapCustomerRow(custRow)] : [];
-  state.contracts = (contractRows || []).map(mapContractRow);
-  state.requests = (requestRows || []).map(mapRequestRow);
-  state.chatUnreadCount = chatUnreadRes?.count || 0;
+  // Hồ sơ/hợp đồng tải LỖI (hết thời gian, rớt mạng thoáng qua...) thì GIỮ NGUYÊN dữ liệu đang có và báo false để thử lại — trước đây
+  // coi như "không có gì" nên xóa sạch hợp đồng, thậm chí đăng xuất nhầm khách (không thấy hồ sơ của mình).
+  if (custRes?.error || !queryOk(contractRes)) {
+    console.warn('Tải dữ liệu khách hàng chưa trọn vẹn, giữ nguyên dữ liệu cũ.', custRes?.error || contractRes?.error);
+    return false;
+  }
+  state.customers = custRes.data ? [mapCustomerRow(custRes.data)] : [];
+  state.contracts = contractRes.data.map(mapContractRow);
+  if (queryOk(requestRes)) state.requests = requestRes.data.map(mapRequestRow);
+  if (chatUnreadRes && !chatUnreadRes.error) state.chatUnreadCount = chatUnreadRes.count || 0;
+  lastRefreshOkAt = Date.now();
+  return true;
+}
+
+/** Truy vấn Supabase dùng được: không lỗi và có mảng dữ liệu. Truy vấn LỖI trả {data:null,error} chứ KHÔNG văng lỗi — nếu coi như "bảng trống" sẽ xóa sạch danh sách đang có rồi lưu luôn vào máy (tải lại vẫn trống). */
+const queryOk = (res) => !!res && !res.error && Array.isArray(res.data);
+
+/** Chạy load() (trả true khi tải đủ), không đủ thì chờ rồi thử lại tối đa `tries` lần — dùng lúc đăng nhập, khi mạng còn chập chờn. */
+async function loadWithRetry(load, tries = 3, waitMs = 1500) {
+  let lastErr = null;
+  for (let i = 0; i < tries; i++) {
+    try { if (await load()) return true; lastErr = null; }
+    catch (e) { lastErr = e; }
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, waitMs * (i + 1)));
+  }
+  if (lastErr) throw lastErr;
+  return false;
 }
 
 /** snake_case (cột Postgres) -> camelCase (đúng field app đang dùng khắp nơi). */
@@ -1735,7 +1758,7 @@ export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary,
 export async function loginAdmin(username, password) {
   const res = await callLoginFunction({ role: 'admin', identifier: username, password, device: detectDeviceKind() });
   if (!res.ok) return { ok: false, reason: res.reason };
-  await loadAdminSessionData(res.token);
+  await loadWithRetry(() => loadAdminSessionData(res.token));
   await syncHistoricalCollateralOnce(res.token, res.id);
   return { ok: true, adminId: res.id, mustChangePassword: !!res.mustChangePassword, sbToken: res.token };
 }
@@ -1776,22 +1799,59 @@ async function syncHistoricalCollateralOnce(token, adminId) {
  * phiên rồi, không tính) — đăng xuất ngay, KHÔNG cho hiện màn "nhập mật khẩu
  * mới" trong phiên cũ nữa (khớp yêu cầu: phải đăng nhập lại từ đầu).
  */
-export async function refreshSessionData() {
-  if (!state || !state.session) return;
+let refreshInFlight = null;
+let refreshQueued = false;
+let refreshFailStreak = 0;
+let refreshRetryTimer = null;
+let lastRefreshOkAt = 0;
+let snapshotsLoadedAt = 0;
+const SNAPSHOTS_STALE_MS = 10 * 60 * 1000;
+/** Số liệu chốt các tháng (nặng nhất, ít đổi) chỉ cần tải lại mỗi ~10 phút hoặc khi chưa có — không tải lại ở mọi lượt chuyển trang. */
+const snapshotsStale = () => !(state.monthlySnapshots || []).length || Date.now() - snapshotsLoadedAt > SNAPSHOTS_STALE_MS;
+
+/**
+ * Mỗi lúc chỉ chạy MỘT lượt làm mới (bấm menu/đổi tab liên tục không còn bắn nhiều lượt tải đồng thời, giành mạng của nhau). Gọi lúc
+ * đang có lượt chạy: tải xong chạy thêm đúng 1 lượt nữa (hoặc bỏ qua nếu truyền minAgeMs). minAgeMs: bỏ qua nếu vừa tải đủ trong
+ * khoảng đó (dùng khi chuyển trang, xem ghi chú ở app.js). Lượt tải lỗi thì tự thử lại sau vài giây (tối đa 3 lần), dữ liệu đang có được giữ nguyên.
+ */
+export function refreshSessionData({ minAgeMs = 0 } = {}) {
+  if (!state || !state.session) return Promise.resolve();
+  if (minAgeMs && Date.now() - lastRefreshOkAt < minAgeMs) return refreshInFlight || Promise.resolve();
+  if (refreshInFlight) { if (!minAgeMs) refreshQueued = true; return refreshInFlight; }
+  const job = runSessionRefresh().finally(() => {
+    if (refreshInFlight === job) refreshInFlight = null;
+    if (refreshQueued) { refreshQueued = false; refreshSessionData(); }
+  });
+  refreshInFlight = job;
+  return job;
+}
+
+function scheduleRefreshRetry() {
+  refreshFailStreak += 1;
+  // Thử lại 3 lần vẫn không được: báo 1 lần để người dùng biết màn hình đang hiện dữ liệu lần trước (xem app.js)
+  if (refreshFailStreak === 4) window.dispatchEvent(new CustomEvent('qtd:refresh-failed'));
+  if (refreshFailStreak > 3 || refreshRetryTimer) return;
+  refreshRetryTimer = setTimeout(() => { refreshRetryTimer = null; refreshSessionData(); }, 3000 * refreshFailStreak);
+}
+
+async function runSessionRefresh() {
   const session = state.session;
   const active = document.activeElement;
   const isTypingOutsideModal = active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) && !active.closest('.modal-overlay');
   const getSelf = () => (session.role === 'admin' ? getAdmin(session.id) : getCustomer(session.id));
   const wasMustChange = !!getSelf()?.mustChangePassword;
   const wasForceLogoutAt = getSelf()?.forceLogoutAt || null;
+  let loaded = false;
   try {
-    if (session.role === 'admin') await loadAdminSessionData(session.sbToken);
-    else await loadCustomerSessionData(session.id, session.sbToken);
-    if (session.role === 'admin') await syncHistoricalCollateralOnce(session.sbToken, session.id);
+    if (session.role === 'admin') {
+      loaded = await loadAdminSessionData(session.sbToken, { snapshots: snapshotsStale() });
+      if (loaded) await syncHistoricalCollateralOnce(session.sbToken, session.id);
+    } else loaded = await loadCustomerSessionData(session.id, session.sbToken);
   } catch (e) {
     console.warn('Không tự làm mới được dữ liệu, sẽ thử lại ở lần sau.', e);
-    return;
   }
+  if (!loaded) { scheduleRefreshRetry(); return; }
+  refreshFailStreak = 0;
   if (!wasMustChange && getSelf()?.mustChangePassword) { logout(); return; }
   // "Đăng xuất use" (forceLogoutCustomer/forceLogoutStaff) — CÙNG cơ chế:
   // mốc thời gian đổi khác lần trước đã biết (kể cả từ null sang có giá trị,
@@ -1875,7 +1935,7 @@ export async function checkForceLogout() {
  */
 async function loadAdminSessionData(token, { snapshots = true } = {}) {
   const sb = getSupabaseClient(token);
-  const [{ data: adminRows }, { data: customerRows }, { data: contractRows }, { data: requestRows }, pushRes, zaloCustRes, zaloListRes, zaloLogRes, chatUnreadRes, snapshotRes] = await Promise.all([
+  const [adminRes, customerRes, contractRes, requestRes, pushRes, zaloCustRes, zaloListRes, zaloLogRes, chatUnreadRes, snapshotRes] = await Promise.all([
     sb.from('admins').select('*'),
     sb.from('customers').select('*'),
     sb.from('contracts').select('*'),
@@ -1907,20 +1967,29 @@ async function loadAdminSessionData(token, { snapshots = true } = {}) {
     // super (xem overview.js). Bọc an toàn phòng lúc chưa chạy SQL tạo bảng.
     snapshots ? sb.from('monthly_snapshots').select('*').order('year_month').then((r) => r, () => ({ data: [] })) : Promise.resolve(null),
   ]);
-  state.admins = (adminRows || []).map(mapAdminRow);
-  state.customers = (customerRows || []).map(mapCustomerRow);
-  state.contracts = (contractRows || []).map(mapContractRow);
-  state.requests = (requestRows || []).map(mapRequestRow);
-  if (snapshotRes) state.monthlySnapshots = (snapshotRes.data || []).map(mapMonthlySnapshotRow);
+  // Ba bảng chính (nhân viên, khách hàng, hợp đồng) tải LỖI (hết thời gian, rớt mạng thoáng qua...) thì GIỮ NGUYÊN dữ liệu đang có và báo
+  // false để thử lại. Trước đây lỗi bị coi như "bảng trống" -> danh sách khách/hợp đồng biến mất và còn bị lưu luôn vào máy (tải lại vẫn trống).
+  const failed = [['admins', adminRes], ['customers', customerRes], ['contracts', contractRes]].filter(([, r]) => !queryOk(r));
+  if (failed.length) {
+    console.warn('Tải dữ liệu chưa trọn vẹn, giữ nguyên dữ liệu cũ:', failed.map(([t, r]) => `${t} (${r?.error?.message || 'không có dữ liệu'})`).join('; '));
+    return false;
+  }
+  state.admins = adminRes.data.map(mapAdminRow);
+  state.customers = customerRes.data.map(mapCustomerRow);
+  state.contracts = contractRes.data.map(mapContractRow);
+  if (queryOk(requestRes)) state.requests = requestRes.data.map(mapRequestRow);
+  if (queryOk(snapshotRes)) { state.monthlySnapshots = snapshotRes.data.map(mapMonthlySnapshotRow); snapshotsLoadedAt = Date.now(); }
   // Mảng thường (KHÔNG phải Set) — state được JSON.stringify() vào
   // localStorage mỗi lần persist()/notify(), Set sẽ bị mất sạch dữ liệu khi
   // serialize (JSON.stringify(new Set(...)) ra "{}"), lần tải lại từ cache sẽ
   // gọi .has() trên object thường và văng lỗi ngay khi vẽ trang.
-  state.pushSubscribedCustomerIds = [...new Set((pushRes?.data || []).map((r) => r.owner_id))];
-  state.zaloCustomers = (zaloCustRes?.data || []).map(mapZaloCustomerRow);
-  state.zaloAutoSendList = (zaloListRes?.data || []).map(mapZaloAutoSendRow);
-  state.zaloSendLog = (zaloLogRes?.data || []).map(mapZaloSendLogRow);
-  state.chatUnreadCount = chatUnreadRes?.count || 0;
+  if (queryOk(pushRes)) state.pushSubscribedCustomerIds = [...new Set(pushRes.data.map((r) => r.owner_id))];
+  if (queryOk(zaloCustRes)) state.zaloCustomers = zaloCustRes.data.map(mapZaloCustomerRow);
+  if (queryOk(zaloListRes)) state.zaloAutoSendList = zaloListRes.data.map(mapZaloAutoSendRow);
+  if (queryOk(zaloLogRes)) state.zaloSendLog = zaloLogRes.data.map(mapZaloSendLogRow);
+  if (chatUnreadRes && !chatUnreadRes.error) state.chatUnreadCount = chatUnreadRes.count || 0;
+  lastRefreshOkAt = Date.now();
+  return true;
 }
 
 function mapMonthlySnapshotRow(row) {
@@ -2441,6 +2510,9 @@ export function logout() {
     callCreateAccountFunction(session.sbToken, { type: 'customer-logout' }).catch(() => {});
   }
   state.session = null;
+  lastRefreshOkAt = 0;
+  refreshFailStreak = 0;
+  clearTimeout(refreshRetryTimer); refreshRetryTimer = null;
   notify();
 }
 

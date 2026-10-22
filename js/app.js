@@ -1,6 +1,7 @@
 import * as S from './state.js';
 import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_TOOLS, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
+import { toast } from './components/toast.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
 import { initAutoInstallPrompt } from './components/installBtn.js';
@@ -225,8 +226,11 @@ window.addEventListener('hashchange', () => {
   // ngầm (không await) — refreshSessionData() tự gọi notify() khi xong, kích
   // hoạt vẽ lại (xem S.subscribe bên dưới); trang không còn đủ quyền (VD: bị
   // rút quyền khi đang đứng ở đó) sẽ tự bị renderApp() điều hướng về mặc định.
-  S.refreshSessionData();
+  // Bỏ qua nếu vừa tải đủ dưới 15 giây trước (bấm menu liên tục không tải lại toàn bộ dữ liệu mỗi lần); đang có lượt tải thì dùng luôn lượt đó.
+  S.refreshSessionData({ minAgeMs: 15000 });
 });
+// Làm mới dữ liệu thử lại nhiều lần vẫn không được (mất mạng/máy chủ chậm): màn hình đang hiện dữ liệu lần trước — báo để người dùng biết.
+window.addEventListener('qtd:refresh-failed', () => toast('Chưa tải được dữ liệu mới — đang hiện dữ liệu lần trước. Kiểm tra mạng rồi tải lại trang.', 'error'));
 window.addEventListener('qtd:logout', () => { closeAllModals(); S.logout(); location.hash = '#/'; renderApp(); });
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -234,6 +238,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   registerServiceWorker(); // Đăng ký nhận thông báo đẩy — không đợi xong, không chặn tải app.
   await S.init(); // KHÔNG còn chờ mạng nữa (xem ghi chú trong state.js) — trả về gần như ngay lập tức.
   renderApp(); // Vẽ màn hình đầu tiên NGAY bằng dữ liệu đã có sẵn (demo hoặc cache lần trước), không đợi Supabase.
+  S.refreshSessionData(); // Mở lại/tải lại trang: làm mới dữ liệu ngầm ngay (không cần bấm menu mới cập nhật) — danh sách hiện sẵn từ lần trước, có dữ liệu mới thì tự cập nhật.
   S.refreshOrgPublic(); // Tải tên quỹ/banner THẬT ngầm phía sau — không await, xong tự cập nhật lại đúng chỗ (S.subscribe bên dưới).
   startAutoRefresh();
   // Phiên đăng nhập cũ còn lưu sẵn (mở lại app không cần đăng nhập lại) cũng

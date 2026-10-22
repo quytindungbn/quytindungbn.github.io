@@ -16,6 +16,8 @@ let selectedMonth = null;
 let loadedFor = null;
 let hasLoaded = false;
 let requestId = 0;
+let loadingPromise = null; // lượt tải bảng cân đối đang chạy (nếu có) — dùng chung, không bắt đầu lượt mới khi trang vẽ lại
+let latestContentEl = null;
 const remoteProvisions = new Map();
 const pendingProvisions = new Set();
 
@@ -115,6 +117,8 @@ function resetIfChangedUser() {
   selectedMonth = null;
   loadedFor = session?.id;
   hasLoaded = false;
+  requestId++; // bỏ kết quả của lượt tải đang chạy dở cho người dùng trước
+  loadingPromise = null;
   remoteProvisions.clear();
   pendingProvisions.clear();
 }
@@ -134,23 +138,44 @@ async function loadRemoteProvision(yearMonth, contentEl) {
   if (selectedMonth === yearMonth && location.hash.split('?')[0] === '#/admin/can-doi-ke-toan') draw(contentEl);
 }
 
+const onThisPage = () => location.hash.split('?')[0] === '#/admin/can-doi-ke-toan';
+
 export async function render(contentEl) {
   resetIfChangedUser();
+  latestContentEl = contentEl;
   if (hasLoaded) { remoteProvisions.delete(selectedMonth); draw(contentEl); return; }
-  const id = ++requestId;
   contentEl.innerHTML = '<div class="card card-pad text-muted">Đang tải bảng cân đối kế toán...</div>';
-  const { data, error } = await makeClient().from('balance_sheet_reports')
-    .select('year_month, period_end, source_name, figures, imported_at')
-    .order('year_month', { ascending: true });
-  if (id !== requestId || location.hash.split('?')[0] !== '#/admin/can-doi-ke-toan') return;
-  if (error) {
-    contentEl.innerHTML = `<div class="card card-pad text-danger">Không tải được số liệu. Kiểm tra kết nối hoặc cấu trúc Supabase: ${escapeHtml(error.message)}</div>`;
-    return;
-  }
-  reports = data || [];
-  hasLoaded = true;
-  if (!reports.some((r) => r.year_month === selectedMonth)) selectedMonth = reports.at(-1)?.year_month || null;
-  draw(contentEl);
+  // Đang có lượt tải chạy rồi (VD: dữ liệu phiên vừa làm mới xong nên trang được vẽ lại) thì CHỜ lượt đó, không bắt đầu lượt mới —
+  // trước đây mỗi lần vẽ lại lại bỏ lượt đang tải dở để tải lại từ đầu nên vào trang này rất lâu.
+  if (loadingPromise) return loadingPromise;
+  const id = ++requestId;
+  const job = (async () => {
+    let result;
+    try {
+      result = await makeClient().from('balance_sheet_reports')
+        .select('year_month, period_end, source_name, figures, imported_at')
+        .order('year_month', { ascending: true });
+    } catch (e) { result = { error: { message: e?.message || 'Mất kết nối' } }; }
+    if (id !== requestId) return; // đã đổi người dùng giữa chừng
+    const { data, error } = result;
+    const el = latestContentEl;
+    if (error) {
+      if (el && onThisPage()) el.innerHTML = `<div class="card card-pad text-danger">Không tải được số liệu. Kiểm tra kết nối hoặc cấu trúc Supabase: ${escapeHtml(error.message)}</div>`;
+      return;
+    }
+    reports = data || [];
+    hasLoaded = true;
+    if (!reports.some((r) => r.year_month === selectedMonth)) selectedMonth = reports.at(-1)?.year_month || null;
+    if (el && onThisPage()) draw(el);
+  })().finally(() => { if (loadingPromise === job) loadingPromise = null; });
+  loadingPromise = job;
+  return job;
+}
+
+/** Có dữ liệu phiên mới nhưng vẫn đứng ở trang này: chỉ vẽ lại bằng số liệu đã tải (không tải lại bảng cân đối, không tính lại dự phòng) — xem app.js. */
+export function refresh(contentEl) {
+  latestContentEl = contentEl;
+  if (hasLoaded) draw(contentEl); // chưa tải xong thì lượt tải đang chạy tự vẽ khi xong
 }
 
 /** Số lớn gọn ở đầu trang: "95,61 tỷ đ", "429 triệu đ" (tròn thì bỏ ",00"); số đầy đủ không còn hiện thêm ở dòng dưới. */

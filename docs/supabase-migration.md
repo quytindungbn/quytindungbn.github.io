@@ -2884,6 +2884,17 @@ cả (vô hại).
 - Danh sách gửi tự động sắp theo thời điểm thêm: hợp đồng mới thêm hiện ĐẦU TIÊN (cả trang chính lẫn cửa sổ "Xem thêm"). Thùng rác màu đỏ, bấm thì hỏi xác nhận trước khi bỏ.
 - Danh sách OA: nhãn "Báo lãi tự động / Ngày cụ thể" nằm ngay sau tên khách (hết chỗ trên điện thoại thì xuống dòng ngay dưới tên), dòng dưới chỉ còn địa chỉ.
 
+### 10.62. Tải lại trang không còn mất danh sách; vào mục Quản trị nhanh hơn (chỉ sửa giao diện, KHÔNG cần deploy hay SQL)
+
+- **Lỗi mất danh sách khi tải lại** (Danh sách OA ghi "0 khách hàng" dù ô trên cùng vẫn ghi 165): khi một lượt tải dữ liệu từ máy chủ BỊ LỖI (hết thời gian chờ, rớt mạng thoáng qua),
+  app trước đây coi như "bảng trống" → xóa sạch danh sách khách/hợp đồng đang có và lưu luôn bản trống vào máy, nên tải lại vẫn trống cho tới khi một lượt tải sau thành công.
+  Nay lượt tải lỗi thì **giữ nguyên dữ liệu đang có** (cả với khách hàng đăng nhập — không bị đăng xuất nhầm), tự **thử lại** sau 3/6/9 giây; đăng nhập cũng tự thử lại tối đa 3 lần.
+- **Mở/tải lại trang là tự làm mới dữ liệu ngay** (trước đây phải bấm menu mới cập nhật). Bấm menu liên tục: mỗi lúc chỉ chạy **một** lượt tải, và bỏ qua nếu vừa tải đủ dưới 15 giây
+  (đổi quyền ở máy khác vẫn thấy ở lần bấm menu sau đó). Số liệu chốt các tháng (phần nặng nhất, ít đổi) chỉ tải lại mỗi ~10 phút thay vì mọi lượt.
+- **Mục "Quản trị" (cân đối kế toán) tải lâu:** mỗi lần dữ liệu phiên làm mới xong, trang bị vẽ lại và **bỏ lượt tải bảng cân đối đang chạy dở để tải lại từ đầu** (và tính lại dự phòng
+  mỗi lần). Nay chỉ một lượt tải duy nhất, vẽ lại khi có dữ liệu mới thì dùng số liệu đã có.
+- Kiểm tra bằng máy chủ giả (`scratchpad/uitest/reload_test.cjs`): bản cũ tái hiện đúng lỗi (khách 3 → 0, 5 lần chuyển trang = 5 lượt tải, bảng cân đối tải 2 lần), bản mới đều đạt.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
