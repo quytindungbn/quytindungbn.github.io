@@ -586,7 +586,7 @@ svg { display: block; }
 .row-end .amount-sub { font-size: 12px; color: var(--text-muted); }
 
 /* OA customer list only. */
-#oa-list > .text-sm { font-size: 12px; }
+#oa-list > .text-sm { font-size: 12px; margin-top: 12px; }
 #oa-list .row-thumb { font-size: 13px; }
 #oa-list .row-title { font-size: 13px; }
 #oa-list .row-sub { font-size: 11.5px; }
@@ -2175,25 +2175,22 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .oa-kp b { display: block; font: 700 26px/1.1 var(--font-serif); color: #0c4a3f; } .oa-kp b small { font: 600 14px Inter, sans-serif; color: var(--text-muted); }
 .oa-kp span { display: block; margin-top: 3px; font-size: 12px; font-weight: 700; color: var(--text-muted); } .oa-kp em { display: block; font-style: normal; font-size: 11px; color: var(--text-faint); }
 
-/* Hàng tab nổi bật: thanh trắng có bóng, tab đang chọn tô xanh đậm + gạch vàng, icon trên chữ (điện thoại) / icon cạnh chữ (máy tính) */
-.oa-tabs { display: flex; gap: 6px; padding: 5px; background: #fff; border: 1px solid var(--border-strong); border-radius: 18px; box-shadow: 0 6px 18px rgba(12, 74, 63, .13); }
-.oa-tab { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 9px 2px 10px; border: 0; border-radius: 13px; background: transparent; color: #0b5148; font: 700 12px/1.15 inherit; letter-spacing: -.01em; white-space: nowrap; cursor: pointer; position: relative; transition: background .15s, color .15s; }
-.oa-tab .icon { width: 21px; height: 21px; color: #0f6f61; flex: none; }
+/* Hàng tab gọn một dòng (cao ~46px): tab đang chọn tô xanh đậm + gạch vàng mảnh; điện thoại chỉ chữ, từ 640px có thêm icon */
+.oa-tabs { display: flex; gap: 4px; padding: 4px; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 2px 8px rgba(12, 74, 63, .08); }
+.oa-tab { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 6px; border: 0; border-radius: 10px; background: transparent; color: #0b5148; font: 700 11.5px/1 inherit; letter-spacing: -.02em; white-space: nowrap; cursor: pointer; position: relative; transition: background .15s, color .15s; }
+.oa-tab .icon { display: none; width: 17px; height: 17px; color: #0f6f61; flex: none; }
 .oa-tab:hover:not(.on) { background: #eef6f2; }
-.oa-tab.on { background: linear-gradient(180deg, #14806f 0%, #0c4a3f 100%); color: #fff; box-shadow: 0 6px 14px rgba(12, 74, 63, .34); }
+.oa-tab.on { background: linear-gradient(180deg, #14806f 0%, #0c4a3f 100%); color: #fff; box-shadow: 0 3px 8px rgba(12, 74, 63, .28); }
 .oa-tab.on .icon { color: #f3e1ac; }
-.oa-tab.on::after { content: ''; position: absolute; left: 28%; right: 28%; bottom: 3px; height: 3px; border-radius: 2px; background: #d9b966; }
+.oa-tab.on::after { content: ''; position: absolute; left: 32%; right: 32%; bottom: 3px; height: 2px; border-radius: 2px; background: #d9b966; }
 .oa-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+@media (min-width: 481px) { .oa-tab { font-size: 13px; letter-spacing: -.01em; } }
+@media (min-width: 640px) { .oa-tab .icon { display: block; } }
 @media (min-width: 900px) {
   .oa-tabs { align-self: flex-start; }
-  .oa-tab { flex: none; flex-direction: row; gap: 10px; padding: 13px 22px 15px; font-size: 14.5px; }
-  .oa-tab .icon { width: 20px; height: 20px; }
+  .oa-tab { flex: none; height: 40px; padding: 0 20px; font-size: 14px; }
 }
-@media (max-width: 480px) {
-  .oa-tabs { gap: 3px; padding: 4px; }
-  .oa-tab { font-size: 11px; letter-spacing: -.02em; padding: 9px 1px 10px; }
-}
-@media (max-width: 370px) { .oa-tab { font-size: 10.3px; } }
+@media (max-width: 370px) { .oa-tab { font-size: 10.8px; } }
 
 /* Nút "Thêm khách hàng vào OA" thành một biểu tượng: ô xanh đậm viền vàng, icon thêm người màu kem */
 .oa-tool { display: flex; gap: 10px; align-items: center; }
@@ -2223,3 +2220,17 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 /* Trang Hỗ trợ: hai nút tab "Hỗ trợ / Tư vấn" và hàng lọc trạng thái nằm giữa khung (máy tính lẫn điện thoại) */
 .tabs.sup-tabs { margin: 10px auto 0; width: calc(100% - 28px); }
 .chip-row.sup-chips { padding: 10px 14px; justify-content: center; justify-content: safe center; }
+
+/* Nút Lọc (Thôn / Xóm) của Danh sách OA: phễu + chữ "Lọc" + số đã chọn; điện thoại chỉ còn phễu (số nằm ở góc) */
+.oa-flt { flex: none; position: relative; height: 46px; padding: 0 14px; border-radius: 13px; border: 1px solid var(--border-strong); background: #fff; color: #0b5148; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 700 13.5px inherit; cursor: pointer; transition: background .15s, border-color .15s; }
+.oa-flt .icon { width: 18px; height: 18px; }
+.oa-flt:hover { background: #f1f7f4; }
+.oa-flt.on { border-color: #0f6f61; background: #eaf4f0; }
+.oa-flt:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.oa-flt-n { font: 700 11px Inter, sans-serif; font-style: normal; background: #0f6f61; color: #fff; border-radius: 9px; min-width: 18px; height: 18px; line-height: 18px; text-align: center; padding: 0 5px; }
+@media (max-width: 640px) {
+  .oa-flt { width: 46px; padding: 0; }
+  .oa-flt-tx { display: none; }
+  .oa-flt-n { position: absolute; top: -6px; right: -6px; box-shadow: 0 0 0 2px #e6efea; }
+}
+#oa-flt-pills { padding-left: 0; padding-right: 0; }

@@ -52,7 +52,7 @@ const OA_TABS = [
 
 /**
  * Dải thông tin đầu trang: cảnh báo nếu chưa cấu hình mẫu tin (kèm nút sang tab Cấu hình cho quản trị toàn quyền) và 3 con số nhanh —
- * khách trong OA, số hợp đồng đang gửi tự động (của chính mình), số lần gửi thành công trong 30 ngày qua.
+ * khách trong OA, tổng hợp đồng đang gửi tự động (quản trị toàn quyền: của mọi nhân viên), số lần gửi thành công trong 30 ngày qua.
  */
 function summaryHtml(isSuper) {
   const org = S.getOrg();
@@ -62,7 +62,8 @@ function summaryHtml(isSuper) {
   const since = Date.now() - 30 * 86400000;
   const recent = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= since);
   const ok = recent.filter((l) => l.status === 'success').length;
-  const autoCount = AUTO_SEND_SECTIONS.reduce((n, sec) => n + S.listZaloAutoSendByKind(sec.kind).length, 0);
+  // Tổng hợp đồng đang gửi tự động — cùng cách đếm với 2 mục ở tab Gửi tự động. Quản trị toàn quyền thấy lựa chọn của MỌI nhân viên nên đây là tổng cả nhóm; nhân viên thường chỉ thấy phần của mình.
+  const autoCount = AUTO_SEND_SECTIONS.reduce((n, sec) => n + S.listZaloAutoSendByKind(sec.kind).filter((r) => S.getCustomer(r.customerId) && S.getContract(r.contractId)).length, 0);
   const banner = missing.length && activeTab !== 'config' ? `
     <div class="oa-ban"><span class="oa-ban-dot"></span>
       <div class="oa-ban-tx"><b>Chưa cấu hình mẫu tin ${missing.join(' và ')}</b>
@@ -72,7 +73,7 @@ function summaryHtml(isSuper) {
   const tile = (num, label, sub, cls = '') => `<div class="oa-kp ${cls}"><b>${num}</b><span>${label}</span><em>${sub}</em></div>`;
   return `${banner}<div class="oa-kps">
     ${tile(S.listZaloCustomers().length, 'Khách OA', 'đã thêm')}
-    ${tile(autoCount, 'Tự động', 'đang bật', 'g')}
+    ${tile(autoCount, 'Tự động', isSuper ? 'tất cả nhân viên' : 'của bạn', 'g')}
     ${tile(recent.length ? `${ok}<small>/${recent.length}</small>` : '0', 'Thành công', '30 ngày qua', 'e')}
   </div>`;
 }
@@ -196,23 +197,24 @@ function drawOATab(slot, admin) {
   slot.innerHTML = `
     <div class="oa-tool">
       <div class="oa-search">${searchBoxHtml('oa-search', 'Tìm theo tên, SĐT...', oaQuery)}</div>
+      <button type="button" class="oa-flt" id="btn-oa-filter" title="Lọc theo Thôn / Xóm" aria-label="Lọc theo Thôn / Xóm">${icon('filter')}<span class="oa-flt-tx">Lọc</span><i class="oa-flt-n" hidden></i></button>
       <button type="button" class="oa-add" id="btn-add-oa" title="Thêm khách hàng vào OA" aria-label="Thêm khách hàng vào OA">${icon('userPlus')}</button>
     </div>
-    <div class="filter-row mb-8 mt-8" id="oa-filter-pills"></div>
     <div id="oa-list"></div>
   `;
   slot.querySelector('#btn-add-oa').addEventListener('click', () => openAddCustomerToOAModal(admin, drawList));
+  slot.querySelector('#btn-oa-filter').addEventListener('click', () => openOAFilterModal(allowedThon, () => { updateFilterBtn(); drawList(); }));
   bindSearchBox(slot, 'oa-search', (v) => { oaQuery = v; drawList(); });
-  renderPills();
+  updateFilterBtn();
   drawList();
 
-  function renderPills() {
-    const wrap = slot.querySelector('#oa-filter-pills');
-    wrap.innerHTML = thonXomFilterPillsHtml('oa-pill', filterThon, filterXom);
-    bindThonXomFilterPills(wrap, 'oa-pill', allowedThon,
-      () => ({ thon: filterThon, xom: filterXom }),
-      (t, x) => { filterThon = t; filterXom = x; },
-      () => { renderPills(); drawList(); });
+  /** Số Thôn/Xóm đang chọn hiện thành chấm số trên nút Lọc; nút đổi màu khi đang lọc. */
+  function updateFilterBtn() {
+    const btn = slot.querySelector('#btn-oa-filter');
+    const n = filterThon.length + filterXom.length;
+    const badge = btn.querySelector('.oa-flt-n');
+    badge.textContent = n; badge.hidden = n === 0;
+    btn.classList.toggle('on', n > 0);
   }
 
   function drawList() {
@@ -256,6 +258,33 @@ function drawOATab(slot, admin) {
     // SĐT nằm TRONG dòng bấm-để-xem — chặn nổi bọt để bấm gọi không mở luôn chi tiết khách hàng.
     listEl.querySelectorAll('[data-stop-row]').forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
   }
+}
+
+/** Cửa sổ "Lọc" của Danh sách OA: chọn Thôn / Xóm (nhiều lựa chọn); đổi là danh sách phía sau cập nhật ngay. */
+function openOAFilterModal(allowedThon, onChange) {
+  openModal({
+    title: 'Lọc danh sách OA',
+    bodyHtml: `
+      <p class="text-sm text-muted mb-8">Chọn Thôn / Xóm để chỉ xem khách ở nơi đó (chọn được nhiều).</p>
+      <div class="filter-row" id="oa-flt-pills"></div>
+    `,
+    footHtml: `<button class="btn btn-outline" id="oa-flt-clear">Xóa lọc</button><button class="btn btn-primary" id="oa-flt-done" style="flex:1">Xong</button>`,
+    onMount(sheet, close) {
+      const wrap = sheet.querySelector('#oa-flt-pills');
+      const clearBtn = sheet.querySelector('#oa-flt-clear');
+      function renderPills() {
+        wrap.innerHTML = thonXomFilterPillsHtml('oa-pill', filterThon, filterXom);
+        bindThonXomFilterPills(wrap, 'oa-pill', allowedThon,
+          () => ({ thon: filterThon, xom: filterXom }),
+          (t, x) => { filterThon = t; filterXom = x; },
+          () => { renderPills(); onChange(); });
+        clearBtn.disabled = !filterThon.length && !filterXom.length;
+      }
+      renderPills();
+      clearBtn.addEventListener('click', () => { filterThon = []; filterXom = []; renderPills(); onChange(); });
+      sheet.querySelector('#oa-flt-done').addEventListener('click', () => close());
+    },
+  });
 }
 
 /** Popup tìm + thêm (chọn nhiều) khách hàng vào Tầng 1 "Danh sách OA". */
@@ -366,7 +395,7 @@ const AUTO_PREVIEW_COUNT = 4; // trang chính chỉ hiện vài dòng đầu —
 function drawAutoTab(slot, admin) {
   slot.innerHTML = `
     <details class="oa-how"><summary>${icon('info', 'icon-sm')}<span>Cách hoạt động</span>${icon('chevronDown', 'icon-sm')}</summary>
-      <p class="text-sm text-muted">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại. 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
+      <p class="text-sm text-muted">${admin.role === 'super' ? 'Bạn là quản trị viên toàn quyền nên thấy lựa chọn của TẤT CẢ nhân viên.' : 'Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại.'} 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
       <p class="text-sm text-muted">Số tháng là ngưỡng lãi chưa trả. Đủ ngưỡng sẽ gửi vào đúng ngày hằng tháng; khi khách trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</p>
     </details>
     ${AUTO_SEND_SECTIONS.map((s) => `
