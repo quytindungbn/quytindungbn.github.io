@@ -2880,6 +2880,7 @@ cả (vô hại).
   `create-account` của mục 10.60 mới thấy được phần của người khác). Tổng không lọc theo khách nằm trong địa bàn của nhân viên.
   **Chỉ quản trị toàn quyền (super) bấm được vào ô này** để xem từng người bao nhiêu hợp đồng (ví dụ quản trị viên 63, Ba 1); nhân viên chỉ thấy con số tổng, ô không bấm được.
 - Thêm hợp đồng vào gửi tự động chạy nhanh hơn: sau khi máy chủ báo xong, app chỉ đọc đúng dòng vừa tạo (1 truy vấn) rồi vá vào bộ nhớ, không tải lại cả 10 bảng dữ liệu phiên như trước; dòng đang thêm mờ đi và ghi "Đang thêm…". Không cần deploy thêm.
+- **Tăng tốc thêm lần 2 (deploy lại `create-account`, KHÔNG cần SQL):** màn hình phản hồi NGAY khi bấm (dòng thành "✓ Đã thêm", gọn khỏi danh sách sau ~0,5 giây, việc gửi lên máy chủ chạy ngầm; bị từ chối thì trả dòng lại + báo lỗi). Máy chủ `add-zalo-auto-send`: lấy người gọi và hợp đồng (kèm khách, 1 truy vấn nhúng) cùng lúc, kiểm tra trùng người và khách đã có trong Danh sách OA cùng lúc, chỉ thêm khách vào Danh sách OA khi chưa có, ghi nhật ký chạy nền (EdgeRuntime.waitUntil) — từ 7 truy vấn nối đuôi còn khoảng 4 bước.
 - Danh sách OA: nhãn "Báo lãi tự động / Ngày cụ thể" nằm ngay sau tên khách (hết chỗ trên điện thoại thì xuống dòng ngay dưới tên), dòng dưới chỉ còn địa chỉ.
 
 ---

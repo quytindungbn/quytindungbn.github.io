@@ -2260,6 +2260,8 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 
 /* Dòng đang được thêm vào gửi tự động (chờ máy chủ): mờ đi, không bấm lại được */
 .list-row.is-busy { opacity: .5; pointer-events: none; }
+.list-row.is-added { opacity: 1; background: #eaf6ef; border-radius: 10px; }
+.list-row.is-added b { color: #16803c; }
 
 /* Dòng phụ có nhãn (tab Lịch sử gửi): các nhãn nằm cạnh nhau, hết chỗ thì xuống dòng */
 .oa-sub { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }

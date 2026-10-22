@@ -897,6 +897,23 @@ async function rollbackImportSnapshot(snapshot: any): Promise<{ errors: string[]
 }
 
 
+/** Hợp đồng + khách của nó. Thử 1 truy vấn (nhúng khách); không được thì quay về 2 truy vấn nối đuôi như cũ. null nếu không có hợp đồng/khách. */
+async function loadContractWithCustomer(contractId: string): Promise<{ contract: any; customer: any } | null> {
+  try {
+    const { data, error } = await admin.from('contracts').select('*, customers(*)').eq('id', contractId).maybeSingle();
+    if (!error && data) {
+      const { customers, ...contract } = data as any;
+      const customer = Array.isArray(customers) ? customers[0] : customers;
+      if (customer && contract.customer_id === customer.id) return { contract, customer };
+    }
+  } catch { /* quay về cách cũ bên dưới */ }
+  const { data: contract } = await admin.from('contracts').select('*').eq('id', contractId).maybeSingle();
+  if (!contract) return null;
+  const { data: customer } = await admin.from('customers').select('*').eq('id', contract.customer_id).maybeSingle();
+  if (!customer) return null;
+  return { contract, customer };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ ok: false, reason: 'Method not allowed' }, 405);
@@ -1327,7 +1344,12 @@ Deno.serve(async (req) => {
     if (!selfClaims || selfClaims.app_role !== 'admin') {
       return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
     }
-    const { data: caller, error: callerErr } = await admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle();
+    // "add-zalo-auto-send" cần cả người gọi lẫn hợp đồng (+ khách của hợp đồng) — lấy CÙNG LÚC cho nhanh (trước đây 3 truy vấn nối đuôi nhau).
+    const prefetchContractId = body.type === 'add-zalo-auto-send' ? String(body.contractId || '').trim() : '';
+    const [{ data: caller, error: callerErr }, prefetched] = await Promise.all([
+      admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle(),
+      prefetchContractId ? loadContractWithCustomer(prefetchContractId) : Promise.resolve(null),
+    ]);
     if (callerErr || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
     if (caller.role !== 'super' && caller.can_manage_zalo_oa !== true) {
       return json({ ok: false, reason: 'Bạn không có quyền quản lý gửi tin Zalo OA — liên hệ quản trị viên toàn quyền để được cấp quyền.' }, 403);
@@ -1335,10 +1357,9 @@ Deno.serve(async (req) => {
 
     /** Kiểm tra hợp đồng có tồn tại + có nằm trong phạm vi Thôn/Xóm của người gọi không (super thì luôn true). */
     async function checkContractInScope(contractId: string): Promise<{ ok: boolean; contract?: any; customer?: any }> {
-      const { data: contract } = await admin.from('contracts').select('*').eq('id', contractId).maybeSingle();
-      if (!contract) return { ok: false };
-      const { data: customer } = await admin.from('customers').select('*').eq('id', contract.customer_id).maybeSingle();
-      if (!customer) return { ok: false };
+      const loaded = prefetched && contractId === prefetchContractId ? prefetched : await loadContractWithCustomer(contractId);
+      if (!loaded) return { ok: false };
+      const { contract, customer } = loaded;
       if (caller.role !== 'super') {
         const allowedThon: string[] = caller.allowed_thon || [];
         const allowedXom: string[] = caller.allowed_xom || [];
@@ -1416,10 +1437,14 @@ Deno.serve(async (req) => {
       // thì chặn, kèm tên người đã thêm. Cùng một người thì được thêm tiếp các
       // hợp đồng khác của khách đó. Kiểm tra TRƯỚC khi tự thêm vào Tầng 1 để bị
       // chặn thì không để lại thay đổi nào.
+      let customerAlreadyInOA = false;
       {
-        const { data: sameCustomerRows, error: sameCustomerErr } = await admin.from('zalo_auto_send_list')
-          .select('created_by').eq('customer_id', scope.contract.customer_id);
+        const [{ data: sameCustomerRows, error: sameCustomerErr }, { data: zaloCustomerRow }] = await Promise.all([
+          admin.from('zalo_auto_send_list').select('created_by').eq('customer_id', scope.contract.customer_id),
+          admin.from('zalo_customers').select('customer_id').eq('customer_id', scope.contract.customer_id).maybeSingle(),
+        ]);
         if (sameCustomerErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+        customerAlreadyInOA = !!zaloCustomerRow;
         const otherOwnerRow = (sameCustomerRows || []).find((r: any) => r.created_by !== caller.id);
         if (otherOwnerRow) {
           const { data: ownerAdmin } = otherOwnerRow.created_by
@@ -1431,7 +1456,7 @@ Deno.serve(async (req) => {
       }
       // Tự thêm vào Tầng 1 (danh sách OA) nếu khách chưa có sẵn — Tầng 2 (gửi
       // tự động) LUÔN đi kèm Tầng 1, đỡ bắt người dùng làm 2 bước riêng.
-      await ensureZaloCustomer(scope.contract.customer_id);
+      if (!customerAlreadyInOA) await ensureZaloCustomer(scope.contract.customer_id);
       const { error } = await admin.from('zalo_auto_send_list').insert({
         id: genId('zas'), contract_id: contractId, customer_id: scope.contract.customer_id, kind, custom_day: customDay,
         interval_months: intervalMonths, created_by: caller.id,
@@ -1449,8 +1474,11 @@ Deno.serve(async (req) => {
         }
         return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       }
-      await logActivity(caller.id, caller.name || caller.username, caller.username, 'add-zalo-auto-send',
+      const logPromise = logActivity(caller.id, caller.name || caller.username, caller.username, 'add-zalo-auto-send',
         `Thêm hợp đồng **${scope.contract?.code || contractId}** vào gửi tự động (**${kind === 'lai_hang_thang_custom_day' ? 'Gửi theo ngày cụ thể' : 'Báo lãi tự động hàng tháng'}**)`);
+      // Trả kết quả ngay, việc ghi nhật ký chạy nền (EdgeRuntime.waitUntil giữ máy chủ sống đến khi ghi xong); không có thì chờ như cũ.
+      const edgeRuntime = (globalThis as any).EdgeRuntime;
+      if (edgeRuntime && typeof edgeRuntime.waitUntil === 'function') edgeRuntime.waitUntil(logPromise); else await logPromise;
       return json({ ok: true });
     }
 

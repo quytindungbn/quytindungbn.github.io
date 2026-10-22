@@ -28,6 +28,7 @@ const AUTO_SEND_SECTIONS = [
   { kind: 'lai_hang_thang_custom_day', title: 'Gửi theo ngày cụ thể' },
 ];
 const PAGE_SIZE = 20; // hiện ít trước, bấm "Xem thêm" mới tải thêm — tránh dồn cả danh sách dài gây chậm/khó kéo
+const pendingAdds = new Set(); // hợp đồng vừa bấm thêm, máy chủ chưa trả lời (để mở lại cửa sổ không hiện lại và không thêm trùng)
 
 let activeTab = 'oa';
 let filterThon = [];
@@ -665,7 +666,7 @@ function openEditCustomDayModal(id, onDone) {
 /** Popup tìm + thêm 1 hợp đồng vào 1 trong 2 mục Tầng 2 — chỉ liệt kê hợp đồng của khách ĐÃ ở Tầng 1 và CHƯA ở mục nào (loại trừ nhau). */
 function openAddAutoSendModal(kind, admin, onDone) {
   const zaloCustomerIds = [...new Set(S.listZaloCustomers().map((r) => r.customerId))];
-  const usedContractIds = new Set(S.listZaloAutoOverview().map((r) => r.contractId));
+  const usedContractIds = new Set([...S.listZaloAutoOverview().map((r) => r.contractId), ...pendingAdds]);
   const isStaff = admin.role === 'staff';
   const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
   let query = '';
@@ -744,25 +745,29 @@ function openAddAutoSendModal(kind, admin, onDone) {
         `).join('') : (blockedRows.length ? '' : `<p class="text-sm text-muted">Không có hợp đồng nào để thêm — khách phải có trong Danh sách OA, có hợp đồng còn hoạt động, chưa ở mục nào khác và chưa được người khác thêm vào gửi tự động.</p>`)) + blockedHtml;
         sheet.querySelector('#add-auto-more').style.display = all.length > visibleCount ? '' : 'none';
         sheet.querySelectorAll('[data-add]').forEach((row) => {
-          row.addEventListener('click', async () => {
-            if (row.classList.contains('is-busy')) return; // đang thêm, bấm thêm lần nữa không có tác dụng
+          row.addEventListener('click', () => {
+            const contractId = row.dataset.add;
+            if (row.classList.contains('is-busy')) return; // đã bấm rồi, bấm thêm lần nữa không có tác dụng
             const customDay = isCustomDay ? clampDay(sheet.querySelector('#day-input').value) : null;
             const intervalMonths = Number(sheet.querySelector('#interval-input').value) || 1;
-            // Báo ngay cho người bấm biết đã nhận lệnh (dòng mờ đi, ghi "Đang thêm…") thay vì im lặng chờ máy chủ.
-            row.classList.add('is-busy');
+            // Phản hồi NGAY khi bấm (không chờ máy chủ): dòng chuyển thành "✓ Đã thêm", chừng nửa giây sau gọn khỏi danh sách để bấm tiếp
+            // hợp đồng khác. Việc gửi lên máy chủ chạy ngầm; bị từ chối (VD khách đã có người khác thêm) thì trả dòng lại + báo lỗi.
+            row.classList.add('is-busy', 'is-added');
             const amountEl = row.querySelector('b');
-            if (amountEl) amountEl.textContent = 'Đang thêm…';
-            try {
-              await S.addZaloAutoSend(row.dataset.add, kind, customDay, intervalMonths);
+            if (amountEl) amountEl.textContent = '✓ Đã thêm';
+            pendingAdds.add(contractId);
+            usedContractIds.add(contractId);
+            setTimeout(() => { if (pendingAdds.has(contractId) || usedContractIds.has(contractId)) draw(); }, 450);
+            S.addZaloAutoSend(contractId, kind, customDay, intervalMonths).then(() => {
+              pendingAdds.delete(contractId);
               toast('Đã thêm vào danh sách gửi tự động', 'success');
               if (onDone) onDone();
-              usedContractIds.add(row.dataset.add);
-              draw(); // cho thêm tiếp hợp đồng khác liền tay, không cần mở lại popup
-            } catch (err) {
-              row.classList.remove('is-busy');
+            }).catch((err) => {
+              pendingAdds.delete(contractId);
+              usedContractIds.delete(contractId);
               draw();
               toast(err.message || 'Có lỗi xảy ra', 'error');
-            }
+            });
           });
         });
       }
