@@ -2290,3 +2290,10 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 /* Thùng rác bỏ khỏi gửi tự động: màu đỏ */
 .icon-btn.oa-del { color: var(--danger); }
 .icon-btn.oa-del:hover { background: var(--danger-bg); }
+
+/* Một dòng duy nhất cho "Gửi theo ngày cụ thể": Gửi vào ngày: [01] của [1 tháng sau] */
+.oa-cfg-inline { justify-content: flex-start; gap: 8px; flex-wrap: nowrap; }
+.oa-cfg-inline > span { flex: none; white-space: nowrap; }
+.oa-cfg-inline input { width: 54px; }
+.oa-cfg-inline select { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 380px) { .oa-cfg-inline { gap: 6px; font-size: 13px; } .oa-cfg-inline input { width: 48px; } .oa-cfg-row select, .oa-cfg-row input { padding: 0 6px; font-size: 13px; } }

@@ -684,8 +684,9 @@ function openAddAutoSendModal(kind, admin, onDone) {
     sheetClass: 'sheet-search',
     bodyHtml: `
       <div class="oa-cfg">
-        ${isCustomDay ? `<label class="oa-cfg-row"><span>Gửi vào ngày</span><input type="number" id="day-input" min="1" max="30" value="1" inputmode="numeric"/></label>` : ''}
-        <label class="oa-cfg-row"><span id="cfg-label">${isCustomDay ? 'Gửi đúng vào ngày 01' : 'Gửi báo khi đủ:'}</span><select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n} tháng${isCustomDay ? ' sau' : ''}</option>`).join('')}</select></label>
+        ${isCustomDay
+          ? `<label class="oa-cfg-row oa-cfg-inline"><span>Gửi vào ngày:</span><input type="text" id="day-input" value="01" maxlength="2" inputmode="numeric" autocomplete="off" aria-label="Ngày gửi trong tháng (1-30)"/><span>của</span><select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n} tháng sau</option>`).join('')}</select></label>`
+          : `<label class="oa-cfg-row"><span>Gửi báo khi đủ:</span><select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n} tháng</option>`).join('')}</select></label>`}
       </div>
       <div class="oa-tool">
         <div class="oa-search">${searchBoxHtml('add-auto-search', 'Tìm tên khách, mã hợp đồng...', '')}</div>
@@ -778,12 +779,15 @@ function openAddAutoSendModal(kind, admin, onDone) {
       sheet.querySelector('#add-auto-more').addEventListener('click', () => { visibleCount += PAGE_SIZE; draw(); });
       bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; draw(); });
       if (isCustomDay) {
+        // Ô ngày: chỉ nhận chữ số, tối đa 30; rời ô thì tự thêm số 0 đầu cho đủ 2 chữ số (1 -> 01, bỏ trống -> 01).
         const dayInput = sheet.querySelector('#day-input');
-        bindDayInputClamp(dayInput);
-        const cfgLabel = sheet.querySelector('#cfg-label');
-        const syncDayLabel = () => { cfgLabel.textContent = `Gửi đúng vào ngày ${String(clampDay(dayInput.value)).padStart(2, '0')}`; };
-        dayInput.addEventListener('input', syncDayLabel);
-        syncDayLabel();
+        dayInput.addEventListener('input', () => {
+          let v = dayInput.value.replace(/\D/g, '').slice(0, 2);
+          if (v && Number(v) > 30) v = '30';
+          if (v !== dayInput.value) dayInput.value = v;
+        });
+        dayInput.addEventListener('focus', () => dayInput.select());
+        dayInput.addEventListener('blur', () => { dayInput.value = String(clampDay(dayInput.value)).padStart(2, '0'); });
       }
       sheet.querySelector('#add-auto-filter').addEventListener('click', () => openThonXomFilterModal({
         title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon,
