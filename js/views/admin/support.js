@@ -89,12 +89,12 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
   const reqUnread = S.countUnreadRequests(admin.id);
   const chatUnread = S.getState()?.chatUnreadCount || 0;
   const tabsHtml = canChat ? `
-    <div class="tabs" style="margin:10px 14px 0">
+    <div class="tabs sup-tabs">
       <button data-tab="requests" class="${activeTab === 'requests' ? 'active' : ''}">Hỗ trợ${reqUnread ? `<span class="tab-badge">${reqUnread}</span>` : ''}</button>
       <button data-tab="chat" class="${activeTab === 'chat' ? 'active' : ''}">Tư vấn${chatUnread ? `<span class="tab-badge">${chatUnread}</span>` : ''}</button>
     </div>` : '';
   const subFilterHtml = activeTab === 'requests' ? `
-    <div class="chip-row" style="padding:10px 14px">
+    <div class="chip-row sup-chips">
       <button class="chip ${activeStatus === 'all' ? 'active' : ''}" data-s="all">Tất cả</button>
       ${S.REQUEST_STATUS.map((s) => `<button class="chip ${activeStatus === s.id ? 'active' : ''}" data-s="${s.id}">${s.label}</button>`).join('')}
     </div>` : `
