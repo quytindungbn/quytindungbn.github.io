@@ -2002,7 +2002,8 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .customer-ledger-wrap.has-oa-actions .customer-ledger-oa-heading { flex: 0 0 74px; margin-left: 10px; }
 }
 @media (max-width: 960px) {
-  .customer-ledger-wrap .customer-ledger-contract .customer-ledger-oa { min-width: 50px; padding: 6px 6px; font-size: 10px; }
+  .customer-ledger-wrap .customer-ledger-contract .customer-ledger-oa { min-width: 50px; gap: 2px; padding: 4px 6px; font-size: 10px; }
+  .customer-ledger-wrap .customer-ledger-contract .customer-ledger-oa .icon { width: 13px; height: 13px; }
   .customer-ledger-wrap.has-oa-actions .customer-ledger-contract .customer-ledger-oa { margin-left: 8px; }
   .customer-ledger-wrap.has-oa-actions .customer-ledger-contract-main { padding-right: 8px; }
   .customer-ledger-wrap.is-framed { border-radius: 16px; }

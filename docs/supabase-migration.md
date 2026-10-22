@@ -2937,7 +2937,7 @@ cả (vô hại).
 ### 10.68. Lịch sử gửi: nhãn màu; trang Khách hàng trên máy tính: dòng hợp đồng thấp lại (chỉ giao diện, KHÔNG cần deploy hay SQL)
 
 - Tab **Lịch sử gửi** (Quản lý OA): nhãn **"Báo lãi"** và **"Tự động"** màu xanh, nhãn **"Đến hạn"** màu vàng; **"Gửi tay"** giữ màu vàng như cũ.
-- Trang **Khách hàng & Hợp đồng** trên máy tính (≥ 961px): nút Gửi OA nằm ngang (biểu tượng + chữ trên một dòng, rộng 74px, cao 30px) thay vì xếp dọc, khoảng đệm dòng 11px — dòng hợp đồng từ 72px xuống 53px; tiêu đề cột "GỬI OA" căn thẳng hàng với nút. Điện thoại giữ nút xếp dọc như trước.
+- Trang **Khách hàng & Hợp đồng** trên máy tính (≥ 961px): nút Gửi OA nằm ngang (biểu tượng + chữ trên một dòng, rộng 74px, cao 30px) thay vì xếp dọc, khoảng đệm dòng 11px — dòng hợp đồng từ 72px xuống 53px; tiêu đề cột "GỬI OA" căn thẳng hàng với nút. Điện thoại giữ nút xếp dọc nhưng thu thấp lại (khoảng đệm 4px, biểu tượng 13px) để dòng hợp đồng giữ đúng chiều cao như trước khi đổi nút (dòng "Trong hạn" 59px thay vì 65px).
 
 ---
 
