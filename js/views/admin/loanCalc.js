@@ -6,6 +6,7 @@ import { formatDate, formatVND, parseViDate, maskViDate, toDateInputValue, escap
 import { scheduleByTerm, scheduleByPayment } from '../../lib/loanCalc.js';
 import { summaryItems, loanCalcFileName, buildLoanCalcXlsx, printLoanCalc } from '../../lib/loanCalcExport.js';
 import { downloadBlob, XLSX_MIME } from '../../lib/xlsxWrite.js';
+import { buildLoanCalcPdf, shareOrDownload } from '../../lib/loanCalcPdf.js';
 
 // ------------------------------------------------------------
 // Trang "Tính lãi vay" (menu Công cụ) — tính nhanh lãi và số gốc + lãi phải trả từng tháng cho một khoản vay, không lưu vào hợp đồng.
@@ -27,6 +28,7 @@ const DEFAULTS = () => ({
 });
 let st = DEFAULTS();
 let lastCalc = null; // { inputs, result } của lần tính gần nhất hợp lệ — để xuất/in đúng số đang hiện
+let pdfCache = null; // { calc, bytes }: file PDF đã tạo cho đúng kết quả đang hiện — bấm Chia sẻ lần nữa thì gửi ngay, không tạo lại
 
 const METHODS = [
   ['equalPrincipal', 'Gốc trả đều mỗi tháng', 'Gốc bằng nhau, lãi giảm dần theo dư nợ'],
@@ -106,7 +108,7 @@ function outHtml(calc) {
   return `
     <div class="lc-sum">${tilesHtml(calc.inputs, calc.result)}</div>
     <section class="lux-card"><h3 class="lux-h"><span>Bảng trả hàng tháng</span>
-      <span class="lux-h-end lc-tools"><button type="button" class="lc-tool" id="lc-xlsx">${icon('download', 'icon-sm')}<span>Xuất Excel</span></button><button type="button" class="lc-tool" id="lc-print">${icon('printer', 'icon-sm')}<span>In</span></button></span></h3>
+      <span class="lux-h-end lc-tools"><button type="button" class="lc-tool" id="lc-xlsx">${icon('download', 'icon-sm')}<span>Xuất Excel</span></button><button type="button" class="lc-tool" id="lc-print">${icon('printer', 'icon-sm')}<span>In</span></button><button type="button" class="lc-tool" id="lc-share">${icon('share', 'icon-sm')}<span>Chia sẻ</span></button></span></h3>
       <div class="lc-tw">${tableHtml(calc.result)}</div></section>
     <p class="lc-note">Lãi tính theo số ngày thực tế của từng kỳ, 365 ngày một năm: lãi = dư nợ × lãi suất × số ngày ÷ 365, mỗi kỳ làm tròn đến nghìn đồng. Kết quả chỉ để tham khảo, không lưu vào hợp đồng.</p>`;
 }
@@ -147,6 +149,23 @@ export function renderHeader(headerEl) {
 // Ô nhập được giữ nguyên khi có dữ liệu mới từ máy chủ (xem renderApp() trong app.js) — không vẽ lại gì cả.
 export function refresh() {}
 
+/** Tạo file PDF giống bản in rồi mở bảng chia sẻ (Zalo, Messenger, thư...); máy không hỗ trợ chia sẻ tệp thì tải file về. */
+async function sharePdf(btn) {
+  const data = exportData(); if (!data || btn.disabled) return;
+  const label = btn.querySelector('span');
+  btn.disabled = true; label.textContent = 'Đang tạo…';
+  try {
+    if (!pdfCache || pdfCache.calc !== lastCalc) pdfCache = { calc: lastCalc, bytes: await buildLoanCalcPdf(data) };
+    const result = await shareOrDownload(pdfCache.bytes, loanCalcFileName(new Date(), 'pdf'), 'Bảng tính lãi vay');
+    if (result === 'download') toast('Đã lưu file PDF', 'success');
+    else if (result === 'need-tap') toast('File PDF đã sẵn sàng. Bấm Chia sẻ lần nữa để gửi.');
+  } catch (e) {
+    toast('Không tạo được file PDF, hãy thử lại.', 'error');
+  } finally {
+    btn.disabled = false; label.textContent = 'Chia sẻ';
+  }
+}
+
 export function render(contentEl) {
   contentEl.innerHTML = pageHtml();
   const out = contentEl.querySelector('#lc-out');
@@ -169,7 +188,7 @@ export function render(contentEl) {
       const first = calc.firstInterest ?? (calc.result && calc.result.firstInterest);
       hint.textContent = first ? `Phải lớn hơn lãi tháng đầu: ${formatVND(first)}` : '';
     }
-    const x = out.querySelector('#lc-xlsx'), p = out.querySelector('#lc-print');
+    const x = out.querySelector('#lc-xlsx'), p = out.querySelector('#lc-print'), sh = out.querySelector('#lc-share');
     if (x) x.addEventListener('click', () => {
       const data = exportData(); if (!data) return;
       downloadBlob(buildLoanCalcXlsx(data), loanCalcFileName(new Date(), 'xlsx'), XLSX_MIME);
@@ -179,6 +198,7 @@ export function render(contentEl) {
       const data = exportData(); if (!data) return;
       if (!printLoanCalc(data)) toast('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.', 'error');
     });
+    if (sh) sh.addEventListener('click', () => sharePdf(sh));
   };
   const bindInput = (id, key, mask) => {
     const el = contentEl.querySelector(id); if (!el) return;

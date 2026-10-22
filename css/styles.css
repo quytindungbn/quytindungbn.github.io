@@ -2130,4 +2130,10 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
   .lc-t .c2d { display: block; margin-top: 1px; font-size: 10.5px; font-weight: 500; }
   .lc-tw { margin: 0 -6px; }
   .lc-tool { height: 30px; padding: 0 10px; }
+  /* 3 nút Xuất Excel / In / Chia sẻ xuống hàng riêng, chia đều chiều ngang — tiêu đề không bị ép thành nhiều dòng */
+  .lc .lux-h:has(.lc-tools) { flex-wrap: wrap; row-gap: 10px; }
+  .lc .lux-h:has(.lc-tools)::after { display: none; }
+  .lc .lux-h:has(.lc-tools) > .lux-h-end { order: 3; flex: 1 1 100%; }
+  .lc-tools { display: flex; width: 100%; gap: 8px; }
+  .lc-tools .lc-tool { flex: 1 1 0; justify-content: center; padding: 0 6px; }
 }
