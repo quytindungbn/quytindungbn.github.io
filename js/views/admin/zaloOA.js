@@ -439,10 +439,6 @@ const AUTO_PREVIEW_COUNT = 4; // trang chính chỉ hiện vài dòng đầu —
 
 function drawAutoTab(slot, admin) {
   slot.innerHTML = `
-    <details class="oa-how"><summary>${icon('info', 'icon-sm')}<span>Cách hoạt động</span>${icon('chevronDown', 'icon-sm')}</summary>
-      <p class="text-sm text-muted">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — người khác (kể cả quản trị viên) không thấy danh sách này của bạn và ngược lại. Mỗi khách hàng chỉ một người được thêm; 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
-      <p class="text-sm text-muted">Số tháng là ngưỡng lãi chưa trả. Đủ ngưỡng sẽ gửi vào đúng ngày hằng tháng; khi khách trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</p>
-    </details>
     ${AUTO_SEND_SECTIONS.map((s) => `
       <div class="card card-pad mb-16">
         <div class="oa-sec-h">
@@ -689,7 +685,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
     bodyHtml: `
       <div class="oa-cfg">
         ${isCustomDay ? `<label class="oa-cfg-row"><span>Gửi vào ngày</span><input type="number" id="day-input" min="1" max="30" value="1" inputmode="numeric"/></label>` : ''}
-        <label class="oa-cfg-row"><span>Gửi đúng ngày lãi tháng sau</span><select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? 'Đủ 1 tháng' : `Đủ ${n} tháng`}</option>`).join('')}</select></label>
+        <label class="oa-cfg-row"><span id="cfg-label">${isCustomDay ? 'Gửi đúng vào ngày 01' : 'Gửi báo khi đủ:'}</span><select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n} tháng${isCustomDay ? ' sau' : ''}</option>`).join('')}</select></label>
       </div>
       <div class="oa-tool">
         <div class="oa-search">${searchBoxHtml('add-auto-search', 'Tìm tên khách, mã hợp đồng...', '')}</div>
@@ -781,7 +777,14 @@ function openAddAutoSendModal(kind, admin, onDone) {
       }
       sheet.querySelector('#add-auto-more').addEventListener('click', () => { visibleCount += PAGE_SIZE; draw(); });
       bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; draw(); });
-      if (isCustomDay) bindDayInputClamp(sheet.querySelector('#day-input'));
+      if (isCustomDay) {
+        const dayInput = sheet.querySelector('#day-input');
+        bindDayInputClamp(dayInput);
+        const cfgLabel = sheet.querySelector('#cfg-label');
+        const syncDayLabel = () => { cfgLabel.textContent = `Gửi đúng vào ngày ${String(clampDay(dayInput.value)).padStart(2, '0')}`; };
+        dayInput.addEventListener('input', syncDayLabel);
+        syncDayLabel();
+      }
       sheet.querySelector('#add-auto-filter').addEventListener('click', () => openThonXomFilterModal({
         title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon,
         getState: () => ({ thon: pThon, xom: pXom }),
