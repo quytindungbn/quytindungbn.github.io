@@ -1072,7 +1072,7 @@ export function isZaloCustomer(customerId) {
 export function listZaloCustomers() { return state.zaloCustomers || []; }
 /** Hợp đồng này đã có trong danh sách gửi tự động CỦA CHÍNH MÌNH chưa (1 hợp đồng chỉ ở được 1 trong 2 mục) — trả về dòng nếu có, null nếu chưa. */
 export function findZaloAutoSend(contractId) {
-  return (state.zaloAutoSendList || []).find((r) => r.contractId === contractId) || null;
+  return listZaloAutoSend().find((r) => r.contractId === contractId) || null;
 }
 /** Chỉ đọc trạng thái và chu kỳ gửi tự động của hợp đồng trong phạm vi quản lý; không cần quyền quản lý OA. */
 export async function getZaloAutoSendStatus(contractId) {
@@ -1081,7 +1081,17 @@ export async function getZaloAutoSendStatus(contractId) {
   if (!res.ok) throw new Error(res.reason || 'Không kiểm tra được trạng thái gửi tự động.');
   return { enabled: res.enabled === true, intervalMonths: Number(res.intervalMonths) || 1 };
 }
-export function listZaloAutoSend() { return state.zaloAutoSendList || []; }
+/** Lựa chọn gửi tự động này là CỦA CHÍNH người đang đăng nhập (dòng cũ không ghi người thêm thì tính cho quản trị toàn quyền). */
+function isOwnAutoRow(r) {
+  const me = state.session?.id;
+  if (!me) return false;
+  return r.createdBy === me || (!r.createdBy && getAdmin(me)?.role === 'super');
+}
+/**
+ * Danh sách gửi tự động RIÊNG của chính người đang xem — kể cả quản trị toàn quyền (máy chủ cho super đọc được dòng của mọi người,
+ * nhưng danh sách này chỉ hiện phần mình đã thêm; muốn xem tổng/số theo từng người thì dùng summarizeZaloAutoByOwner()).
+ */
+export function listZaloAutoSend() { return (state.zaloAutoSendList || []).filter(isOwnAutoRow); }
 /**
  * Tổng quan gửi tự động của MỌI người (khách + hợp đồng + mục + người đã thêm) — gộp lựa chọn của chính mình (luôn mới nhất) với bản
  * tổng quan tải từ máy chủ (xem refreshZaloAutoOverview). Dùng cho nhãn "Báo lãi tự động" ở Danh sách OA, số tổng ở đầu trang
@@ -1094,6 +1104,23 @@ export function listZaloAutoOverview() {
   if (state.zaloAutoOverviewFor !== meId) return mine; // bản tổng quan của người đăng nhập trước, bỏ
   const have = new Set(mine.map((r) => r.id));
   return mine.concat((state.zaloAutoOverview || []).filter((r) => !have.has(r.id)));
+}
+/**
+ * Tổng hợp gửi tự động của TẤT CẢ mọi người: tổng số hợp đồng + số hợp đồng của từng người (nhiều nhất trước). Ví dụ { total: 64, owners: [{ id, name: 'Quản trị viên', count: 63, isMe: true }, { name: 'Ba', count: 1 }] }.
+ * Không lọc theo khách/hợp đồng đang có trong máy (nhân viên chỉ tải khách thuộc địa bàn của mình, nhưng tổng phải bằng nhau ở mọi tài khoản).
+ */
+export function summarizeZaloAutoByOwner() {
+  const meId = state.session?.id || null;
+  const by = new Map();
+  for (const r of listZaloAutoOverview()) {
+    const key = r.createdBy || '';
+    const cur = by.get(key) || { id: key, name: r.createdByName || getAdmin(key)?.name || 'Chưa rõ người thêm', count: 0, isMe: key === meId };
+    if (r.createdByName && !cur.name) cur.name = r.createdByName;
+    cur.count += 1;
+    by.set(key, cur);
+  }
+  const owners = [...by.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
+  return { total: owners.reduce((n, o) => n + o.count, 0), owners };
 }
 /** Số liệu tổng hợp đã đủ của MỌI người chưa — quản trị toàn quyền luôn thấy hết; người khác cần đã tải được tổng quan từ máy chủ. */
 export function hasZaloAutoOverview() {
@@ -1123,7 +1150,7 @@ export async function refreshZaloAutoOverview() {
     return changed;
   } catch { return false; }
 }
-export function listZaloAutoSendByKind(kind) { return (state.zaloAutoSendList || []).filter((r) => r.kind === kind); }
+export function listZaloAutoSendByKind(kind) { return listZaloAutoSend().filter((r) => r.kind === kind); }
 export function listZaloSendLog() { return state.zaloSendLog || []; }
 
 /**

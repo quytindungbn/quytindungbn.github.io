@@ -2872,6 +2872,14 @@ cả (vô hại).
 - Chính sách RLS của bảng `zalo_auto_send_list` GIỮ NGUYÊN (mỗi người chỉ đọc trực tiếp được lựa chọn của mình); tab "Gửi tự động" vẫn chỉ liệt kê lựa chọn của chính người xem.
 - Chưa deploy bản mới: app vẫn chạy, chỉ thấy nhãn/số của riêng mình (ô số ghi "của bạn") và việc thêm trùng khách vẫn chưa bị chặn.
 
+### 10.61. Gửi tự động: mỗi người chỉ thấy danh sách của mình (kể cả quản trị); ô "Tự động" là tổng cả nhóm, bấm xem từng người (KHÔNG cần deploy hay SQL thêm)
+
+- Tab **Gửi tự động** chỉ liệt kê lựa chọn của CHÍNH người đang xem — quản trị toàn quyền cũng vậy (máy chủ vẫn cho super đọc được dòng của mọi người, nhưng app chỉ hiện phần của mình).
+  Người này thêm khách vào gửi tự động thì KHÔNG hiện sang danh sách của người kia, và ngược lại.
+- Ô **Tự động** ở đầu trang = tổng số hợp đồng đang gửi tự động của TẤT CẢ mọi người (ví dụ 64), ai có quyền quản lý OA cũng thấy cùng số (nhân viên cần đã deploy bản
+  `create-account` của mục 10.60 mới thấy được phần của người khác). Bấm vào ô (hoặc "Theo từng người" ở tab Gửi tự động) để xem số của từng người (ví dụ quản trị viên 63, Ba 1).
+  Tổng không lọc theo khách nằm trong địa bàn của nhân viên.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

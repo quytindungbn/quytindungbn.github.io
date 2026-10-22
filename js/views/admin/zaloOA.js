@@ -20,7 +20,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, openPicker, pillSelectHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatDateTime, formatDate, formatVND, colorFor, initials } from '../../utils.js';
+import { formatDateTime, formatDate, formatVND, colorFor, initials, escapeHtml } from '../../utils.js';
 import { openCustomerDetail, openContractView } from './customers.js';
 
 const AUTO_SEND_SECTIONS = [
@@ -62,8 +62,8 @@ function summaryHtml(isSuper) {
   const since = Date.now() - 30 * 86400000;
   const recent = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= since);
   const ok = recent.filter((l) => l.status === 'success').length;
-  // Tổng hợp đồng đang gửi tự động của TẤT CẢ nhân viên (ai có quyền quản lý OA cũng thấy cùng một con số).
-  const autoCount = S.listZaloAutoOverview().filter((r) => S.getCustomer(r.customerId) && S.getContract(r.contractId)).length;
+  // Tổng hợp đồng đang gửi tự động của TẤT CẢ nhân viên (ai có quyền quản lý OA cũng thấy cùng một con số); bấm vào ô để xem từng người bao nhiêu.
+  const autoCount = S.summarizeZaloAutoByOwner().total;
   const banner = missing.length && activeTab !== 'config' ? `
     <div class="oa-ban"><span class="oa-ban-dot"></span>
       <div class="oa-ban-tx"><b>Chưa cấu hình mẫu tin ${missing.join(' và ')}</b>
@@ -71,15 +71,37 @@ function summaryHtml(isSuper) {
       ${isSuper ? `<button type="button" class="oa-ban-go" data-go-config>Cấu hình ${icon('chevronRight', 'icon-sm')}</button>` : ''}
     </div>` : '';
   const tile = (num, label, sub, cls = '') => `<div class="oa-kp ${cls}"><b>${num}</b><span>${label}</span><em>${sub}</em></div>`;
+  const autoTile = `<button type="button" class="oa-kp oa-kp-btn g" data-auto-breakdown aria-label="Xem số hợp đồng gửi tự động theo từng người"><b>${autoCount}</b><span>Tự động</span><em>${S.hasZaloAutoOverview() ? 'cả nhóm' : 'của bạn'} ›</em></button>`;
   return `${banner}<div class="oa-kps">
     ${tile(S.listZaloCustomers().length, 'Khách OA', 'đã thêm')}
-    ${tile(autoCount, 'Tự động', S.hasZaloAutoOverview() ? 'tất cả nhân viên' : 'của bạn', 'g')}
+    ${autoTile}
     ${tile(recent.length ? `${ok}<small>/${recent.length}</small>` : '0', 'Thành công', '30 ngày qua', 'e')}
   </div>`;
 }
 function bindSummary(root, contentEl) {
   const go = root.querySelector('[data-go-config]');
   if (go) go.addEventListener('click', () => { activeTab = 'config'; render(contentEl); });
+  const brk = root.querySelector('[data-auto-breakdown]');
+  if (brk) brk.addEventListener('click', openAutoBreakdownModal);
+}
+
+/** Cửa sổ "Gửi tự động theo từng người": tổng cả nhóm + số hợp đồng của mỗi người (mọi người có quyền quản lý OA đều thấy cùng số; danh sách chi tiết thì mỗi người chỉ thấy của mình). */
+function openAutoBreakdownModal() {
+  const { total, owners } = S.summarizeZaloAutoByOwner();
+  const full = S.hasZaloAutoOverview();
+  openModal({
+    title: 'Gửi tự động theo từng người',
+    bodyHtml: `
+      <div class="oa-brk-total"><b>${total}</b><span>hợp đồng đang gửi tự động${full ? ' (tất cả nhân viên)' : ''}</span></div>
+      <div class="oa-brk">
+        ${owners.length ? owners.map((o) => `
+          <div class="oa-brk-row${o.isMe ? ' me' : ''}">
+            <span class="oa-brk-nm">${escapeHtml(o.name)}${o.isMe ? ' <em>(bạn)</em>' : ''}</span>
+            <b>${o.count}<small> hợp đồng</small></b>
+          </div>`).join('') : '<p class="text-sm text-muted">Chưa có hợp đồng nào trong gửi tự động.</p>'}
+      </div>
+      <p class="text-sm text-muted mt-8">${full ? 'Mỗi người chỉ thấy danh sách chi tiết của chính mình ở tab "Gửi tự động"; con số tổng ai cũng thấy như nhau.' : 'Hiện mới xem được phần của bạn — cần cập nhật máy chủ (Edge Function) mới thấy được của người khác.'}</p>`,
+  });
 }
 
 /** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
@@ -407,9 +429,10 @@ const AUTO_PREVIEW_COUNT = 4; // trang chính chỉ hiện vài dòng đầu —
 function drawAutoTab(slot, admin) {
   slot.innerHTML = `
     <details class="oa-how"><summary>${icon('info', 'icon-sm')}<span>Cách hoạt động</span>${icon('chevronDown', 'icon-sm')}</summary>
-      <p class="text-sm text-muted">${admin.role === 'super' ? 'Bạn là quản trị viên toàn quyền nên thấy lựa chọn của TẤT CẢ nhân viên.' : 'Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại.'} 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
+      <p class="text-sm text-muted">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — người khác (kể cả quản trị viên) không thấy danh sách này của bạn và ngược lại. Mỗi khách hàng chỉ một người được thêm; 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
       <p class="text-sm text-muted">Số tháng là ngưỡng lãi chưa trả. Đủ ngưỡng sẽ gửi vào đúng ngày hằng tháng; khi khách trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</p>
     </details>
+    <div class="oa-tot"><span>Của bạn <b>${S.listZaloAutoSend().length}</b> · Cả nhóm <b>${S.summarizeZaloAutoByOwner().total}</b> hợp đồng</span><button type="button" class="oa-tot-go" id="btn-auto-breakdown">Theo từng người ›</button></div>
     ${AUTO_SEND_SECTIONS.map((s) => `
       <div class="card card-pad mb-16">
         <div class="section-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -422,6 +445,7 @@ function drawAutoTab(slot, admin) {
       </div>
     `).join('')}
   `;
+  slot.querySelector('#btn-auto-breakdown').addEventListener('click', openAutoBreakdownModal);
   AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind));
   slot.querySelectorAll('[data-add-kind]').forEach((btn) => {
     btn.addEventListener('click', () => openAddAutoSendModal(btn.dataset.addKind, admin, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind))));
