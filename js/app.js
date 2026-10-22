@@ -1,5 +1,5 @@
 import * as S from './state.js';
-import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
+import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_TOOLS, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
@@ -20,6 +20,7 @@ import * as AdminZaloOA from './views/admin/zaloOA.js';
 import * as AdminSupport from './views/admin/support.js';
 import * as AdminLogs from './views/admin/logs.js';
 import * as AdminBalanceSheet from './views/admin/balanceSheet.js';
+import * as AdminLoanCalc from './views/admin/loanCalc.js';
 
 const customerRoutes = [
   { re: /^#\/$/, view: Dashboard },
@@ -45,6 +46,8 @@ const adminRoutes = [
   { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, requiresManageZaloOA: true },
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
   { re: /^#\/admin\/can-doi-ke-toan$/, view: AdminBalanceSheet, requiresViewBalanceSheet: true },
+  // "Tính lãi vay" (menu Công cụ) — tiện ích tính nhanh, mọi quản trị viên/nhân viên đều mở được.
+  { re: /^#\/admin\/tinh-lai$/, view: AdminLoanCalc },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];
 
@@ -52,7 +55,7 @@ const adminRoutes = [
 // trang thật sự (xem renderApp() bên dưới), khỏi phải ghi cứng lại 1 danh
 // sách riêng — lấy thẳng từ đúng label đang hiện trên menu.
 const NAV_LABEL_MAP = Object.fromEntries(
-  [...ADMIN_NAV, ...ADMIN_NAV_BALANCE_SHEET, ...ADMIN_NAV_MANAGE_ZALO_OA, ...ADMIN_NAV_SUPPORT, ...ADMIN_NAV_MANAGE_USERS, ...ADMIN_NAV_SUPER_ONLY].map((item) => [item.path, item.label])
+  [...ADMIN_NAV, ...ADMIN_NAV_BALANCE_SHEET, ...ADMIN_NAV_MANAGE_ZALO_OA, ...ADMIN_NAV_SUPPORT, ...ADMIN_NAV_TOOLS, ...ADMIN_NAV_MANAGE_USERS, ...ADMIN_NAV_SUPER_ONLY].map((item) => [item.path, item.label])
 );
 NAV_LABEL_MAP['#/doi-mat-khau'] = 'Đổi mật khẩu'; // có route nhưng không nằm trong menu chính (link riêng ở sidebar)
 

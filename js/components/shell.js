@@ -24,6 +24,10 @@ export const ADMIN_NAV_SUPPORT = [
 // "Quản lý User" hiện ra cho quản trị viên toàn quyền HOẶC nhân viên được
 // cấp riêng cờ canManageUsers (xem js/views/admin/staff.js) — không còn
 // bó cứng "chỉ toàn quyền" như "Cài đặt" nữa.
+// "Công cụ": tiện ích dùng chung, không đụng dữ liệu hợp đồng — mọi quản trị viên/nhân viên đều mở được.
+export const ADMIN_NAV_TOOLS = [
+  { path: '#/admin/tinh-lai', label: 'Tính lãi vay', shortLabel: 'Tính lãi', icon: 'calculator', group: 'Công cụ' },
+];
 export const ADMIN_NAV_MANAGE_USERS = [
   { path: '#/admin/nhan-vien', label: 'Quản lý User', shortLabel: 'User', icon: 'idCard', group: 'Hệ thống' },
 ];
@@ -128,7 +132,7 @@ export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA,
   // Giữ nguyên quyền truy cập; chỉ sắp thứ tự: Tổng quan, Khách hàng,
   // Quản trị, Quản lý OA, Hỗ trợ, Quản lý User, rồi Cài đặt/Nhật ký.
   const nav = role === 'admin'
-    ? [...ADMIN_NAV, ...(canViewBalanceSheet ? ADMIN_NAV_BALANCE_SHEET : []), ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...ADMIN_NAV_SUPPORT, ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
+    ? [...ADMIN_NAV, ...(canViewBalanceSheet ? ADMIN_NAV_BALANCE_SHEET : []), ...(canManageZaloOA ? ADMIN_NAV_MANAGE_ZALO_OA : []), ...ADMIN_NAV_SUPPORT, ...ADMIN_NAV_TOOLS, ...(canManageUsers ? ADMIN_NAV_MANAGE_USERS : []), ...(isSuper ? ADMIN_NAV_SUPER_ONLY : [])]
     : CUSTOMER_NAV;
   root.innerHTML = `
     <div class="app-shell">
