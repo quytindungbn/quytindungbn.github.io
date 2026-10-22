@@ -75,6 +75,7 @@ test('bản in: A4 ngang, kiểu chữ của app, đủ tiêu đề, điều ki�
   for (const head of TABLE_HEAD) assert.ok(html.includes(`>${head}</th>`), head);
   assert.equal((html.match(/class="tile( hi)?"/g) || []).length, 4);
   assert.match(html, /Lập ngày 22\/10\/2026/);
+  assert.match(html, /\.t td\{[^}]*border-bottom:\.3mm solid #a3b8ae\}/, 'kẻ từng dòng của bảng đủ đậm để rà theo hàng');
   assert.ok(!html.includes('<A>'), 'tên quỹ có ký tự đặc biệt không lọt thô vào HTML (kể cả trong khối CSS)');
   assert.equal((buildLoanCalcPrintHtml({ org: { name: 'x</style><script>1</script>' }, inputs: term, result: termRes, printedOn: start }).match(/<\/style>/g) || []).length, 1, 'tên quỹ không đóng sớm thẻ style');
   const cssTitle = /@top-left\{content:"((?:[^"\\]|\\.)*)"/.exec(buildLoanCalcPrintHtml({ org: { name: 'Quỹ "X" \\ Y' }, inputs: term, result: termRes, printedOn: start }));
@@ -101,6 +102,7 @@ test('file Excel: A4 ngang, vừa chiều ngang, có bảng đủ kỳ, ngày th
   const styles = files['xl/styles.xml'];
   assert.ok(styles.includes('Cambria') && styles.includes('Calibri'));
   assert.ok(styles.includes('formatCode="dd/mm/yyyy"'));
+  assert.ok(styles.includes('<bottom style="thin"><color rgb="FF98AEA3"/></bottom>'), 'kẻ từng dòng của bảng đủ đậm');
   const term2 = unzipEntries(buildLoanCalcXlsx({ org, inputs: term, result: termRes, printedOn: start }))['xl/worksheets/sheet1.xml'];
   assert.ok(term2.includes('Gốc trả đều mỗi tháng') && term2.includes('Thời hạn vay'));
 });

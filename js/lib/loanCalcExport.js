@@ -219,7 +219,7 @@ h1{margin:3.6mm 0 0;font:700 26pt/1.1 ${SERIF_STACK};letter-spacing:-.01em;color
 .tile em{display:block;margin-top:.8mm;font-style:normal;font-size:8pt;color:#6a7a73}
 table.t{width:100%;margin-top:5mm;border-collapse:collapse;table-layout:fixed;font-size:9pt}
 .t th{height:8mm;padding:0 4mm;background:#0c4a3f;color:#fff;text-align:right;font:700 7pt ${SANS_STACK};letter-spacing:.1em;text-transform:uppercase}
-.t td{height:6mm;padding:0 4mm;text-align:right;border-bottom:.15mm solid #e3ebe7}
+.t td{height:6mm;padding:0 4mm;text-align:right;border-bottom:.3mm solid #a3b8ae}
 .t tbody tr:nth-child(even) td{background:#f8faf8}
 .t th.l,.t td.l{text-align:left;font-weight:700}.t th.c,.t td.c{text-align:center}
 .t td.g{color:#0c4a3f;font-weight:600}.t td.i{color:#8a6a22;font-weight:600}.t td.p{font-weight:700}

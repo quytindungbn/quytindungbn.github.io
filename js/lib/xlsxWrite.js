@@ -60,6 +60,7 @@ const COLOR = { em: 'FF0C4A3F', gold: 'FFB08D3C', goldDark: 'FF8A6A22', ink: 'FF
 const SANS = 'Calibri', SERIF = 'Cambria';
 const f = (extra) => ({ name: SANS, sz: 11, color: COLOR.ink, ...extra });
 const hair = ['thin', COLOR.line];
+const rowLine = ['thin', 'FF98AEA3']; // kẻ từng dòng của bảng — đậm hơn để dễ rà theo hàng
 const STYLE_DEFS = {
   normal: { font: { name: SANS, sz: 11 } },
   bold: { font: f({ b: 1 }) },
@@ -75,13 +76,13 @@ const STYLE_DEFS = {
   tileSub: { font: f({ sz: 9, color: COLOR.muted }), fill: COLOR.cream, align: { h: 'center', v: 'center' } },
   head: { font: f({ b: 1, sz: 10, color: COLOR.white }), fill: COLOR.em, align: { h: 'center', v: 'center', wrap: 1 } },
   headLeft: { font: f({ b: 1, sz: 10, color: COLOR.white }), fill: COLOR.em, align: { h: 'left', v: 'center', wrap: 1, indent: 1 } },
-  ky: { font: f({ b: 1 }), border: { bottom: hair }, align: { h: 'left', v: 'center', indent: 1 } },
-  date: { numFmt: 'dd/mm/yyyy', border: { bottom: hair }, align: { h: 'center', v: 'center' } },
-  days: { numFmt: 0, border: { bottom: hair }, align: { h: 'center', v: 'center' } },
-  int: { numFmt: 3, border: { bottom: hair }, align: { h: 'right', v: 'center', indent: 1 } },
-  intGreen: { font: f({ b: 1, color: COLOR.em }), numFmt: '#,##0;-#,##0;"—"', border: { bottom: hair }, align: { h: 'right', v: 'center', indent: 1 } },
-  intGold: { font: f({ b: 1, color: COLOR.goldDark }), numFmt: 3, border: { bottom: hair }, align: { h: 'right', v: 'center', indent: 1 } },
-  intStrong: { font: f({ b: 1 }), numFmt: 3, border: { bottom: hair }, align: { h: 'right', v: 'center', indent: 1 } },
+  ky: { font: f({ b: 1 }), border: { bottom: rowLine }, align: { h: 'left', v: 'center', indent: 1 } },
+  date: { numFmt: 'dd/mm/yyyy', border: { bottom: rowLine }, align: { h: 'center', v: 'center' } },
+  days: { numFmt: 0, border: { bottom: rowLine }, align: { h: 'center', v: 'center' } },
+  int: { numFmt: 3, border: { bottom: rowLine }, align: { h: 'right', v: 'center', indent: 1 } },
+  intGreen: { font: f({ b: 1, color: COLOR.em }), numFmt: '#,##0;-#,##0;"—"', border: { bottom: rowLine }, align: { h: 'right', v: 'center', indent: 1 } },
+  intGold: { font: f({ b: 1, color: COLOR.goldDark }), numFmt: 3, border: { bottom: rowLine }, align: { h: 'right', v: 'center', indent: 1 } },
+  intStrong: { font: f({ b: 1 }), numFmt: 3, border: { bottom: rowLine }, align: { h: 'right', v: 'center', indent: 1 } },
   totalLabel: { font: f({ b: 1, color: COLOR.em }), fill: COLOR.cream, border: { top: ['thin', COLOR.gold], bottom: ['medium', COLOR.gold] }, align: { h: 'left', v: 'center', indent: 1 } },
   totalDays: { font: f({ b: 1, color: COLOR.em }), numFmt: 0, fill: COLOR.cream, border: { top: ['thin', COLOR.gold], bottom: ['medium', COLOR.gold] }, align: { h: 'center', v: 'center' } },
   totalInt: { font: f({ b: 1, color: COLOR.em }), numFmt: 3, fill: COLOR.cream, border: { top: ['thin', COLOR.gold], bottom: ['medium', COLOR.gold] }, align: { h: 'right', v: 'center', indent: 1 } },

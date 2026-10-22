@@ -121,9 +121,9 @@ function optionsHtml(name, list, current) {
 function pageHtml() {
   const term = st.tab === 'term';
   const field = (label, id, value, unit, extra = '', cls = '') => `<div class="lc-f ${cls}"><label for="${id}">${label}</label><div class="box"><input id="${id}" value="${escapeHtml(value)}" autocomplete="off" ${extra}>${unit ? `<i>${unit}</i>` : ''}</div></div>`;
-  const dateField = `<div class="lc-f"><label for="lc-date">Ngày vay</label><div class="box"><input id="lc-date" value="${escapeHtml(st.date)}" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="dd/mm/yyyy"><button type="button" class="lc-cal" id="lc-cal" aria-label="Chọn ngày trên lịch">${icon('calendar', 'icon-sm')}</button><input type="date" id="lc-date-native" tabindex="-1" aria-hidden="true"></div></div>`;
+  const dateField = `<div class="lc-f dt"><label for="lc-date">Ngày vay</label><div class="box"><input id="lc-date" value="${escapeHtml(st.date)}" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="dd/mm/yyyy"><button type="button" class="lc-cal" id="lc-cal" aria-label="Chọn ngày trên lịch">${icon('calendar', 'icon-sm')}</button><input type="date" id="lc-date-native" tabindex="-1" aria-hidden="true"></div></div>`;
   const fields = term
-    ? `<div class="lc-row c4">${field('Số tiền vay', 'lc-principal', st.principal, '₫', 'inputmode="numeric"', 'w')}${field('Lãi suất', 'lc-rate', st.rate, '%/năm', 'inputmode="decimal"')}${field('Thời hạn vay', 'lc-months', st.months, 'tháng', 'inputmode="numeric"')}${dateField}</div>
+    ? `<div class="lc-row c4 term">${field('Số tiền vay', 'lc-principal', st.principal, '₫', 'inputmode="numeric"')}${field('Lãi suất', 'lc-rate', st.rate, '%/năm', 'inputmode="decimal"')}${field('Thời hạn vay', 'lc-months', st.months, 'tháng', 'inputmode="numeric"')}${dateField}</div>
        <div class="lc-opts-wrap"><div class="lc-lab" id="lc-lab-method">Cách trả</div><div class="lc-row c3 opts" role="radiogroup" aria-labelledby="lc-lab-method">${optionsHtml('method', METHODS, st.method)}</div></div>`
     : `<div class="lc-row c4">${field('Số tiền vay', 'lc-principal', st.principal, '₫', 'inputmode="numeric"', 'w')}${field('Lãi suất', 'lc-rate', st.rate, '%/năm', 'inputmode="decimal"')}${dateField}<div class="lc-f w">${field('Số tiền trả mỗi tháng', 'lc-payment', st.payment, '₫', 'inputmode="numeric"', 'nested')}<div class="hint" id="lc-hint"></div></div></div>
        <div class="lc-opts-wrap"><div class="lc-lab" id="lc-lab-kind">Số tiền trả mỗi tháng là</div><div class="lc-row c2 opts" role="radiogroup" aria-labelledby="lc-lab-kind">${optionsHtml('kind', KINDS, st.kind)}</div></div>`;
@@ -241,6 +241,18 @@ async function sharePdf(btn) {
   }
 }
 
+/**
+ * Thu nhỏ chữ trong ô nhập cho vừa ô (số tiền dài, ngày trên màn hình hẹp) — luôn thấy trọn nội dung, không bị che số cuối. Ô còn rộng thì giữ cỡ 16px.
+ */
+function fitInput(el) {
+  if (!el || !el.clientWidth) return;
+  el.style.fontSize = '';
+  let size = 16;
+  while (size > 9 && el.scrollWidth > el.clientWidth) { size -= 0.5; el.style.fontSize = `${size}px`; }
+}
+const fitAll = (root = document) => root.querySelectorAll('.lc-f .box input:not([type="date"])').forEach(fitInput);
+let fitBound = false;
+
 // Tham số thứ hai của app.js là phần tử bộ lọc (không dùng ở trang này); chỉ { recalc: true } do chính trang này gọi lại khi đổi tab mới có nghĩa.
 export function render(contentEl, opts) {
   const recalc = !!(opts && opts.recalc === true);
@@ -289,7 +301,7 @@ export function render(contentEl, opts) {
       const before = el.value, caretFromEnd = before.length - (el.selectionStart ?? before.length);
       const next = mask(before);
       if (next !== before) { el.value = next; const pos = Math.max(0, next.length - caretFromEnd); try { el.setSelectionRange(pos, pos); } catch { /* ô không hỗ trợ con trỏ */ } }
-      st[key] = el.value; clearOut();
+      st[key] = el.value; fitInput(el); clearOut();
     });
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); update(); el.blur(); } });
   };
@@ -307,7 +319,7 @@ export function render(contentEl, opts) {
     if (typeof native.showPicker === 'function') { try { native.showPicker(); return; } catch { /* dùng cách dự phòng */ } }
     native.focus(); native.click();
   };
-  native.addEventListener('change', () => { if (!native.value) return; const [y, m, d] = native.value.split('-'); dateEl.value = `${d}/${m}/${y}`; st.date = dateEl.value; clearOut(); });
+  native.addEventListener('change', () => { if (!native.value) return; const [y, m, d] = native.value.split('-'); dateEl.value = `${d}/${m}/${y}`; st.date = dateEl.value; fitInput(dateEl); clearOut(); });
   contentEl.querySelector('#lc-cal').addEventListener('click', openCalendar);
   if (window.matchMedia('(pointer: coarse)').matches) { dateEl.readOnly = true; dateEl.addEventListener('click', openCalendar); }
 
@@ -323,6 +335,8 @@ export function render(contentEl, opts) {
     if (window.matchMedia('(max-width: 899px)').matches) out.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
   if (recalc && !calculate().error) update();
+  fitAll(contentEl);
+  if (!fitBound) { fitBound = true; window.addEventListener('resize', () => fitAll()); }
 }
 
 function setChecked(root, selector, key, value) {

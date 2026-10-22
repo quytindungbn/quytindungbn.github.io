@@ -68,7 +68,7 @@ export function buildPdf(pages, { title = '' } = {}) {
 }
 
 // ---- Vẽ từng trang bằng canvas ----
-const C = { ink: '#12231e', em: '#0c4a3f', gold: '#b08d3c', goldDark: '#8a6a22', muted: '#6a7a73', cream: '#f7f1df', hi: '#e9f3ee', zebra: '#f8faf8', rowLine: '#e3ebe7', paramLine: '#e6ece9', secLine: '#dbe6e0', total: '#f1e7c6', white: '#ffffff' };
+const C = { ink: '#12231e', em: '#0c4a3f', gold: '#b08d3c', goldDark: '#8a6a22', muted: '#6a7a73', cream: '#f7f1df', hi: '#e9f3ee', zebra: '#f8faf8', rowLine: '#a3b8ae', paramLine: '#e6ece9', secLine: '#dbe6e0', total: '#f1e7c6', white: '#ffffff' };
 const px = (mm) => mm * S;
 const fontStr = (weight, sizePt, family, italic = false) => `${italic ? 'italic ' : ''}${weight} ${(sizePt * PT * S).toFixed(2)}px ${family}`;
 
@@ -128,7 +128,7 @@ function drawTableHead(ctx, top, head) {
 function drawRow(ctx, top, r, odd) {
   const edges = colEdges();
   if (odd) rect(ctx, X0, top, X1 - X0, GEO.rowH, C.zebra);
-  hline(ctx, X0, X1, top + GEO.rowH - 0.075, 0.15, C.rowLine);
+  hline(ctx, X0, X1, top + GEO.rowH - 0.15, 0.3, C.rowLine);
   const y = top + GEO.rowH / 2 + 1.15;
   const cells = [[r.ky, 700, C.ink], [r.date, 500, C.ink], [r.days, 500, C.ink], [r.opening, 500, C.ink], [r.principal, 600, C.em], [r.interest, 600, C.goldDark], [r.payment, 700, C.ink], [r.closing, 500, C.ink]];
   cells.forEach(([t, weight, color], i) => text(ctx, t, cellX(edges, i), y, { weight, size: 9, color, align: ALIGN[i], tnum: i > 0 && t !== '—' }));
