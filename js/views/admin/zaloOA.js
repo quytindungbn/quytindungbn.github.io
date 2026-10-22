@@ -42,6 +42,45 @@ let logCoveredFrom = null; // mốc thời gian (ms) cũ nhất mà dữ liệu 
 let logViewFrom = null;    // sau khi bấm "Xem thêm": hiện từ mốc này trở đi (null = 1 tháng gần nhất)
 const LOG_PAGE = 500;
 
+// Hàng tab nổi bật (icon + chữ); "Cấu hình" chỉ hiện với quản trị viên toàn quyền.
+const OA_TABS = [
+  { k: 'oa', label: 'Danh sách OA', icon: 'users' },
+  { k: 'auto', label: 'Gửi tự động', icon: 'refresh' },
+  { k: 'log', label: 'Lịch sử gửi', icon: 'clock' },
+  { k: 'config', label: 'Cấu hình', icon: 'settings', superOnly: true },
+];
+
+/**
+ * Dải thông tin đầu trang: cảnh báo nếu chưa cấu hình mẫu tin (kèm nút sang tab Cấu hình cho quản trị toàn quyền) và 3 con số nhanh —
+ * khách trong OA, số hợp đồng đang gửi tự động (của chính mình), số lần gửi thành công trong 30 ngày qua.
+ */
+function summaryHtml(isSuper) {
+  const org = S.getOrg();
+  const missing = [];
+  if (!org.zaloTemplateDueId) missing.push('“Đến hạn/Quá hạn”');
+  if (!org.zaloTemplateInterestId) missing.push('“Báo lãi”');
+  const since = Date.now() - 30 * 86400000;
+  const recent = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= since);
+  const ok = recent.filter((l) => l.status === 'success').length;
+  const autoCount = AUTO_SEND_SECTIONS.reduce((n, sec) => n + S.listZaloAutoSendByKind(sec.kind).length, 0);
+  const banner = missing.length && activeTab !== 'config' ? `
+    <div class="oa-ban"><span class="oa-ban-dot"></span>
+      <div class="oa-ban-tx"><b>Chưa cấu hình mẫu tin ${missing.join(' và ')}</b>
+        <small>${isSuper ? 'Nhập Template ID ở tab Cấu hình để gửi được tin.' : 'Nhờ quản trị viên toàn quyền cấu hình để gửi được tin.'}</small></div>
+      ${isSuper ? `<button type="button" class="oa-ban-go" data-go-config>Cấu hình ${icon('chevronRight', 'icon-sm')}</button>` : ''}
+    </div>` : '';
+  const tile = (num, label, sub, cls = '') => `<div class="oa-kp ${cls}"><b>${num}</b><span>${label}</span><em>${sub}</em></div>`;
+  return `${banner}<div class="oa-kps">
+    ${tile(S.listZaloCustomers().length, 'Khách OA', 'đã thêm')}
+    ${tile(autoCount, 'Tự động', 'đang bật', 'g')}
+    ${tile(recent.length ? `${ok}<small>/${recent.length}</small>` : '0', 'Thành công', '30 ngày qua', 'e')}
+  </div>`;
+}
+function bindSummary(root, contentEl) {
+  const go = root.querySelector('[data-go-config]');
+  if (go) go.addEventListener('click', () => { activeTab = 'config'; render(contentEl); });
+}
+
 /** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
 export function resetFilters() {
   activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; logStatusFilter = 'all'; logFromDate = ''; logToDate = '';
@@ -60,16 +99,18 @@ function currentAdmin() {
 export function render(contentEl) {
   const admin = currentAdmin();
   const isSuper = admin.role === 'super';
+  if (activeTab === 'config' && !isSuper) activeTab = 'oa';
 
   contentEl.innerHTML = `
-    <div class="segmented-row mb-16">
-      <button class="${activeTab === 'oa' ? 'active' : ''}" data-tab="oa">Danh sách OA</button>
-      <button class="${activeTab === 'auto' ? 'active' : ''}" data-tab="auto">Gửi tin tự động</button>
-      <button class="${activeTab === 'log' ? 'active' : ''}" data-tab="log">Quản lý gửi tin</button>
-      ${isSuper ? `<button class="${activeTab === 'config' ? 'active' : ''}" data-tab="config">Cấu hình</button>` : ''}
+    <div class="oa-page">
+      <div id="oa-summary">${summaryHtml(isSuper)}</div>
+      <div class="oa-tabs" role="tablist">
+        ${OA_TABS.filter((t) => !t.superOnly || isSuper).map((t) => `<button type="button" role="tab" aria-selected="${activeTab === t.k}" class="oa-tab${activeTab === t.k ? ' on' : ''}" data-tab="${t.k}">${icon(t.icon)}<span>${t.label}</span></button>`).join('')}
+      </div>
+      <div id="zalo-tab-content"></div>
     </div>
-    <div id="zalo-tab-content"></div>
   `;
+  bindSummary(contentEl.querySelector('#oa-summary'), contentEl);
   contentEl.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => { activeTab = btn.dataset.tab; render(contentEl); });
   });
@@ -91,6 +132,8 @@ export function refresh(contentEl) {
   const slot = contentEl.querySelector('#zalo-tab-content');
   if (!slot) { render(contentEl); return; } // chưa từng render() lần nào ở trang này -> vẽ đầy đủ
   const admin = currentAdmin();
+  const sum = contentEl.querySelector('#oa-summary');
+  if (sum) { sum.innerHTML = summaryHtml(admin.role === 'super'); bindSummary(sum, contentEl); } // số liệu đầu trang cập nhật theo dữ liệu mới
   if (activeTab === 'oa') drawOATab(slot, admin);
   else if (activeTab === 'auto') drawAutoTab(slot, admin);
   else if (activeTab === 'log') drawLogTab(slot);
@@ -151,8 +194,10 @@ function drawOATab(slot, admin) {
   const allowedThon = S.distinctThon();
 
   slot.innerHTML = `
-    <button class="btn btn-primary btn-sm mb-8" id="btn-add-oa">${icon('plus', 'icon-sm')} Thêm khách hàng vào OA</button>
-    ${searchBoxHtml('oa-search', 'Tìm theo tên, SĐT...', oaQuery)}
+    <div class="oa-tool">
+      <div class="oa-search">${searchBoxHtml('oa-search', 'Tìm theo tên, SĐT...', oaQuery)}</div>
+      <button type="button" class="oa-add" id="btn-add-oa" title="Thêm khách hàng vào OA" aria-label="Thêm khách hàng vào OA">${icon('userPlus')}</button>
+    </div>
     <div class="filter-row mb-8 mt-8" id="oa-filter-pills"></div>
     <div id="oa-list"></div>
   `;
@@ -180,6 +225,18 @@ function drawOATab(slot, admin) {
       rows = rows.filter((x) => x.customer.name.toLowerCase().includes(q) || (x.customer.phone || '').includes(q));
     }
 
+    // Nhãn "đang ở mục gửi tự động nào" — chỉ theo lựa chọn của chính người đang xem (đúng như tab Gửi tự động).
+    const autoKinds = new Map();
+    for (const a of S.listZaloAutoSend()) {
+      const set = autoKinds.get(a.customerId) || new Set();
+      set.add(a.kind);
+      autoKinds.set(a.customerId, set);
+    }
+    const chipsFor = (id) => {
+      const k = autoKinds.get(id);
+      if (!k) return '';
+      return `${k.has('lai_hang_thang_auto') ? '<span class="oa-chip g">Báo lãi tự động</span>' : ''}${k.has('lai_hang_thang_custom_day') ? '<span class="oa-chip b">Ngày cụ thể</span>' : ''}`;
+    };
     listEl.innerHTML = `
       <div class="text-sm text-muted mb-8">${rows.length} khách hàng trong danh sách OA</div>
       ${rows.length ? rows.map(({ r, customer }) => `
@@ -187,7 +244,7 @@ function drawOATab(slot, admin) {
           <div class="row-thumb" style="background:${colorFor(customer.id)}">${initials(customer.name)}</div>
           <div class="row-main">
             <div class="row-title">${customer.name}</div>
-            <div class="row-sub">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
+            <div class="row-sub oa-sub"><span>${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</span>${chipsFor(customer.id)}</div>
           </div>
           ${customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" data-stop-row title="Gọi/tìm Zalo nhanh" style="color:var(--color-primary);font-weight:700;white-space:nowrap;text-decoration:none">${customer.phone}</a>` : ''}
         </div>
@@ -308,13 +365,16 @@ const AUTO_PREVIEW_COUNT = 4; // trang chính chỉ hiện vài dòng đầu —
 
 function drawAutoTab(slot, admin) {
   slot.innerHTML = `
-    <p class="text-sm text-muted mb-8">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại. 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
-    <p class="text-sm text-muted mb-8">Số tháng là ngưỡng lãi chưa trả. Đủ ngưỡng sẽ gửi vào đúng ngày hằng tháng; khi khách trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</p>
+    <details class="oa-how"><summary>${icon('info', 'icon-sm')}<span>Cách hoạt động</span>${icon('chevronDown', 'icon-sm')}</summary>
+      <p class="text-sm text-muted">Chỉ hiện đúng những lựa chọn CHÍNH BẠN đã chọn — đồng nghiệp khác (kể cả cùng địa bàn) không thấy được lựa chọn của bạn và ngược lại. 1 hợp đồng chỉ ở được 1 trong 2 mục dưới đây.</p>
+      <p class="text-sm text-muted">Số tháng là ngưỡng lãi chưa trả. Đủ ngưỡng sẽ gửi vào đúng ngày hằng tháng; khi khách trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</p>
+    </details>
     ${AUTO_SEND_SECTIONS.map((s) => `
       <div class="card card-pad mb-16">
         <div class="section-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <h2 style="font-size:14px">${s.title}</h2>
-          <button class="btn btn-outline btn-sm" data-view-all="${s.kind}" style="display:none;white-space:nowrap;flex-shrink:0">Xem chi tiết</button>
+          <span class="oa-pill" data-count="${s.kind}"></span>
+          <button class="btn btn-outline btn-sm" data-view-all="${s.kind}" style="display:none;white-space:nowrap;flex-shrink:0;margin-left:auto">Xem chi tiết</button>
         </div>
         <div id="auto-list-${s.kind}"></div>
         <button class="btn btn-outline btn-sm btn-block mt-8" data-add-kind="${s.kind}">${s.addLabel}</button>
@@ -339,6 +399,8 @@ function drawAutoTab(slot, admin) {
     const allRows = S.listZaloAutoSendByKind(kind)
       .map((r) => ({ r, customer: S.getCustomer(r.customerId), contract: S.getContract(r.contractId) }))
       .filter((x) => x.customer && x.contract);
+    const countEl = slot.querySelector(`[data-count="${kind}"]`);
+    if (countEl) countEl.textContent = `${allRows.length} hợp đồng`;
     const preview = allRows.slice(0, AUTO_PREVIEW_COUNT);
     listEl.innerHTML = preview.length ? preview.map(({ r, customer, contract }) => autoSendRowHtml(kind, r, customer, contract)).join('') : `<p class="text-sm text-muted">Chưa có hợp đồng nào.</p>`;
     bindAutoRowHandlers(listEl, kind, () => drawSection(kind));
@@ -714,18 +776,32 @@ function drawLogTab(slot) {
       : '<div class="text-sm text-muted" style="text-align:center;padding:12px 4px">Đã hiển thị toàn bộ lịch sử gửi tin.</div>');
     slot.querySelector('#log-list').innerHTML = `
       <div class="text-sm text-muted mb-8">${logs.length} lần gửi${hasFilter ? ' (đã lọc)' : ''}${fromMs === null ? (logViewFrom === null ? ' trong 1 tháng gần nhất' : (logCoveredFrom === -Infinity && viewFromMs <= 0 ? ' (toàn bộ lịch sử)' : ` từ ${formatDate(new Date(viewFromMs))} đến nay`)) : ''} · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
-      ${logs.length ? logs.map((l) => {
-        const customer = S.getCustomer(l.customerId);
-        const contract = l.contractId ? S.getContract(l.contractId) : null;
-        return `
+      ${logs.length ? (() => {
+        const kindLabel = (k) => (k === 'den_han' ? 'Đến hạn' : 'Báo lãi');
+        const todayKey = new Date().toDateString(), yesterdayKey = new Date(Date.now() - 86400000).toDateString();
+        let lastDay = '';
+        return logs.map((l) => {
+          const customer = S.getCustomer(l.customerId);
+          const contract = l.contractId ? S.getContract(l.contractId) : null;
+          const d = new Date(l.sentAt);
+          const dayKey = d.toDateString();
+          let head = '';
+          if (dayKey !== lastDay) {
+            lastDay = dayKey;
+            head = `<div class="oa-day">${dayKey === todayKey ? 'Hôm nay' : dayKey === yesterdayKey ? 'Hôm qua' : ''}${dayKey === todayKey || dayKey === yesterdayKey ? ' · ' : ''}${formatDate(d)}</div>`;
+          }
+          const hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+          return `${head}
         <div class="list-row" style="padding:12px 4px">
           <div class="row-thumb" style="background:${l.status === 'success' ? 'var(--success)' : 'var(--danger)'}">${icon(l.status === 'success' ? 'check' : 'x', 'icon-sm')}</div>
           <div class="row-main">
             <div class="row-title">${customer ? customer.name : '—'}${contract ? ' · ' + contract.code : ''}</div>
-            <div class="row-sub">${formatDateTime(l.sentAt)} · ${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}${l.status === 'error' && l.errorMessage ? ' · ' + l.errorMessage : ''}</div>
+            <div class="row-sub oa-sub"><span>${hh}</span><span class="oa-chip${l.triggeredBy === 'manual' ? ' b' : ''}">${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}</span><span class="oa-chip">${kindLabel(l.kind)}</span></div>
+            ${l.status === 'error' && l.errorMessage ? `<div class="oa-err">${l.errorMessage}</div>` : ''}
           </div>
         </div>`;
-      }).join('') : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt bộ lọc trạng thái/thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
+        }).join('');
+      })() : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt bộ lọc trạng thái/thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
       ${moreHtml}
     `;
     const moreBtn = slot.querySelector('#log-more');
@@ -748,61 +824,65 @@ function drawLogTab(slot) {
 // ------------------------------------------------------------
 function drawConfigTab(slot) {
   const org = S.getOrg();
+  const bothSet = !!(org.zaloTemplateDueId && org.zaloTemplateInterestId);
   slot.innerHTML = `
-    <div class="card card-pad mb-16">
-      <div class="section-head"><h2>Trạng thái</h2></div>
-      <p class="text-sm text-muted">
-        ${org.zaloTemplateDueId ? `Mẫu "Đến hạn/Quá hạn" đã cấu hình — tự động gửi cho MỌI hợp đồng của khách trong "Danh sách OA" khi đến/quá hạn.` : `Chưa cấu hình mẫu "Đến hạn/Quá hạn".`}
-        ${org.zaloTemplateInterestId ? ` Mẫu "Báo lãi" đã cấu hình — dùng cho 2 mục ở "Gửi tin tự động" và gửi tay khi hợp đồng chưa đến hạn.` : ` Chưa cấu hình mẫu "Báo lãi".`}
-      </p>
-    </div>
+    <form id="zalo-form" class="oa-steps">
+      <section class="oa-step">
+        <div class="oa-sn">1</div>
+        <div class="oa-sb">
+          <h2>Mẫu tin Zalo OA <span class="oa-st ${bothSet ? 'ok' : 'warn'}">${bothSet ? 'Đã nhập đủ' : 'Chưa nhập đủ'}</span></h2>
+          <p class="oa-hint">
+            Template ID lấy từ trang quản lý mẫu ZBS Template Message (mục "Quản lý Template" trên Zalo) —
+            mẫu phải ở trạng thái <b>"Đã duyệt"</b> mới dùng được.
+          </p>
+          <div class="field">
+            <label>Mẫu "Đến hạn/Quá hạn" (Template ID)</label>
+            <input name="zaloTemplateDueId" value="${esc(org.zaloTemplateDueId)}" placeholder="VD: 519351"/>
+            <p class="oa-hint">${org.zaloTemplateDueId ? 'Tự động gửi cho MỌI hợp đồng của khách trong "Danh sách OA" khi đến/quá hạn.' : 'Chưa cấu hình mẫu này.'}</p>
+          </div>
+          <div class="field">
+            <label>Mẫu "Báo lãi" (Template ID)</label>
+            <input name="zaloTemplateInterestId" value="${esc(org.zaloTemplateInterestId)}" placeholder="Dán Template ID khi đã tạo xong mẫu này bên Zalo"/>
+            <p class="oa-hint">${org.zaloTemplateInterestId ? 'Dùng cho 2 mục ở "Gửi tự động" và gửi tay khi hợp đồng chưa đến hạn.' : 'Chưa cấu hình mẫu này.'}</p>
+          </div>
+        </div>
+      </section>
 
-    <form id="zalo-form">
-      <div class="card card-pad mb-16">
-        <div class="section-head"><h2>Mẫu tin theo tình huống (Zalo OA)</h2></div>
-        <p class="text-sm text-muted mb-8">
-          Template ID lấy từ trang quản lý mẫu ZBS Template Message (mục "Quản lý Template" trên Zalo) —
-          mẫu phải ở trạng thái <b>"Đã duyệt"</b> mới dùng được.
-        </p>
-        <div class="field">
-          <label>Mẫu "Đến hạn/Quá hạn" (Template ID)</label>
-          <input name="zaloTemplateDueId" value="${esc(org.zaloTemplateDueId)}" placeholder="VD: 519351"/>
+      <section class="oa-step">
+        <div class="oa-sn">2</div>
+        <div class="oa-sb">
+          <h2>Ngưỡng "Gần đến hạn"</h2>
+          <p class="oa-hint">
+            Còn đúng số ngày này (hoặc đã quá hạn) — GỬI TAY hay GỬI TỰ ĐỘNG đều tự chuyển sang mẫu "Đến
+            hạn/Quá hạn" ở trên thay vì mẫu "Báo lãi" — xét cả ngày đáo hạn hợp đồng gốc lẫn kỳ hạn trả nợ
+            (nếu có), 1 số dùng chung cho tất cả.
+          </p>
+          <div class="field">
+            <label>Số ngày</label>
+            <input type="number" name="zaloNearDueDays" min="1" max="90" value="${org.zaloNearDueDays}"/>
+          </div>
+          <p class="oa-hint">
+            Nội dung soạn sẵn cho thông báo qua ứng dụng (App) chuyển sang sửa ở mục "Cài đặt" &gt; "Nội
+            dung thông báo qua ứng dụng".
+          </p>
         </div>
-        <div class="field">
-          <label>Mẫu "Báo lãi" (Template ID)</label>
-          <input name="zaloTemplateInterestId" value="${esc(org.zaloTemplateInterestId)}" placeholder="Dán Template ID khi đã tạo xong mẫu này bên Zalo"/>
-        </div>
-      </div>
-
-      <div class="card card-pad mb-16">
-        <div class="section-head"><h2>Ngưỡng "Gần đến hạn"</h2></div>
-        <p class="text-sm text-muted mb-8">
-          Còn đúng số ngày này (hoặc đã quá hạn) — GỬI TAY hay GỬI TỰ ĐỘNG đều tự chuyển sang mẫu "Đến
-          hạn/Quá hạn" ở trên thay vì mẫu "Báo lãi" — xét cả ngày đáo hạn hợp đồng gốc lẫn kỳ hạn trả nợ
-          (nếu có), 1 số dùng chung cho tất cả.
-        </p>
-        <div class="field">
-          <label>Số ngày</label>
-          <input type="number" name="zaloNearDueDays" min="1" max="90" value="${org.zaloNearDueDays}"/>
-        </div>
-        <p class="text-sm text-muted">
-          Nội dung soạn sẵn cho thông báo qua ứng dụng (App) chuyển sang sửa ở mục "Cài đặt" &gt; "Nội
-          dung thông báo qua ứng dụng".
-        </p>
-      </div>
+      </section>
 
       <button class="btn btn-primary btn-block" type="submit">Lưu cấu hình</button>
     </form>
 
-    <div class="card card-pad mb-16 mt-16">
-      <div class="section-head"><h2>Kết nối kỹ thuật (App ID/Secret Key/Token)</h2></div>
-      <p class="text-sm text-muted">
-        Vì lý do an toàn, 4 thông tin này (App ID, Secret Key, Access Token, Refresh Token) KHÔNG cấu
-        hình qua màn hình này — chúng chỉ được lưu ở phía máy chủ (Supabase Secrets + 1 bảng riêng chỉ
-        server đọc được), không hiện ra trình duyệt kể cả với quản trị viên toàn quyền. Việc thiết lập
-        ban đầu đã làm cùng nhau qua chat — nếu cần đổi App/Token mới, báo lại để cập nhật.
-      </p>
-    </div>
+    <section class="oa-step mt-16">
+      <div class="oa-sn">3</div>
+      <div class="oa-sb">
+        <h2>Kết nối kỹ thuật <span class="oa-st ok">Thiết lập qua máy chủ</span></h2>
+        <p class="oa-hint">
+          Vì lý do an toàn, 4 thông tin này (App ID, Secret Key, Access Token, Refresh Token) KHÔNG cấu
+          hình qua màn hình này — chúng chỉ được lưu ở phía máy chủ (Supabase Secrets + 1 bảng riêng chỉ
+          server đọc được), không hiện ra trình duyệt kể cả với quản trị viên toàn quyền. Việc thiết lập
+          ban đầu đã làm cùng nhau qua chat — nếu cần đổi App/Token mới, báo lại để cập nhật.
+        </p>
+      </div>
+    </section>
   `;
 
   slot.querySelector('#zalo-form').addEventListener('submit', async (e) => {

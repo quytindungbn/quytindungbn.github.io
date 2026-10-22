@@ -2160,3 +2160,62 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 @media (max-width: 345px) {
   .lc-f.pw label { font-size: 9px; letter-spacing: .01em; }
 }
+
+/* ============ Quản lý OA — giao diện mới (xem js/views/admin/zaloOA.js) ============ */
+.oa-page { display: flex; flex-direction: column; gap: 14px; }
+#oa-summary { display: flex; flex-direction: column; gap: 12px; }
+#oa-summary:empty { display: none; }
+.oa-ban { display: flex; align-items: center; gap: 12px; background: #fff8e6; border: 1px solid #ecd9a0; border-radius: 14px; padding: 11px 14px; }
+.oa-ban-dot { width: 10px; height: 10px; border-radius: 50%; background: #d6a21e; flex: none; }
+.oa-ban-tx b { display: block; font-size: 13.5px; } .oa-ban-tx small { color: #7a6320; font-size: 12px; }
+.oa-ban-go { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; font: 700 13px inherit; color: #0b5148; white-space: nowrap; cursor: pointer; }
+.oa-kps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.oa-kp { background: #fff; border: 1px solid var(--border); border-top: 3px solid #b08d3c; border-radius: 14px; padding: 10px 14px 9px; box-shadow: var(--shadow-sm); }
+.oa-kp.g { border-top-color: #0f6f61; } .oa-kp.e { border-top-color: #0c4a3f; background: #f0f8f4; }
+.oa-kp b { display: block; font: 700 26px/1.1 var(--font-serif); color: #0c4a3f; } .oa-kp b small { font: 600 14px Inter, sans-serif; color: var(--text-muted); }
+.oa-kp span { display: block; margin-top: 3px; font-size: 12px; font-weight: 700; color: var(--text-muted); } .oa-kp em { display: block; font-style: normal; font-size: 11px; color: var(--text-faint); }
+
+/* Hàng tab nổi bật: thanh trắng có bóng, tab đang chọn tô xanh đậm + gạch vàng, icon trên chữ (điện thoại) / icon cạnh chữ (máy tính) */
+.oa-tabs { display: flex; gap: 6px; padding: 5px; background: #fff; border: 1px solid var(--border-strong); border-radius: 18px; box-shadow: 0 6px 18px rgba(12, 74, 63, .13); }
+.oa-tab { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 9px 2px 10px; border: 0; border-radius: 13px; background: transparent; color: #0b5148; font: 700 12px/1.15 inherit; letter-spacing: -.01em; white-space: nowrap; cursor: pointer; position: relative; transition: background .15s, color .15s; }
+.oa-tab .icon { width: 21px; height: 21px; color: #0f6f61; flex: none; }
+.oa-tab:hover:not(.on) { background: #eef6f2; }
+.oa-tab.on { background: linear-gradient(180deg, #14806f 0%, #0c4a3f 100%); color: #fff; box-shadow: 0 6px 14px rgba(12, 74, 63, .34); }
+.oa-tab.on .icon { color: #f3e1ac; }
+.oa-tab.on::after { content: ''; position: absolute; left: 28%; right: 28%; bottom: 3px; height: 3px; border-radius: 2px; background: #d9b966; }
+.oa-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+@media (min-width: 900px) {
+  .oa-tabs { align-self: flex-start; }
+  .oa-tab { flex: none; flex-direction: row; gap: 10px; padding: 13px 22px 15px; font-size: 14.5px; }
+  .oa-tab .icon { width: 20px; height: 20px; }
+}
+@media (max-width: 480px) {
+  .oa-tabs { gap: 3px; padding: 4px; }
+  .oa-tab { font-size: 11px; letter-spacing: -.02em; padding: 9px 1px 10px; }
+}
+@media (max-width: 370px) { .oa-tab { font-size: 10.3px; } }
+
+/* Nút "Thêm khách hàng vào OA" thành một biểu tượng: ô xanh đậm viền vàng, icon thêm người màu kem */
+.oa-tool { display: flex; gap: 10px; align-items: center; }
+.oa-search { flex: 1; min-width: 0; } .oa-search .search-box { margin: 0; height: 46px; border-radius: 13px; }
+.oa-add { flex: none; width: 48px; height: 46px; border-radius: 14px; border: 1.5px solid #d4b25c; background: linear-gradient(145deg, #14806f, #0c4a3f); color: #f6e7bd; display: grid; place-items: center; cursor: pointer; box-shadow: 0 5px 12px rgba(12, 74, 63, .28), inset 0 1px 0 rgba(255, 255, 255, .2); transition: filter .15s, transform .1s; }
+.oa-add .icon { width: 22px; height: 22px; }
+.oa-add:hover { filter: brightness(1.1); } .oa-add:active { transform: translateY(1px); }
+.oa-add:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+.oa-sub { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.oa-chip { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: 11px; background: #eef3f0; color: #51615a; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.oa-chip.g { background: #e3f3ef; color: #0b5148; } .oa-chip.b { background: #f6efd9; color: #8a6a22; }
+.oa-pill { font-size: 12px; font-weight: 700; color: #0b5148; background: #e3f3ef; border-radius: 11px; padding: 3px 10px; white-space: nowrap; }
+.oa-how { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 0 14px; margin-bottom: 14px; }
+.oa-how summary { display: flex; align-items: center; gap: 9px; min-height: 44px; font-weight: 700; font-size: 13.5px; color: #0b5148; cursor: pointer; list-style: none; }
+.oa-how summary::-webkit-details-marker { display: none; } .oa-how summary .icon:last-child { margin-left: auto; transition: transform .15s; } .oa-how[open] summary .icon:last-child { transform: rotate(180deg); }
+.oa-how p { margin: 0 0 10px; }
+.oa-day { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; color: #8a6a22; padding: 14px 4px 4px; border-bottom: 1px solid var(--border); }
+.oa-err { margin-top: 3px; color: #b4261f; font-size: 12.5px; font-weight: 600; }
+.oa-steps { display: flex; flex-direction: column; gap: 14px; }
+.oa-step { display: flex; gap: 14px; padding: 16px; background: #fff; border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-sm); }
+.oa-sn { width: 30px; height: 30px; flex: none; border-radius: 50%; background: #0f6f61; color: #fff; font: 700 14px Inter, sans-serif; display: grid; place-items: center; }
+.oa-sb { flex: 1; min-width: 0; } .oa-sb h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin: 3px 0 4px; font-size: 16px; }
+.oa-st { font: 700 11px Inter, sans-serif; border-radius: 10px; padding: 3px 9px; } .oa-st.warn { background: #fdf3df; color: #8a6a22; } .oa-st.ok { background: #e3f8ea; color: #16803c; }
+.oa-hint { margin: 2px 0 10px; font-size: 12.5px; color: var(--text-muted); }
