@@ -2290,3 +2290,7 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .oa-cfg-row > span { min-width: 0; }
 .oa-cfg-row select, .oa-cfg-row input { flex: none; height: 36px; border-radius: 10px; border: 1px solid var(--border-strong); background: #fff; color: var(--text); padding: 0 10px; font: 600 13.5px inherit; width: auto; margin: 0; }
 .oa-cfg-row input { width: 72px; text-align: center; }
+
+/* Thùng rác bỏ khỏi gửi tự động: màu đỏ */
+.icon-btn.oa-del { color: var(--danger); }
+.icon-btn.oa-del:hover { background: var(--danger-bg); }

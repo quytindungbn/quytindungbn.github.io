@@ -18,7 +18,7 @@ import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
 import { emptyState, openPicker, pillSelectHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
-import { openModal } from '../../components/modal.js';
+import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatDateTime, formatDate, formatVND, colorFor, initials, escapeHtml } from '../../utils.js';
 import { openCustomerDetail, openContractView } from './customers.js';
@@ -522,7 +522,7 @@ function autoSendRowHtml(kind, r, customer, contract) {
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${addr}</span>
           <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
             <b data-view-contract title="Xem chi tiết hợp đồng" style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>
-            <button class="icon-btn" data-remove="${r.id}" title="Bỏ khỏi danh sách" style="width:26px;height:26px;flex-shrink:0">${icon('trash', 'icon-sm')}</button>
+            <button class="icon-btn oa-del" data-remove="${r.id}" title="Bỏ khỏi danh sách" aria-label="Bỏ khỏi danh sách gửi tự động" style="width:30px;height:30px;flex-shrink:0">${icon('trash', 'icon-sm')}</button>
           </span>
         </div>
       </div>
@@ -552,17 +552,25 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
       openContractView(row.dataset.customer, S.getContract(row.dataset.contract), { readOnly: true });
     });
   });
-  // Bấm là XÓA LUÔN, KHÔNG hỏi lại — trước có confirmDialog nhưng bỏ nhiều
-  // hợp đồng liên tiếp phải bấm 2 lần/hợp đồng (xóa + xác nhận) rất chậm.
-  // Đây chỉ là bỏ khỏi DANH SÁCH GỬI TỰ ĐỘNG (không xóa hợp đồng/khách hàng
-  // gì cả, thêm lại được ngay bất cứ lúc nào), không phải hành động phá hủy
-  // dữ liệu nên bỏ bước hỏi lại cho nhanh.
+  // Bấm thùng rác thì HỎI LẠI trước khi bỏ — tránh lỡ tay chạm nhầm trên điện thoại. Chỉ là bỏ khỏi DANH SÁCH GỬI TỰ ĐỘNG
+  // (không xóa hợp đồng/khách hàng, thêm lại được ngay), nên nội dung hỏi nói rõ điều đó.
   listEl.querySelectorAll('[data-remove]').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
+    btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      btn.disabled = true;
-      try { await S.removeZaloAutoSend(btn.dataset.remove); toast('Đã bỏ khỏi danh sách', 'success'); refresh(); }
-      catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); btn.disabled = false; }
+      const row = btn.closest('[data-row]');
+      const customer = row ? S.getCustomer(row.dataset.customer) : null;
+      const contract = row ? S.getContract(row.dataset.contract) : null;
+      confirmDialog({
+        title: 'Bỏ khỏi gửi tự động?',
+        message: `Bỏ hợp đồng <b>${escapeHtml(contract?.code || '')}</b> của <b>${escapeHtml(customer?.name || '')}</b> khỏi danh sách gửi tự động?<br>Hợp đồng và khách hàng không bị xóa, thêm lại được bất cứ lúc nào.`,
+        confirmLabel: 'Bỏ khỏi danh sách',
+        danger: true,
+        onConfirm: async () => {
+          btn.disabled = true;
+          try { await S.removeZaloAutoSend(btn.dataset.remove); toast('Đã bỏ khỏi danh sách', 'success'); refresh(); }
+          catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); btn.disabled = false; }
+        },
+      });
     });
   });
   // Đổi định kỳ báo — chặn nổi bọt để không mở nhầm chi tiết hợp đồng/sửa
