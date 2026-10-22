@@ -862,23 +862,22 @@ function monthDetailMobileHtml(m, prevMonthOf, yearStartOf) {
     { label: 'Nợ xấu', color: '#a8402f', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, mode: 'worse' },
     { label: 'Lãi phải thu', color: '#8a6a22', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, mode: 'better' },
   ];
-  const th = 'padding:0 8px 8px 0;text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#b08d3c;font-weight:600;white-space:nowrap;border-bottom:1px solid #dccb99';
-  const td = 'padding:10px 8px 10px 0;border-top:1px solid var(--border);white-space:nowrap';
+  // Số tiền luôn nằm gọn trên 1 dòng (tỷ lệ % xuống dòng riêng bên dưới); kiểu dáng ở .ld-* trong css/styles.css.
   const bodyRows = rows.map((r) => `
     <tr>
-      <td style="${td}font-weight:700;color:${r.color}">${r.label}</td>
-      <td style="${td}font-weight:700">${formatVND(r.value)}${r.extra ? ` <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">(${r.extra})</span>` : ''}</td>
-      <td style="${td}">${deltaChip(pct(r.value, r.prevV), { mode: r.mode })}</td>
-      <td style="${td}">${r.yearStartV != null ? deltaChip(pct(r.value, r.yearStartV), { mode: r.mode }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
+      <td class="ld-name" style="color:${r.color}">${r.label}</td>
+      <td class="ld-amt">${formatVND(r.value)}${r.extra ? `<span class="ld-ratio">(${r.extra})</span>` : ''}</td>
+      <td class="ld-chip">${deltaChip(pct(r.value, r.prevV), { mode: r.mode })}</td>
+      <td class="ld-chip">${r.yearStartV != null ? deltaChip(pct(r.value, r.yearStartV), { mode: r.mode }) : '<span style="font-size:10.5px;color:var(--text-faint)">—</span>'}</td>
     </tr>`).join('');
   return `
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <div class="ld-wrap">
+      <table class="ld-table">
         <thead><tr>
-          <th style="${th}">Chỉ tiêu</th>
-          <th style="${th}">Số dư</th>
-          <th style="${th}">So tháng trước</th>
-          <th style="${th}">So sánh năm</th>
+          <th>Chỉ tiêu</th>
+          <th>Số dư</th>
+          <th>+/- tháng</th>
+          <th>+/- năm</th>
         </tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
