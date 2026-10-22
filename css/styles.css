@@ -2263,3 +2263,20 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 
 /* Dòng phụ có nhãn (tab Lịch sử gửi): các nhãn nằm cạnh nhau, hết chỗ thì xuống dòng */
 .oa-sub { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+
+/* Khung Gửi tự động: tiêu đề kèm (số hợp đồng), nút "＋ Thêm" ở đầu khung, thanh "Xem thêm" ở cuối khung (mở cửa sổ danh sách) */
+.oa-sec-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.oa-sec-h h2 { font-size: 14px; margin: 0; min-width: 0; }
+.oa-cnt { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 700; color: #0f6f61; white-space: nowrap; }
+.oa-sadd { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px 0 11px; border-radius: 12px; border: 1.5px solid #d4b25c; background: linear-gradient(145deg, #14806f, #0c4a3f); color: #f6e7bd; font: 700 13px inherit; cursor: pointer; box-shadow: 0 4px 10px rgba(12, 74, 63, .22), inset 0 1px 0 rgba(255, 255, 255, .18); transition: filter .15s, transform .1s; }
+.oa-sadd .icon { width: 17px; height: 17px; }
+.oa-sadd:hover { filter: brightness(1.1); } .oa-sadd:active { transform: translateY(1px); }
+.oa-sadd:focus-visible, .oa-more:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.oa-more { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 42px; margin-top: 8px; border: 1px solid #cfe3da; border-radius: 12px; background: #f3f9f6; color: #0b5148; font: 700 13px inherit; cursor: pointer; transition: background .15s; }
+.oa-more[hidden] { display: none; }
+.oa-more:hover { background: #e8f3ee; }
+
+/* Danh sách OA: dòng 2 = địa chỉ (trái) + số điện thoại (phải) — nhường cả bề ngang cho dòng tên + nhãn */
+.oa-addr { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.oa-ad { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-ph { flex: none; color: var(--color-primary); font-weight: 700; white-space: nowrap; text-decoration: none; }

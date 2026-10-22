@@ -24,8 +24,8 @@ import { formatDateTime, formatDate, formatVND, colorFor, initials, escapeHtml }
 import { openCustomerDetail, openContractView } from './customers.js';
 
 const AUTO_SEND_SECTIONS = [
-  { kind: 'lai_hang_thang_auto', title: 'Báo lãi tự động hàng tháng', addLabel: '+ Thêm hợp đồng' },
-  { kind: 'lai_hang_thang_custom_day', title: 'Gửi theo ngày cụ thể', addLabel: '+ Thêm hợp đồng' },
+  { kind: 'lai_hang_thang_auto', title: 'Báo lãi tự động hàng tháng' },
+  { kind: 'lai_hang_thang_custom_day', title: 'Gửi theo ngày cụ thể' },
 ];
 const PAGE_SIZE = 20; // hiện ít trước, bấm "Xem thêm" mới tải thêm — tránh dồn cả danh sách dài gây chậm/khó kéo
 
@@ -242,7 +242,12 @@ function drawOATab(slot, admin) {
     <div id="oa-list"></div>
   `;
   slot.querySelector('#btn-add-oa').addEventListener('click', () => openAddCustomerToOAModal(admin, drawList));
-  slot.querySelector('#btn-oa-filter').addEventListener('click', () => openOAFilterModal(allowedThon, () => { updateFilterBtn(); drawList(); }));
+  slot.querySelector('#btn-oa-filter').addEventListener('click', () => openThonXomFilterModal({
+    title: 'Lọc danh sách OA', hint: 'Chọn Thôn / Xóm để chỉ xem khách ở nơi đó (chọn được nhiều).', allowedThon,
+    getState: () => ({ thon: filterThon, xom: filterXom }),
+    setState: (t, x) => { filterThon = t; filterXom = x; },
+    onChange: () => { updateFilterBtn(); drawList(); },
+  }));
   bindSearchBox(slot, 'oa-search', (v) => { oaQuery = v; drawList(); });
   updateFilterBtn();
   drawList();
@@ -285,9 +290,8 @@ function drawOATab(slot, admin) {
           <div class="row-thumb" style="background:${colorFor(customer.id)}">${initials(customer.name)}</div>
           <div class="row-main">
             <div class="row-title oa-ttl"><span class="oa-nm">${customer.name}</span>${chipsFor(customer.id)}</div>
-            <div class="row-sub">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
+            <div class="row-sub oa-addr"><span class="oa-ad">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</span>${customer.phone ? `<a class="oa-ph" href="tel:${customer.phone.replace(/\s/g, '')}" data-stop-row title="Gọi/tìm Zalo nhanh">${customer.phone}</a>` : ''}</div>
           </div>
-          ${customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" data-stop-row title="Gọi/tìm Zalo nhanh" style="color:var(--color-primary);font-weight:700;white-space:nowrap;text-decoration:none">${customer.phone}</a>` : ''}
         </div>
       `).join('') : emptyState({ iconName: 'message', title: 'Chưa có khách hàng nào', message: 'Bấm "Thêm khách hàng vào OA" ở trên, hoặc thêm ở chi tiết khách hàng (mục Khách hàng & Hợp đồng).' })}
     `;
@@ -299,12 +303,15 @@ function drawOATab(slot, admin) {
   }
 }
 
-/** Cửa sổ "Lọc" của Danh sách OA: chọn Thôn / Xóm (nhiều lựa chọn); đổi là danh sách phía sau cập nhật ngay. */
-function openOAFilterModal(allowedThon, onChange) {
+/**
+ * Cửa sổ "Lọc" Thôn / Xóm (nhiều lựa chọn) — dùng chung cho Danh sách OA và cửa sổ "Xem thêm" của Gửi tự động. Bộ lọc nằm ở nơi gọi
+ * (getState() -> { thon, xom }; setState(thon, xom)); đổi là danh sách phía sau cập nhật ngay qua onChange().
+ */
+function openThonXomFilterModal({ title, hint, allowedThon, getState, setState, onChange }) {
   openModal({
-    title: 'Lọc danh sách OA',
+    title,
     bodyHtml: `
-      <p class="text-sm text-muted mb-8">Chọn Thôn / Xóm để chỉ xem khách ở nơi đó (chọn được nhiều).</p>
+      <p class="text-sm text-muted mb-8">${hint}</p>
       <div class="filter-row" id="oa-flt-pills"></div>
     `,
     footHtml: `<button class="btn btn-outline" id="oa-flt-clear">Xóa lọc</button><button class="btn btn-primary" id="oa-flt-done" style="flex:1">Xong</button>`,
@@ -312,15 +319,13 @@ function openOAFilterModal(allowedThon, onChange) {
       const wrap = sheet.querySelector('#oa-flt-pills');
       const clearBtn = sheet.querySelector('#oa-flt-clear');
       function renderPills() {
-        wrap.innerHTML = thonXomFilterPillsHtml('oa-pill', filterThon, filterXom);
-        bindThonXomFilterPills(wrap, 'oa-pill', allowedThon,
-          () => ({ thon: filterThon, xom: filterXom }),
-          (t, x) => { filterThon = t; filterXom = x; },
-          () => { renderPills(); onChange(); });
-        clearBtn.disabled = !filterThon.length && !filterXom.length;
+        const { thon, xom } = getState();
+        wrap.innerHTML = thonXomFilterPillsHtml('flt-pill', thon, xom);
+        bindThonXomFilterPills(wrap, 'flt-pill', allowedThon, getState, setState, () => { renderPills(); onChange(); });
+        clearBtn.disabled = !thon.length && !xom.length;
       }
       renderPills();
-      clearBtn.addEventListener('click', () => { filterThon = []; filterXom = []; renderPills(); onChange(); });
+      clearBtn.addEventListener('click', () => { setState([], []); renderPills(); onChange(); });
       sheet.querySelector('#oa-flt-done').addEventListener('click', () => close());
     },
   });
@@ -439,12 +444,12 @@ function drawAutoTab(slot, admin) {
     </details>
     ${AUTO_SEND_SECTIONS.map((s) => `
       <div class="card card-pad mb-16">
-        <div class="section-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <h2 style="font-size:14px">${s.title}</h2>
-          <button class="btn btn-outline btn-sm" data-view-all="${s.kind}" style="display:none;white-space:nowrap;flex-shrink:0;margin-left:auto">Xem chi tiết</button>
+        <div class="oa-sec-h">
+          <h2>${s.title} <span class="oa-cnt" data-count="${s.kind}"></span></h2>
+          <button type="button" class="oa-sadd" data-add-kind="${s.kind}" aria-label="Thêm hợp đồng vào &quot;${s.title}&quot;">${icon('plus')}<span>Thêm</span></button>
         </div>
         <div id="auto-list-${s.kind}"></div>
-        <button class="btn btn-outline btn-sm btn-block mt-8" data-add-kind="${s.kind}">${s.addLabel}</button>
+        <button type="button" class="oa-more" data-view-all="${s.kind}" hidden><span class="oa-more-tx"></span>${icon('chevronRight', 'icon-sm')}</button>
       </div>
     `).join('')}
   `;
@@ -452,9 +457,7 @@ function drawAutoTab(slot, admin) {
   slot.querySelectorAll('[data-add-kind]').forEach((btn) => {
     btn.addEventListener('click', () => openAddAutoSendModal(btn.dataset.addKind, admin, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind))));
   });
-  // Gắn 1 LẦN duy nhất ở đây (nút "Xem chi tiết" nằm trong tiêu đề, KHÔNG bị
-  // vẽ lại mỗi lần drawSection() như danh sách bên dưới) — tránh gắn trùng
-  // nhiều listener nếu bind lại mỗi lần drawSection() chạy.
+  // Gắn 1 LẦN duy nhất ở đây (thanh "Xem thêm" nằm ngoài vùng danh sách nên KHÔNG bị vẽ lại mỗi lần drawSection()) — tránh gắn trùng listener.
   slot.querySelectorAll('[data-view-all]').forEach((btn) => {
     const kind = btn.dataset.viewAll;
     btn.addEventListener('click', () => openAutoSendListModal(kind, admin, () => drawSection(kind)));
@@ -463,16 +466,17 @@ function drawAutoTab(slot, admin) {
   function drawSection(kind) {
     const listEl = slot.querySelector(`#auto-list-${kind}`);
     const viewAllBtn = slot.querySelector(`[data-view-all="${kind}"]`);
+    const countEl = slot.querySelector(`[data-count="${kind}"]`);
     const allRows = S.listZaloAutoSendByKind(kind)
       .map((r) => ({ r, customer: S.getCustomer(r.customerId), contract: S.getContract(r.contractId) }))
       .filter((x) => x.customer && x.contract);
     const preview = allRows.slice(0, AUTO_PREVIEW_COUNT);
-    listEl.innerHTML = preview.length ? preview.map(({ r, customer, contract }) => autoSendRowHtml(kind, r, customer, contract)).join('') : `<p class="text-sm text-muted">Chưa có hợp đồng nào.</p>`;
+    if (countEl) countEl.textContent = `(${allRows.length})`; // số hợp đồng đã thêm ở mục này
+    listEl.innerHTML = preview.length ? preview.map(({ r, customer, contract }) => autoSendRowHtml(kind, r, customer, contract)).join('') : `<p class="text-sm text-muted">Chưa có hợp đồng nào — bấm "Thêm" ở góc trên để thêm.</p>`;
     bindAutoRowHandlers(listEl, kind, () => drawSection(kind));
     if (viewAllBtn) {
-      const hasMore = allRows.length > AUTO_PREVIEW_COUNT;
-      viewAllBtn.style.display = hasMore ? '' : 'none';
-      viewAllBtn.textContent = `Xem chi tiết (${allRows.length})`;
+      viewAllBtn.hidden = allRows.length <= AUTO_PREVIEW_COUNT;
+      viewAllBtn.querySelector('.oa-more-tx').textContent = `Xem thêm ${allRows.length - AUTO_PREVIEW_COUNT} hợp đồng`;
     }
   }
 }
@@ -573,7 +577,7 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
   });
 }
 
-/** Popup "Xem chi tiết" — toàn bộ danh sách của 1 mục Tầng 2, có tìm + lọc Thôn/Xóm. */
+/** Popup "Xem thêm" — toàn bộ danh sách của 1 mục Tầng 2, có thanh tìm + nút Lọc (phễu) Thôn/Xóm cùng hàng. */
 function openAutoSendListModal(kind, admin, onDone) {
   const isStaff = admin.role === 'staff';
   const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
@@ -586,8 +590,10 @@ function openAutoSendListModal(kind, admin, onDone) {
     title: section ? section.title : 'Danh sách',
     sheetClass: 'sheet-search',
     bodyHtml: `
-      ${searchBoxHtml('auto-list-search', 'Tìm theo tên khách hoặc mã hợp đồng...', '')}
-      <div class="filter-row mb-8" id="auto-list-pills"></div>
+      <div class="oa-tool">
+        <div class="oa-search">${searchBoxHtml('auto-list-search', 'Tìm tên khách, mã hợp đồng...', '')}</div>
+        <button type="button" class="oa-flt" id="auto-list-filter" title="Lọc theo Thôn / Xóm" aria-label="Lọc theo Thôn / Xóm">${icon('filter')}<span class="oa-flt-tx">Lọc</span><i class="oa-flt-n" hidden></i></button>
+      </div>
       <div id="auto-list-full" class="mt-8"></div>
     `,
     onMount(sheet) {
@@ -603,13 +609,13 @@ function openAutoSendListModal(kind, admin, onDone) {
         }
         return rows;
       }
-      function renderPills() {
-        const wrap = sheet.querySelector('#auto-list-pills');
-        wrap.innerHTML = thonXomFilterPillsHtml('auto-list-pill', pThon, pXom);
-        bindThonXomFilterPills(wrap, 'auto-list-pill', allowedThon,
-          () => ({ thon: pThon, xom: pXom }),
-          (t, x) => { pThon = t; pXom = x; },
-          () => { renderPills(); draw(); });
+      /** Số Thôn/Xóm đang chọn hiện thành chấm số trên nút Lọc; nút đổi màu khi đang lọc. */
+      function updateFilterBtn() {
+        const btn = sheet.querySelector('#auto-list-filter');
+        const n = pThon.length + pXom.length;
+        const badge = btn.querySelector('.oa-flt-n');
+        badge.textContent = n; badge.hidden = n === 0;
+        btn.classList.toggle('on', n > 0);
       }
       function refreshAll() { draw(); if (onDone) onDone(); }
       function draw() {
@@ -620,7 +626,13 @@ function openAutoSendListModal(kind, admin, onDone) {
         bindAutoRowHandlers(listEl, kind, refreshAll);
       }
       bindSearchBox(sheet, 'auto-list-search', (v) => { query = v; draw(); });
-      renderPills();
+      sheet.querySelector('#auto-list-filter').addEventListener('click', () => openThonXomFilterModal({
+        title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon,
+        getState: () => ({ thon: pThon, xom: pXom }),
+        setState: (t, x) => { pThon = t; pXom = x; },
+        onChange: () => { updateFilterBtn(); draw(); },
+      }));
+      updateFilterBtn();
       draw();
     },
   });
