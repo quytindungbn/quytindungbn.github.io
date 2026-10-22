@@ -2895,6 +2895,17 @@ cả (vô hại).
   mỗi lần). Nay chỉ một lượt tải duy nhất, vẽ lại khi có dữ liệu mới thì dùng số liệu đã có.
 - Kiểm tra bằng máy chủ giả (`scratchpad/uitest/reload_test.cjs`): bản cũ tái hiện đúng lỗi (khách 3 → 0, 5 lần chuyển trang = 5 lượt tải, bảng cân đối tải 2 lần), bản mới đều đạt.
 
+### 10.63. Chuyển menu mượt hơn: trang Khách hàng vẽ dần, tab Tư vấn không tải lại mỗi lần (chỉ sửa giao diện, KHÔNG đổi công thức, KHÔNG cần deploy hay SQL)
+
+- **Trang Khách hàng & Hợp đồng** trước đây dựng một lúc toàn bộ danh sách (~900 khách ≈ 30.000 phần tử trang) nên vào trang rất nặng (đo giả lập điện thoại: ~3 giây). Nay: vào trang chỉ vẽ ngay 30 khách đầu, phần còn lại thêm dần từng đợt phía dưới
+  (~0,5 giây); khối khách nằm xa màn hình được trình duyệt bỏ qua việc tính bố cục (`content-visibility: auto` trong `css/styles.css`, có chiều cao ước lượng theo số hợp đồng để thanh cuộn không nhảy).
+  Giao diện giữ NGUYÊN (đã so từng điểm ảnh bản cũ/bản mới ở điện thoại, máy tính, cuộn ngang: khác biệt tối đa 2/255 ở viền bo tròn). Đang cuộn giữa danh sách mà vẽ lại (đổi lọc/có dữ liệu mới) thì vẽ đủ ngay để vị trí cuộn không nhảy.
+  Nút ↓ "xuống cuối" vẽ nốt phần còn lại rồi cuộn tới đúng đáy. Mỗi nút trong danh sách không còn gắn bộ lắng nghe riêng (dùng 1 bộ chung) — bấm khách/hợp đồng/Gửi OA vẫn như cũ, cả ở cửa sổ cảnh báo ở Tổng quan.
+- **Ghi bộ nhớ máy gộp lại:** mỗi lần dữ liệu cập nhật app ghi cả kho dữ liệu (vài MB) vào máy ngay lập tức (~100 ms trở lên trên điện thoại, chặn giao diện). Nay nhiều lần cập nhật liên tiếp chỉ ghi 1 lần sau ~0,4 giây và ghi ngay khi rời/ẩn trang.
+- **Làm mới dữ liệu mà không có gì mới thì không vẽ lại trang** (so dấu vân tay dữ liệu trước/sau) — trước đây lần nào làm mới xong trang Khách hàng cũng bị vẽ lại toàn bộ.
+- **Tab "Tư vấn" (chat) không tải lại mỗi lần vào:** hiện ngay danh sách hội thoại đã có (không "Đang tải..."), chỉ tải lại ngầm khi đã cũ hơn 20 giây hoặc vừa đóng một khung chat; làm mới dữ liệu phiên khi đang ở tab này không còn kéo theo tải lại; danh sách chỉ lấy các cột cần dùng.
+- Kiểm tra: `scratchpad/uitest/perf_big.cjs` (đo thời gian vào trang với dữ liệu lớn, `THROTTLE=4` giả lập điện thoại), `pix_cmp.cjs` + `pix_diff.cjs` (so ảnh), `perf_func_test.cjs`, `ov_ledger_test.cjs`.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

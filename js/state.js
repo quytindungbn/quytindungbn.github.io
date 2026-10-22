@@ -64,9 +64,22 @@ const listeners = new Set();
 function notify() { persist(); listeners.forEach((fn) => fn()); }
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 export function getState() { return state; }
+// Ghi toàn bộ state (có thể vài MB: khách + hợp đồng + số liệu chốt các tháng) vào localStorage là thao tác ĐỒNG BỘ, chặn giao diện ~100ms+ trên
+// điện thoại — nên gộp: nhiều notify() liên tiếp chỉ ghi 1 lần sau ~0,4 giây, và ghi ngay khi rời/ẩn trang (không mất dữ liệu khi tải lại/đóng app).
+let persistTimer = null;
 function persist() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(flushPersist, 400);
+}
+function flushPersist() {
+  clearTimeout(persistTimer); persistTimer = null;
+  if (!state) return;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { console.error('Không lưu được dữ liệu', e); }
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushPersist);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPersist(); });
 }
 
 /** Vá dữ liệu cũ đã lưu trong localStorage từ bản trước — thêm field mới còn thiếu để tránh lỗi (VD: allowedXom). */
@@ -1834,8 +1847,13 @@ function scheduleRefreshRetry() {
   refreshRetryTimer = setTimeout(() => { refreshRetryTimer = null; refreshSessionData(); }, 3000 * refreshFailStreak);
 }
 
+/** Dấu vân tay dữ liệu phiên (so trước/sau khi làm mới): giống nhau nghĩa là không có gì mới — khỏi ghi bộ nhớ máy và vẽ lại cả trang (trang Khách hàng vẽ lại rất nặng). */
+const sessionFingerprint = () => JSON.stringify([state.admins, state.customers, state.contracts, state.requests, state.pushSubscribedCustomerIds,
+  state.zaloCustomers, state.zaloAutoSendList, state.zaloSendLog, state.chatUnreadCount, state.monthlySnapshots]);
+
 async function runSessionRefresh() {
   const session = state.session;
+  const fingerprintBefore = sessionFingerprint();
   const active = document.activeElement;
   const isTypingOutsideModal = active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) && !active.closest('.modal-overlay');
   const getSelf = () => (session.role === 'admin' ? getAdmin(session.id) : getCustomer(session.id));
@@ -1862,6 +1880,7 @@ async function runSessionRefresh() {
   // bảng theo session.role).
   const nowForceLogoutAt = getSelf()?.forceLogoutAt || null;
   if (nowForceLogoutAt && nowForceLogoutAt !== wasForceLogoutAt) { logout(); return; }
+  if (sessionFingerprint() === fingerprintBefore) return; // không có gì mới
   if (isTypingOutsideModal) persist(); // lưu tạm, chưa vẽ lại ngay
   else notify();
 }
@@ -2427,7 +2446,7 @@ export async function markChatRead(customerId) {
 export async function listChatConversations() {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
-  const { data, error } = await sb.from('chat_messages').select('*').order('created_at', { ascending: false }).limit(500);
+  const { data, error } = await sb.from('chat_messages').select('customer_id, sender_role, message, created_at, read_at').order('created_at', { ascending: false }).limit(500);
   if (error) throw new Error('Không tải được danh sách hội thoại, thử lại sau.');
   const map = new Map();
   for (const row of (data || [])) {

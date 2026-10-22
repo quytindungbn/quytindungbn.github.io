@@ -49,12 +49,19 @@ export function resetFilters() {
   activeStatus = 'all';
   searchQuery = '';
   lastNavKey = null;
+  lastConversations = [];
+  lastConversationsAt = 0;
 }
 
 // Danh sách hội thoại chat đã tải lần gần nhất — giữ lại để lọc theo ô tìm
 // kiếm KHÔNG cần gọi lại server mỗi lần gõ chữ (chỉ tải lại thật khi vào tab
 // hoặc vừa đóng 1 khung chat, xem renderConversationList() bên dưới).
 let lastConversations = [];
+// Lần gần nhất tải danh sách hội thoại (0 = chưa tải). Vào lại tab "Tư vấn" thì hiện NGAY danh sách đã có, chỉ tải lại ngầm khi đã cũ hơn CONV_FRESH_MS
+// (trước đây mỗi lần vào/mỗi lần dữ liệu làm mới đều hiện "Đang tải..." rồi gọi máy chủ lại từ đầu).
+let lastConversationsAt = 0;
+let conversationsPromise = null;
+const CONV_FRESH_MS = 20000;
 
 /**
  * Tab "Hỗ trợ" tải dữ liệu KIỂU BẤT ĐỒNG BỘ (khác tab "Tư vấn", vốn chỉ đọc
@@ -65,6 +72,20 @@ let lastConversations = [];
  */
 function isThisRouteActive() {
   return (location.hash || '#/').split('?')[0] === '#/admin/ho-tro';
+}
+
+/**
+ * Có dữ liệu phiên mới nhưng vẫn đứng ở trang này (xem renderApp() trong app.js): chỉ vẽ lại từ dữ liệu đã có — KHÔNG tải lại danh sách
+ * hội thoại từ máy chủ trừ khi đã cũ, không nháy "Đang tải...", không đụng ô tìm kiếm đang gõ.
+ */
+export function refresh(contentEl, filterEl, params, query) {
+  const session = S.getSession();
+  const admin = S.getAdmin(session.id);
+  const canChat = S.canManageUsers(admin.id);
+  if (!canChat) activeTab = 'requests';
+  if (!filterEl.contains(document.activeElement)) renderFilterBar(contentEl, filterEl, admin, canChat);
+  if (activeTab === 'chat') renderConversationList(contentEl, filterEl);
+  else renderRequestsList(contentEl, admin);
 }
 
 export async function render(contentEl, filterEl, params, query) {
@@ -168,15 +189,29 @@ function renderRequestsList(contentEl, admin) {
 }
 
 // ---------------- Tab "Tư vấn" (chat) ----------------
+function loadConversations() {
+  // Dùng chung một lượt tải đang chạy, không bắn nhiều lượt cùng lúc
+  if (!conversationsPromise) {
+    conversationsPromise = S.listChatConversations()
+      .then((rows) => { lastConversations = rows; lastConversationsAt = Date.now(); return rows; })
+      .finally(() => { conversationsPromise = null; });
+  }
+  return conversationsPromise;
+}
+
 async function renderConversationList(contentEl, filterEl) {
-  contentEl.innerHTML = `<div class="card card-pad text-sm text-muted" style="text-align:center">Đang tải...</div>`;
+  const haveCache = lastConversationsAt > 0;
+  if (haveCache) drawConversationList(contentEl, filterEl); // hiện ngay danh sách đã có
+  else contentEl.innerHTML = `<div class="card card-pad text-sm text-muted" style="text-align:center">Đang tải...</div>`;
+  if (haveCache && Date.now() - lastConversationsAt < CONV_FRESH_MS) return;
   try {
-    lastConversations = await S.listChatConversations();
+    await loadConversations();
   } catch (e) {
+    if (haveCache) return; // tải lại ngầm không được thì cứ giữ danh sách đang hiện
     if (isThisRouteActive()) contentEl.innerHTML = `<div class="card card-pad">${emptyState({ iconName: 'message', title: 'Không tải được', message: e.message || 'Có lỗi xảy ra, thử lại sau.' })}</div>`;
     return;
   }
-  if (!isThisRouteActive()) return;
+  if (!isThisRouteActive() || activeTab !== 'chat') return;
   drawConversationList(contentEl, filterEl);
 }
 
@@ -220,7 +255,7 @@ function drawConversationList(contentEl, filterEl) {
         // Đóng khung chat xong tải lại danh sách THẬT (khác drawConversationList()
         // khi gõ tìm kiếm) — để chấm đỏ "chưa đọc" vừa xem xong tự tắt ngay,
         // không cần rời trang rồi quay lại mới thấy đúng.
-        onClose: () => { render(contentEl, filterEl); },
+        onClose: () => { lastConversationsAt = 1; render(contentEl, filterEl); }, // đánh dấu danh sách đã cũ -> hiện bản đang có rồi tải lại ngầm
       });
     });
   });

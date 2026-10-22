@@ -75,6 +75,10 @@ function currentAdmin() {
   return S.getAdmin(session.id);
 }
 
+let ledgerDrawToken = 0;
+const LEDGER_FIRST_CHUNK = 30; // số khách vẽ ngay khi vào trang
+const LEDGER_NEXT_CHUNK = 80; // số khách thêm mỗi đợt sau đó
+
 export function render(contentEl, filterEl) {
   const admin = currentAdmin();
   const isStaff = admin.role === 'staff';
@@ -303,9 +307,14 @@ export function render(contentEl, filterEl) {
     const totalContracts = enriched.reduce((s, e) => s + e.contracts.length, 0);
     const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);
 
+    // Danh sách dài hàng trăm/nghìn khách: vào trang chỉ vẽ ngay LỚP ĐẦU để hiện tức thì, phần còn lại thêm dần từng đợt phía dưới (người dùng chưa cuộn
+    // tới nên không thấy khác biệt). Đang cuộn giữa danh sách (vẽ lại do dữ liệu mới/đổi lọc) thì vẽ đủ ngay như trước để vị trí cuộn không nhảy.
+    const drawToken = ++ledgerDrawToken;
+    const progressive = window.scrollY < 40 && enriched.length > LEDGER_FIRST_CHUNK;
+    const firstGroups = progressive ? enriched.slice(0, LEDGER_FIRST_CHUNK) : enriched;
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
-      ${enriched.length ? customerLedgerHtml(enriched, canManageZalo, { framed: true }) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
+      ${enriched.length ? customerLedgerHtml(firstGroups, canManageZalo, { framed: true }) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
       ${enriched.length ? `<nav class="customer-page-jump" aria-label="Di chuyển trong danh sách khách hàng">
         <button type="button" data-jump="top" title="Lên đầu trang" aria-label="Lên đầu trang">↑</button>
         <button type="button" data-jump="bottom" title="Xuống cuối trang" aria-label="Xuống cuối trang">↓</button>
@@ -315,17 +324,56 @@ export function render(contentEl, filterEl) {
     const filterSumEl = filterEl.querySelector('.filter-sum');
     if (filterSumEl) filterSumEl.innerHTML = `${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong>`;
     bindCustomerLedger(contentEl, { readOnly: isStaff });
+    // Thêm dần phần còn lại của danh sách (mỗi đợt một khung hình); trang khác/vẽ lại thì tự dừng.
+    let restGroups = progressive ? enriched.slice(LEDGER_FIRST_CHUNK) : [];
+    const ledgerEl = contentEl.querySelector('.customer-ledger');
+    const appendNextChunk = () => {
+      if (!restGroups.length || drawToken !== ledgerDrawToken || !ledgerEl?.isConnected) { restGroups = []; return; }
+      ledgerEl.insertAdjacentHTML('beforeend', customerLedgerGroupsHtml(restGroups.slice(0, LEDGER_NEXT_CHUNK), canManageZalo));
+      restGroups = restGroups.slice(LEDGER_NEXT_CHUNK);
+      if (restGroups.length) requestAnimationFrame(appendNextChunk);
+    };
+    const appendAllNow = () => { while (restGroups.length) appendNextChunk(); };
+    if (restGroups.length) requestAnimationFrame(appendNextChunk);
     contentEl.querySelectorAll('.customer-page-jump [data-jump]').forEach((button) => {
       button.addEventListener('click', () => {
-        window.scrollTo({
-          top: button.dataset.jump === 'top' ? 0 : document.documentElement.scrollHeight,
-          behavior: 'smooth',
-        });
+        if (button.dataset.jump === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+        // Xuống cuối: vẽ nốt phần còn lại rồi cuộn; các khối ở xa được vẽ lười (content-visibility) nên chiều cao còn dịch chuyển khi tới nơi — cuộn lại vài lần cho tới đúng đáy.
+        appendAllNow();
+        let tries = 0;
+        const goBottom = () => {
+          window.scrollTo({ top: document.documentElement.scrollHeight, behavior: tries ? 'auto' : 'smooth' });
+          if (++tries < 4) setTimeout(() => { if (window.innerHeight + window.scrollY < document.documentElement.scrollHeight - 4) goBottom(); }, 450);
+        };
+        goBottom();
       });
     });
   }
   draw();
   window.__qtdRedrawCustomers = draw;
+}
+
+/** Các khối khách hàng (mỗi khách một khối kèm hợp đồng) — tách riêng để trang Khách hàng vẽ dần từng đợt, xem draw(). */
+export function customerLedgerGroupsHtml(groups, canManageZalo) {
+  return groups.map(({ c, contracts, totalBalance }) => {
+        const location = [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn';
+        const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
+        return `<section class="customer-ledger-group" style="--g-n:${contracts.length}">
+          <div class="customer-ledger-person">
+            <button type="button" class="customer-ledger-person-main" data-id="${c.id}" aria-label="Xem khách hàng ${escapeHtml(c.name)}">
+              <span class="customer-ledger-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}</span>
+              <span class="customer-ledger-identity">
+                <span class="customer-ledger-name">${escapeHtml(c.name)}</span>
+                <span class="customer-ledger-address">${escapeHtml(location)}</span>
+              </span>
+              ${contracts.length > 1 ? `<span class="customer-ledger-total">Tổng dư nợ: <strong>${formatVND(totalBalance)}</strong></span>` : ''}
+            </button>
+            ${dialPhone ? `<a class="customer-ledger-call" href="tel:${escapeHtml(dialPhone)}" aria-label="Gọi ${escapeHtml(c.name)}" title="Gọi ${escapeHtml(c.phone)}">${icon('phone', 'icon-sm')} Gọi</a>` : ''}
+            <span class="customer-ledger-dots">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
+          </div>
+          ${contracts.map((ct) => contractLedgerRow(ct, canManageZalo)).join('')}
+        </section>`;
+      }).join('');
 }
 
 /** Cùng một bảng hợp đồng cho trang Khách hàng và hai danh sách cảnh báo ở Tổng quan. */
@@ -341,25 +389,7 @@ export function customerLedgerHtml(groups, canManageZalo, { framed = false } = {
       </div>
     </div>
     <div class="customer-ledger">
-      ${groups.map(({ c, contracts, totalBalance }) => {
-        const location = [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn';
-        const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
-        return `<section class="customer-ledger-group">
-          <div class="customer-ledger-person">
-            <button type="button" class="customer-ledger-person-main" data-id="${c.id}" aria-label="Xem khách hàng ${escapeHtml(c.name)}">
-              <span class="customer-ledger-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}</span>
-              <span class="customer-ledger-identity">
-                <span class="customer-ledger-name">${escapeHtml(c.name)}</span>
-                <span class="customer-ledger-address">${escapeHtml(location)}</span>
-              </span>
-              ${contracts.length > 1 ? `<span class="customer-ledger-total">Tổng dư nợ: <strong>${formatVND(totalBalance)}</strong></span>` : ''}
-            </button>
-            ${dialPhone ? `<a class="customer-ledger-call" href="tel:${escapeHtml(dialPhone)}" aria-label="Gọi ${escapeHtml(c.name)}" title="Gọi ${escapeHtml(c.phone)}">${icon('phone', 'icon-sm')} Gọi</a>` : ''}
-            <span class="customer-ledger-dots">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
-          </div>
-          ${contracts.map((ct) => contractLedgerRow(ct, canManageZalo)).join('')}
-        </section>`;
-      }).join('')}
+      ${customerLedgerGroupsHtml(groups, canManageZalo)}
     </div>
   </div>`;
 }
@@ -374,17 +404,18 @@ export function bindCustomerLedger(root, { readOnly = false } = {}) {
       ledgerColumns.style.transform = `translateX(${-ledger.scrollLeft}px)`;
     }, { passive: true });
   }
-  wrap.querySelectorAll('[data-id]').forEach((row) => {
-    row.addEventListener('click', () => openCustomerDetail(row.dataset.id, { readOnly }));
-  });
-  wrap.querySelectorAll('[data-view-contract]').forEach((row) => {
-    row.addEventListener('click', (e) => {
+  // MỘT bộ lắng nghe cho cả danh sách (thay vì gắn riêng từng nút) — danh sách dài hàng nghìn nút, và các khối thêm sau (vẽ dần) tự dùng được.
+  wrap.addEventListener('click', (e) => {
+    const sendButton = e.target.closest('[data-send-oa]');
+    if (sendButton && wrap.contains(sendButton)) { sendManualOa(sendButton.dataset.sendOa, sendButton); return; }
+    const contractRow = e.target.closest('[data-view-contract]');
+    if (contractRow && wrap.contains(contractRow)) {
       e.stopPropagation();
-      openContractView(row.dataset.customerId, S.getContract(row.dataset.viewContract), { readOnly });
-    });
-  });
-  wrap.querySelectorAll('[data-send-oa]').forEach((button) => {
-    button.addEventListener('click', () => sendManualOa(button.dataset.sendOa, button));
+      openContractView(contractRow.dataset.customerId, S.getContract(contractRow.dataset.viewContract), { readOnly });
+      return;
+    }
+    const personRow = e.target.closest('[data-id]');
+    if (personRow && wrap.contains(personRow)) openCustomerDetail(personRow.dataset.id, { readOnly });
   });
   // Menu chuột phải gắn vào đúng dòng hợp đồng, không gắn vào tên khách hàng:
   // một khách có thể có nhiều món và mỗi giấy báo phải lấy đúng món được chọn.

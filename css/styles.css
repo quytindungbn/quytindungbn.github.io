@@ -644,6 +644,9 @@ svg { display: block; }
 .customer-ledger-column-main span, .customer-ledger-contract-main > span, .customer-ledger-code { min-width: 0; }
 .customer-ledger-column-main span:not(:first-child), .customer-ledger-contract-main > span { padding-left: 8px; }
 .customer-ledger-group + .customer-ledger-group { border-top: 8px solid #e6efea; }
+/* Danh sách hàng nghìn khách: khối nào đang ở xa màn hình thì trình duyệt bỏ qua việc tính bố cục/vẽ (nhanh hơn nhiều khi vào trang, cuộn, đổi lọc); chiều cao ước lượng (theo số hợp đồng, --g-n) dùng cho tới khi khối hiện ra thật để thanh cuộn không nhảy. */
+.customer-ledger-group { content-visibility: auto; contain-intrinsic-size: auto calc(56px + var(--g-n, 1) * 55px); }
+@media (max-width: 960px) { .customer-ledger-group { contain-intrinsic-size: auto calc(26px + var(--g-n, 1) * 92px); } }
 .customer-ledger-person {
   width: 100%; display: flex; align-items: center; gap: 9px;
   background: var(--surface); padding: 12px 16px 10px;
