@@ -369,7 +369,6 @@ export function customerLedgerGroupsHtml(groups, canManageZalo) {
               ${contracts.length > 1 ? `<span class="customer-ledger-total">Tổng dư nợ: <strong>${formatVND(totalBalance)}</strong></span>` : ''}
             </button>
             ${dialPhone ? `<a class="customer-ledger-call" href="tel:${escapeHtml(dialPhone)}" aria-label="Gọi ${escapeHtml(c.name)}" title="Gọi ${escapeHtml(c.phone)}">${icon('phone', 'icon-sm')} Gọi</a>` : ''}
-            <span class="customer-ledger-dots">${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</span>
           </div>
           ${contracts.map((ct) => contractLedgerRow(ct, canManageZalo)).join('')}
         </section>`;
@@ -702,6 +701,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       <div class="oc-line"><span>CCCD</span><b>${c.cccd}</b></div>
       <div class="oc-line"><span>SĐT</span><b>${c.phone ? `<a href="tel:${c.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${c.phone}</a>` : '—'}</b></div>
       <div class="oc-line" style="align-items:flex-start"><span>Địa chỉ</span><b style="text-align:right;max-width:65%">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || '—'}</b></div>
+      <div class="oc-line"><span>Đăng nhập · Thông báo</span><b>${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</b></div>
       ${canManageZalo ? `<div class="oc-line" id="oa-status-line"><span>Danh sách OA</span><b style="color:${inZaloList ? 'var(--success)' : 'var(--text-muted)'}">${inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}</b></div>` : ''}
       ${c.mustChangePassword && c.tempPassword ? `
       <div class="oc-line"><span>Mật khẩu hiện tại</span><b style="color:var(--color-primary)">${c.tempPassword}</b></div>
