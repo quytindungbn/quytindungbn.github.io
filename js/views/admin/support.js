@@ -1,8 +1,6 @@
 import * as S from '../../state.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
-import { openModal } from '../../components/modal.js';
-import { icon } from '../../icons.js';
+import { statusBadge, emptyState, openPicker, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { toast } from '../../components/toast.js';
 import { openChatPanel, DEFAULT_CHAT_TITLE } from '../../components/chatPanel.js';
 import { openCustomerDetail } from './customers.js';
@@ -95,12 +93,10 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
       <button data-tab="requests" class="${activeTab === 'requests' ? 'active' : ''}">Hỗ trợ${reqUnread ? `<span class="tab-badge">${reqUnread}</span>` : ''}</button>
       <button data-tab="chat" class="${activeTab === 'chat' ? 'active' : ''}">Tư vấn${chatUnread ? `<span class="tab-badge">${chatUnread}</span>` : ''}</button>
     </div>` : '';
-  const reqAll = scopedRequests(admin);
-  const cnt = (id) => (id === 'all' ? reqAll.length : reqAll.filter((r) => r.status === id).length);
   const subFilterHtml = activeTab === 'requests' ? `
-    <div class="sp-flt">
-      <button class="${activeStatus === 'all' ? 'active' : ''}" data-s="all">Tất cả<em>${cnt('all')}</em></button>
-      ${S.REQUEST_STATUS.map((s) => `<button class="${activeStatus === s.id ? 'active' : ''}" data-s="${s.id}">${s.label}<em>${cnt(s.id)}</em></button>`).join('')}
+    <div class="chip-row" style="padding:10px 14px">
+      <button class="chip ${activeStatus === 'all' ? 'active' : ''}" data-s="all">Tất cả</button>
+      ${S.REQUEST_STATUS.map((s) => `<button class="chip ${activeStatus === s.id ? 'active' : ''}" data-s="${s.id}">${s.label}</button>`).join('')}
     </div>` : `
     <div style="padding:10px 14px">${searchBoxHtml('support-search', 'Tìm theo tên/SĐT khách hàng...', searchQuery)}</div>`;
 
@@ -121,119 +117,52 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
   }
 }
 
-// ---------------- Tab "Hỗ trợ" (yêu cầu tư vấn/vay mới) — kiểu hộp thư gọn ----------------
-// Danh sách mỗi yêu cầu 3 dòng (tên + thời gian / loại + số tiền + kỳ hạn / nội dung + trạng thái); bấm vào một dòng để xem đủ thông tin,
-// đổi trạng thái (một chạm), gọi khách, cấp lại mật khẩu. Máy tính: chi tiết hiện ngay bên phải; điện thoại: khung trượt từ dưới lên.
-const REQ_SHORT = { vay_moi: 'Vay mới', tu_van: 'Tư vấn', quen_mat_khau: 'Cấp lại mật khẩu' };
-let selectedRequestId = null; // yêu cầu đang xem ở khung chi tiết bên phải (máy tính)
-
-/** Yêu cầu trong phạm vi của người đang xem (nhân viên "chỉ xem" chỉ thấy khách thuộc địa bàn được gán), mới nhất trước. */
-function scopedRequests(admin, status = 'all') {
-  let list = S.listRequests({ status });
-  if (admin.role === 'staff') {
+// ---------------- Tab "Hỗ trợ" (yêu cầu tư vấn/vay mới) ----------------
+function renderRequestsList(contentEl, admin) {
+  const isStaff = admin.role === 'staff';
+  let list = S.listRequests({ status: activeStatus });
+  if (isStaff) {
     const allowedIds = new Set(S.listCustomers({ adminId: admin.id }).map((c) => c.id));
     list = list.filter((r) => allowedIds.has(r.customerId));
   }
-  return list;
-}
-
-/** "5 phút trước" / "2 giờ trước" / "Hôm qua" / "19/10". */
-function timeAgo(iso) {
-  const t = new Date(iso);
-  const mins = Math.max(0, Math.round((Date.now() - t.getTime()) / 60000));
-  if (mins < 1) return 'Vừa xong';
-  if (mins < 60) return `${mins} phút trước`;
-  if (mins < 24 * 60 && t.toDateString() === new Date().toDateString()) return `${Math.round(mins / 60)} giờ trước`;
-  if (t.toDateString() === new Date(Date.now() - 86400000).toDateString()) return 'Hôm qua';
-  return `${String(t.getDate()).padStart(2, '0')}/${String(t.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function requestRowHtml(r, selected) {
-  const cust = S.getCustomer(r.customerId);
-  const name = cust ? cust.name : '—';
-  const status = S.REQUEST_STATUS_MAP[r.status];
-  return `
-    <div class="sp-row ${r.status === 'moi' ? 'un' : ''} ${selected ? 'act' : ''}" data-open="${r.id}">
-      <div class="row-thumb" style="background:${colorFor(r.customerId)}">${initials(name)}</div>
-      <div class="sp-mid">
-        <div class="sp-l1"><b>${escapeHtml(name)}</b><time>${timeAgo(r.createdAt)}</time></div>
-        <div class="sp-l2"><span>${REQ_SHORT[r.type] || ''}</span>${r.amount ? `<b>${formatVND(r.amount)}</b>` : ''}${r.termMonths ? `<span>· ${r.termMonths} tháng</span>` : ''}</div>
-        <div class="sp-l3"><span class="sp-why">${escapeHtml(r.purpose || r.note || '')}</span><span class="sp-stt ${r.status}">${r.status === 'moi' ? '<i></i>' : ''}${status ? status.label : ''}</span></div>
+  contentEl.innerHTML = list.length ? list.map((r) => {
+    const cust = S.getCustomer(r.customerId);
+    return `
+    <div class="card order-card" data-id="${r.id}">
+      <div class="oc-top">
+        <span class="oc-code">${cust ? cust.name : '—'} · ${cust ? cust.phone : ''}</span>
+        ${statusBadge(S.REQUEST_STATUS_MAP[r.status])}
+      </div>
+      <div class="oc-line"><span>Loại</span><b>${S.REQUEST_TYPE.find((t) => t.id === r.type)?.label}</b></div>
+      ${r.amount ? `<div class="oc-line"><span>Số tiền</span><b>${formatVND(r.amount)}</b></div>` : ''}
+      <div class="oc-line"><span>Nội dung</span><b>${r.note || r.purpose || '—'}</b></div>
+      <div class="oc-line"><span>Ngày gửi</span><b>${formatDateTime(r.createdAt)}</b></div>
+      <div class="oc-foot">
+        ${r.type === 'quen_mat_khau' && cust && !isStaff ? `<button class="link-more" data-reset-pw="${cust.id}" style="border:none;background:none;cursor:pointer;margin-right:12px">Cấp lại mật khẩu →</button>` : ''}
+        <button class="link-more" data-update="${r.id}" style="border:none;background:none;cursor:pointer">Cập nhật trạng thái →</button>
       </div>
     </div>`;
-}
+  }).join('') : `<div class="card card-pad">${emptyState({ iconName: 'clipboard', title: 'Không có yêu cầu', message: 'Chưa có yêu cầu tư vấn nào phù hợp.' })}</div>`;
 
-function requestDetailHtml(r, admin) {
-  const cust = S.getCustomer(r.customerId);
-  const name = cust ? cust.name : '—';
-  const addr = cust ? [cust.xom, cust.thon].filter(Boolean).join(', ') : '';
-  const kv = (k, v) => (v ? `<div class="sp-kv"><span>${k}</span><b>${v}</b></div>` : '');
-  const typeLabel = S.REQUEST_TYPE.find((t) => t.id === r.type)?.label || '';
-  return `
-    <div class="sp-dh">
-      <div class="row-thumb" style="background:${colorFor(r.customerId)}">${initials(name)}</div>
-      <div class="sp-mid"><div class="sp-nm">${escapeHtml(name)}</div><div class="sp-sub">${escapeHtml(addr)}</div></div>
-      ${cust && cust.phone ? `<a class="btn btn-outline btn-sm sp-call" href="tel:${cust.phone.replace(/\s/g, '')}">${icon('phone', 'icon-sm')}<span>${escapeHtml(cust.phone)}</span></a>` : ''}
-    </div>
-    <div class="sp-lab">Trạng thái</div>
-    <div class="sp-seg3" data-req="${r.id}">${S.REQUEST_STATUS.map((st) => `<button type="button" class="${r.status === st.id ? 'on' : ''}" data-set="${st.id}">${st.label}</button>`).join('')}</div>
-    <div class="sp-kvs">
-      ${kv('Loại', typeLabel)}${kv('Số tiền', r.amount ? formatVND(r.amount) : '')}${kv('Kỳ hạn', r.termMonths ? `${r.termMonths} tháng` : '')}
-      ${kv('Nội dung', escapeHtml(r.purpose))}${kv('Lời nhắn', r.note ? `“${escapeHtml(r.note)}”` : '')}${kv('Gửi lúc', formatDateTime(r.createdAt))}
-    </div>
-    ${r.type === 'quen_mat_khau' && cust && admin.role !== 'staff' ? `<button type="button" class="btn btn-outline btn-block" data-reset-pw="${cust.id}">${icon('key', 'icon-sm')} Cấp lại mật khẩu cho khách</button>` : ''}`;
-}
-
-/** Gắn sự kiện cho phần chi tiết (đổi trạng thái 1 chạm, cấp lại mật khẩu) — dùng cho cả khung bên phải lẫn khung trượt trên điện thoại. */
-function bindRequestDetail(root) {
-  root.querySelectorAll('[data-reset-pw]').forEach((btn) => {
+  contentEl.querySelectorAll('[data-reset-pw]').forEach((btn) => {
     btn.addEventListener('click', () => openCustomerDetail(btn.dataset.resetPw));
   });
-  root.querySelectorAll('[data-set]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const group = btn.closest('[data-req]');
-      if (!group || btn.classList.contains('on')) return;
-      try {
-        await S.updateRequestStatus(group.dataset.req, btn.dataset.set);
-        group.querySelectorAll('[data-set]').forEach((b) => b.classList.toggle('on', b === btn));
-        toast('Đã cập nhật trạng thái', 'success');
-      } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-    });
-  });
-}
-
-function renderRequestsList(contentEl, admin) {
-  const list = scopedRequests(admin, activeStatus);
-  if (!list.length) {
-    contentEl.innerHTML = `<div class="card card-pad">${emptyState({ iconName: 'clipboard', title: 'Không có yêu cầu', message: 'Chưa có yêu cầu tư vấn nào phù hợp.' })}</div>`;
-  } else {
-    if (!list.some((r) => r.id === selectedRequestId)) selectedRequestId = list[0].id;
-    const wide = window.matchMedia('(min-width: 1100px)').matches;
-    const selected = list.find((r) => r.id === selectedRequestId);
-    contentEl.innerHTML = `
-      <div class="sp-split">
-        <div class="card sp-list">${list.map((r) => requestRowHtml(r, wide && r.id === selectedRequestId)).join('')}</div>
-        <div class="card sp-detail" id="sp-detail">${requestDetailHtml(selected, admin)}</div>
-      </div>`;
-    const detailEl = contentEl.querySelector('#sp-detail');
-    bindRequestDetail(detailEl);
-    contentEl.querySelectorAll('[data-open]').forEach((row) => {
-      row.addEventListener('click', () => {
-        const r = list.find((x) => x.id === row.dataset.open);
-        if (!r) return;
-        selectedRequestId = r.id;
-        if (window.matchMedia('(min-width: 1100px)').matches) {
-          contentEl.querySelectorAll('.sp-row').forEach((el) => el.classList.toggle('act', el === row));
-          detailEl.innerHTML = requestDetailHtml(r, admin);
-          bindRequestDetail(detailEl);
-        } else {
-          openModal({ title: 'Chi tiết yêu cầu', bodyHtml: `<div class="sp-sheet">${requestDetailHtml(r, admin)}</div>`, onMount(sheet) { bindRequestDetail(sheet); } });
-        }
+  contentEl.querySelectorAll('[data-update]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      openPicker({
+        title: 'Cập nhật trạng thái', options: S.REQUEST_STATUS.map((s) => ({ value: s.id, label: s.label })),
+        selected: null,
+        onSelect: async (val) => {
+          try { await S.updateRequestStatus(btn.dataset.update, val); toast('Đã cập nhật trạng thái', 'success'); }
+          catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+        },
       });
     });
-  }
+  });
 
-  // Danh sách hiện đủ các yêu cầu ngay tại đây (xem tiêu đề từng dòng) — coi như admin ĐÃ ĐỌC ngay khi tab này hiện ra, tự tắt chấm đỏ. Không chặn/chờ gì (chạy ngầm).
+  // Danh sách đã hiện TRỌN VẸN nội dung từng yêu cầu ngay tại đây (không như
+  // tab "Tư vấn" (chat), chỉ hiện xem trước) — nên coi như admin ĐÃ ĐỌC ngay
+  // khi tab này hiện ra, tự tắt chấm đỏ. Không chặn/chờ gì (chạy ngầm).
   S.markAllRequestsRead(admin.id).catch(() => {});
 }
 
