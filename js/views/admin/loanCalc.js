@@ -12,7 +12,7 @@ import { buildLoanCalcPdf, shareOrDownload } from '../../lib/loanCalcPdf.js';
 // Trang "Tính lãi vay" (menu Công cụ) — tính nhanh lãi và số gốc + lãi phải trả từng tháng cho một khoản vay, không lưu vào hợp đồng.
 // Hai cách: theo THỜI HẠN vay (chọn cách trả) hoặc theo SỐ TIỀN TRẢ HÀNG THÁNG (ra số tháng). Lãi tính 365 ngày/năm theo số ngày thực tế
 // từng tháng, làm tròn nghìn đồng (xem js/lib/loanCalc.js). Có nút xuất Excel và in. Ô nhập để trống (không có số liệu mẫu); kết quả CHỈ hiện
-// khi bấm "Tính lãi" (hoặc Enter), sửa bất kỳ ô nào thì kết quả cũ được xóa để không hiện số lệch với ô nhập. Mọi ô nhập giữ nguyên khi có
+// khi bấm "Tính lãi" (hoặc Enter); sửa ô nhập thì kết quả cũ được xóa để không hiện số lệch với ô nhập, còn đổi cách trả thì giữ số liệu và tính lại ngay. Mọi ô nhập giữ nguyên khi có
 // dữ liệu mới (refresh() không làm gì) và khi đổi tab.
 // ------------------------------------------------------------
 
@@ -166,13 +166,17 @@ async function sharePdf(btn) {
   }
 }
 
-export function render(contentEl) {
+// Tham số thứ hai của app.js là phần tử bộ lọc (không dùng ở trang này); chỉ { recalc: true } do chính trang này gọi lại khi đổi tab mới có nghĩa.
+export function render(contentEl, opts) {
+  const recalc = !!(opts && opts.recalc === true);
   contentEl.innerHTML = pageHtml();
   const out = contentEl.querySelector('#lc-out');
   lastCalc = null;
+  let shown = false; // đang hiện kết quả (hoặc thông báo thiếu số liệu) sau khi bấm "Tính lãi"
 
-  // Sửa ô nhập hoặc đổi lựa chọn: xóa kết quả cũ, đợi bấm "Tính lãi" mới hiện lại.
+  // Sửa ô nhập: xóa kết quả cũ, đợi bấm "Tính lãi" mới hiện lại. (Đổi cách trả thì giữ nguyên số liệu và tính lại ngay, xem redoIfShown.)
   const clearOut = () => {
+    shown = false;
     lastCalc = null;
     out.innerHTML = '';
     const hint = contentEl.querySelector('#lc-hint');
@@ -180,6 +184,7 @@ export function render(contentEl) {
   };
 
   const update = () => {
+    shown = true;
     const calc = calculate();
     lastCalc = calc.error ? null : calc;
     out.innerHTML = outHtml(calc);
@@ -228,14 +233,18 @@ export function render(contentEl) {
   contentEl.querySelector('#lc-cal').addEventListener('click', openCalendar);
   if (window.matchMedia('(pointer: coarse)').matches) { dateEl.readOnly = true; dateEl.addEventListener('click', openCalendar); }
 
-  contentEl.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { if (st.tab !== b.dataset.tab) { st.tab = b.dataset.tab; render(contentEl); } }));
-  contentEl.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', () => { st.method = b.dataset.method; setChecked(contentEl, '[data-method]', 'method', st.method); clearOut(); }));
-  contentEl.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => { st.kind = b.dataset.kind; setChecked(contentEl, '[data-kind]', 'kind', st.kind); clearOut(); }));
+  // Đã bấm "Tính lãi" rồi mà đổi cách trả: giữ nguyên số liệu đã nhập, tính lại ngay theo cách mới. Chưa bấm thì chưa hiện gì.
+  const redoIfShown = () => { if (shown) update(); };
+  // Đổi sang cách tính kia: số liệu dùng chung (số tiền vay, lãi suất, ngày vay) giữ nguyên; đã có kết quả thì tính lại ngay nếu đủ số liệu, thiếu thì để trống chờ nhập.
+  contentEl.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { if (st.tab !== b.dataset.tab) { const had = shown; st.tab = b.dataset.tab; render(contentEl, { recalc: had }); } }));
+  contentEl.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', () => { st.method = b.dataset.method; setChecked(contentEl, '[data-method]', 'method', st.method); redoIfShown(); }));
+  contentEl.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => { st.kind = b.dataset.kind; setChecked(contentEl, '[data-kind]', 'kind', st.kind); redoIfShown(); }));
   contentEl.querySelector('#lc-reset').addEventListener('click', () => { st = { ...DEFAULTS(), tab: st.tab }; render(contentEl); });
   contentEl.querySelector('#lc-go').addEventListener('click', () => {
     update();
     if (window.matchMedia('(max-width: 899px)').matches) out.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+  if (recalc && !calculate().error) update();
 }
 
 function setChecked(root, selector, key, value) {
