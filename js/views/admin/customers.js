@@ -838,7 +838,7 @@ function contractLedgerRow(ct, canManageZalo) {
         <span class="customer-ledger-days"><strong>${interestDays}</strong> ngày</span>
         <span class="customer-ledger-interest">${formatVND(interest)}</span>
       </button>
-      ${oa ? `<button type="button" class="btn btn-outline btn-sm customer-ledger-oa" data-send-oa="${ct.id}" title="${escapeHtml(oaReason)}" aria-label="Gửi OA cho hợp đồng ${escapeHtml(ct.code)}" ${!oa.inZaloList || oa.cooldownDaysLeft > 0 || manualOaSending.has(ct.id) ? 'disabled' : ''}>Gửi OA</button>` : ''}
+      ${oa ? `<button type="button" class="btn btn-outline btn-sm customer-ledger-oa" data-send-oa="${ct.id}" title="${escapeHtml(oaReason)}" aria-label="Gửi OA cho hợp đồng ${escapeHtml(ct.code)}" ${!oa.inZaloList || oa.cooldownDaysLeft > 0 || manualOaSending.has(ct.id) ? 'disabled' : ''}>${icon('send', 'icon-sm')}<span>Gửi OA</span></button>` : ''}
     </div>`;
 }
 

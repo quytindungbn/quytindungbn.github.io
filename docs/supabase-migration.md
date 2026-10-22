@@ -2921,6 +2921,14 @@ cả (vô hại).
 - **Thêm hợp đồng vào gửi tự động** chỉ liệt kê khách thuộc địa bàn được cấp (Danh sách OA vẫn liệt kê toàn bộ như mục 10.11 — máy chủ vốn đã từ chối thêm khách ngoài địa bàn, nay giao diện cũng không cho chọn nữa). Chọn Xóm mà chưa chọn Thôn thì không lẫn Xóm trùng tên ở Thôn khác.
 - Hàm mới ở `js/state.js`: `isCustomerInTerritory`, `territoryThonList`, `territoryXomList`. Kiểm tra: `scratchpad/uitest/territory_test.cjs` (bản cũ tái hiện đúng lỗi, bản mới đạt).
 
+### 10.66. Trang Khách hàng: khung nổi khối, khe giữa hai khách có viền + bóng, nút Gửi OA nền trắng; sửa chữ hàng tab Quản lý OA (chỉ giao diện, KHÔNG cần deploy hay SQL)
+
+- **Khung danh sách khách hàng** (`.customer-ledger-wrap.is-framed`): viền xanh đậm 1,5px, bo góc lớn, đổ bóng hai lớp ngắn + vạch sáng mép trên để nổi lên như một tảng; **khe giữa hai khách giữ rộng 8px** nhưng có viền đậm hai mép và bóng đổ xuống từ cả hai phía (vẽ bằng `::before` của khối khách). Chỉ trang Khách hàng; hai danh sách ở Tổng quan không đổi.
+- **Vạch dọc** ngăn giữa số tiền và nút Gửi OA (chỉ khi tài khoản có nút Gửi OA). Bảng trên máy tính hẹp từ 1120px xuống 1040px để laptop 1366px thấy đủ cột Gửi OA không phải kéo ngang.
+- **Nút Gửi OA** nền trắng, biểu tượng máy bay giấy + chữ xanh ngọc, viền xanh dịu, bóng nhẹ; chưa gửi được thì xám nhạt.
+- **Hàng tab Quản lý OA**: khai báo `font: 700 11.5px/1 inherit` sai cú pháp (từ khóa `inherit` không được dùng trong `font` rút gọn) nên trình duyệt bỏ cả dòng, chữ tab rơi về mặc định (mảnh, 13px). Nay khai báo đúng: font Inter, tab đang chọn 700, các tab khác 600.
+  Còn 5 chỗ khác ở Quản lý OA mắc cùng lỗi cú pháp (`.oa-ban-go`, `.oa-flt`, `.oa-sadd`, `.oa-more`, `.oa-cfg-row select/input`) — chưa sửa, chờ duyệt kiểu chữ.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
