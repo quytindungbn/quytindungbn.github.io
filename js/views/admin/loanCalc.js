@@ -6,7 +6,7 @@ import { formatDate, formatVND, parseViDate, maskViDate, toDateInputValue, escap
 import { scheduleByTerm, scheduleByPayment } from '../../lib/loanCalc.js';
 import { summaryItems, loanCalcFileName, buildLoanCalcXlsx, printLoanCalc } from '../../lib/loanCalcExport.js';
 import { downloadBlob, XLSX_MIME } from '../../lib/xlsxWrite.js';
-import { buildLoanCalcPdf, shareOrDownload } from '../../lib/loanCalcPdf.js';
+import { buildLoanCalcPdf, shareOrDownload, PDF_MIME } from '../../lib/loanCalcPdf.js';
 
 // ------------------------------------------------------------
 // Trang "Tính lãi vay" (menu Công cụ) — tính nhanh lãi và số gốc + lãi phải trả từng tháng cho một khoản vay, không lưu vào hợp đồng.
@@ -109,7 +109,7 @@ function outHtml(calc) {
   return `
     <div class="lc-sum">${tilesHtml(calc.inputs, calc.result)}</div>
     <section class="lux-card"><h3 class="lux-h"><span>Bảng trả hàng tháng</span>
-      <span class="lux-h-end lc-tools"><button type="button" class="lc-tool" id="lc-xlsx">${icon('download', 'icon-sm')}<span>Xuất Excel</span></button><button type="button" class="lc-tool" id="lc-print">${icon('printer', 'icon-sm')}<span>In</span></button><button type="button" class="lc-tool" id="lc-share">${icon('share', 'icon-sm')}<span>Chia sẻ</span></button></span></h3>
+      <span class="lux-h-end lc-tools"><button type="button" class="lc-tool" id="lc-export" aria-haspopup="menu" aria-expanded="false">${icon('download', 'icon-sm')}<span>Xuất file</span>${icon('chevronDown', 'icon-sm')}</button><button type="button" class="lc-tool" id="lc-print">${icon('printer', 'icon-sm')}<span>In</span></button><button type="button" class="lc-tool" id="lc-share">${icon('share', 'icon-sm')}<span>Chia sẻ</span></button></span></h3>
       <div class="lc-tw">${tableHtml(calc.result)}</div></section>
     <p class="lc-note">Lãi tính theo số ngày thực tế của từng kỳ, 365 ngày một năm: lãi = dư nợ × lãi suất × số ngày ÷ 365, mỗi kỳ làm tròn đến nghìn đồng. Kết quả chỉ để tham khảo, không lưu vào hợp đồng.</p>`;
 }
@@ -149,6 +149,69 @@ export function renderHeader(headerEl) {
 
 // Ô nhập được giữ nguyên khi có dữ liệu mới từ máy chủ (xem renderApp() trong app.js) — không vẽ lại gì cả.
 export function refresh() {}
+
+let closeExportMenu = null;
+
+/** Tải file Excel của kết quả đang hiện. */
+function downloadExcel() {
+  const data = exportData(); if (!data) return;
+  downloadBlob(buildLoanCalcXlsx(data), loanCalcFileName(new Date(), 'xlsx'), XLSX_MIME);
+  toast('Đã tải file Excel', 'success');
+}
+
+/** Tải file PDF của kết quả đang hiện (dùng file đã tạo sẵn ở nền; chưa xong thì chờ). */
+async function downloadPdf() {
+  if (!lastCalc) return;
+  const job = pdfFor(lastCalc);
+  if (!job.ready) toast('Đang tạo file PDF…');
+  try {
+    const bytes = await job.promise;
+    downloadBlob(bytes, loanCalcFileName(new Date(), 'pdf'), PDF_MIME);
+    toast('Đã tải file PDF', 'success');
+  } catch (e) {
+    toast('Không tạo được file PDF, hãy thử lại.', 'error');
+  }
+}
+
+/** Menu nhỏ dưới nút "Xuất file": chọn tải Excel hoặc PDF. */
+function openExportMenu(btn) {
+  closeExportMenu?.();
+  const menu = document.createElement('div');
+  menu.className = 'customer-notice-menu from-button lc-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Chọn định dạng file tải xuống');
+  menu.innerHTML = `
+    <div class="customer-notice-menu-heading">Tải xuống</div>
+    <button type="button" role="menuitem" data-fmt="xlsx">${icon('fileSheet')}<span><b>Excel (.xlsx)</b><small>Bảng tính, sửa được</small></span></button>
+    <button type="button" role="menuitem" data-fmt="pdf">${icon('filePdf')}<span><b>PDF</b><small>Giống bản in, để lưu và gửi</small></span></button>`;
+  document.body.append(menu);
+  const r = btn.getBoundingClientRect(), b = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - b.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(r.bottom + 6, window.innerHeight - b.height - 8))}px`;
+  const close = () => {
+    menu.remove();
+    btn.classList.remove('is-open'); btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', outside);
+    document.removeEventListener('keydown', escape);
+    window.removeEventListener('scroll', close, true);
+    window.removeEventListener('resize', close);
+    if (closeExportMenu === close) closeExportMenu = null;
+  };
+  const outside = (e) => { if (!menu.contains(e.target) && !btn.contains(e.target)) close(); };
+  const escape = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
+  closeExportMenu = close;
+  btn.classList.add('is-open'); btn.setAttribute('aria-expanded', 'true');
+  document.addEventListener('pointerdown', outside);
+  document.addEventListener('keydown', escape);
+  window.addEventListener('scroll', close, true);
+  window.addEventListener('resize', close);
+  menu.querySelectorAll('[data-fmt]').forEach((item) => item.addEventListener('click', () => {
+    const fmt = item.dataset.fmt;
+    close();
+    if (fmt === 'xlsx') downloadExcel(); else downloadPdf();
+  }));
+  menu.querySelector('button')?.focus();
+}
 
 /** Việc tạo file PDF cho một kết quả (dùng lại nếu đã/đang tạo cho đúng kết quả đó). */
 function pdfFor(calc) {
@@ -192,6 +255,7 @@ export function render(contentEl, opts) {
     lastCalc = null;
     clearTimeout(warmTimer);
     pdfJob = null;
+    closeExportMenu?.();
     out.innerHTML = '';
     const hint = contentEl.querySelector('#lc-hint');
     if (hint) hint.textContent = '';
@@ -200,6 +264,7 @@ export function render(contentEl, opts) {
   const update = () => {
     shown = true;
     const calc = calculate();
+    closeExportMenu?.();
     lastCalc = calc.error ? null : calc;
     out.innerHTML = outHtml(calc);
     // Tạo sẵn file PDF ở nền ngay sau khi tính (chờ nửa giây cho ổn định) — bấm Chia sẻ là gửi liền, không phải đợi.
@@ -210,12 +275,8 @@ export function render(contentEl, opts) {
       const first = calc.firstInterest ?? (calc.result && calc.result.firstInterest);
       hint.textContent = first ? `Phải lớn hơn lãi tháng đầu: ${formatVND(first)}` : '';
     }
-    const x = out.querySelector('#lc-xlsx'), p = out.querySelector('#lc-print'), sh = out.querySelector('#lc-share');
-    if (x) x.addEventListener('click', () => {
-      const data = exportData(); if (!data) return;
-      downloadBlob(buildLoanCalcXlsx(data), loanCalcFileName(new Date(), 'xlsx'), XLSX_MIME);
-      toast('Đã xuất file Excel', 'success');
-    });
+    const x = out.querySelector('#lc-export'), p = out.querySelector('#lc-print'), sh = out.querySelector('#lc-share');
+    if (x) x.addEventListener('click', () => (x.classList.contains('is-open') ? closeExportMenu?.() : openExportMenu(x)));
     if (p) p.addEventListener('click', () => {
       const data = exportData(); if (!data) return;
       if (!printLoanCalc(data)) toast('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.', 'error');

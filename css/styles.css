@@ -2100,6 +2100,13 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-tool { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid #b0c7b9; border-radius: 8px; background: #fff; color: var(--color-primary-dark); font: 600 12.5px var(--lux-sans); white-space: nowrap; cursor: pointer; }
 .lc-tool:hover { background: var(--color-primary-light); border-color: var(--color-primary); }
 .lc-tool .icon { width: 15px; height: 15px; }
+.lc-tool .icon:last-child:not(:first-child) { width: 13px; height: 13px; margin-left: -2px; opacity: .75; }
+.lc-tool.is-open { background: var(--color-primary-light); border-color: var(--color-primary); }
+.lc-menu button { padding: 9px 12px; }
+.lc-menu button .icon { width: 18px; height: 18px; flex: none; }
+.lc-menu button > span { display: grid; gap: 1px; }
+.lc-menu button b { font-weight: 600; }
+.lc-menu button small { color: #5b6d66; font-size: 11.5px; font-weight: 500; }
 .lc-tw { overflow-x: auto; }
 .lc-t { width: 100%; border-collapse: collapse; font: 500 13.5px var(--lux-sans); font-variant-numeric: tabular-nums; }
 .lc-t th { padding: 9px 12px; text-align: right; font: 600 10.5px var(--lux-sans); letter-spacing: .07em; text-transform: uppercase; color: var(--lux-gold); border-bottom: 1px solid var(--lux-gold2); white-space: nowrap; }
