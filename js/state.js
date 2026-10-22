@@ -1029,6 +1029,39 @@ export function distinctXom(thon) {
   return [...new Set(list.map((c) => c.xom).filter(Boolean))].sort(naturalXomCompare);
 }
 /**
+ * Địa bàn được cấp của 1 tài khoản — dùng cho các ô chọn/bộ lọc Thôn-Xóm để CHỈ hiện đúng phần được cấp (không hiện cả Thôn/Xóm ngoài phạm vi
+ * gây rối): toàn quyền = không giới hạn; nhân viên = các Thôn được cấp trọn + từng Xóm được cấp riêng (khóa "Thôn||Xóm", xem xomKey()).
+ */
+function territoryOf(adminId) {
+  const a = getAdmin(adminId);
+  return a && a.role === 'staff' ? { thon: new Set(a.allowedThon || []), xom: new Set(a.allowedXom || []) } : null;
+}
+/** Khách có thuộc địa bàn được cấp của tài khoản này không (toàn quyền: luôn có). */
+export function isCustomerInTerritory(customer, adminId) {
+  const t = territoryOf(adminId);
+  return !t || t.thon.has(customer.thon) || t.xom.has(xomKey(customer.thon, customer.xom));
+}
+/** Các Thôn được chọn trong bộ lọc: nhân viên = Thôn được cấp trọn + Thôn chứa từng Xóm được cấp (đã chọn Xóm thì Thôn đó mặc nhiên có). */
+export function territoryThonList(adminId) {
+  const t = territoryOf(adminId);
+  if (!t) return distinctThon();
+  const set = new Set(t.thon);
+  t.xom.forEach((k) => { const thon = parseXomKey(k).thon; if (thon) set.add(thon); });
+  return [...set].sort((a, b) => a.localeCompare(b, 'vi'));
+}
+/** Các Xóm được chọn trong bộ lọc (theo Thôn đang chọn nếu có): nhân viên chỉ thấy Xóm thuộc địa bàn được cấp. */
+export function territoryXomList(adminId, thon) {
+  const t = territoryOf(adminId);
+  if (!t) return distinctXom(thon);
+  const picked = [].concat(thon || []).filter(Boolean);
+  const set = new Set();
+  for (const th of (picked.length ? picked : territoryThonList(adminId))) {
+    if (t.thon.has(th)) distinctXom(th).forEach((x) => set.add(x)); // cấp trọn cả Thôn: mọi Xóm trong Thôn
+    t.xom.forEach((k) => { const p = parseXomKey(k); if (p.thon === th && p.xom) set.add(p.xom); }); // cấp riêng từng Xóm
+  }
+  return [...set].sort(naturalXomCompare);
+}
+/**
  * Khóa định danh 1 Xóm CỤ THỂ, gắn kèm Thôn chứa nó — tên Xóm (VD: "Xóm 8")
  * có thể trùng nhau giữa nhiều Thôn khác nhau nên KHÔNG được dùng riêng
  * mỗi tên Xóm để phân quyền/lọc, phải luôn đi kèm đúng Thôn của nó. Dùng

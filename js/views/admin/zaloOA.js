@@ -201,7 +201,7 @@ function bindThonXomFilterPills(wrap, idPrefix, allowedThon, getState, setState,
     });
   });
   wrap.querySelector(`#${idPrefix}-xom`).addEventListener('click', () => {
-    const xomList = S.distinctXom(getState().thon.length ? getState().thon : undefined);
+    const xomList = S.territoryXomList(S.getSession()?.id, getState().thon.length ? getState().thon : undefined);
     openPicker({
       title: 'Chọn Xóm (chọn được nhiều)', selected: getState().xom, multiSelect: true,
       options: xomList.map((x) => ({ value: x, label: x })),
@@ -218,6 +218,16 @@ function bindThonXomFilterPills(wrap, idPrefix, allowedThon, getState, setState,
     });
   });
 }
+/**
+ * Khách có khớp bộ lọc Thôn/Xóm không. Tên Xóm có thể trùng giữa các Thôn: nhân viên chỉ chọn Xóm (chưa chọn Thôn) thì chỉ tính các Xóm thuộc
+ * địa bàn được cấp, không lẫn Xóm cùng tên ở Thôn ngoài phạm vi.
+ */
+function matchThonXom(customer, thonSel, xomSel) {
+  if (thonSel.length && !thonSel.includes(customer.thon)) return false;
+  if (!xomSel.length) return true;
+  if (!xomSel.includes(customer.xom)) return false;
+  return thonSel.length > 0 || S.isCustomerInTerritory(customer, S.getSession()?.id);
+}
 function multiPillLabel(label, arr) {
   if (!arr.length) return label;
   return `${label}: ${arr.length} đã chọn `;
@@ -232,7 +242,7 @@ function drawOATab(slot, admin) {
   // (không giới hạn theo Thôn/Xóm nữa, xem docs mục 10.11) — bộ lọc Thôn ở
   // đây vì vậy cũng cho chọn TOÀN BỘ Thôn (không chỉ đúng địa bàn của
   // staff), khớp với dữ liệu thật sự đang hiển thị.
-  const allowedThon = S.distinctThon();
+  const allowedThon = S.territoryThonList(admin.id); // bộ lọc chỉ liệt kê Thôn/Xóm trong địa bàn được cấp
 
   slot.innerHTML = `
     <div class="oa-tool">
@@ -265,8 +275,7 @@ function drawOATab(slot, admin) {
   function drawList() {
     const listEl = slot.querySelector('#oa-list');
     let rows = S.listZaloCustomers().map((r) => ({ r, customer: S.getCustomer(r.customerId) })).filter((x) => x.customer);
-    if (filterThon.length) rows = rows.filter((x) => filterThon.includes(x.customer.thon));
-    if (filterXom.length) rows = rows.filter((x) => filterXom.includes(x.customer.xom));
+    if (filterThon.length || filterXom.length) rows = rows.filter((x) => matchThonXom(x.customer, filterThon, filterXom));
     if (oaQuery.trim()) {
       const q = oaQuery.trim().toLowerCase();
       rows = rows.filter((x) => x.customer.name.toLowerCase().includes(q) || (x.customer.phone || '').includes(q));
@@ -336,7 +345,7 @@ function openThonXomFilterModal({ title, hint, allowedThon, getState, setState, 
 function openAddCustomerToOAModal(admin, onDone) {
   const zaloIds = new Set(S.listZaloCustomers().map((r) => r.customerId));
   const isStaff = admin.role === 'staff';
-  const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
+  const allowedThon = S.territoryThonList(admin.id);
   let query = '';
   let pThon = [];
   let pXom = [];
@@ -356,8 +365,7 @@ function openAddCustomerToOAModal(admin, onDone) {
         // Chỉ gửi được Zalo cho khách CÓ SĐT — khách chưa có SĐT ẩn khỏi
         // danh sách này luôn, khỏi thêm nhầm rồi không gửi được.
         let list = S.listCustomers({ adminId: isStaff ? admin.id : undefined }).filter((c) => !zaloIds.has(c.id) && c.phone);
-        if (pThon.length) list = list.filter((c) => pThon.includes(c.thon));
-        if (pXom.length) list = list.filter((c) => pXom.includes(c.xom));
+        if (pThon.length || pXom.length) list = list.filter((c) => matchThonXom(c, pThon, pXom));
         if (query) {
           const q = query.toLowerCase();
           list = list.filter((c) => c.name.toLowerCase().includes(q) || (c.cccd || '').includes(query) || (c.phone || '').includes(query));
@@ -584,8 +592,7 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
 
 /** Popup "Xem thêm" — toàn bộ danh sách của 1 mục Tầng 2, có thanh tìm + nút Lọc (phễu) Thôn/Xóm cùng hàng. */
 function openAutoSendListModal(kind, admin, onDone) {
-  const isStaff = admin.role === 'staff';
-  const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
+  const allowedThon = S.territoryThonList(admin.id);
   let query = '';
   let pThon = [];
   let pXom = [];
@@ -606,8 +613,7 @@ function openAutoSendListModal(kind, admin, onDone) {
         let rows = S.listZaloAutoSendByKind(kind)
           .map((r) => ({ r, customer: S.getCustomer(r.customerId), contract: S.getContract(r.contractId) }))
           .filter((x) => x.customer && x.contract);
-        if (pThon.length) rows = rows.filter((x) => pThon.includes(x.customer.thon));
-        if (pXom.length) rows = rows.filter((x) => pXom.includes(x.customer.xom));
+        if (pThon.length || pXom.length) rows = rows.filter((x) => matchThonXom(x.customer, pThon, pXom));
         if (query) {
           const q = query.toLowerCase();
           rows = rows.filter((x) => x.customer.name.toLowerCase().includes(q) || x.contract.code.toLowerCase().includes(q));
@@ -671,8 +677,7 @@ function openEditCustomDayModal(id, onDone) {
 function openAddAutoSendModal(kind, admin, onDone) {
   const zaloCustomerIds = [...new Set(S.listZaloCustomers().map((r) => r.customerId))];
   const usedContractIds = new Set([...S.listZaloAutoOverview().map((r) => r.contractId), ...pendingAdds]);
-  const isStaff = admin.role === 'staff';
-  const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
+  const allowedThon = S.territoryThonList(admin.id);
   let query = '';
   let pThon = [];
   let pXom = [];
@@ -704,8 +709,9 @@ function openAddAutoSendModal(kind, admin, onDone) {
         for (const custId of zaloCustomerIds) {
           const customer = S.getCustomer(custId);
           if (!customer) continue;
-          if (pThon.length && !pThon.includes(customer.thon)) continue;
-          if (pXom.length && !pXom.includes(customer.xom)) continue;
+          // Chỉ chọn được khách trong địa bàn được cấp (Danh sách OA có thể có cả khách ngoài địa bàn, nhưng nhân viên không thêm gửi tự động cho họ được; máy chủ cũng chặn)
+          if (!S.isCustomerInTerritory(customer, admin.id)) continue;
+          if (!matchThonXom(customer, pThon, pXom)) continue;
           const active = S.listContractsByCustomer(custId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
           if (!active.length) continue;
           const other = S.zaloAutoSendOwnerOtherThanMe(custId);

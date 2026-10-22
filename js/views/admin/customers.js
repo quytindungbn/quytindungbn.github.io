@@ -162,7 +162,7 @@ export function render(contentEl, filterEl) {
   }
   function bindPickers() {
     filterEl.querySelector('#pill-thon').addEventListener('click', () => {
-      const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
+      const allowedThon = S.territoryThonList(admin.id); // nhân viên: chỉ Thôn trong địa bàn được cấp (kể cả Thôn chỉ được cấp vài Xóm)
       openPicker({
         title: 'Chọn Thôn (chọn được nhiều)', selected: filterThon, multiSelect: true,
         options: allowedThon.map((t) => ({ value: t, label: t })),
@@ -175,7 +175,7 @@ export function render(contentEl, filterEl) {
       });
     });
     filterEl.querySelector('#pill-xom').addEventListener('click', () => {
-      const xomList = S.distinctXom(filterThon.length ? filterThon : undefined);
+      const xomList = S.territoryXomList(admin.id, filterThon.length ? filterThon : undefined);
       openPicker({
         title: 'Chọn Xóm (chọn được nhiều)', selected: filterXom, multiSelect: true,
         options: xomList.map((x) => ({ value: x, label: x })),

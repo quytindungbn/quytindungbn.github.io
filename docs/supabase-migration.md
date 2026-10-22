@@ -2913,6 +2913,14 @@ cả (vô hại).
 - App gửi cờ `canManageZaloOA` ngay lúc tạo; `create-account` bản mới ghi `can_manage_zalo_oa` vào dòng `admins` lúc tạo. **Chưa deploy lại cũng dùng được**: nếu máy chủ bản cũ bỏ qua cờ,
   app tự gọi lệnh `update-staff-permissions` sẵn có ngay sau khi tạo để đặt đúng quyền. Kiểm tra: `scratchpad/uitest/createuser_test.cjs` (cả máy chủ mới lẫn cũ).
 
+### 10.65. Nhân viên chỉ được cấp vài Xóm: bộ lọc + thêm gửi tự động chỉ hiện đúng địa bàn được cấp (chỉ sửa giao diện, KHÔNG cần deploy hay SQL)
+
+- Nhân viên có quyền quản lý OA nhưng chỉ được cấp một số Xóm (VD 3 Xóm của thôn Bình Bắc): **mọi ô chọn Thôn/Xóm trong bộ lọc** (Danh sách OA, "Xem thêm" của Gửi tự động, cửa sổ Thêm vào OA, cửa sổ Thêm hợp đồng vào gửi tự động, bộ lọc trang Khách hàng & Hợp đồng) chỉ liệt kê
+  đúng phần được cấp: Thôn = Thôn được cấp trọn + Thôn chứa từng Xóm được cấp (đã cấp Xóm thì Thôn đó mặc nhiên có trong bộ lọc); Xóm = mọi Xóm của Thôn cấp trọn + từng Xóm được cấp riêng, theo Thôn đang chọn. Không còn hiện cả Thôn/Xóm ngoài phạm vi (trước đây hiện toàn bộ, và bộ lọc Thôn trang Khách hàng
+  để trống với nhân viên chỉ được cấp theo Xóm). Quản trị toàn quyền không đổi (thấy hết).
+- **Thêm hợp đồng vào gửi tự động** chỉ liệt kê khách thuộc địa bàn được cấp (Danh sách OA vẫn liệt kê toàn bộ như mục 10.11 — máy chủ vốn đã từ chối thêm khách ngoài địa bàn, nay giao diện cũng không cho chọn nữa). Chọn Xóm mà chưa chọn Thôn thì không lẫn Xóm trùng tên ở Thôn khác.
+- Hàm mới ở `js/state.js`: `isCustomerInTerritory`, `territoryThonList`, `territoryXomList`. Kiểm tra: `scratchpad/uitest/territory_test.cjs` (bản cũ tái hiện đúng lỗi, bản mới đạt).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
