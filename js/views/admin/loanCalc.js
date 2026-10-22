@@ -10,18 +10,19 @@ import { downloadBlob, XLSX_MIME } from '../../lib/xlsxWrite.js';
 // ------------------------------------------------------------
 // Trang "Tính lãi vay" (menu Công cụ) — tính nhanh lãi và số gốc + lãi phải trả từng tháng cho một khoản vay, không lưu vào hợp đồng.
 // Hai cách: theo THỜI HẠN vay (chọn cách trả) hoặc theo SỐ TIỀN TRẢ HÀNG THÁNG (ra số tháng). Lãi tính 365 ngày/năm theo số ngày thực tế
-// từng tháng, làm tròn nghìn đồng (xem js/lib/loanCalc.js). Có nút xuất Excel và in. Mọi ô nhập giữ nguyên khi có dữ liệu mới
-// (refresh() không làm gì) và khi đổi tab.
+// từng tháng, làm tròn nghìn đồng (xem js/lib/loanCalc.js). Có nút xuất Excel và in. Ô nhập để trống (không có số liệu mẫu); kết quả CHỈ hiện
+// khi bấm "Tính lãi" (hoặc Enter), sửa bất kỳ ô nào thì kết quả cũ được xóa để không hiện số lệch với ô nhập. Mọi ô nhập giữ nguyên khi có
+// dữ liệu mới (refresh() không làm gì) và khi đổi tab.
 // ------------------------------------------------------------
 
 const DEFAULTS = () => ({
   tab: 'term',
-  principal: '100.000.000',
-  rate: '10,5',
+  principal: '',
+  rate: '',
   date: formatDate(new Date()),
-  months: '12',
+  months: '',
   method: 'equalPrincipal',
-  payment: '10.000.000',
+  payment: '',
   kind: 'gocLai',
 });
 let st = DEFAULTS();
@@ -149,6 +150,15 @@ export function refresh() {}
 export function render(contentEl) {
   contentEl.innerHTML = pageHtml();
   const out = contentEl.querySelector('#lc-out');
+  lastCalc = null;
+
+  // Sửa ô nhập hoặc đổi lựa chọn: xóa kết quả cũ, đợi bấm "Tính lãi" mới hiện lại.
+  const clearOut = () => {
+    lastCalc = null;
+    out.innerHTML = '';
+    const hint = contentEl.querySelector('#lc-hint');
+    if (hint) hint.textContent = '';
+  };
 
   const update = () => {
     const calc = calculate();
@@ -170,18 +180,15 @@ export function render(contentEl) {
       if (!printLoanCalc(data)) toast('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.', 'error');
     });
   };
-  let timer = null;
-  const later = () => { clearTimeout(timer); timer = setTimeout(update, 120); };
-
   const bindInput = (id, key, mask) => {
     const el = contentEl.querySelector(id); if (!el) return;
     el.addEventListener('input', () => {
       const before = el.value, caretFromEnd = before.length - (el.selectionStart ?? before.length);
       const next = mask(before);
       if (next !== before) { el.value = next; const pos = Math.max(0, next.length - caretFromEnd); try { el.setSelectionRange(pos, pos); } catch { /* ô không hỗ trợ con trỏ */ } }
-      st[key] = el.value; later();
+      st[key] = el.value; clearOut();
     });
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); update(); el.blur(); } });
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); update(); el.blur(); } });
   };
   bindInput('#lc-principal', 'principal', moneyText);
   bindInput('#lc-rate', 'rate', rateText);
@@ -197,19 +204,18 @@ export function render(contentEl) {
     if (typeof native.showPicker === 'function') { try { native.showPicker(); return; } catch { /* dùng cách dự phòng */ } }
     native.focus(); native.click();
   };
-  native.addEventListener('change', () => { if (!native.value) return; const [y, m, d] = native.value.split('-'); dateEl.value = `${d}/${m}/${y}`; st.date = dateEl.value; update(); });
+  native.addEventListener('change', () => { if (!native.value) return; const [y, m, d] = native.value.split('-'); dateEl.value = `${d}/${m}/${y}`; st.date = dateEl.value; clearOut(); });
   contentEl.querySelector('#lc-cal').addEventListener('click', openCalendar);
   if (window.matchMedia('(pointer: coarse)').matches) { dateEl.readOnly = true; dateEl.addEventListener('click', openCalendar); }
 
   contentEl.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { if (st.tab !== b.dataset.tab) { st.tab = b.dataset.tab; render(contentEl); } }));
-  contentEl.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', () => { st.method = b.dataset.method; setChecked(contentEl, '[data-method]', 'method', st.method); update(); }));
-  contentEl.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => { st.kind = b.dataset.kind; setChecked(contentEl, '[data-kind]', 'kind', st.kind); update(); }));
+  contentEl.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', () => { st.method = b.dataset.method; setChecked(contentEl, '[data-method]', 'method', st.method); clearOut(); }));
+  contentEl.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => { st.kind = b.dataset.kind; setChecked(contentEl, '[data-kind]', 'kind', st.kind); clearOut(); }));
   contentEl.querySelector('#lc-reset').addEventListener('click', () => { st = { ...DEFAULTS(), tab: st.tab }; render(contentEl); });
   contentEl.querySelector('#lc-go').addEventListener('click', () => {
-    clearTimeout(timer); update();
+    update();
     if (window.matchMedia('(max-width: 899px)').matches) out.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
-  update();
 }
 
 function setChecked(root, selector, key, value) {
