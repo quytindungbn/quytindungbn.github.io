@@ -28,7 +28,8 @@ const DEFAULTS = () => ({
 });
 let st = DEFAULTS();
 let lastCalc = null; // { inputs, result } của lần tính gần nhất hợp lệ — để xuất/in đúng số đang hiện
-let pdfCache = null; // { calc, bytes }: file PDF đã tạo cho đúng kết quả đang hiện — bấm Chia sẻ lần nữa thì gửi ngay, không tạo lại
+let pdfJob = null; // { calc, ready, promise }: file PDF đang/đã tạo cho đúng kết quả đang hiện — tạo sẵn ở nền ngay sau khi tính để bấm Chia sẻ là gửi liền
+let warmTimer = null;
 
 const METHODS = [
   ['equalPrincipal', 'Gốc trả đều mỗi tháng', 'Gốc bằng nhau, lãi giảm dần theo dư nợ'],
@@ -135,9 +136,9 @@ function pageHtml() {
     </div>`;
 }
 
-function exportData() {
-  if (!lastCalc) return null;
-  return { org: S.getOrg(), inputs: lastCalc.inputs, result: lastCalc.result, printedOn: new Date() };
+function exportData(calc = lastCalc) {
+  if (!calc) return null;
+  return { org: S.getOrg(), inputs: calc.inputs, result: calc.result, printedOn: new Date() };
 }
 
 export function renderHeader(headerEl) {
@@ -149,14 +150,25 @@ export function renderHeader(headerEl) {
 // Ô nhập được giữ nguyên khi có dữ liệu mới từ máy chủ (xem renderApp() trong app.js) — không vẽ lại gì cả.
 export function refresh() {}
 
-/** Tạo file PDF giống bản in rồi mở bảng chia sẻ (Zalo, Messenger, thư...); máy không hỗ trợ chia sẻ tệp thì tải file về. */
+/** Việc tạo file PDF cho một kết quả (dùng lại nếu đã/đang tạo cho đúng kết quả đó). */
+function pdfFor(calc) {
+  if (pdfJob && pdfJob.calc === calc) return pdfJob;
+  const job = { calc, ready: false, promise: null };
+  job.promise = buildLoanCalcPdf(exportData(calc)).then((bytes) => { job.ready = true; return bytes; });
+  job.promise.catch(() => { if (pdfJob === job) pdfJob = null; }); // lỗi thì lần bấm sau tạo lại
+  pdfJob = job;
+  return job;
+}
+
+/** Mở bảng chia sẻ (Zalo, Messenger, thư...) với file PDF giống bản in; máy không hỗ trợ chia sẻ tệp thì tải file về. File thường đã được tạo sẵn nên gửi ngay. */
 async function sharePdf(btn) {
-  const data = exportData(); if (!data || btn.disabled) return;
+  if (!lastCalc || btn.disabled) return;
+  const job = pdfFor(lastCalc);
   const label = btn.querySelector('span');
-  btn.disabled = true; label.textContent = 'Đang tạo…';
+  if (!job.ready) { btn.disabled = true; label.textContent = 'Đang tạo…'; }
   try {
-    if (!pdfCache || pdfCache.calc !== lastCalc) pdfCache = { calc: lastCalc, bytes: await buildLoanCalcPdf(data) };
-    const result = await shareOrDownload(pdfCache.bytes, loanCalcFileName(new Date(), 'pdf'), 'Bảng tính lãi vay');
+    const bytes = await job.promise;
+    const result = await shareOrDownload(bytes, loanCalcFileName(new Date(), 'pdf'), 'Bảng tính lãi vay');
     if (result === 'download') toast('Đã lưu file PDF', 'success');
     else if (result === 'need-tap') toast('File PDF đã sẵn sàng. Bấm Chia sẻ lần nữa để gửi.');
   } catch (e) {
@@ -178,6 +190,8 @@ export function render(contentEl, opts) {
   const clearOut = () => {
     shown = false;
     lastCalc = null;
+    clearTimeout(warmTimer);
+    pdfJob = null;
     out.innerHTML = '';
     const hint = contentEl.querySelector('#lc-hint');
     if (hint) hint.textContent = '';
@@ -188,6 +202,9 @@ export function render(contentEl, opts) {
     const calc = calculate();
     lastCalc = calc.error ? null : calc;
     out.innerHTML = outHtml(calc);
+    // Tạo sẵn file PDF ở nền ngay sau khi tính (chờ nửa giây cho ổn định) — bấm Chia sẻ là gửi liền, không phải đợi.
+    clearTimeout(warmTimer);
+    if (lastCalc) { const mine = lastCalc; warmTimer = setTimeout(() => { if (lastCalc === mine) pdfFor(mine).promise.catch(() => {}); }, 500); }
     const hint = contentEl.querySelector('#lc-hint');
     if (hint) {
       const first = calc.firstInterest ?? (calc.result && calc.result.firstInterest);

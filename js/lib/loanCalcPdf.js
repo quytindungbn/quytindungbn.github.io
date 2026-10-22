@@ -72,11 +72,19 @@ const C = { ink: '#12231e', em: '#0c4a3f', gold: '#b08d3c', goldDark: '#8a6a22',
 const px = (mm) => mm * S;
 const fontStr = (weight, sizePt, family, italic = false) => `${italic ? 'italic ' : ''}${weight} ${(sizePt * PT * S).toFixed(2)}px ${family}`;
 
+// Độ rộng chữ số rộng nhất của từng kiểu chữ — đo một lần rồi nhớ lại (mỗi dòng bảng có hàng chục lần cần tới).
+const digitCache = new Map();
+const digitWidth = (ctx) => {
+  let w = digitCache.get(ctx.font);
+  if (w === undefined) { w = Math.max(...'0123456789'.split('').map((d) => ctx.measureText(d).width)); digitCache.set(ctx.font, w); }
+  return w;
+};
+
 /** Độ rộng chữ; tracking = khoảng cách thêm giữa các chữ (mm), tnum = số rộng đều nhau để cột số thẳng hàng. */
 function measure(ctx, text, o) {
   if (!o.track && !o.tnum) return ctx.measureText(text).width / S;
   let w = 0;
-  const digit = o.tnum ? Math.max(...'0123456789'.split('').map((d) => ctx.measureText(d).width)) : 0;
+  const digit = o.tnum ? digitWidth(ctx) : 0;
   for (const ch of text) w += (o.tnum && ch >= '0' && ch <= '9' ? digit : ctx.measureText(ch).width) / S + (o.track || 0);
   return w - (o.track || 0);
 }
@@ -92,7 +100,7 @@ function text(ctx, str, x, y, { weight = 500, size = 9.5, family = SANS_STACK, c
   ctx.textAlign = 'left';
   let cx = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
   if (!o.track && !o.tnum) { ctx.fillText(str, px(cx), px(y)); return; }
-  const digit = o.tnum ? Math.max(...'0123456789'.split('').map((d) => ctx.measureText(d).width)) : 0;
+  const digit = o.tnum ? digitWidth(ctx) : 0;
   for (const ch of str) {
     const cw = o.tnum && ch >= '0' && ch <= '9' ? digit : ctx.measureText(ch).width;
     // Số rộng đều: căn giữa từng chữ số trong ô cố định để nhìn đều như tabular-nums.
