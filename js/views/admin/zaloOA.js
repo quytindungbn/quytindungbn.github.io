@@ -678,14 +678,14 @@ function openAddAutoSendModal(kind, admin, onDone) {
     title: isCustomDay ? 'Thêm vào "Gửi theo ngày cụ thể"' : 'Thêm vào "Báo lãi tự động hàng tháng"',
     sheetClass: 'sheet-search',
     bodyHtml: `
-      ${isCustomDay ? `<div class="field"><label>Ngày trong tháng (1-30) — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label><input type="number" id="day-input" min="1" max="30" value="1"/></div>` : ''}
-      <div class="field">
-        <label>Ngưỡng lãi chưa trả — áp dụng cho hợp đồng bạn chọn thêm bên dưới</label>
-        <select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? 'Đủ 1 tháng' : `Đủ ${n} tháng`}</option>`).join('')}</select>
-        <small class="text-muted">Đủ số tháng này sẽ gửi vào đúng ngày hằng tháng; nếu chưa trả lãi, các tháng sau tiếp tục gửi. Sau khi trả lãi, hệ thống tính lại từ ngày đã trả lãi đến.</small>
+      <div class="oa-cfg">
+        ${isCustomDay ? `<label class="oa-cfg-row"><span>Gửi vào ngày</span><input type="number" id="day-input" min="1" max="30" value="1" inputmode="numeric"/></label>` : ''}
+        <label class="oa-cfg-row"><span>Gửi đúng ngày lãi tháng sau</span><select id="interval-input">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? 'Đủ 1 tháng' : `Đủ ${n} tháng`}</option>`).join('')}</select></label>
       </div>
-      ${searchBoxHtml('add-auto-search', 'Tìm theo tên khách hoặc mã hợp đồng...', '')}
-      <div class="filter-row mb-8" id="add-auto-pills"></div>
+      <div class="oa-tool">
+        <div class="oa-search">${searchBoxHtml('add-auto-search', 'Tìm tên khách, mã hợp đồng...', '')}</div>
+        <button type="button" class="oa-flt" id="add-auto-filter" title="Lọc theo Thôn / Xóm" aria-label="Lọc theo Thôn / Xóm">${icon('filter')}<span class="oa-flt-tx">Lọc</span><i class="oa-flt-n" hidden></i></button>
+      </div>
       <div id="add-auto-list" class="mt-8"></div>
       <button class="btn btn-outline btn-sm btn-block mt-8" id="add-auto-more" style="display:none">Xem thêm</button>
     `,
@@ -714,13 +714,13 @@ function openAddAutoSendModal(kind, admin, onDone) {
         } else blockedRows = [];
         return { rows, blockedRows };
       }
-      function renderPills() {
-        const wrap = sheet.querySelector('#add-auto-pills');
-        wrap.innerHTML = thonXomFilterPillsHtml('add-auto-pill', pThon, pXom);
-        bindThonXomFilterPills(wrap, 'add-auto-pill', allowedThon,
-          () => ({ thon: pThon, xom: pXom }),
-          (t, x) => { pThon = t; pXom = x; },
-          () => { visibleCount = PAGE_SIZE; renderPills(); draw(); });
+      /** Số Thôn/Xóm đang chọn hiện thành chấm số trên nút Lọc; nút đổi màu khi đang lọc. */
+      function updateFilterBtn() {
+        const btn = sheet.querySelector('#add-auto-filter');
+        const n = pThon.length + pXom.length;
+        const badge = btn.querySelector('.oa-flt-n');
+        badge.textContent = n; badge.hidden = n === 0;
+        btn.classList.toggle('on', n > 0);
       }
       function draw() {
         const { rows: all, blockedRows } = getRows();
@@ -769,7 +769,13 @@ function openAddAutoSendModal(kind, admin, onDone) {
       sheet.querySelector('#add-auto-more').addEventListener('click', () => { visibleCount += PAGE_SIZE; draw(); });
       bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; draw(); });
       if (isCustomDay) bindDayInputClamp(sheet.querySelector('#day-input'));
-      renderPills();
+      sheet.querySelector('#add-auto-filter').addEventListener('click', () => openThonXomFilterModal({
+        title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon,
+        getState: () => ({ thon: pThon, xom: pXom }),
+        setState: (t, x) => { pThon = t; pXom = x; },
+        onChange: () => { visibleCount = PAGE_SIZE; updateFilterBtn(); draw(); },
+      }));
+      updateFilterBtn();
       draw();
     },
   });
