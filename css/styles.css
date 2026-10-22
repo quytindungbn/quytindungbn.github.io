@@ -2219,3 +2219,54 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .oa-sb { flex: 1; min-width: 0; } .oa-sb h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin: 3px 0 4px; font-size: 16px; }
 .oa-st { font: 700 11px Inter, sans-serif; border-radius: 10px; padding: 3px 9px; } .oa-st.warn { background: #fdf3df; color: #8a6a22; } .oa-st.ok { background: #e3f8ea; color: #16803c; }
 .oa-hint { margin: 2px 0 10px; font-size: 12.5px; color: var(--text-muted); }
+
+/* ---- Trang Hỗ trợ (tab "Hỗ trợ"): danh sách kiểu hộp thư + chi tiết ---- */
+.sp-flt { display: flex; gap: 4px; padding: 10px 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.sp-flt::-webkit-scrollbar { display: none; }
+.sp-flt button { flex: none; border: 0; background: none; height: 34px; padding: 0 12px; border-radius: 17px; font: 600 13px/1 inherit; color: #667069; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sp-flt button.active { background: #d9eae3; color: #0b4a3f; font-weight: 700; }
+.sp-flt em { font-style: normal; font-size: 12px; color: #8a968f; font-weight: 600; }
+.sp-flt button.active em { color: #3d6a60; }
+@media (max-width: 480px) { .sp-flt { gap: 0; padding-left: 8px; padding-right: 8px; } .sp-flt button { padding: 0 9px; font-size: 12.5px; gap: 4px; } }
+
+.sp-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.sp-list { padding: 4px 6px; }
+.sp-row { display: flex; gap: 12px; align-items: flex-start; padding: 13px 10px; border-bottom: 1px solid #e6eee9; border-radius: 12px; cursor: pointer; }
+.sp-row:last-child { border-bottom: 0; }
+.sp-row:active { background: #f1f6f3; }
+.sp-row.act { background: #eaf4f0; border-bottom-color: transparent; }
+.sp-row .row-thumb { margin-top: 1px; width: 40px; height: 40px; font-size: 13px; }
+.sp-mid { flex: 1; min-width: 0; }
+.sp-l1 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.sp-l1 b { font-weight: 600; font-size: 14.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5; }
+.sp-row.un .sp-l1 b { font-weight: 800; }
+.sp-l1 time { font-size: 12px; color: #8a968f; white-space: nowrap; flex: none; }
+.sp-row.un .sp-l1 time { color: #0f6f61; font-weight: 700; }
+.sp-l2 { font-size: 13px; color: #51615a; margin-top: 2px; display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.sp-l2 b { color: #0c4a3f; font-weight: 700; }
+.sp-l3 { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 3px; }
+.sp-why { font-size: 12.5px; color: #7a877f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.sp-stt { font-size: 12px; font-weight: 700; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.sp-stt.moi { color: #1d5fb8; } .sp-stt.dang_xu_ly { color: #9a7414; } .sp-stt.da_lien_he { color: #16803c; }
+.sp-stt i { width: 7px; height: 7px; border-radius: 50%; background: #1d5fb8; }
+
+/* chi tiết: khung bên phải (máy tính) — điện thoại dùng khung trượt từ dưới lên (.sp-sheet) */
+.sp-detail { display: none; padding: 20px 22px; flex-direction: column; gap: 14px; position: sticky; top: 12px; }
+@media (min-width: 1100px) {
+  .sp-split { grid-template-columns: minmax(380px, 460px) minmax(0, 1fr); }
+  .sp-detail { display: flex; }
+}
+.sp-sheet { display: flex; flex-direction: column; gap: 14px; }
+.sp-dh { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sp-dh .row-thumb { width: 44px; height: 44px; font-size: 14px; }
+.sp-nm { font: 700 17px/1.4 var(--font-serif, 'Source Serif 4', serif); color: #0c4a3f; overflow-wrap: anywhere; }
+.sp-sub { font-size: 12.5px; color: #667069; }
+.sp-call { flex: none; gap: 6px; }
+.sp-lab { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: #b08d3c; margin-bottom: -6px; }
+.sp-seg3 { display: flex; background: #e3ece8; border-radius: 12px; padding: 3px; gap: 2px; }
+.sp-seg3 button { flex: 1; min-width: 0; border: 0; background: none; height: 40px; border-radius: 9px; font: 700 13.5px/1 inherit; color: #51615a; cursor: pointer; padding: 0 4px; }
+.sp-seg3 button.on { background: #0f6f61; color: #fff; }
+.sp-kvs { display: grid; border-top: 1px solid #e6eee9; }
+.sp-kv { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid #eef3f0; font-size: 13.5px; }
+.sp-kv span { color: #667069; flex: none; }
+.sp-kv b { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
