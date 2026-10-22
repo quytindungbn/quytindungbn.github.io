@@ -1091,7 +1091,10 @@ function isOwnAutoRow(r) {
  * Danh sách gửi tự động RIÊNG của chính người đang xem — kể cả quản trị toàn quyền (máy chủ cho super đọc được dòng của mọi người,
  * nhưng danh sách này chỉ hiện phần mình đã thêm; muốn xem tổng/số theo từng người thì dùng summarizeZaloAutoByOwner()).
  */
-export function listZaloAutoSend() { return (state.zaloAutoSendList || []).filter(isOwnAutoRow); }
+export function listZaloAutoSend() {
+  // Mới thêm nằm TRÊN CÙNG (sắp theo thời điểm thêm, mới nhất trước); dòng cũ không ghi thời điểm xuống cuối.
+  return (state.zaloAutoSendList || []).filter(isOwnAutoRow).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
+}
 /**
  * Tổng quan gửi tự động của MỌI người (khách + hợp đồng + mục + người đã thêm) — gộp lựa chọn của chính mình (luôn mới nhất) với bản
  * tổng quan tải từ máy chủ (xem refreshZaloAutoOverview). Dùng cho nhãn "Báo lãi tự động" ở Danh sách OA, số tổng ở đầu trang
