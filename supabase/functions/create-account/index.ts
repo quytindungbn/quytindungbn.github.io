@@ -32,6 +32,9 @@
 //   { type: 'add-zalo-auto-send', contractId, kind? ('lai_hang_thang_auto'
 //     mặc định | 'lai_hang_thang_custom_day'), customDay?, intervalMonths?
 //     (1-4, mặc định 1 = hàng tháng) } / { type: 'remove-zalo-auto-send', id }
+//     (MỖI KHÁCH HÀNG chỉ MỘT người được thêm — người khác thêm hợp đồng của
+//     khách đó sẽ bị chặn kèm tên người đã thêm; { type: 'list-zalo-auto-overview' }
+//     trả ai đã thêm khách/hợp đồng nào cho mọi người quản lý OA xem nhãn + đếm tổng)
 //     / { type: 'update-zalo-auto-send-settings', id, customDay?,
 //     intervalMonths? } -> Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi
 //     (KHÔNG còn 'đến hạn' — đến hạn giờ tự động theo Tầng 1, xem
@@ -1241,6 +1244,41 @@ Deno.serve(async (req) => {
     return json({ ok: true, sentCount });
   }
 
+  // Tổng quan "ai đã thêm khách/hợp đồng nào vào gửi tự động" của MỌI người —
+  // cho trang Quản lý OA hiện đúng nhãn "Báo lãi tự động" cho mọi khách đã có
+  // người thêm, đếm tổng, và không cho thêm trùng khách đang do người khác
+  // phụ trách. Chỉ trả khách + hợp đồng + mục + người thêm, KHÔNG trả ngày gửi
+  // hay định kỳ riêng. Cần quyền quản lý OA (hoặc super), như các thao tác OA khác.
+  if (body.type === 'list-zalo-auto-overview') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') {
+      return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
+    const { data: caller, error: callerError } = await admin.from('admins')
+      .select('role, can_manage_zalo_oa').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerError || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    if (caller.role !== 'super' && caller.can_manage_zalo_oa !== true) {
+      return json({ ok: false, reason: 'Bạn không có quyền quản lý gửi tin Zalo OA.' }, 403);
+    }
+    const { data: rows, error: rowsError } = await admin.from('zalo_auto_send_list')
+      .select('id, customer_id, contract_id, kind, created_by').limit(5000);
+    if (rowsError) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    const ownerIds = [...new Set((rows || []).map((r: any) => r.created_by).filter(Boolean))];
+    const { data: owners } = ownerIds.length
+      ? await admin.from('admins').select('id, name, username').in('id', ownerIds)
+      : { data: [] };
+    const ownerName = new Map((owners || []).map((a: any) => [a.id, a.name || a.username || '']));
+    return json({
+      ok: true,
+      rows: (rows || []).map((r: any) => ({
+        id: r.id, customerId: r.customer_id, contractId: r.contract_id, kind: r.kind,
+        createdBy: r.created_by || null, createdByName: ownerName.get(r.created_by) || '',
+      })),
+    });
+  }
+
   // Chỉ trả về trạng thái và chu kỳ để mọi nhân viên xem được trong chi tiết
   // hợp đồng. Không trả người đăng ký hay ngày gửi riêng tư của người khác.
   if (body.type === 'get-zalo-auto-send-status') {
@@ -1373,6 +1411,24 @@ Deno.serve(async (req) => {
       }
       const scope = await checkContractInScope(contractId);
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
+      // MỖI KHÁCH HÀNG chỉ MỘT người được thêm vào gửi tự động (kể cả quản trị
+      // toàn quyền): đã có người khác thêm bất kỳ hợp đồng nào của khách này
+      // thì chặn, kèm tên người đã thêm. Cùng một người thì được thêm tiếp các
+      // hợp đồng khác của khách đó. Kiểm tra TRƯỚC khi tự thêm vào Tầng 1 để bị
+      // chặn thì không để lại thay đổi nào.
+      {
+        const { data: sameCustomerRows, error: sameCustomerErr } = await admin.from('zalo_auto_send_list')
+          .select('created_by').eq('customer_id', scope.contract.customer_id);
+        if (sameCustomerErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+        const otherOwnerRow = (sameCustomerRows || []).find((r: any) => r.created_by !== caller.id);
+        if (otherOwnerRow) {
+          const { data: ownerAdmin } = otherOwnerRow.created_by
+            ? await admin.from('admins').select('name, username').eq('id', otherOwnerRow.created_by).maybeSingle()
+            : { data: null };
+          const ownerName = ownerAdmin?.name || ownerAdmin?.username;
+          return json({ ok: false, reason: `Khách hàng này đã được ${ownerName ? `"${ownerName}"` : 'người khác'} thêm vào gửi tự động rồi — mỗi khách hàng chỉ một người được thêm.` });
+        }
+      }
       // Tự thêm vào Tầng 1 (danh sách OA) nếu khách chưa có sẵn — Tầng 2 (gửi
       // tự động) LUÔN đi kèm Tầng 1, đỡ bắt người dùng làm 2 bước riêng.
       await ensureZaloCustomer(scope.contract.customer_id);

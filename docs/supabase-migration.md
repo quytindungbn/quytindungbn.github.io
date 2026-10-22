@@ -2861,6 +2861,17 @@ cả (vô hại).
 - **Sửa nhóm nợ cho khớp**: Nhóm 1 = quá hạn **dưới 10 ngày**, Nhóm 2 = từ đúng 10 đến 90 ngày (trước đây 2 Edge Function xếp quá hạn
   đúng 10 ngày vào Nhóm 1 còn trang web xếp vào Nhóm 2). Bản chốt các tháng ĐÃ lưu giữ nguyên số cũ; chỉ lần chốt sau mới tính theo quy tắc mới.
 
+### 10.60. Gửi tự động: mỗi khách chỉ MỘT người được thêm; Danh sách OA + số tổng hiện của tất cả mọi người (BẮT BUỘC deploy lại `create-account`, KHÔNG cần chạy SQL)
+
+- **Mỗi khách hàng chỉ một người được thêm vào gửi tự động** (kể cả quản trị toàn quyền). Trước đây chỉ chặn trùng *hợp đồng* nên người khác vẫn thêm được
+  hợp đồng khác của cùng khách. Nay `add-zalo-auto-send` từ chối nếu khách đã có hợp đồng do **người khác** thêm, kèm tên người đã thêm; cùng một người thì thêm
+  tiếp được các hợp đồng khác của khách đó. Muốn đổi người phụ trách: người đang giữ bỏ hết lựa chọn của khách, người kia mới thêm được.
+- **Action mới `list-zalo-auto-overview`** (cần quyền quản lý OA hoặc super): trả về mọi lựa chọn (khách, hợp đồng, mục, người đã thêm) — KHÔNG trả ngày gửi/định kỳ riêng.
+  Trang Quản lý OA dùng để: hiện nhãn "Báo lãi tự động / Ngày cụ thể" ở Danh sách OA cho mọi khách đã có BẤT KỲ AI thêm; số "Tự động" ở đầu trang là tổng của tất cả nhân viên
+  (ai có quyền quản lý OA cũng thấy cùng một số); cửa sổ "Thêm hợp đồng" ẩn các khách đã do người khác thêm (gõ tìm thì hiện mờ kèm tên người đã thêm).
+- Chính sách RLS của bảng `zalo_auto_send_list` GIỮ NGUYÊN (mỗi người chỉ đọc trực tiếp được lựa chọn của mình); tab "Gửi tự động" vẫn chỉ liệt kê lựa chọn của chính người xem.
+- Chưa deploy bản mới: app vẫn chạy, chỉ thấy nhãn/số của riêng mình (ô số ghi "của bạn") và việc thêm trùng khách vẫn chưa bị chặn.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

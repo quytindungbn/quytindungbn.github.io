@@ -52,7 +52,7 @@ const OA_TABS = [
 
 /**
  * Dải thông tin đầu trang: cảnh báo nếu chưa cấu hình mẫu tin (kèm nút sang tab Cấu hình cho quản trị toàn quyền) và 3 con số nhanh —
- * khách trong OA, tổng hợp đồng đang gửi tự động (quản trị toàn quyền: của mọi nhân viên), số lần gửi thành công trong 30 ngày qua.
+ * khách trong OA, tổng hợp đồng đang gửi tự động của tất cả nhân viên, số lần gửi thành công trong 30 ngày qua.
  */
 function summaryHtml(isSuper) {
   const org = S.getOrg();
@@ -62,8 +62,8 @@ function summaryHtml(isSuper) {
   const since = Date.now() - 30 * 86400000;
   const recent = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= since);
   const ok = recent.filter((l) => l.status === 'success').length;
-  // Tổng hợp đồng đang gửi tự động — cùng cách đếm với 2 mục ở tab Gửi tự động. Quản trị toàn quyền thấy lựa chọn của MỌI nhân viên nên đây là tổng cả nhóm; nhân viên thường chỉ thấy phần của mình.
-  const autoCount = AUTO_SEND_SECTIONS.reduce((n, sec) => n + S.listZaloAutoSendByKind(sec.kind).filter((r) => S.getCustomer(r.customerId) && S.getContract(r.contractId)).length, 0);
+  // Tổng hợp đồng đang gửi tự động của TẤT CẢ nhân viên (ai có quyền quản lý OA cũng thấy cùng một con số).
+  const autoCount = S.listZaloAutoOverview().filter((r) => S.getCustomer(r.customerId) && S.getContract(r.contractId)).length;
   const banner = missing.length && activeTab !== 'config' ? `
     <div class="oa-ban"><span class="oa-ban-dot"></span>
       <div class="oa-ban-tx"><b>Chưa cấu hình mẫu tin ${missing.join(' và ')}</b>
@@ -73,7 +73,7 @@ function summaryHtml(isSuper) {
   const tile = (num, label, sub, cls = '') => `<div class="oa-kp ${cls}"><b>${num}</b><span>${label}</span><em>${sub}</em></div>`;
   return `${banner}<div class="oa-kps">
     ${tile(S.listZaloCustomers().length, 'Khách OA', 'đã thêm')}
-    ${tile(autoCount, 'Tự động', isSuper ? 'tất cả nhân viên' : 'của bạn', 'g')}
+    ${tile(autoCount, 'Tự động', S.hasZaloAutoOverview() ? 'tất cả nhân viên' : 'của bạn', 'g')}
     ${tile(recent.length ? `${ok}<small>/${recent.length}</small>` : '0', 'Thành công', '30 ngày qua', 'e')}
   </div>`;
 }
@@ -95,6 +95,16 @@ export function renderHeader(headerEl) {
 function currentAdmin() {
   const session = S.getSession();
   return S.getAdmin(session.id);
+}
+
+// Tổng quan gửi tự động của mọi người (nhãn + số tổng) tải riêng từ máy chủ; hỏi lại tối đa 15 giây một lần, và chỉ vẽ lại khi có đổi.
+let overviewAskedAt = 0;
+function loadAutoOverview(contentEl) {
+  if (Date.now() - overviewAskedAt < 15000) return;
+  overviewAskedAt = Date.now();
+  S.refreshZaloAutoOverview().then((changed) => {
+    if (changed && contentEl.isConnected && (location.hash || '').split('?')[0] === '#/admin/zalo-oa') refresh(contentEl);
+  });
 }
 
 export function render(contentEl) {
@@ -121,6 +131,7 @@ export function render(contentEl) {
   else if (activeTab === 'auto') drawAutoTab(slot, admin);
   else if (activeTab === 'log') drawLogTab(slot);
   else drawConfigTab(slot);
+  loadAutoOverview(contentEl);
 }
 
 /**
@@ -139,6 +150,7 @@ export function refresh(contentEl) {
   else if (activeTab === 'auto') drawAutoTab(slot, admin);
   else if (activeTab === 'log') drawLogTab(slot);
   else drawConfigTab(slot);
+  loadAutoOverview(contentEl);
 }
 
 // ------------------------------------------------------------
@@ -227,9 +239,9 @@ function drawOATab(slot, admin) {
       rows = rows.filter((x) => x.customer.name.toLowerCase().includes(q) || (x.customer.phone || '').includes(q));
     }
 
-    // Nhãn "đang ở mục gửi tự động nào" — chỉ theo lựa chọn của chính người đang xem (đúng như tab Gửi tự động).
+    // Nhãn "đang ở mục gửi tự động nào" — hiện cho mọi khách đã có BẤT KỲ AI thêm vào gửi tự động (không riêng lựa chọn của người đang xem).
     const autoKinds = new Map();
-    for (const a of S.listZaloAutoSend()) {
+    for (const a of S.listZaloAutoOverview()) {
       const set = autoKinds.get(a.customerId) || new Set();
       set.add(a.kind);
       autoKinds.set(a.customerId, set);
@@ -617,7 +629,7 @@ function openEditCustomDayModal(id, onDone) {
 /** Popup tìm + thêm 1 hợp đồng vào 1 trong 2 mục Tầng 2 — chỉ liệt kê hợp đồng của khách ĐÃ ở Tầng 1 và CHƯA ở mục nào (loại trừ nhau). */
 function openAddAutoSendModal(kind, admin, onDone) {
   const zaloCustomerIds = [...new Set(S.listZaloCustomers().map((r) => r.customerId))];
-  const usedContractIds = new Set(S.listZaloAutoSend().map((r) => r.contractId));
+  const usedContractIds = new Set(S.listZaloAutoOverview().map((r) => r.contractId));
   const isStaff = admin.role === 'staff';
   const allowedThon = isStaff ? (admin.allowedThon || []) : S.distinctThon();
   let query = '';
@@ -642,21 +654,29 @@ function openAddAutoSendModal(kind, admin, onDone) {
       <button class="btn btn-outline btn-sm btn-block mt-8" id="add-auto-more" style="display:none">Xem thêm</button>
     `,
     onMount(sheet) {
+      // Mỗi khách chỉ MỘT người được thêm vào gửi tự động: khách đã có người KHÁC thêm không thêm được nữa (máy chủ cũng chặn).
+      // Khi đang gõ tìm kiếm thì vẫn liệt kê các khách đó (mờ, kèm tên người đã thêm) để biết vì sao không thêm được.
       function getRows() {
         let rows = [];
+        const blocked = [];
         for (const custId of zaloCustomerIds) {
           const customer = S.getCustomer(custId);
           if (!customer) continue;
           if (pThon.length && !pThon.includes(customer.thon)) continue;
           if (pXom.length && !pXom.includes(customer.xom)) continue;
-          const contracts = S.listContractsByCustomer(custId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan' && !usedContractIds.has(ct.id));
-          for (const contract of contracts) rows.push({ customer, contract });
+          const active = S.listContractsByCustomer(custId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
+          if (!active.length) continue;
+          const other = S.zaloAutoSendOwnerOtherThanMe(custId);
+          if (other) { blocked.push({ customer, owner: other.createdByName }); continue; }
+          for (const contract of active.filter((ct) => !usedContractIds.has(ct.id))) rows.push({ customer, contract });
         }
+        let blockedRows = blocked;
         if (query) {
           const q = query.toLowerCase();
           rows = rows.filter(({ customer, contract }) => customer.name.toLowerCase().includes(q) || contract.code.toLowerCase().includes(q));
-        }
-        return rows;
+          blockedRows = blocked.filter(({ customer }) => customer.name.toLowerCase().includes(q) || S.listContractsByCustomer(customer.id).some((ct) => ct.code.toLowerCase().includes(q)));
+        } else blockedRows = [];
+        return { rows, blockedRows };
       }
       function renderPills() {
         const wrap = sheet.querySelector('#add-auto-pills');
@@ -667,9 +687,17 @@ function openAddAutoSendModal(kind, admin, onDone) {
           () => { visibleCount = PAGE_SIZE; renderPills(); draw(); });
       }
       function draw() {
-        const all = getRows();
+        const { rows: all, blockedRows } = getRows();
         const rows = all.slice(0, visibleCount);
-        sheet.querySelector('#add-auto-list').innerHTML = rows.length ? rows.map(({ customer, contract }) => `
+        const blockedHtml = blockedRows.map(({ customer, owner }) => `
+          <div class="list-row" style="padding:8px 4px;opacity:.55">
+            <div class="row-main">
+              <div class="row-title" style="font-size:13.5px">${customer.name}</div>
+              <div class="row-sub">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
+            </div>
+            <span class="text-sm" style="white-space:nowrap">Đã do ${owner ? `"${owner}"` : 'người khác'} thêm</span>
+          </div>`).join('');
+        sheet.querySelector('#add-auto-list').innerHTML = (rows.length ? rows.map(({ customer, contract }) => `
           <div class="list-row" data-add="${contract.id}" style="cursor:pointer;padding:8px 4px">
             <div class="row-main">
               <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}</div>
@@ -677,7 +705,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
             </div>
             <b style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>
           </div>
-        `).join('') : `<p class="text-sm text-muted">Không có hợp đồng nào để thêm — khách phải có trong Danh sách OA, có hợp đồng còn hoạt động, và chưa ở mục nào khác.</p>`;
+        `).join('') : (blockedRows.length ? '' : `<p class="text-sm text-muted">Không có hợp đồng nào để thêm — khách phải có trong Danh sách OA, có hợp đồng còn hoạt động, chưa ở mục nào khác và chưa được người khác thêm vào gửi tự động.</p>`)) + blockedHtml;
         sheet.querySelector('#add-auto-more').style.display = all.length > visibleCount ? '' : 'none';
         sheet.querySelectorAll('[data-add]').forEach((row) => {
           row.addEventListener('click', async () => {

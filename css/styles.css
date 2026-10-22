@@ -2217,9 +2217,13 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .oa-st { font: 700 11px Inter, sans-serif; border-radius: 10px; padding: 3px 9px; } .oa-st.warn { background: #fdf3df; color: #8a6a22; } .oa-st.ok { background: #e3f8ea; color: #16803c; }
 .oa-hint { margin: 2px 0 10px; font-size: 12.5px; color: var(--text-muted); }
 
-/* Trang Hỗ trợ: hai nút tab "Hỗ trợ / Tư vấn" và hàng lọc trạng thái nằm giữa khung (máy tính lẫn điện thoại) */
-.tabs.sup-tabs { margin: 10px auto 0; width: calc(100% - 28px); }
-.chip-row.sup-chips { padding: 10px 14px; justify-content: center; justify-content: safe center; }
+/* Trang Hỗ trợ: hai nút tab, hàng lọc trạng thái và ô tìm kiếm trải đúng bề rộng khung danh sách bên dưới (cùng lề trái và phải) */
+.sup-align { max-width: 1180px; margin: 0 auto; padding: 0 14px; }
+@media (min-width: 900px) { .sup-align { padding: 0 28px; } }
+.tabs.sup-tabs { margin: 10px 0 0; width: 100%; max-width: none; }
+.chip-row.sup-chips { padding: 10px 0; gap: 8px; overflow: visible; }
+.sup-chips .chip { flex: 1 1 0; min-width: 0; padding: 8px 4px; text-align: center; }
+.sup-search { padding: 10px 0; }
 
 /* Nút Lọc (Thôn / Xóm) của Danh sách OA: phễu + chữ "Lọc" + số đã chọn; điện thoại chỉ còn phễu (số nằm ở góc) */
 .oa-flt { flex: none; position: relative; height: 46px; padding: 0 14px; border-radius: 13px; border: 1px solid var(--border-strong); background: #fff; color: #0b5148; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 700 13.5px inherit; cursor: pointer; transition: background .15s, border-color .15s; }

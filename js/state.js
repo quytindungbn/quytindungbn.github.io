@@ -79,6 +79,7 @@ function migrateState() {
   if (!Array.isArray(state.pushSubscribedCustomerIds)) state.pushSubscribedCustomerIds = [];
   if (!Array.isArray(state.zaloCustomers)) state.zaloCustomers = [];
   if (!Array.isArray(state.zaloAutoSendList)) state.zaloAutoSendList = [];
+  if (!Array.isArray(state.zaloAutoOverview)) state.zaloAutoOverview = [];
   if (!Array.isArray(state.zaloSendLog)) state.zaloSendLog = [];
   if (typeof state.chatUnreadCount !== 'number') state.chatUnreadCount = 0;
   if (!Array.isArray(state.monthlySnapshots)) state.monthlySnapshots = [];
@@ -1081,6 +1082,47 @@ export async function getZaloAutoSendStatus(contractId) {
   return { enabled: res.enabled === true, intervalMonths: Number(res.intervalMonths) || 1 };
 }
 export function listZaloAutoSend() { return state.zaloAutoSendList || []; }
+/**
+ * Tổng quan gửi tự động của MỌI người (khách + hợp đồng + mục + người đã thêm) — gộp lựa chọn của chính mình (luôn mới nhất) với bản
+ * tổng quan tải từ máy chủ (xem refreshZaloAutoOverview). Dùng cho nhãn "Báo lãi tự động" ở Danh sách OA, số tổng ở đầu trang
+ * Quản lý OA, và để biết khách nào đã có người khác thêm (mỗi khách chỉ một người được thêm). Chưa tải được bản tổng quan
+ * (chưa deploy máy chủ mới, mất mạng) thì chỉ còn lựa chọn của chính mình, như trước.
+ */
+export function listZaloAutoOverview() {
+  const meId = state.session?.id || null;
+  const mine = (state.zaloAutoSendList || []).map((r) => ({ id: r.id, customerId: r.customerId, contractId: r.contractId, kind: r.kind, createdBy: r.createdBy || meId, createdByName: '' }));
+  if (state.zaloAutoOverviewFor !== meId) return mine; // bản tổng quan của người đăng nhập trước, bỏ
+  const have = new Set(mine.map((r) => r.id));
+  return mine.concat((state.zaloAutoOverview || []).filter((r) => !have.has(r.id)));
+}
+/** Số liệu tổng hợp đã đủ của MỌI người chưa — quản trị toàn quyền luôn thấy hết; người khác cần đã tải được tổng quan từ máy chủ. */
+export function hasZaloAutoOverview() {
+  return state.session?.role === 'admin' && (getAdmin(state.session.id)?.role === 'super' || state.zaloAutoOverviewFor === state.session.id);
+}
+/** Khách này đã được NGƯỜI KHÁC thêm vào gửi tự động chưa — trả về { createdBy, createdByName } của người đó, hoặc null (chưa ai thêm / chỉ mình thêm). */
+export function zaloAutoSendOwnerOtherThanMe(customerId) {
+  const meId = state.session?.id || null;
+  const hit = listZaloAutoOverview().find((r) => r.customerId === customerId && r.createdBy !== meId);
+  return hit ? { createdBy: hit.createdBy, createdByName: hit.createdByName || getAdmin(hit.createdBy)?.name || '' } : null;
+}
+/**
+ * Tải tổng quan gửi tự động của mọi người từ máy chủ (action 'list-zalo-auto-overview', cần quyền quản lý OA). Trả về true nếu
+ * dữ liệu có đổi so với lần trước (để trang tự vẽ lại phần của mình); LỖI (máy chủ cũ chưa có action này, mất mạng, thiếu quyền)
+ * thì im lặng giữ nguyên và trả về false — trang vẫn dùng được với lựa chọn của chính mình.
+ */
+export async function refreshZaloAutoOverview() {
+  const session = getSession();
+  if (!session?.sbToken || session.role !== 'admin') return false;
+  try {
+    const res = await callCreateAccountFunction(session.sbToken, { type: 'list-zalo-auto-overview' });
+    if (!res?.ok || !Array.isArray(res.rows)) return false;
+    const rows = res.rows.map((r) => ({ id: r.id, customerId: r.customerId, contractId: r.contractId, kind: r.kind, createdBy: r.createdBy || null, createdByName: r.createdByName || '' }));
+    const changed = state.zaloAutoOverviewFor !== session.id || JSON.stringify(rows) !== JSON.stringify(state.zaloAutoOverview || []);
+    state.zaloAutoOverview = rows;
+    state.zaloAutoOverviewFor = session.id;
+    return changed;
+  } catch { return false; }
+}
 export function listZaloAutoSendByKind(kind) { return (state.zaloAutoSendList || []).filter((r) => r.kind === kind); }
 export function listZaloSendLog() { return state.zaloSendLog || []; }
 
@@ -1132,6 +1174,7 @@ export async function removeZaloCustomer(customerId) {
   // chỉ cho client thấy đúng lựa chọn CỦA CHÍNH MÌNH nên chỉ cần dọn phần
   // đó ở cache cục bộ, không lệch gì so với việc tải lại.
   state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.customerId !== customerId);
+  state.zaloAutoOverview = (state.zaloAutoOverview || []).filter((r) => r.customerId !== customerId);
   notify();
 }
 /**
@@ -1149,12 +1192,15 @@ export async function addZaloAutoSend(contractId, kind = 'lai_hang_thang_auto', 
   // Server có thể tự tạo thêm dòng Tầng 1 (nếu khách chưa có) — tải lại
   // session data thay vì tự vá cache cục bộ, tránh lệch dữ liệu.
   await refreshSessionData();
+  // Cập nhật luôn tổng quan của mọi người (nhãn Danh sách OA, số tổng) — lỗi thì thôi, không làm hỏng thao tác vừa xong.
+  if (await refreshZaloAutoOverview()) notify();
 }
 export async function removeZaloAutoSend(id) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'remove-zalo-auto-send', id });
   if (!res.ok) throw new Error(res.reason || 'Không xóa được khỏi danh sách gửi tự động.');
   state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.id !== id);
+  state.zaloAutoOverview = (state.zaloAutoOverview || []).filter((r) => r.id !== id);
   notify();
 }
 /**
@@ -2443,5 +2489,5 @@ async function seedDemoData() {
     },
   ];
 
-  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloCustomers: [], zaloAutoSendList: [], zaloSendLog: [], chatUnreadCount: 0 };
+  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloCustomers: [], zaloAutoSendList: [], zaloAutoOverview: [], zaloSendLog: [], chatUnreadCount: 0 };
 }

@@ -98,9 +98,10 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
       <button class="chip ${activeStatus === 'all' ? 'active' : ''}" data-s="all">Tất cả</button>
       ${S.REQUEST_STATUS.map((s) => `<button class="chip ${activeStatus === s.id ? 'active' : ''}" data-s="${s.id}">${s.label}</button>`).join('')}
     </div>` : `
-    <div style="padding:10px 14px">${searchBoxHtml('support-search', 'Tìm theo tên/SĐT khách hàng...', searchQuery)}</div>`;
+    <div class="sup-search">${searchBoxHtml('support-search', 'Tìm theo tên/SĐT khách hàng...', searchQuery)}</div>`;
 
-  filterEl.innerHTML = tabsHtml + subFilterHtml;
+  // Cả cụm nút/ô tìm kiếm nằm trong khung cùng lề trái-phải với danh sách bên dưới (xem .sup-align trong styles.css).
+  filterEl.innerHTML = `<div class="sup-align">${tabsHtml}${subFilterHtml}</div>`;
 
   filterEl.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => { activeTab = btn.dataset.tab; render(contentEl, filterEl); });
