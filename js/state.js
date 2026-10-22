@@ -2118,10 +2118,10 @@ export function canViewBalanceSheet(id) {
  * cùng cơ chế với activateCustomerAccount() ở trên (qua Edge Function
  * "create-account", chỉ admin role='super' gọi được).
  */
-export async function addStaffAdmin({ username, name, password, role, allowedThon, allowedXom, canManageUsers: canManage, canViewBalanceSheet: canViewBalance }) {
+export async function addStaffAdmin({ username, name, password, role, allowedThon, allowedXom, canManageUsers: canManage, canManageZaloOA: canManageZalo, canViewBalanceSheet: canViewBalance }) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, {
-    type: 'staff', username, name, password, role, allowedThon, allowedXom, canManageUsers: !!canManage, canViewBalanceSheet: !!canViewBalance,
+    type: 'staff', username, name, password, role, allowedThon, allowedXom, canManageUsers: !!canManage, canManageZaloOA: !!canManageZalo, canViewBalanceSheet: !!canViewBalance,
   });
   if (!res.ok) throw new Error(res.reason || 'Không tạo được tài khoản.');
   const sb = getSupabaseClient(session.sbToken);
@@ -2130,7 +2130,11 @@ export async function addStaffAdmin({ username, name, password, role, allowedTho
   const idx = state.admins.findIndex((a) => a.id === staff.id);
   if (idx >= 0) state.admins[idx] = staff; else state.admins.push(staff);
   notify();
-  return { staff, tempPassword: res.tempPassword };
+  // Máy chủ bản cũ chưa nhận cờ quản lý OA lúc TẠO (bỏ qua) -> đặt lại bằng lệnh cập nhật quyền sẵn có, không cần deploy lại máy chủ mới dùng được.
+  if (canManageZalo && role === 'staff' && !staff.canManageZaloOA) {
+    try { await updateStaffPermissions(staff.id, allowedThon, allowedXom, canManage, true, canViewBalance); } catch (e) { console.warn('Chưa đặt được quyền quản lý OA cho tài khoản mới.', e); }
+  }
+  return { staff: getAdmin(staff.id) || staff, tempPassword: res.tempPassword };
 }
 /** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
 export async function updateStaffPermissions(id, allowedThon, allowedXom, canManage, canManageZalo, canViewBalance) {

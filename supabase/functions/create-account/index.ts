@@ -73,7 +73,7 @@
 //     { type: 'import-rollback', id } — quay lại bản trước của lần nhập mới nhất chưa quay lại
 //     { type: 'update-staff-role', staffId, role } — đổi Toàn quyền <-> Chỉ
 //       xem cho 1 tài khoản đã có sẵn (giữ lại ít nhất 1 toàn quyền)
-//     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom?, canManageUsers? }
+//     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom?, canManageUsers?, canManageZaloOA?, canViewBalanceSheet? }
 //     { type: 'reset-staff-password', staffId, password? }
 //     { type: 'force-logout-staff', staffId } — đăng xuất ngay, KHÔNG cấp lại mật khẩu
 //     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom?, canManageUsers?, canManageZaloOA? }
@@ -2006,6 +2006,7 @@ Deno.serve(async (req) => {
       allowed_thon: finalRole === 'staff' && Array.isArray(body.allowedThon) ? body.allowedThon : [],
       allowed_xom: finalRole === 'staff' && Array.isArray(body.allowedXom) ? body.allowedXom : [],
       can_manage_users: finalRole === 'staff' ? !!body.canManageUsers : false,
+      can_manage_zalo_oa: finalRole === 'staff' ? !!body.canManageZaloOA : false,
       can_view_balance_sheet: finalRole === 'staff' ? !!body.canViewBalanceSheet : false,
       salt: cred.salt, hash: cred.hash, must_change_password: true,
     });

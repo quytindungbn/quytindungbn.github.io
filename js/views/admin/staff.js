@@ -489,7 +489,7 @@ function openCreateUserModal(tree, contentEl) {
               <input name="password" placeholder="Để trống sẽ tự sinh mật khẩu"/>
               <div class="field-hint">Đây là mật khẩu để User đăng nhập lần đầu — có thể tự đặt hoặc để trống cho hệ thống tự sinh, hiện ra sau khi lưu để gửi cho khách.</div>
             </div>
-            <div class="field-hint mb-8">Không cần nhập họ tên/SĐT/địa chỉ — nhập file Excel có CCCD này thì User sẽ tự động đồng bộ lấy đúng thông tin, tự thấy ngay hợp đồng khớp CCCD.</div>
+            <div class="field-hint mb-8 text-danger" style="font-weight:600">Lưu ý: nhập chính xác số căn cước (CCCD) của khách hàng.</div>
           </form>
           ` : `
           <form id="admin-form">
@@ -518,6 +518,11 @@ function openCreateUserModal(tree, contentEl) {
                 Cho phép quản lý User
               </label>
               <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý User" — tự tạo/sửa/xóa Use và nhân viên khác (không tạo được tài khoản Toàn quyền).</div>
+              <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
+                <input type="checkbox" name="canManageZaloOA"/>
+                Cho phép quản lý gửi tin Zalo OA
+              </label>
+              <div class="field-hint">Tích vào đây thì nhân viên này vào được trang "Quản lý OA" — thêm/bớt khách hàng vào danh sách gửi Zalo tự động, gửi tay, xem log gửi tin — CHỈ trong đúng Thôn/Xóm được gán ở trên.</div>
               <label class="flex items-center gap-8 mt-16" style="cursor:pointer;font-weight:700;font-size:14px">
                 <input type="checkbox" name="canViewBalanceSheet"/>
                 Cho phép xem mục Quản trị
@@ -567,6 +572,7 @@ function openCreateUserModal(tree, contentEl) {
               username: fd.get('username'), name: fd.get('name'), password: fd.get('password'),
               role: adminRole, allowedThon: fd.getAll('thon'), allowedXom: fd.getAll('xom'),
               canManageUsers: fd.get('canManageUsers') === 'on',
+              canManageZaloOA: fd.get('canManageZaloOA') === 'on',
               canViewBalanceSheet: fd.get('canViewBalanceSheet') === 'on',
             });
             closeFn();

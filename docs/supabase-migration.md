@@ -2906,6 +2906,13 @@ cả (vô hại).
 - **Tab "Tư vấn" (chat) không tải lại mỗi lần vào:** hiện ngay danh sách hội thoại đã có (không "Đang tải..."), chỉ tải lại ngầm khi đã cũ hơn 20 giây hoặc vừa đóng một khung chat; làm mới dữ liệu phiên khi đang ở tab này không còn kéo theo tải lại; danh sách chỉ lấy các cột cần dùng.
 - Kiểm tra: `scratchpad/uitest/perf_big.cjs` (đo thời gian vào trang với dữ liệu lớn, `THROTTLE=4` giả lập điện thoại), `pix_cmp.cjs` + `pix_diff.cjs` (so ảnh), `perf_func_test.cjs`, `ov_ledger_test.cjs`.
 
+### 10.64. Tạo User: bỏ dòng giải thích CCCD, thêm dòng lưu ý đỏ; tạo quản trị viên có sẵn ô "Quản lý OA" (KHÔNG bắt buộc deploy, KHÔNG cần SQL)
+
+- Màn **Tạo User** (loại "Use (khách hàng)"): bỏ dòng "Không cần nhập họ tên/SĐT/địa chỉ — nhập file Excel có CCCD này thì User sẽ tự động đồng bộ…", thay bằng dòng lưu ý màu đỏ **"Lưu ý: nhập chính xác số căn cước (CCCD) của khách hàng."**
+- Màn **Tạo User** (loại "Quản trị viên", vai trò "Chỉ xem"): thêm ô **"Cho phép quản lý gửi tin Zalo OA"** (giữa "Cho phép quản lý User" và "Cho phép xem mục Quản trị") — trước đây chỉ bật được sau khi tạo, ở màn sửa quyền.
+- App gửi cờ `canManageZaloOA` ngay lúc tạo; `create-account` bản mới ghi `can_manage_zalo_oa` vào dòng `admins` lúc tạo. **Chưa deploy lại cũng dùng được**: nếu máy chủ bản cũ bỏ qua cờ,
+  app tự gọi lệnh `update-staff-permissions` sẵn có ngay sau khi tạo để đặt đúng quyền. Kiểm tra: `scratchpad/uitest/createuser_test.cjs` (cả máy chủ mới lẫn cũ).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
