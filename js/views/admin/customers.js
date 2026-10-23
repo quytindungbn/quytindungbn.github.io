@@ -83,8 +83,8 @@ function amountRangeHtml() {
   const group = (title, minKey, maxKey, unit = '₫') => `<div class="amt-group">
       <div class="amt-title">${title}</div>
       <div class="amt-pair">
-        <label class="amt-box"><small>Từ</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="0" data-amt="${minKey}" aria-label="${title} từ"/><i>${unit}</i></label>
-        <label class="amt-box"><small>Đến</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="Không giới hạn" data-amt="${maxKey}" aria-label="${title} đến"/><i>${unit}</i></label>
+        <label class="amt-box"><small>Từ</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="0" enterkeyhint="done" data-amt="${minKey}" aria-label="${title} từ"/><i>${unit}</i></label>
+        <label class="amt-box"><small>Đến</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="Không giới hạn" enterkeyhint="done" data-amt="${maxKey}" aria-label="${title} đến"/><i>${unit}</i></label>
       </div>
     </div>`;
   return `<div class="amt-filter">${group('Số ngày lãi', 'daysMin', 'daysMax', 'ngày')}${group('Số tiền lãi', 'interestMin', 'interestMax')}${group('Gốc', 'principalMin', 'principalMax')}<p class="amt-warn" hidden>Số "Từ" đang lớn hơn số "Đến" nên không có khách nào khớp.</p></div>`;
@@ -160,9 +160,14 @@ export function render(contentEl, filterEl) {
     return `Sắp xếp: ${SORT_LABEL[sortMode]}${on.length ? ` · Lọc ${on.join(' + ')}` : ''} `;
   };
   // Gõ số tiền: lọc ngay sau khi ngừng gõ một chút (không vẽ lại danh sách ở mỗi phím).
-  const applyAmountRange = debounce(() => { renderFilterPills(); draw(); }, 250);
-  /** Gắn các ô "Từ/Đến" trong `root`; `refresh()` đưa lại giá trị hiện có vào ô (sau khi bấm Xóa lọc). */
-  function bindAmountRange(root) {
+  let amountTimer = null;
+  const runAmountRange = () => { clearTimeout(amountTimer); amountTimer = null; renderFilterPills(); draw(); };
+  const applyAmountRange = () => { clearTimeout(amountTimer); amountTimer = setTimeout(runAmountRange, 250); };
+  /**
+   * Gắn các ô "Từ/Đến" trong `root`; trả về hàm đưa lại giá trị hiện có vào ô (sau khi bấm Xóa lọc). Bấm Enter trong 1 ô = xong:
+   * áp dụng ngay (không chờ 0,25 giây), ẩn bàn phím rồi gọi `onDone()` (đóng hộp/bảng lọc như bấm nút Xong/Áp dụng).
+   */
+  function bindAmountRange(root, onDone) {
     const warn = root.querySelector('.amt-warn');
     const check = () => {
       const bad = (a, b) => a != null && b != null && a > b;
@@ -172,6 +177,14 @@ export function render(contentEl, filterEl) {
       const key = input.dataset.amt;
       bindMoneyInput(input, amountRange[key] || 0, (v) => { amountRange[key] = v > 0 ? v : null; check(); applyAmountRange(); });
       input.addEventListener('change', () => { if (amountRangeDesc()) S.logAdminAction('filter-customers', { filterDesc: `Lọc số tiền: **${amountRangeDesc()}**` }); });
+      input.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.isComposing) return;
+        e.preventDefault();
+        input.blur();
+        runAmountRange();
+        if (amountRangeDesc()) S.logAdminAction('filter-customers', { filterDesc: `Lọc số tiền: **${amountRangeDesc()}**` });
+        onDone?.();
+      });
     });
     check();
     return () => { root.querySelectorAll('[data-amt]').forEach((input) => { const v = amountRange[input.dataset.amt]; input.value = v ? formatNumber(v) : ''; }); check(); };
@@ -196,7 +209,7 @@ export function render(contentEl, filterEl) {
           S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: **${SORT_LABEL[sortMode]}**` });
           draw();
         });
-        const syncInputs = bindAmountRange(sheet);
+        const syncInputs = bindAmountRange(sheet, closeSheet);
         sheet.querySelector('#sortdlg-clear').addEventListener('click', () => {
           clearAmountRange(); syncInputs(); renderFilterPills(); draw();
           S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền & ngày lãi' });
@@ -315,7 +328,7 @@ export function render(contentEl, filterEl) {
         };
         filterSheetRefresh = paintSheet;
         paintSheet();
-        const syncInputs = bindAmountRange(sheet); // ô số tiền nằm ngoài #fsheet-fields nên không bị vẽ lại khi đổi Thôn/Xóm/Sắp xếp
+        const syncInputs = bindAmountRange(sheet, closeSheet); // ô số tiền nằm ngoài #fsheet-fields nên không bị vẽ lại khi đổi Thôn/Xóm/Sắp xếp
         sheet.querySelector('#fsheet-amt-clear').addEventListener('click', () => {
           clearAmountRange(); syncInputs(); renderFilterPills(); draw();
           S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền & ngày lãi' });
