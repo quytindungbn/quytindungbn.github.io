@@ -11,7 +11,7 @@ const PT = 25.4 / 72;               // mm trên 1 pt
 export const PAGE = { w: 297, h: 210 };
 const X0 = 14, X1 = 283, TOP = 12, BOTTOM = 196;
 export const COLS_MM = [22, 30, 22, 40, 38, 38, 40, 39];
-export const GEO = { headH: 8, rowH: 6, totalH: 7.5, noteGap: 3.4, noteH: 4, firstTableTop: 96.37 };
+export const GEO = { headH: 8, rowH: 6, totalH: 7.5, noteGap: 3.4, noteH: 4, firstTableTop: 97, paramH: 6.6 };
 
 /** Chia các dòng bảng vào các trang: trang 1 có phần đầu (điều kiện + ô tổng), dòng Cộng và ghi chú nằm cuối trang cuối. */
 export function planPages(rowCount) {
@@ -144,11 +144,12 @@ function drawFirstPageHead(ctx, m) {
   const top = 43.37;
   text(ctx, 'ĐIỀU KIỆN VAY', X0, top + 2.81, { weight: 700, size: 7.5, color: C.goldDark, track: 0.12 });
   hline(ctx, X0, X0 + 142, top + 5.4 + 0.1, 0.2, C.secLine);
+  const pitch = m.params.length > 5 ? GEO.paramH : 7.64; // 6 dòng thì sát hơn để vẫn vừa cạnh bốn ô tổng
   m.params.forEach(([label, value], i) => {
-    const t = top + 5.5 + 0.2 + i * 7.64;
-    text(ctx, label, X0, t + 4.96, { weight: 500, size: 9, color: C.goldDark });
-    text(ctx, value, X0 + 44, t + 4.96, { weight: 600, size: 9.5, color: C.ink, maxW: 142 - 44 });
-    hline(ctx, X0, X0 + 142, t + 7.64 - 0.1, 0.2, C.paramLine);
+    const t = top + 5.5 + 0.2 + i * pitch;
+    text(ctx, label, X0, t + pitch / 2 + 1.15, { weight: 500, size: 9, color: C.goldDark });
+    text(ctx, value, X0 + 44, t + pitch / 2 + 1.15, { weight: 600, size: 9.5, color: C.ink, maxW: 142 - 44 });
+    hline(ctx, X0, X0 + 142, t + pitch - 0.1, 0.2, C.paramLine);
   });
   // Bốn ô tổng (phải)
   const tw = 57.5, tx0 = X0 + 142 + 8;

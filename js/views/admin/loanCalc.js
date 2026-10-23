@@ -404,7 +404,7 @@ export function render(contentEl, opts) {
     else { st.due = derivedDue(); setVal('#lc-due', st.due); }
     markDue();
   };
-  const onMonths = () => { st.dueManual = false; refreshDue(); };
+  const onMonths = () => { st.dueManual = false; refreshDue(); }; // sửa Thời hạn / số tiền trả mỗi tháng sau cùng thì ngày đáo hạn tự tính lại theo
   const onDue = () => { st.dueManual = st.due.trim() !== ''; if (st.dueManual && st.tab === 'term') syncMonthsFromDue(); markDue(); };
   // caretOf (tùy chọn): tính lại vị trí con trỏ sau khi định dạng lại ô; mặc định giữ nguyên khoảng cách tới cuối ô.
   const bindInput = (id, key, mask, after, caretOf) => {
@@ -443,7 +443,7 @@ export function render(contentEl, opts) {
   bindInput('#lc-principal', 'principal', moneyText, refreshDue);
   bindInput('#lc-rate', 'rate', rateText, refreshDue);
   bindInput('#lc-months', 'months', (s) => digits(s).slice(0, 3), onMonths);
-  bindInput('#lc-payment', 'payment', moneyText, refreshDue);
+  bindInput('#lc-payment', 'payment', moneyText, onMonths);
   for (const m of Object.keys(CUSTOM)) bindInput(`#lc-fixed-${m}`, `fixed_${m}`, moneyText);
   bindDateInput('#lc-date', 'date', refreshDue);
   bindDateInput('#lc-due', 'due', onDue);

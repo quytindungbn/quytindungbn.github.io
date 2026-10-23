@@ -3003,6 +3003,12 @@ Trong `js/lib/loanCalc.js`, số tiền trả đều mỗi tháng của cách "G
 - **Nhập ngày** (`js/lib/dateInput.js`, hàm thuần, kiểm thử `tests/dateInput.test.mjs`): ô Ngày vay và Ngày đáo hạn khi ngày đã đủ dd/mm/yyyy thì gõ số = ĐÈ lên số tại con trỏ và tự nhảy qua dấu "/"; gõ "/", ".", "-", "," hoặc dấu cách = sang phần kế tiếp (1 số thì thêm số 0 phía trước); xóa sát dấu "/" xóa luôn số bên cạnh; con trỏ sau khi định dạng lại tính theo số chữ số đứng trước. Chỉ áp dụng cho 2 ô ngày của công cụ này (`maskViDate` dùng ở màn hình khác không đổi); trên điện thoại ô ngày vẫn mở lịch.
 - **Ngày đáo hạn ở tab "Theo số tiền trả hàng tháng"**: cùng hàng Ngày vay (điện thoại: Số tiền vay một hàng, Lãi suất | Số tiền trả mỗi tháng, Ngày vay | Ngày đáo hạn). Tự tính = ngày trả kỳ cuối; nhập tay thì `scheduleByPayment` nhận `endDate`: kỳ chứa ngày đó là kỳ cuối, dừng đúng ngày và trả nốt dư nợ; ngày muộn hơn ngày trả hết thì trả hết sớm như cũ (có dòng báo); không truyền thì y hệt trước. Excel/in/PDF ghi vào dòng "Số tiền này là" (không thêm dòng).
 
+### 10.78. Tính lãi vay: dòng "Ngày đáo hạn" trong Excel / In / Chia sẻ PDF, tự cập nhật khi nhập số tiền trả mỗi tháng (chỉ công cụ Tính lãi vay, KHÔNG cần deploy hay SQL)
+
+- `inputLines()` (`js/lib/loanCalcExport.js`) có thêm dòng **Ngày đáo hạn** = ngày trả của kỳ cuối trong bảng (tự tính, hoặc ngày đã nhập tay), ngay sau Ngày vay, ở cả hai cách tính. Dòng **Thời hạn vay** đã bỏ khỏi phần "Điều kiện vay" vì ngày đáo hạn có thể sửa tay nên số tháng có thể khác số đã nhập (số tháng thật nằm ở ô tổng "Thời hạn"). Cách theo thời hạn còn 5 dòng, cách theo số tiền trả hàng tháng 6 dòng.
+- Excel: cột trái Số tiền vay / Ngày vay / Ngày đáo hạn (hai ngày ở hai hàng liền nhau), cột phải Lãi suất / Cách trả (hoặc Số tiền trả mỗi tháng / Số tiền này là). In và PDF: danh sách dọc, khi có 6 dòng thì dòng sát lại (`.params.dense` ở bản in, `GEO.paramH` và `GEO.firstTableTop` ở `js/lib/loanCalcPdf.js`) để vẫn vừa cạnh bốn ô tổng; số trang không đổi.
+- Tab "Theo số tiền trả hàng tháng": sửa Số tiền trả mỗi tháng thì Ngày đáo hạn tự cập nhật ngay (giống sửa Thời hạn ở tab kia — ô sửa sau cùng thắng); muốn giữ một ngày đáo hạn cố định thì nhập số tiền trước, nhập ngày đáo hạn sau cùng.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

@@ -25,16 +25,16 @@ export function inputLines(inputs, result) {
     ['Lãi suất', `${pct(inputs.ratePercent)}%/năm (365 ngày/năm)`],
     ['Ngày vay', formatDate(inputs.startDate)],
   ];
+  // Ngày đáo hạn = ngày trả của kỳ cuối trong bảng (tự tính theo thời hạn / số tiền trả mỗi tháng, hoặc ngày đã nhập tay), luôn có ở cả hai cách tính và nằm ngay sau Ngày vay.
+  // Không ghi "Thời hạn vay": ngày đáo hạn có thể được sửa tay nên số tháng có thể khác số đã nhập (số tháng thật nằm ở ô tổng "Thời hạn").
+  const rows = result && result.rows;
+  if (rows && rows.length) lines.push(['Ngày đáo hạn', formatDate(rows[rows.length - 1].to)]);
   if (inputs.tab === 'term') {
-    // Tự nhập số tiền trả mỗi tháng / ngày đáo hạn được gộp vào 2 dòng này (giữ nguyên 5 dòng điều kiện của bản in, PDF và Excel).
-    const term = inputs.endDate ? `${inputs.months} tháng (đến ngày ${formatDate(inputs.endDate)})` : `${inputs.months} tháng`;
-    const way = (METHOD_LABELS[inputs.method] || '') + (inputs.fixedAmount > 0 ? `, ${formatVND(inputs.fixedAmount)}/tháng` : '');
-    lines.push(['Thời hạn vay', term], ['Cách trả', way]);
+    // Số gốc / tiền trả mỗi tháng tự nhập được gộp vào dòng "Cách trả".
+    lines.push(['Cách trả', (METHOD_LABELS[inputs.method] || '') + (inputs.fixedAmount > 0 ? `, ${formatVND(inputs.fixedAmount)}/tháng` : '')]);
   } else {
-    // Ngày đáo hạn nhập tay được gộp vào dòng "Số tiền này là" (giữ nguyên 5 dòng điều kiện của bản in, PDF và Excel).
-    lines.push(['Số tiền trả mỗi tháng', formatVND(inputs.payment)], ['Số tiền này là', (KIND_LABELS[inputs.kind] || '') + (inputs.endDate ? `, đáo hạn ${formatDate(inputs.endDate)}` : '')]);
+    lines.push(['Số tiền trả mỗi tháng', formatVND(inputs.payment)], ['Số tiền này là', KIND_LABELS[inputs.kind] || '']);
   }
-  void result;
   return lines;
 }
 
@@ -124,7 +124,9 @@ export function buildLoanCalcXlsx({ org, inputs, result, printedOn = new Date() 
   push([], 6);
   r = push(span([], 0, 7, { v: 'ĐIỀU KIỆN VAY', style: 'section' }), 18); mergeRow(r, 0, 7);
 
-  const left = m.params.slice(0, 3), right = m.params.slice(3);
+  // Cột trái: Số tiền vay, Ngày vay, Ngày đáo hạn (hai ngày liền nhau); cột phải: các điều kiện còn lại (Lãi suất, Cách trả hoặc Số tiền trả mỗi tháng / Số tiền này là).
+  const LEFT_COL = ['Số tiền vay', 'Ngày vay', 'Ngày đáo hạn'];
+  const left = LEFT_COL.map((l) => m.params.find((p) => p[0] === l)).filter(Boolean), right = m.params.filter((p) => !LEFT_COL.includes(p[0]));
   for (let i = 0; i < left.length; i++) {
     const row = [];
     span(row, 0, 1, { v: left[i][0], style: 'plabel' });
@@ -215,6 +217,7 @@ h1{margin:3.6mm 0 0;font:700 26pt/1.1 ${SERIF_STACK};letter-spacing:-.01em;color
 .info{display:grid;grid-template-columns:142mm 1fr;gap:0 8mm;margin-top:4mm}
 .params h2{margin:0;padding:0 0 1.6mm;border-bottom:.2mm solid #c9d6cf;font:700 7.5pt ${SANS_STACK};letter-spacing:.12em;text-transform:uppercase;color:#8a6a22}
 .prow{display:grid;grid-template-columns:44mm 1fr;align-items:baseline;padding:1.4mm 0;border-bottom:.2mm solid #c9d6cf}
+.params.dense .prow{padding:1.15mm 0}
 .prow span{font-size:9pt;color:#8a6a22}.prow b{font-weight:600;font-size:9.5pt}
 .tiles{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content;gap:4mm}
 .tile{padding:2.4mm 4mm 2.8mm;background:#f7f1df;border-top:.7mm solid #b08d3c}.tile.hi{background:#e9f3ee;border-top-color:#0c4a3f}
@@ -234,7 +237,7 @@ thead{display:table-header-group}tfoot{display:table-row-group}tr{break-inside:a
 </style></head><body><div class="toolbar"><button onclick="window.print()">In</button><span>Chọn "Lưu dưới dạng PDF" trong hộp thoại in nếu muốn lưu thành file.</span></div>
 <article class="sheet"><header class="top"><span class="org">${h(m.orgName)}</span><span class="date">${h(m.dateText)}</span></header>
 <h1>${h(m.title)}</h1><p class="sub">${h(m.subtitle)}</p>
-<section class="info"><div class="params"><h2>Điều kiện vay</h2>${params}</div><div class="tiles">${tiles}</div></section>
+<section class="info"><div class="params${m.params.length > 5 ? ' dense' : ''}"><h2>Điều kiện vay</h2>${params}</div><div class="tiles">${tiles}</div></section>
 <table class="t"><colgroup>${COLS_MM.map((w) => `<col style="width:${w}mm">`).join('')}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody>
 <tfoot><tr><td class="l">Cộng</td><td></td><td class="c">${T.days}</td><td></td><td>${T.principal}</td><td>${T.interest}</td><td>${T.payment}</td><td></td></tr></tfoot></table>
 <p class="note">${h(m.note)}</p></article></body></html>`;

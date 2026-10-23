@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { formatDate } from '../js/utils.js';
 import { inputLines, summaryItems, summaryTiles, printModel, loanCalcFileName, buildLoanCalcXlsx, buildLoanCalcPrintHtml, TABLE_HEAD } from '../js/lib/loanCalcExport.js';
 import { unzipEntries } from './helpers/unzip.mjs';
 import { scheduleByTerm, scheduleByPayment } from '../js/lib/loanCalc.js';
@@ -13,7 +14,8 @@ const payRes = scheduleByPayment({ principal: 200e6, ratePercent: 10.34, payment
 
 test('điều kiện đã nhập: tab thời hạn và tab trả hàng tháng ghi đúng các dòng', () => {
   const a = Object.fromEntries(inputLines(term, termRes));
-  assert.equal(a['Thời hạn vay'], '12 tháng');
+  assert.equal(a['Thời hạn vay'], undefined); // không ghi số tháng: ngày đáo hạn có thể sửa tay nên số tháng thật có thể khác
+  assert.equal(a['Ngày đáo hạn'], '22/10/2027');
   assert.match(a['Cách trả'], /Gốc trả đều/);
   assert.match(a['Lãi suất'], /10,34%\/năm/);
   const b = Object.fromEntries(inputLines(pay, payRes));
@@ -106,25 +108,50 @@ test('file Excel: A4 ngang, vừa chiều ngang, có bảng đủ kỳ, ngày th
   assert.ok(styles.includes('<bottom style="thin"><color rgb="FF98AEA3"/></bottom>'), 'kẻ từng dòng của bảng đủ đậm');
   assert.ok(styles.includes('<bottom style="thin"><color rgb="FFC9D6CF"/></bottom>'), 'mục Điều kiện vay có kẻ nhẹ dưới từng dòng');
   const sheetXml = files['xl/worksheets/sheet1.xml'];
-  const condRows = [...sheetXml.matchAll(/<row r="(\d+)"[^>]*>(.*?)<\/row>/g)].filter((m) => /Số tiền vay|Lãi suất|Ngày vay|Thời hạn vay|Cách trả|Số tiền trả mỗi tháng|Số tiền này là/.test(m[2]) || /<c r="[E-H]\d+" s="\d+"\/>/.test(m[2]));
+  const condRows = [...sheetXml.matchAll(/<row r="(\d+)"[^>]*>(.*?)<\/row>/g)].filter((m) => /Số tiền vay|Lãi suất|Ngày vay|Ngày đáo hạn|Cách trả|Số tiền trả mỗi tháng|Số tiền này là/.test(m[2]) || /<c r="[E-H]\d+" s="\d+"\/>/.test(m[2]));
   assert.ok(condRows.length >= 3 && condRows.every((m) => (m[2].match(/<c r="[A-H]\d+" s="\d+"/g) || []).length === 8), 'mọi dòng điều kiện vay đủ 8 ô có kẻ, kể cả ô trống bên phải');
   const term2 = unzipEntries(buildLoanCalcXlsx({ org, inputs: term, result: termRes, printedOn: start }))['xl/worksheets/sheet1.xml'];
-  assert.ok(term2.includes('Gốc trả đều mỗi tháng') && term2.includes('Thời hạn vay'));
+  assert.ok(term2.includes('Gốc trả đều mỗi tháng') && term2.includes('Ngày đáo hạn') && !term2.includes('Thời hạn vay'));
+  // Cột trái: Số tiền vay, Ngày vay, Ngày đáo hạn (hai ngày ở hai hàng liền nhau); cột phải: Lãi suất, rồi Cách trả (hoặc Số tiền trả mỗi tháng, Số tiền này là)
+  for (const [x, right] of [[term2, ['Lãi suất', 'Cách trả', null]], [files['xl/worksheets/sheet1.xml'], ['Lãi suất', 'Số tiền trả mỗi tháng', 'Số tiền này là']]]) {
+    const rows = [...x.matchAll(/<row r="(\d+)"[^>]*>(.*?)<\/row>/g)].map((m) => [Number(m[1]), m[2]]);
+    const rowOf = (label) => rows.find((r) => r[1].includes(label));
+    const cells = ['Số tiền vay', 'Ngày vay', 'Ngày đáo hạn'].map(rowOf);
+    assert.equal(cells[2][0], cells[1][0] + 1, 'Ngày đáo hạn ở hàng liền dưới Ngày vay');
+    assert.equal(cells[1][0], cells[0][0] + 1);
+    cells.forEach((c, i) => { if (right[i]) assert.ok(c[1].includes(right[i]), `hàng ${i + 1}: ${right[i]} ở cột phải`); });
+    assert.ok(cells[0][1].indexOf('Số tiền vay') < cells[0][1].indexOf('Lãi suất'));
+  }
 });
 
-test('điều kiện đã nhập ghi thêm số gốc/tiền trả mỗi tháng tự nhập và ngày đáo hạn vào đúng dòng sẵn có', () => {
+test('điều kiện đã nhập: số gốc tự nhập ghi vào dòng "Cách trả", ngày đáo hạn nhập tay là ngày kỳ cuối', () => {
   const inputs = { ...term, months: 12, fixedAmount: 5e6, endDate: new Date(2027, 9, 22) };
   const res = scheduleByTerm({ principal: 200e6, ratePercent: 10.34, months: 0, startDate: start, method: 'equalPrincipal', fixedAmount: 5e6, endDate: inputs.endDate });
-  const lines = inputLines(inputs, res);
-  const a = Object.fromEntries(lines);
-  assert.equal(a['Thời hạn vay'], '12 tháng (đến ngày 22/10/2027)');
+  const a = Object.fromEntries(inputLines(inputs, res));
+  assert.equal(a['Thời hạn vay'], undefined);
+  assert.equal(a['Ngày đáo hạn'], '22/10/2027');
   assert.match(a['Cách trả'], /Gốc trả đều.*5\.000\.000/);
-  assert.equal(lines.length, inputLines(term, termRes).length); // không thêm dòng mới nên bố cục in/PDF không đổi
 });
 
-test('tab trả hàng tháng: ngày đáo hạn nhập tay được ghi vào dòng "Số tiền này là", không thêm dòng mới', () => {
-  const inputs = { ...pay, endDate: new Date(2027, 9, 22) };
-  const lines = inputLines(inputs, payRes);
-  assert.equal(Object.fromEntries(lines)['Số tiền này là'], 'Gồm cả gốc và lãi, đáo hạn 22/10/2027');
-  assert.equal(lines.length, inputLines(pay, payRes).length);
+test('cả hai cách tính đều có dòng Ngày đáo hạn (ngày trả kỳ cuối), ngay sau Ngày vay', () => {
+  for (const [inputs, res] of [[term, termRes], [pay, payRes]]) {
+    const lines = inputLines(inputs, res);
+    assert.equal(lines.length, inputs.tab === 'term' ? 5 : 6);
+    assert.deepEqual(lines.slice(0, 4).map((l) => l[0]), ['Số tiền vay', 'Lãi suất', 'Ngày vay', 'Ngày đáo hạn']);
+    assert.equal(lines[3][1], formatDate(res.rows[res.rows.length - 1].to));
+  }
+  assert.equal(Object.fromEntries(inputLines(term, termRes))['Ngày đáo hạn'], '22/10/2027'); // vay 22/10/2026 + 12 tháng
+  assert.equal(Object.fromEntries(inputLines(pay, payRes))['Số tiền này là'], 'Gồm cả gốc và lãi');
+});
+
+test('Ngày đáo hạn có trong Excel, bản in và PDF', () => {
+  for (const [inputs, res] of [[term, termRes], [pay, payRes]]) {
+    const due = formatDate(res.rows[res.rows.length - 1].to);
+    const html = buildLoanCalcPrintHtml({ org, inputs, result: res, printedOn: start });
+    assert.match(html, /<span>Ngày đáo hạn<\/span><b>/);
+    assert.ok(html.includes(`<b>${due}</b>`));
+    const sheet = unzipEntries(buildLoanCalcXlsx({ org, inputs, result: res, printedOn: start }))['xl/worksheets/sheet1.xml'];
+    assert.ok(sheet.includes('Ngày đáo hạn'));
+    assert.ok(printModel({ org, inputs, result: res, printedOn: start }).params.some(([l, v]) => l === 'Ngày đáo hạn' && v === due));
+  }
 });
