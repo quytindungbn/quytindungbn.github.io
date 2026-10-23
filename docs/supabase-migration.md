@@ -2975,6 +2975,13 @@ File `js/lib/printNotices.js` (hàm `buildNoticeHtml()`/`printNotice()`), vẫn 
 - **Câu yêu cầu gọn**: nộp lãi — "Đề nghị ông/bà thanh toán lãi phát sinh cho Quỹ tín dụng nhân dân Bình Nguyên trước <hạn>, theo đúng cam kết tại hợp đồng tín dụng."; đến hạn — "Yêu cầu ông/bà trước <hạn> phải thanh toán gốc và lãi phát sinh theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên." Các đoạn còn lại, cách đọc số thành chữ và cách tính hạn thanh toán (`noticeDeadlineDate()`) giữ nguyên.
 - Test: `tests/printNotices.test.mjs` (thêm kiểm tra thứ tự dải thông tin, logo/dòng liên hệ có mã hóa HTML).
 
+### 10.73. Dòng chú thích lần gửi Zalo gần nhất ở chi tiết hợp đồng (chỉ giao diện, KHÔNG cần deploy hay SQL)
+
+Dưới nút "Gửi tin Zalo OA ngay" (`zaloHintHtml()` trong `js/views/admin/customers.js`): nói rõ lần gửi thành công gần nhất là **tự động** hay **bằng tay** (lấy từ `triggeredBy` của nhật ký gửi; lượt vừa bấm gửi trong phiên là gửi tay) và in đậm ngày tháng:
+- Còn trong 5 ngày (chữ đỏ, nút khóa): "Đã gửi Zalo tự động|bằng tay gần nhất ngày **dd/mm/yyyy** — còn **N ngày** nữa mới gửi lại được (giới hạn 5 ngày/lần)."
+- Đã qua 5 ngày: "Đã gửi Zalo tự động|bằng tay gần nhất ngày **dd/mm/yyyy**." (bỏ cụm "đã đủ 5 ngày, gửi lại được rồi").
+Thông báo lỗi do máy chủ trả về và chú thích trong ô Gửi OA ở danh sách khách hàng giữ nguyên.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

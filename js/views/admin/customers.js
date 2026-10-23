@@ -1037,10 +1037,14 @@ function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
   if (!inZaloList) {
     return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} Khách chưa có trong Danh sách OA — vào chi tiết khách hàng (nút "Thêm vào OA") để thêm trước khi gửi được.</div>`;
   }
+  if (!lastZaloSend) return '';
+  // Nói rõ lần gần nhất là gửi tự động hay gửi tay (lấy từ nhật ký gửi: triggeredBy = 'auto' | 'manual'; lượt vừa bấm gửi trong phiên này là gửi tay).
+  const how = lastZaloSend.triggeredBy === 'auto' ? 'tự động' : 'bằng tay';
+  const lastText = `Đã gửi Zalo ${how} gần nhất ngày <strong>${formatDate(lastZaloSend.sentAt)}</strong>`;
   if (zaloCooldownDaysLeft > 0) {
-    return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — còn ${zaloCooldownDaysLeft} ngày nữa mới gửi lại được (giới hạn 5 ngày/lần).</div>`;
+    return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} ${lastText} — còn <strong style="white-space:nowrap">${zaloCooldownDaysLeft} ngày</strong> nữa mới gửi lại được (giới hạn 5 ngày/lần).</div>`;
   }
-  return lastZaloSend ? `<div class="field-hint">Đã gửi Zalo gần nhất ngày ${formatDate(lastZaloSend.sentAt)} — đã đủ 5 ngày, gửi lại được rồi.</div>` : '';
+  return `<div class="field-hint">${lastText}.</div>`;
 }
 
 function zaloAutoStatusHtml(status) {
@@ -1057,7 +1061,7 @@ function manualOaState(contract) {
   const lastServerSend = S.lastSuccessfulZaloSend(contract.id);
   const recentSentAt = manualOaSentAt.get(contract.id);
   const lastZaloSend = recentSentAt && (!lastServerSend || new Date(recentSentAt) > new Date(lastServerSend.sentAt))
-    ? { sentAt: recentSentAt } : lastServerSend;
+    ? { sentAt: recentSentAt, triggeredBy: 'manual' } : lastServerSend;
   const daysSince = lastZaloSend ? daysBetween(new Date(lastZaloSend.sentAt), new Date()) : null;
   return { inZaloList, lastZaloSend, cooldownDaysLeft: daysSince === null ? 0 : Math.max(0, 5 - daysSince) };
 }
@@ -1433,7 +1437,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       const zaloHintWrap = sheet.querySelector('#zalo-hint-wrap-ct');
       if (zaloManualBtn) zaloManualBtn.addEventListener('click', () => sendManualOa(contract.id, zaloManualBtn, (sentAt) => {
-        if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt });
+        if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt, triggeredBy: 'manual' });
       }));
       const delBtn = sheet.querySelector('#del-contract');
       if (delBtn) delBtn.addEventListener('click', () => {
