@@ -44,8 +44,8 @@ let filterThon = []; // rỗng = Tất cả — có thể tích chọn nhiều T
 let filterXom = [];  // rỗng = Tất cả — có thể tích chọn nhiều Xóm cùng lúc
 let urgencyFilter = 'all'; // 'all' | 'qua_han' | 'gan_den_han' — CHỈ chọn được 1 trong 3 (không phải nhiều lựa chọn cùng lúc như trước)
 let sortMode = 'default';
-// Lọc theo số tiền của từng khách (tổng dư nợ gốc / tổng lãi tạm tính): null = không giới hạn phía đó.
-let amountRange = { interestMin: null, interestMax: null, principalMin: null, principalMax: null };
+// Lọc theo khoảng của từng khách: số tiền (tổng dư nợ gốc / tổng lãi tạm tính) và số ngày lãi (của hợp đồng); null = không giới hạn phía đó.
+let amountRange = { interestMin: null, interestMax: null, principalMin: null, principalMax: null, daysMin: null, daysMax: null };
 let filterSheetRefresh = null; // vẽ lại bảng "Bộ lọc" (điện thoại) khi đang mở và lựa chọn đổi
 const manualOaSending = new Set();
 const manualOaSentAt = new Map();
@@ -67,26 +67,27 @@ export function resetFilters() {
   manualOaSending.clear(); manualOaSentAt.clear();
 }
 
-function clearAmountRange() { amountRange = { interestMin: null, interestMax: null, principalMin: null, principalMax: null }; }
+function clearAmountRange() { amountRange = { interestMin: null, interestMax: null, principalMin: null, principalMax: null, daysMin: null, daysMax: null }; }
 const interestRangeOn = () => amountRange.interestMin != null || amountRange.interestMax != null;
 const principalRangeOn = () => amountRange.principalMin != null || amountRange.principalMax != null;
-const amountRangeCount = () => (interestRangeOn() ? 1 : 0) + (principalRangeOn() ? 1 : 0);
+const daysRangeOn = () => amountRange.daysMin != null || amountRange.daysMax != null;
+const amountRangeCount = () => (interestRangeOn() ? 1 : 0) + (principalRangeOn() ? 1 : 0) + (daysRangeOn() ? 1 : 0);
 const amountInRange = (value, min, max) => (min == null || value >= min) && (max == null || value <= max);
 /** Mô tả ngắn cho nhật ký: "Lãi từ 100.000 đến 500.000; Gốc từ 50.000.000". */
 function amountRangeDesc() {
   const part = (label, min, max) => (min == null && max == null ? '' : `${label}${min != null ? ` từ ${formatNumber(min)}` : ''}${max != null ? ` đến ${formatNumber(max)}` : ''}`);
-  return [part('Lãi', amountRange.interestMin, amountRange.interestMax), part('Gốc', amountRange.principalMin, amountRange.principalMax)].filter(Boolean).join('; ');
+  return [part('Lãi', amountRange.interestMin, amountRange.interestMax), part('Gốc', amountRange.principalMin, amountRange.principalMax), part('Ngày lãi', amountRange.daysMin, amountRange.daysMax)].filter(Boolean).join('; ');
 }
-/** Khối 2 dòng "Số tiền lãi / Gốc: từ … đến …" — dùng chung cho hộp Sắp xếp (máy tính) và bảng Bộ lọc (điện thoại). */
+/** Khối 3 dòng "Số ngày lãi / Số tiền lãi / Gốc: từ … đến …" — dùng chung cho hộp Sắp xếp (máy tính) và bảng Bộ lọc (điện thoại). */
 function amountRangeHtml() {
-  const group = (title, minKey, maxKey) => `<div class="amt-group">
+  const group = (title, minKey, maxKey, unit = '₫') => `<div class="amt-group">
       <div class="amt-title">${title}</div>
       <div class="amt-pair">
-        <label class="amt-box"><small>Từ</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="0" data-amt="${minKey}" aria-label="${title} từ"/><i>₫</i></label>
-        <label class="amt-box"><small>Đến</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="Không giới hạn" data-amt="${maxKey}" aria-label="${title} đến"/><i>₫</i></label>
+        <label class="amt-box"><small>Từ</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="0" data-amt="${minKey}" aria-label="${title} từ"/><i>${unit}</i></label>
+        <label class="amt-box"><small>Đến</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="Không giới hạn" data-amt="${maxKey}" aria-label="${title} đến"/><i>${unit}</i></label>
       </div>
     </div>`;
-  return `<div class="amt-filter">${group('Số tiền lãi', 'interestMin', 'interestMax')}${group('Gốc', 'principalMin', 'principalMax')}<p class="amt-warn" hidden>Số "Từ" đang lớn hơn số "Đến" nên không có khách nào khớp.</p></div>`;
+  return `<div class="amt-filter">${group('Số ngày lãi', 'daysMin', 'daysMax', 'ngày')}${group('Số tiền lãi', 'interestMin', 'interestMax')}${group('Gốc', 'principalMin', 'principalMax')}<p class="amt-warn" hidden>Số "Từ" đang lớn hơn số "Đến" nên không có khách nào khớp.</p></div>`;
 }
 
 function multiPillLabel(prefix, values) {
@@ -154,7 +155,7 @@ export function render(contentEl, filterEl) {
   });
 
   const sortPillLabel = () => {
-    const on = [interestRangeOn() ? 'lãi' : '', principalRangeOn() ? 'gốc' : ''].filter(Boolean);
+    const on = [interestRangeOn() ? 'lãi' : '', principalRangeOn() ? 'gốc' : '', daysRangeOn() ? 'ngày' : ''].filter(Boolean);
     return `Sắp xếp: ${SORT_LABEL[sortMode]}${on.length ? ` · Lọc ${on.join(' + ')}` : ''} `;
   };
   // Gõ số tiền: lọc ngay sau khi ngừng gõ một chút (không vẽ lại danh sách ở mỗi phím).
@@ -164,7 +165,7 @@ export function render(contentEl, filterEl) {
     const warn = root.querySelector('.amt-warn');
     const check = () => {
       const bad = (a, b) => a != null && b != null && a > b;
-      if (warn) warn.hidden = !(bad(amountRange.interestMin, amountRange.interestMax) || bad(amountRange.principalMin, amountRange.principalMax));
+      if (warn) warn.hidden = !(bad(amountRange.interestMin, amountRange.interestMax) || bad(amountRange.principalMin, amountRange.principalMax) || bad(amountRange.daysMin, amountRange.daysMax));
     };
     root.querySelectorAll('[data-amt]').forEach((input) => {
       const key = input.dataset.amt;
@@ -178,10 +179,10 @@ export function render(contentEl, filterEl) {
   function openSortDialog() {
     const optionsHtml = () => SORT_OPTIONS.map((o) => `<button type="button" class="sortdlg-opt${o.value === sortMode ? ' is-on' : ''}" data-sort="${o.value}"><span>${o.label}</span>${o.value === sortMode ? icon('check', 'icon-sm') : ''}</button>`).join('');
     openModal({
-      title: 'Sắp xếp & lọc số tiền',
+      title: 'Sắp xếp & lọc',
       sheetClass: 'sheet-sortdlg',
       bodyHtml: `<div class="sortdlg-h">Sắp xếp theo</div><div class="sortdlg-opts" id="sortdlg-opts">${optionsHtml()}</div>
-        <div class="sortdlg-h sortdlg-h2"><span>Lọc theo số tiền</span><button type="button" id="sortdlg-clear">Xóa lọc số tiền</button></div>${amountRangeHtml()}`,
+        <div class="sortdlg-h sortdlg-h2"><span>Lọc theo khoảng</span><button type="button" id="sortdlg-clear">Xóa lọc số tiền &amp; ngày</button></div>${amountRangeHtml()}`,
       footHtml: `<button class="btn btn-primary btn-block" data-done>Xong</button>`,
       onMount(sheet, closeSheet) {
         const optsEl = sheet.querySelector('#sortdlg-opts');
@@ -197,7 +198,7 @@ export function render(contentEl, filterEl) {
         const syncInputs = bindAmountRange(sheet);
         sheet.querySelector('#sortdlg-clear').addEventListener('click', () => {
           clearAmountRange(); syncInputs(); renderFilterPills(); draw();
-          S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền' });
+          S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền & ngày lãi' });
         });
         sheet.querySelector('[data-done]').addEventListener('click', closeSheet);
       },
@@ -291,7 +292,7 @@ export function render(contentEl, filterEl) {
     const rowHtml = (key, label) => `<button type="button" class="fsheet-row" data-fkey="${key}"><span><small>${label}</small><b>${escapeHtml(valueOf[key]())}</b></span>${icon('chevronDown', 'icon-sm')}</button>`;
     openModal({
       title: 'Bộ lọc',
-      bodyHtml: `<div class="fsheet-clear"><button type="button" id="fsheet-clear">Xóa lọc</button></div><div id="fsheet-fields"></div><div class="sortdlg-h sortdlg-h2 fsheet-amt-h"><span>Lọc theo số tiền</span><button type="button" id="fsheet-amt-clear">Xóa lọc số tiền</button></div>${amountRangeHtml()}`,
+      bodyHtml: `<div class="fsheet-clear"><button type="button" id="fsheet-clear">Xóa lọc</button></div><div id="fsheet-fields"></div><div class="sortdlg-h sortdlg-h2 fsheet-amt-h"><span>Lọc theo khoảng</span><button type="button" id="fsheet-amt-clear">Xóa lọc số tiền &amp; ngày</button></div>${amountRangeHtml()}`,
       footHtml: `<button class="btn btn-primary btn-block" data-apply>Áp dụng</button>`,
       onClose() { filterSheetRefresh = null; },
       onMount(sheet, closeSheet) {
@@ -305,7 +306,7 @@ export function render(contentEl, filterEl) {
         const syncInputs = bindAmountRange(sheet); // ô số tiền nằm ngoài #fsheet-fields nên không bị vẽ lại khi đổi Thôn/Xóm/Sắp xếp
         sheet.querySelector('#fsheet-amt-clear').addEventListener('click', () => {
           clearAmountRange(); syncInputs(); renderFilterPills(); draw();
-          S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền' });
+          S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền & ngày lãi' });
         });
         sheet.querySelector('#fsheet-clear').addEventListener('click', () => {
           filterThon = []; filterXom = []; sortMode = 'default'; clearAmountRange(); syncInputs();
@@ -366,10 +367,11 @@ export function render(contentEl, filterEl) {
     // — dù hồ sơ/tài khoản Use của họ vẫn được giữ (xem Quản lý User), chỉ
     // là không còn hiện trong danh sách khách hàng đang vay này.
     enriched = enriched.filter((e) => e.totalBalance > 0);
-    // Lọc theo khoảng số tiền Lãi/Gốc (tổng của khách) — trước khi đếm số khách từng nhóm để 3 con số ở nút lọc khớp với danh sách.
+    // Lọc theo khoảng Lãi/Gốc (tổng của khách) và Số ngày lãi (khách có ÍT NHẤT 1 hợp đồng trong khoảng) — trước khi đếm số khách từng nhóm để 3 con số ở nút lọc khớp với danh sách.
     if (amountRangeCount()) {
       enriched = enriched.filter((e) => amountInRange(Math.round(e.totalInterest), amountRange.interestMin, amountRange.interestMax)
-        && amountInRange(e.totalBalance, amountRange.principalMin, amountRange.principalMax));
+        && amountInRange(e.totalBalance, amountRange.principalMin, amountRange.principalMax)
+        && (!daysRangeOn() || e.contracts.some((ct) => amountInRange(S.interestDaysAccrued(ct), amountRange.daysMin, amountRange.daysMax))));
     }
     // Số khách của từng nhóm (theo đúng tìm kiếm/Thôn/Xóm đang chọn) hiện cạnh 3 nút lọc.
     const urgencyCounts = { all: enriched.length, qua_han: enriched.filter((e) => e.hasOverdue).length, gan_den_han: enriched.filter((e) => e.hasNearDue).length };
