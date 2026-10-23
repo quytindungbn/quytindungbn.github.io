@@ -10,6 +10,7 @@ import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabase
 import { escapeHtml, formatNumber, formatVND, formatCompact, compactParts } from '../../utils.js';
 import { icon } from '../../icons.js';
 import { periodStepperHtml } from '../../components/ui.js';
+import { kvGet, kvSet } from '../../lib/kvCache.js';
 
 let reports = [];
 let selectedMonth = null;
@@ -18,6 +19,7 @@ let hasLoaded = false;
 let requestId = 0;
 let loadingPromise = null; // lượt tải bảng cân đối đang chạy (nếu có) — dùng chung, không bắt đầu lượt mới khi trang vẽ lại
 let latestContentEl = null;
+let skipCache = false; // true: lượt tải kế tiếp bỏ qua đệm trên máy, tải đầy đủ từ máy chủ (nút Làm mới, vừa nạp file)
 const remoteProvisions = new Map();
 const pendingProvisions = new Set();
 
@@ -140,36 +142,111 @@ async function loadRemoteProvision(yearMonth, contentEl) {
 
 const onThisPage = () => location.hash.split('?')[0] === '#/admin/can-doi-ke-toan';
 
+const SELECT_FULL = 'year_month, period_end, source_name, figures, imported_at';
+const cacheKey = (uid) => `balance:${uid}`;
+
+/**
+ * Tải bảng cân đối. Bảng này nặng (mỗi tháng là cả bảng số liệu), nên:
+ *  - Có bản đã lưu trên máy (IndexedDB, theo từng người dùng) -> hiện NGAY bản đó, rồi chỉ hỏi máy chủ danh sách nhẹ (tháng + giờ nạp) và chỉ tải
+ *    lại đúng những tháng mới/đổi — mở lại trang hoặc tải lại trang không phải chờ tải cả bảng nữa.
+ *  - Chưa có bản lưu (lần đầu trên máy này, hoặc bấm Làm mới) -> tải đầy đủ như trước, xong lưu lại.
+ */
+async function fetchReports(uid, cached) {
+  const client = makeClient();
+  if (!cached.length) {
+    const { data, error } = await client.from('balance_sheet_reports').select(SELECT_FULL).order('year_month', { ascending: true });
+    if (error) throw new Error(error.message);
+    return { reports: data || [], changed: true };
+  }
+  const { data: meta, error: metaError } = await client.from('balance_sheet_reports')
+    .select('year_month, period_end, source_name, imported_at').order('year_month', { ascending: true });
+  if (metaError) throw new Error(metaError.message);
+  const have = new Map(cached.map((r) => [r.year_month, r]));
+  const stale = (meta || []).filter((m) => {
+    const c = have.get(m.year_month);
+    return !c || c.imported_at !== m.imported_at || c.period_end !== m.period_end || c.source_name !== m.source_name;
+  }).map((m) => m.year_month);
+  let fresh = [];
+  if (stale.length) {
+    const { data, error } = await client.from('balance_sheet_reports').select(SELECT_FULL).in('year_month', stale).order('year_month', { ascending: true });
+    if (error) throw new Error(error.message);
+    fresh = data || [];
+  }
+  const freshMap = new Map(fresh.map((r) => [r.year_month, r]));
+  const next = (meta || []).map((m) => freshMap.get(m.year_month) || have.get(m.year_month)).filter(Boolean);
+  const changed = stale.length > 0 || next.length !== cached.length;
+  return { reports: next, changed };
+}
+
+function startLoad() {
+  const id = ++requestId;
+  const uid = loadedFor;
+  const useCache = !skipCache;
+  skipCache = false;
+  const job = (async () => {
+    let cached = [];
+    if (useCache) {
+      const saved = await kvGet(cacheKey(uid));
+      if (id !== requestId) return; // đã đổi người dùng giữa chừng
+      if (saved && Array.isArray(saved.reports) && saved.reports.length) {
+        cached = saved.reports;
+        reports = cached;
+        hasLoaded = true;
+        if (!reports.some((r) => r.year_month === selectedMonth)) selectedMonth = reports.at(-1)?.year_month || null;
+        if (latestContentEl && onThisPage()) draw(latestContentEl); // hiện ngay bản đã lưu, phần đối chiếu với máy chủ chạy ngầm bên dưới
+      }
+    }
+    let result;
+    try { result = await fetchReports(uid, cached); }
+    catch (e) { result = { error: { message: e?.message || 'Mất kết nối' } }; }
+    if (id !== requestId) return;
+    const el = latestContentEl;
+    if (result.error) {
+      // Đã hiện được bản lưu sẵn thì giữ nguyên, không thay bằng thông báo lỗi
+      if (!cached.length && el && onThisPage()) el.innerHTML = `<div class="card card-pad text-danger">Không tải được số liệu. Kiểm tra kết nối hoặc cấu trúc Supabase: ${escapeHtml(result.error.message)}</div>`;
+      return;
+    }
+    const firstTime = !cached.length;
+    reports = result.reports;
+    hasLoaded = true;
+    if (!reports.some((r) => r.year_month === selectedMonth)) selectedMonth = reports.at(-1)?.year_month || null;
+    if (firstTime || result.changed) {
+      kvSet(cacheKey(uid), { at: Date.now(), reports });
+      if (el && onThisPage()) draw(el);
+    }
+  })().finally(() => { if (loadingPromise === job) loadingPromise = null; });
+  loadingPromise = job;
+  return job;
+}
+
 export async function render(contentEl) {
   resetIfChangedUser();
   latestContentEl = contentEl;
   if (hasLoaded) { remoteProvisions.delete(selectedMonth); draw(contentEl); return; }
   contentEl.innerHTML = '<div class="card card-pad text-muted">Đang tải bảng cân đối kế toán...</div>';
-  // Đang có lượt tải chạy rồi (VD: dữ liệu phiên vừa làm mới xong nên trang được vẽ lại) thì CHỜ lượt đó, không bắt đầu lượt mới —
+  // Đang có lượt tải chạy rồi (VD: dữ liệu phiên vừa làm mới xong nên trang được vẽ lại, hoặc app đã tải sẵn ngầm) thì CHỜ lượt đó, không bắt đầu lượt mới —
   // trước đây mỗi lần vẽ lại lại bỏ lượt đang tải dở để tải lại từ đầu nên vào trang này rất lâu.
   if (loadingPromise) return loadingPromise;
-  const id = ++requestId;
-  const job = (async () => {
-    let result;
-    try {
-      result = await makeClient().from('balance_sheet_reports')
-        .select('year_month, period_end, source_name, figures, imported_at')
-        .order('year_month', { ascending: true });
-    } catch (e) { result = { error: { message: e?.message || 'Mất kết nối' } }; }
-    if (id !== requestId) return; // đã đổi người dùng giữa chừng
-    const { data, error } = result;
-    const el = latestContentEl;
-    if (error) {
-      if (el && onThisPage()) el.innerHTML = `<div class="card card-pad text-danger">Không tải được số liệu. Kiểm tra kết nối hoặc cấu trúc Supabase: ${escapeHtml(error.message)}</div>`;
-      return;
-    }
-    reports = data || [];
-    hasLoaded = true;
-    if (!reports.some((r) => r.year_month === selectedMonth)) selectedMonth = reports.at(-1)?.year_month || null;
-    if (el && onThisPage()) draw(el);
-  })().finally(() => { if (loadingPromise === job) loadingPromise = null; });
-  loadingPromise = job;
-  return job;
+  return startLoad();
+}
+
+/** Tải sẵn ngầm sau khi mở app (app.js) — lúc bấm vào Quản trị thì đã có sẵn số liệu. Chỉ làm khi người này được xem bảng cân đối; lỗi thì bỏ qua. */
+export function prefetch() {
+  const session = S.getSession();
+  if (!session || session.role !== 'admin' || !S.canViewBalanceSheet(session.id)) return;
+  resetIfChangedUser();
+  if (hasLoaded || loadingPromise) return;
+  startLoad().catch(() => {});
+}
+
+/** Tải lại đầy đủ từ máy chủ, bỏ qua bản lưu trên máy (nút Làm mới, vừa nạp file mới). */
+function reloadFromServer(contentEl) {
+  hasLoaded = false;
+  skipCache = true;
+  requestId++; // bỏ kết quả của lượt tải đang chạy dở (nếu có)
+  loadingPromise = null;
+  remoteProvisions.clear();
+  return render(contentEl);
 }
 
 /** Có dữ liệu phiên mới nhưng vẫn đứng ở trang này: chỉ vẽ lại bằng số liệu đã tải (không tải lại bảng cân đối, không tính lại dự phòng) — xem app.js. */
@@ -522,7 +599,7 @@ function draw(contentEl) {
   contentEl.querySelectorAll('[data-account-details]').forEach((button) => {
     button.addEventListener('click', () => showAccountDetails(report, button.dataset.accountDetails));
   });
-  contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { hasLoaded = false; remoteProvisions.clear(); render(contentEl); });
+  contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { reloadFromServer(contentEl); });
   contentEl.querySelector('#bs-import')?.addEventListener('click', () => contentEl.querySelector('#bs-file')?.click());
   contentEl.querySelector('#bs-file')?.addEventListener('change', async (event) => {
     const files = [...(event.target.files || [])];
@@ -579,8 +656,7 @@ async function previewImport(files, contentEl) {
           selectedMonth = selected.at(-1).parsed.yearMonth;
           close();
           toast(`Đã lưu ${selected.length} kỳ cân đối`, 'success');
-          hasLoaded = false;
-          await render(contentEl);
+          await reloadFromServer(contentEl);
         });
       },
     });

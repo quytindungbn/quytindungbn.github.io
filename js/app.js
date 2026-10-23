@@ -82,6 +82,18 @@ function sessionKey(session) {
   return session ? `${session.role}:${session.id}` : null;
 }
 
+// Tải sẵn ngầm danh sách Tư vấn + bảng cân đối (nếu người này xem được) SAU KHI dữ liệu chính đã tải xong — lúc bấm vào các mục đó thì đã có sẵn, không phải chờ
+// máy chủ. Đợi một chút rồi mới chạy để không giành mạng với lượt tải dữ liệu chính; các hàm prefetch tự bỏ qua nếu người dùng không có quyền xem.
+let warmUpTimer = null;
+function scheduleWarmUp() {
+  clearTimeout(warmUpTimer);
+  warmUpTimer = setTimeout(() => {
+    if (document.visibilityState !== 'visible' || !S.getSession()) return;
+    AdminSupport.prefetch?.();
+    setTimeout(() => AdminBalanceSheet.prefetch?.(), 1500);
+  }, 1200);
+}
+
 function splitHash() {
   const raw = location.hash || '#/';
   const [path, qs] = raw.split('?');
@@ -118,6 +130,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
     AdminOverview.resetSelection?.();
     balanceSheetScrollY = 0;
     if (lastRoutePath === balanceSheetPath) lastRoutePath = null;
+    if (session && lastSessionKey !== undefined) scheduleWarmUp(); // vừa đăng nhập (lần mở app đầu tiên thì chờ làm mới xong, xem DOMContentLoaded)
     lastSessionKey = curSessionKey;
     dataOnly = false;
   }
@@ -238,7 +251,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   registerServiceWorker(); // Đăng ký nhận thông báo đẩy — không đợi xong, không chặn tải app.
   await S.init(); // KHÔNG còn chờ mạng nữa (xem ghi chú trong state.js) — trả về gần như ngay lập tức.
   renderApp(); // Vẽ màn hình đầu tiên NGAY bằng dữ liệu đã có sẵn (demo hoặc cache lần trước), không đợi Supabase.
-  S.refreshSessionData(); // Mở lại/tải lại trang: làm mới dữ liệu ngầm ngay (không cần bấm menu mới cập nhật) — danh sách hiện sẵn từ lần trước, có dữ liệu mới thì tự cập nhật.
+  S.refreshSessionData().finally(scheduleWarmUp); // Mở lại/tải lại trang: làm mới dữ liệu ngầm ngay (không cần bấm menu mới cập nhật) — danh sách hiện sẵn từ lần trước, có dữ liệu mới thì tự cập nhật. Xong thì tải sẵn Tư vấn/bảng cân đối.
   S.refreshOrgPublic(); // Tải tên quỹ/banner THẬT ngầm phía sau — không await, xong tự cập nhật lại đúng chỗ (S.subscribe bên dưới).
   startAutoRefresh();
   // Phiên đăng nhập cũ còn lưu sẵn (mở lại app không cần đăng nhập lại) cũng

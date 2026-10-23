@@ -12,6 +12,7 @@
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
+import { clearDeviceCaches } from './lib/kvCache.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
 import { specificProvisionForLoan, SPECIFIC_PROVISION_RATE, GENERAL_PROVISION_RATE, inheritCurrentCollateral } from './lib/collateral.js';
 export { GENERAL_PROVISION_RATE, provisionFromSnapshot } from './lib/collateral.js';
@@ -2569,6 +2570,7 @@ export function logout() {
   lastRefreshOkAt = 0;
   refreshFailStreak = 0;
   clearTimeout(refreshRetryTimer); refreshRetryTimer = null;
+  clearDeviceCaches().catch(() => {}); // đệm danh sách tư vấn/bảng cân đối của người này (xem lib/kvCache.js) không để lại cho người dùng chung máy
   notify();
 }
 

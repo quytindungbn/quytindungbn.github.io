@@ -5,6 +5,7 @@ import { toast } from '../../components/toast.js';
 import { openChatPanel, DEFAULT_CHAT_TITLE } from '../../components/chatPanel.js';
 import { openCustomerDetail } from './customers.js';
 import { formatVND, formatDateTime, initials, colorFor, escapeHtml, stripDiacritics } from '../../utils.js';
+import { lsGetJson, lsSetJson } from '../../lib/kvCache.js';
 
 // ------------------------------------------------------------
 // Trang "Hỗ trợ" — GỘP 2 mục menu cũ ("Yêu cầu tư vấn" + "Hỗ trợ") thành 1,
@@ -62,6 +63,16 @@ let lastConversations = [];
 let lastConversationsAt = 0;
 let conversationsPromise = null;
 const CONV_FRESH_MS = 20000;
+// Danh sách hội thoại còn được lưu trên máy (localStorage) theo từng quản trị viên: tải lại trang/vào lại là hiện ngay bản lần trước (kể cả khi
+// máy chủ chậm), rồi cập nhật ngầm — trước đây chỉ giữ trong bộ nhớ nên mỗi lần tải lại trang lại phải chờ máy chủ từ đầu.
+const convCacheKey = (adminId) => `conv:${adminId}`;
+function restoreConversationsCache(adminId) {
+  const cached = lsGetJson(convCacheKey(adminId));
+  if (!cached || !Array.isArray(cached.rows)) return false;
+  lastConversations = cached.rows;
+  lastConversationsAt = 1; // coi như đã cũ: hiện bản này ngay rồi tải lại ngầm
+  return true;
+}
 
 /**
  * Tab "Hỗ trợ" tải dữ liệu KIỂU BẤT ĐỒNG BỘ (khác tab "Tư vấn", vốn chỉ đọc
@@ -192,14 +203,36 @@ function renderRequestsList(contentEl, admin) {
 function loadConversations() {
   // Dùng chung một lượt tải đang chạy, không bắn nhiều lượt cùng lúc
   if (!conversationsPromise) {
+    const ownerId = S.getSession()?.id;
     conversationsPromise = S.listChatConversations()
-      .then((rows) => { lastConversations = rows; lastConversationsAt = Date.now(); return rows; })
+      .then((rows) => {
+        if (S.getSession()?.id !== ownerId) return rows; // đã đổi/đăng xuất giữa chừng: không ghi đè của người khác
+        lastConversations = rows;
+        lastConversationsAt = Date.now();
+        lsSetJson(convCacheKey(ownerId), { at: lastConversationsAt, rows });
+        return rows;
+      })
       .finally(() => { conversationsPromise = null; });
   }
   return conversationsPromise;
 }
 
+/**
+ * Tải sẵn danh sách hội thoại ngầm (app.js gọi sau khi mở app xong) — lúc bấm vào "Tư vấn" thì đã có sẵn. Chỉ làm khi người này xem được chat;
+ * lỗi thì bỏ qua (vào tab sẽ tự tải lại và báo lỗi nếu cần).
+ */
+export function prefetch() {
+  const session = S.getSession();
+  if (!session || session.role !== 'admin') return;
+  const admin = S.getAdmin(session.id);
+  if (!admin || !S.canManageUsers(admin.id)) return;
+  if (!lastConversationsAt) restoreConversationsCache(session.id);
+  if (lastConversationsAt > 1 && Date.now() - lastConversationsAt < CONV_FRESH_MS) return;
+  loadConversations().catch(() => {});
+}
+
 async function renderConversationList(contentEl, filterEl) {
+  if (!lastConversationsAt) restoreConversationsCache(S.getSession()?.id);
   const haveCache = lastConversationsAt > 0;
   if (haveCache) drawConversationList(contentEl, filterEl); // hiện ngay danh sách đã có
   else contentEl.innerHTML = `<div class="card card-pad text-sm text-muted" style="text-align:center">Đang tải...</div>`;

@@ -2945,6 +2945,16 @@ cả (vô hại).
 - **Nút Gọi** (chỉ điện thoại, máy tính vốn không có): nằm sát mép phải dòng tên khách, là viên nhỏ nằm ngang (cao 26px) có khung đậm như nút Gửi OA (viền xanh 1,5px, bóng nhẹ, chữ đậm), có vạch dọc ngăn bên trái như nút Gửi OA; cùng rộng 56px với nút Gửi OA (đã đặt cả hai = 56px) nên 2 vạch dọc của dòng tên và dòng hợp đồng thẳng hàng. Chiều cao dòng tên khách giữ 53px. **Khách chưa có số điện thoại**: nút Gọi vẫn hiện nhưng mờ đi (xám nhạt, không bấm được, tooltip "Chưa có số điện thoại") để các dòng không bị lệch.
 - Hai danh sách cảnh báo ở Tổng quan dùng chung bảng nên đổi theo.
 
+### 10.70. Hỗ trợ > Tư vấn và Quản trị > Bảng cân đối: lưu sẵn trên máy + tải trước ngầm để tải lại trang không phải chờ (chỉ phía app, KHÔNG cần deploy hay SQL)
+
+Nguyên nhân: danh sách hội thoại Tư vấn và bảng cân đối chỉ được giữ **trong bộ nhớ** của trang — tải lại trang (F5) là mất, lần vào đầu tiên phải chờ máy chủ từ đầu (lại tranh mạng với lượt tải dữ liệu chính vừa mở app); bảng cân đối còn nặng vì mỗi tháng là cả bảng số liệu (`figures`).
+
+- **Tư vấn** (`js/views/admin/support.js`): danh sách hội thoại được lưu thêm trong localStorage theo từng quản trị viên (`qtd_cache:conv:<id>`). Vào tab → hiện NGAY bản đã lưu, rồi tải lại ngầm và cập nhật; tải lỗi thì giữ nguyên danh sách đang hiện. `prefetch()` tải sẵn ngầm (chỉ người có quyền Quản lý User).
+- **Bảng cân đối** (`js/views/admin/balanceSheet.js`): số liệu lưu trong IndexedDB (`js/lib/kvCache.js`, DB `qtd_cache`, theo từng người dùng). Có bản lưu → vẽ ngay, rồi chỉ hỏi máy chủ danh sách NHẸ (`year_month, period_end, source_name, imported_at`) và chỉ tải lại đúng các tháng mới/đổi (`.in('year_month', [...])`); tháng bị xóa tự bỏ khỏi bản lưu. Chưa có bản lưu (lần đầu trên máy) → tải đầy đủ như cũ. Nút **Làm mới** và ngay sau khi **Nạp cân đối** luôn tải đầy đủ từ máy chủ, bỏ qua bản lưu. Bản lưu có mà máy chủ lỗi → giữ nguyên bảng, không hiện thông báo lỗi; chưa có bản lưu mà lỗi → báo lỗi như cũ. `prefetch()` (chỉ người có quyền xem bảng cân đối) tải sẵn ngầm.
+- **Tải sẵn** (`js/app.js` → `scheduleWarmUp()`): sau khi lượt làm mới dữ liệu chính khi mở app xong (hoặc vừa đăng nhập) chờ ~1,2 giây rồi tải Tư vấn, thêm ~1,5 giây nữa tải bảng cân đối — không tranh mạng với dữ liệu chính; người không có quyền thì không gọi gì.
+- **Đăng xuất** xóa sạch bản lưu (`clearDeviceCaches()` trong `logout()`), người dùng chung máy không thấy dữ liệu của nhau. IndexedDB/localStorage bị chặn thì app chạy y như cũ (không có đệm).
+- Không đụng công thức nào (dự phòng, lãi, tỷ số...) — chỉ đổi cách/lúc tải dữ liệu.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
