@@ -141,7 +141,7 @@ export function openPicker({ title, options, selected, multiSelect = false, onSe
 export function pillSelectHtml(id, label, active = false) {
   return `
     <span style="position:relative;display:inline-flex">
-      <button class="pill-select" id="${id}">${label} ${icon('chevronDown', 'icon-sm')}</button>
+      <button class="pill-select" id="${id}" title="${String(label).trim().replace(/"/g, '&quot;').replace(/</g, '&lt;')}"><span class="pill-text">${label}</span> ${icon('chevronDown', 'icon-sm')}</button>
       ${active ? `<button type="button" class="pill-clear-btn" data-pill-clear="${id}" title="Bỏ lọc" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:var(--text);color:var(--surface);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1;cursor:pointer;padding:0">✕</button>` : ''}
     </span>`;
 }

@@ -117,6 +117,7 @@ export function render(contentEl, filterEl) {
     <div class="filter-align-content"><div class="filter-card${isStaff ? ' no-actions' : ''}">
       ${searchBoxHtml('search-input', window.matchMedia('(max-width: 899px)').matches ? 'Tìm tên, SĐT, HĐ' : 'Tìm tên, CCCD, SĐT, số hợp đồng...', query)}
       <button type="button" class="filter-open-btn" id="btn-filter-open">${icon('filter', 'icon-sm')}<span>Lọc</span><i class="filter-open-badge" hidden></i></button>
+      <button type="button" class="filter-open-clear" id="btn-filter-clear" aria-label="Xóa tất cả bộ lọc" title="Xóa lọc" hidden>✕</button>
       ${!isStaff ? `<button type="button" class="filter-import-btn" id="btn-filter-import" aria-label="Nhập từ Excel" title="Nhập từ Excel">${icon('paperclip')}</button>` : ''}
       <div class="filter-row filter-pills" id="filter-pills-row"></div>
       <div class="segmented-row filter-seg mb-8">
@@ -212,6 +213,15 @@ export function render(contentEl, filterEl) {
    * nếu không cần (tách riêng cho rõ: đổi lọc luôn kéo theo draw() lại, còn
    * đây chỉ là vẽ lại chính cái pill).
    */
+  /** Xóa nhanh MỌI bộ lọc Thôn/Xóm/Sắp xếp/khoảng (không đụng ô tìm kiếm và 3 nút Tất cả/Quá hạn/Gần đến hạn) — dấu ✕ trên nút Lọc (điện thoại; máy tính đã có ✕ trên từng nút Thôn/Xóm/Sắp xếp). */
+  function clearAllFilters() {
+    filterThon = []; filterXom = []; sortMode = 'default'; clearAmountRange();
+    renderFilterPills();
+    S.logAdminAction('filter-customers', { filterDesc: 'Xóa bộ lọc Thôn/Xóm/Sắp xếp/số tiền' });
+    draw();
+  }
+  const filterActiveCount = () => (filterThon.length ? 1 : 0) + (filterXom.length ? 1 : 0) + (sortMode !== 'default' ? 1 : 0) + amountRangeCount();
+  filterEl.querySelector('#btn-filter-clear').addEventListener('click', clearAllFilters);
   function renderFilterPills() {
     const wrap = filterEl.querySelector('#filter-pills-row');
     wrap.innerHTML = `
@@ -232,9 +242,11 @@ export function render(contentEl, filterEl) {
       });
     });
     // Chấm số trên nút "Lọc" = số mục Thôn/Xóm/Sắp xếp đang được chọn.
-    const activeCount = (filterThon.length ? 1 : 0) + (filterXom.length ? 1 : 0) + (sortMode !== 'default' ? 1 : 0) + amountRangeCount();
+    const activeCount = filterActiveCount();
     const badge = filterEl.querySelector('.filter-open-badge');
     if (badge) { badge.hidden = !activeCount; badge.textContent = String(activeCount); }
+    const phoneClear = filterEl.querySelector('#btn-filter-clear');
+    if (phoneClear) phoneClear.hidden = !activeCount;
     filterSheetRefresh?.();
   }
   function bindPickers() {
