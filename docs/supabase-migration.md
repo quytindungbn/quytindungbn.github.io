@@ -2955,6 +2955,13 @@ Nguyên nhân: danh sách hội thoại Tư vấn và bảng cân đối chỉ �
 - **Đăng xuất** xóa sạch bản lưu (`clearDeviceCaches()` trong `logout()`), người dùng chung máy không thấy dữ liệu của nhau. IndexedDB/localStorage bị chặn thì app chạy y như cũ (không có đệm).
 - Không đụng công thức nào (dự phòng, lãi, tỷ số...) — chỉ đổi cách/lúc tải dữ liệu.
 
+### 10.71. Khách hàng: lọc theo khoảng số tiền Lãi / Gốc (chỉ giao diện, KHÔNG cần deploy hay SQL)
+
+- **Máy tính**: bấm nút **Sắp xếp** mở hộp "Sắp xếp & lọc số tiền" — phần trên là 5 kiểu sắp xếp cũ (đổi là áp dụng ngay), phần dưới "Lọc theo số tiền" có 2 dòng **Số tiền lãi** và **Gốc**, mỗi dòng 2 ô "Từ … ₫" / "Đến … ₫" (tự thêm dấu chấm hàng nghìn khi gõ; để trống = không giới hạn phía đó). Nút **Xóa lọc số tiền** bỏ riêng phần lọc tiền; **Xong** đóng hộp. Nút Sắp xếp ghi thêm "· Lọc lãi + gốc" khi đang lọc, dấu ✕ trên nút bỏ cả sắp xếp lẫn lọc tiền.
+- **Điện thoại**: bảng **Bộ lọc** có thêm mục "Lọc theo số tiền" (cùng 2 dòng Lãi/Gốc, cùng nút **Xóa lọc số tiền** bên phải tiêu đề) dưới Thôn/Xóm/Sắp xếp; hộp chọn Sắp xếp trên điện thoại giữ nguyên như cũ. **Xóa lọc** (góc trên) xóa luôn cả phần số tiền; chấm đỏ trên nút Lọc tính thêm mỗi mục tiền đang lọc.
+- Lọc theo **tổng gốc (dư nợ) và tổng lãi tạm tính của từng khách** (đúng 2 con số dùng cho sắp xếp Gốc/Lãi), bao gồm 2 đầu mút; áp dụng trước khi đếm số khách các nhóm Tất cả/Nợ quá hạn/Gần đến hạn nên 3 con số đó khớp với danh sách. "Từ" lớn hơn "Đến" thì hiện cảnh báo đỏ (không khách nào khớp). Gõ xong ~0,25 giây mới lọc; ghi Nhật ký "Lọc số tiền: …" khi rời ô.
+- Bộ lọc số tiền giữ khi chuyển trang rồi quay lại như Thôn/Xóm; đổi người đăng nhập thì được xóa (cùng `resetFilters()`). Không đụng công thức tính lãi/gốc nào.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

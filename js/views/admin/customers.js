@@ -44,6 +44,8 @@ let filterThon = []; // rỗng = Tất cả — có thể tích chọn nhiều T
 let filterXom = [];  // rỗng = Tất cả — có thể tích chọn nhiều Xóm cùng lúc
 let urgencyFilter = 'all'; // 'all' | 'qua_han' | 'gan_den_han' — CHỈ chọn được 1 trong 3 (không phải nhiều lựa chọn cùng lúc như trước)
 let sortMode = 'default';
+// Lọc theo số tiền của từng khách (tổng dư nợ gốc / tổng lãi tạm tính): null = không giới hạn phía đó.
+let amountRange = { interestMin: null, interestMax: null, principalMin: null, principalMax: null };
 let filterSheetRefresh = null; // vẽ lại bảng "Bộ lọc" (điện thoại) khi đang mở và lựa chọn đổi
 const manualOaSending = new Set();
 const manualOaSentAt = new Map();
@@ -61,7 +63,30 @@ const URGENCY_FILTER_LABELS = { all: 'Tất cả', qua_han: 'Nợ quá hạn', g
  */
 export function resetFilters() {
   query = ''; filterThon = []; filterXom = []; urgencyFilter = 'all'; sortMode = 'default';
+  clearAmountRange();
   manualOaSending.clear(); manualOaSentAt.clear();
+}
+
+function clearAmountRange() { amountRange = { interestMin: null, interestMax: null, principalMin: null, principalMax: null }; }
+const interestRangeOn = () => amountRange.interestMin != null || amountRange.interestMax != null;
+const principalRangeOn = () => amountRange.principalMin != null || amountRange.principalMax != null;
+const amountRangeCount = () => (interestRangeOn() ? 1 : 0) + (principalRangeOn() ? 1 : 0);
+const amountInRange = (value, min, max) => (min == null || value >= min) && (max == null || value <= max);
+/** Mô tả ngắn cho nhật ký: "Lãi từ 100.000 đến 500.000; Gốc từ 50.000.000". */
+function amountRangeDesc() {
+  const part = (label, min, max) => (min == null && max == null ? '' : `${label}${min != null ? ` từ ${formatNumber(min)}` : ''}${max != null ? ` đến ${formatNumber(max)}` : ''}`);
+  return [part('Lãi', amountRange.interestMin, amountRange.interestMax), part('Gốc', amountRange.principalMin, amountRange.principalMax)].filter(Boolean).join('; ');
+}
+/** Khối 2 dòng "Số tiền lãi / Gốc: từ … đến …" — dùng chung cho hộp Sắp xếp (máy tính) và bảng Bộ lọc (điện thoại). */
+function amountRangeHtml() {
+  const group = (title, minKey, maxKey) => `<div class="amt-group">
+      <div class="amt-title">${title}</div>
+      <div class="amt-pair">
+        <label class="amt-box"><small>Từ</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="0" data-amt="${minKey}" aria-label="${title} từ"/><i>₫</i></label>
+        <label class="amt-box"><small>Đến</small><input type="text" inputmode="numeric" autocomplete="off" placeholder="Không giới hạn" data-amt="${maxKey}" aria-label="${title} đến"/><i>₫</i></label>
+      </div>
+    </div>`;
+  return `<div class="amt-filter">${group('Số tiền lãi', 'interestMin', 'interestMax')}${group('Gốc', 'principalMin', 'principalMax')}<p class="amt-warn" hidden>Số "Từ" đang lớn hơn số "Đến" nên không có khách nào khớp.</p></div>`;
 }
 
 function multiPillLabel(prefix, values) {
@@ -128,6 +153,57 @@ export function render(contentEl, filterEl) {
     });
   });
 
+  const sortPillLabel = () => {
+    const on = [interestRangeOn() ? 'lãi' : '', principalRangeOn() ? 'gốc' : ''].filter(Boolean);
+    return `Sắp xếp: ${SORT_LABEL[sortMode]}${on.length ? ` · Lọc ${on.join(' + ')}` : ''} `;
+  };
+  // Gõ số tiền: lọc ngay sau khi ngừng gõ một chút (không vẽ lại danh sách ở mỗi phím).
+  const applyAmountRange = debounce(() => { renderFilterPills(); draw(); }, 250);
+  /** Gắn các ô "Từ/Đến" trong `root`; `refresh()` đưa lại giá trị hiện có vào ô (sau khi bấm Xóa lọc). */
+  function bindAmountRange(root) {
+    const warn = root.querySelector('.amt-warn');
+    const check = () => {
+      const bad = (a, b) => a != null && b != null && a > b;
+      if (warn) warn.hidden = !(bad(amountRange.interestMin, amountRange.interestMax) || bad(amountRange.principalMin, amountRange.principalMax));
+    };
+    root.querySelectorAll('[data-amt]').forEach((input) => {
+      const key = input.dataset.amt;
+      bindMoneyInput(input, amountRange[key] || 0, (v) => { amountRange[key] = v > 0 ? v : null; check(); applyAmountRange(); });
+      input.addEventListener('change', () => { if (amountRangeDesc()) S.logAdminAction('filter-customers', { filterDesc: `Lọc số tiền: **${amountRangeDesc()}**` }); });
+    });
+    check();
+    return () => { root.querySelectorAll('[data-amt]').forEach((input) => { const v = amountRange[input.dataset.amt]; input.value = v ? formatNumber(v) : ''; }); check(); };
+  }
+  /** Máy tính: hộp "Sắp xếp & lọc số tiền" — chọn kiểu sắp xếp + nhập khoảng Lãi/Gốc; đổi gì là áp dụng ngay, bấm Xong để đóng. */
+  function openSortDialog() {
+    const optionsHtml = () => SORT_OPTIONS.map((o) => `<button type="button" class="sortdlg-opt${o.value === sortMode ? ' is-on' : ''}" data-sort="${o.value}"><span>${o.label}</span>${o.value === sortMode ? icon('check', 'icon-sm') : ''}</button>`).join('');
+    openModal({
+      title: 'Sắp xếp & lọc số tiền',
+      sheetClass: 'sheet-sortdlg',
+      bodyHtml: `<div class="sortdlg-h">Sắp xếp theo</div><div class="sortdlg-opts" id="sortdlg-opts">${optionsHtml()}</div>
+        <div class="sortdlg-h sortdlg-h2"><span>Lọc theo số tiền</span><button type="button" id="sortdlg-clear">Xóa lọc số tiền</button></div>${amountRangeHtml()}`,
+      footHtml: `<button class="btn btn-primary btn-block" data-done>Xong</button>`,
+      onMount(sheet, closeSheet) {
+        const optsEl = sheet.querySelector('#sortdlg-opts');
+        optsEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-sort]');
+          if (!btn) return;
+          sortMode = btn.dataset.sort;
+          optsEl.innerHTML = optionsHtml();
+          renderFilterPills();
+          S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: **${SORT_LABEL[sortMode]}**` });
+          draw();
+        });
+        const syncInputs = bindAmountRange(sheet);
+        sheet.querySelector('#sortdlg-clear').addEventListener('click', () => {
+          clearAmountRange(); syncInputs(); renderFilterPills(); draw();
+          S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền' });
+        });
+        sheet.querySelector('[data-done]').addEventListener('click', closeSheet);
+      },
+    });
+  }
+
   /**
    * Vẽ lại cả 3 pill (Thôn/Xóm/Sắp xếp) theo đúng trạng thái lọc hiện tại rồi
    * gắn lại sự kiện — gọi mỗi khi có gì thay đổi (chọn lọc mới HOẶC bấm "x" bỏ
@@ -140,7 +216,7 @@ export function render(contentEl, filterEl) {
     wrap.innerHTML = `
       ${pillSelectHtml('pill-thon', multiPillLabel('Thôn', filterThon), filterThon.length > 0)}
       ${pillSelectHtml('pill-xom', multiPillLabel('Xóm', filterXom), filterXom.length > 0)}
-      ${pillSelectHtml('pill-sort', `Sắp xếp: ${SORT_LABEL[sortMode]} `, sortMode !== 'default')}
+      ${pillSelectHtml('pill-sort', sortPillLabel(), sortMode !== 'default' || amountRangeCount() > 0)}
     `;
     bindPickers();
     wrap.querySelectorAll('[data-pill-clear]').forEach((btn) => {
@@ -149,13 +225,13 @@ export function render(contentEl, filterEl) {
         const id = btn.dataset.pillClear;
         if (id === 'pill-thon') { filterThon = []; filterXom = []; }
         else if (id === 'pill-xom') { filterXom = []; }
-        else if (id === 'pill-sort') { sortMode = 'default'; }
+        else if (id === 'pill-sort') { sortMode = 'default'; clearAmountRange(); }
         renderFilterPills();
         draw();
       });
     });
     // Chấm số trên nút "Lọc" = số mục Thôn/Xóm/Sắp xếp đang được chọn.
-    const activeCount = (filterThon.length ? 1 : 0) + (filterXom.length ? 1 : 0) + (sortMode !== 'default' ? 1 : 0);
+    const activeCount = (filterThon.length ? 1 : 0) + (filterXom.length ? 1 : 0) + (sortMode !== 'default' ? 1 : 0) + amountRangeCount();
     const badge = filterEl.querySelector('.filter-open-badge');
     if (badge) { badge.hidden = !activeCount; badge.textContent = String(activeCount); }
     filterSheetRefresh?.();
@@ -188,6 +264,8 @@ export function render(contentEl, filterEl) {
       });
     });
     filterEl.querySelector('#pill-sort').addEventListener('click', () => {
+      // Máy tính: hộp "Sắp xếp" có thêm phần lọc theo số tiền. Điện thoại: giữ bảng chọn sắp xếp cũ (lọc số tiền nằm thẳng trong bảng "Bộ lọc").
+      if (!window.matchMedia('(max-width: 899px)').matches) { openSortDialog(); return; }
       openPicker({
         title: 'Sắp xếp theo', selected: sortMode,
         options: SORT_OPTIONS,
@@ -213,7 +291,7 @@ export function render(contentEl, filterEl) {
     const rowHtml = (key, label) => `<button type="button" class="fsheet-row" data-fkey="${key}"><span><small>${label}</small><b>${escapeHtml(valueOf[key]())}</b></span>${icon('chevronDown', 'icon-sm')}</button>`;
     openModal({
       title: 'Bộ lọc',
-      bodyHtml: `<div class="fsheet-clear"><button type="button" id="fsheet-clear">Xóa lọc</button></div><div id="fsheet-fields"></div>`,
+      bodyHtml: `<div class="fsheet-clear"><button type="button" id="fsheet-clear">Xóa lọc</button></div><div id="fsheet-fields"></div><div class="sortdlg-h sortdlg-h2 fsheet-amt-h"><span>Lọc theo số tiền</span><button type="button" id="fsheet-amt-clear">Xóa lọc số tiền</button></div>${amountRangeHtml()}`,
       footHtml: `<button class="btn btn-primary btn-block" data-apply>Áp dụng</button>`,
       onClose() { filterSheetRefresh = null; },
       onMount(sheet, closeSheet) {
@@ -224,10 +302,15 @@ export function render(contentEl, filterEl) {
         };
         filterSheetRefresh = paintSheet;
         paintSheet();
+        const syncInputs = bindAmountRange(sheet); // ô số tiền nằm ngoài #fsheet-fields nên không bị vẽ lại khi đổi Thôn/Xóm/Sắp xếp
+        sheet.querySelector('#fsheet-amt-clear').addEventListener('click', () => {
+          clearAmountRange(); syncInputs(); renderFilterPills(); draw();
+          S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền' });
+        });
         sheet.querySelector('#fsheet-clear').addEventListener('click', () => {
-          filterThon = []; filterXom = []; sortMode = 'default';
+          filterThon = []; filterXom = []; sortMode = 'default'; clearAmountRange(); syncInputs();
           renderFilterPills();
-          S.logAdminAction('filter-customers', { filterDesc: 'Xóa bộ lọc Thôn/Xóm/Sắp xếp' });
+          S.logAdminAction('filter-customers', { filterDesc: 'Xóa bộ lọc Thôn/Xóm/Sắp xếp/số tiền' });
           draw();
         });
         sheet.querySelector('[data-apply]').addEventListener('click', closeSheet);
@@ -283,6 +366,11 @@ export function render(contentEl, filterEl) {
     // — dù hồ sơ/tài khoản Use của họ vẫn được giữ (xem Quản lý User), chỉ
     // là không còn hiện trong danh sách khách hàng đang vay này.
     enriched = enriched.filter((e) => e.totalBalance > 0);
+    // Lọc theo khoảng số tiền Lãi/Gốc (tổng của khách) — trước khi đếm số khách từng nhóm để 3 con số ở nút lọc khớp với danh sách.
+    if (amountRangeCount()) {
+      enriched = enriched.filter((e) => amountInRange(Math.round(e.totalInterest), amountRange.interestMin, amountRange.interestMax)
+        && amountInRange(e.totalBalance, amountRange.principalMin, amountRange.principalMax));
+    }
     // Số khách của từng nhóm (theo đúng tìm kiếm/Thôn/Xóm đang chọn) hiện cạnh 3 nút lọc.
     const urgencyCounts = { all: enriched.length, qua_han: enriched.filter((e) => e.hasOverdue).length, gan_den_han: enriched.filter((e) => e.hasNearDue).length };
     filterEl.querySelectorAll('[data-urgency]').forEach((btn) => {
