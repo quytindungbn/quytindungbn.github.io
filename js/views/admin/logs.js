@@ -106,7 +106,6 @@ function drawList(contentEl) {
     return hay.includes(q);
   });
 
-  const searchHtml = `<div style="margin-bottom:12px">${searchBoxHtml('log-search', 'Tìm theo tên quản trị viên/nội dung...', searchQuery)}</div>`;
   const listHtml = rows.length ? renderDayGroups(rows) : `<div class="card card-pad">${emptyState({
     iconName: 'clock',
     title: q ? 'Không tìm thấy' : 'Chưa có nhật ký nào',
@@ -116,11 +115,24 @@ function drawList(contentEl) {
   // trên dữ liệu đã tải, tải thêm trang mới không liên quan gì đến ô tìm.
   const loadMoreHtml = (!q && !noMore) ? `<div style="text-align:center;margin-top:6px"><button class="btn btn-outline btn-sm" id="btn-load-more-log" ${loadingMore ? 'disabled' : ''}>${loadingMore ? 'Đang tải...' : 'Tải thêm'}</button></div>` : '';
 
-  contentEl.innerHTML = searchHtml + listHtml + loadMoreHtml;
+  // Ô tìm kiếm chỉ dựng 1 LẦN và giữ nguyên qua các lần vẽ lại — trước đây mỗi lần lọc (sau khi gõ 0,2 giây) thay luôn cả ô nhập nên MẤT con trỏ:
+  // điện thoại tự tắt bàn phím sau mỗi chữ, phải bấm vào ô gõ lại. Giờ chỉ vẽ lại phần danh sách bên dưới.
+  let input = contentEl.querySelector('#log-search');
+  let listEl = contentEl.querySelector('#log-list');
+  if (!input || !listEl) {
+    contentEl.innerHTML = `<div style="margin-bottom:12px">${searchBoxHtml('log-search', 'Tìm theo tên quản trị viên/nội dung...', searchQuery)}</div><div id="log-list"></div>`;
+    bindSearchBox(contentEl, 'log-search', (v) => { searchQuery = v; drawList(contentEl); });
+    input = contentEl.querySelector('#log-search');
+    listEl = contentEl.querySelector('#log-list');
+  } else if (input.value !== searchQuery && document.activeElement !== input) {
+    // searchQuery bị đặt lại từ nơi khác (đổi người đăng nhập...) trong khi ô còn nằm trên trang: đưa ô về đúng giá trị
+    input.value = searchQuery;
+    const clearBtn = contentEl.querySelector('#log-search-clear');
+    if (clearBtn) clearBtn.style.display = searchQuery ? 'flex' : 'none';
+  }
+  listEl.innerHTML = listHtml + loadMoreHtml;
 
-  bindSearchBox(contentEl, 'log-search', (v) => { searchQuery = v; drawList(contentEl); });
-
-  const moreBtn = contentEl.querySelector('#btn-load-more-log');
+  const moreBtn = listEl.querySelector('#btn-load-more-log');
   if (moreBtn) moreBtn.addEventListener('click', async () => {
     if (loadingMore) return;
     loadingMore = true;

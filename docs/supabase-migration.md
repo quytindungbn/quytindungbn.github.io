@@ -2982,6 +2982,10 @@ Dưới nút "Gửi tin Zalo OA ngay" (`zaloHintHtml()` trong `js/views/admin/cu
 - Đã qua 5 ngày: "Đã gửi Zalo tự động|bằng tay gần nhất ngày **dd/mm/yyyy**." (bỏ cụm "đã đủ 5 ngày, gửi lại được rồi").
 Thông báo lỗi do máy chủ trả về và chú thích trong ô Gửi OA ở danh sách khách hàng giữ nguyên.
 
+### 10.74. Sửa lỗi: ô tìm kiếm trong Nhật ký sử dụng mất con trỏ sau mỗi chữ (điện thoại tự tắt bàn phím)
+
+Nguyên nhân: `drawList()` trong `js/views/admin/logs.js` thay TOÀN BỘ nội dung trang (kể cả ô nhập) mỗi khi lọc xong (sau 0,2 giây ngừng gõ), nên ô nhập mới không còn focus. Sửa: ô tìm kiếm dựng 1 lần và giữ nguyên, mỗi lần chỉ vẽ lại phần danh sách (`#log-list`); ô chỉ được đưa về đúng giá trị khi `searchQuery` bị đặt lại từ nơi khác lúc ô không đang được gõ. Các ô tìm kiếm khác (Khách hàng, Hỗ trợ/Tư vấn, Quản lý User, Quản lý OA) vốn nằm ngoài vùng vẽ lại nên không bị.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
