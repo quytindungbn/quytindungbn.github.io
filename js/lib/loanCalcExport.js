@@ -31,7 +31,8 @@ export function inputLines(inputs, result) {
     const way = (METHOD_LABELS[inputs.method] || '') + (inputs.fixedAmount > 0 ? `, ${formatVND(inputs.fixedAmount)}/tháng` : '');
     lines.push(['Thời hạn vay', term], ['Cách trả', way]);
   } else {
-    lines.push(['Số tiền trả mỗi tháng', formatVND(inputs.payment)], ['Số tiền này là', KIND_LABELS[inputs.kind] || '']);
+    // Ngày đáo hạn nhập tay được gộp vào dòng "Số tiền này là" (giữ nguyên 5 dòng điều kiện của bản in, PDF và Excel).
+    lines.push(['Số tiền trả mỗi tháng', formatVND(inputs.payment)], ['Số tiền này là', (KIND_LABELS[inputs.kind] || '') + (inputs.endDate ? `, đáo hạn ${formatDate(inputs.endDate)}` : '')]);
   }
   void result;
   return lines;

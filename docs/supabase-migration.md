@@ -2997,6 +2997,12 @@ Menu Công cụ > Tính lãi vay > "Theo thời hạn vay":
 
 Trong `js/lib/loanCalc.js`, số tiền trả đều mỗi tháng của cách "Gốc + lãi trả đều" trước đây luôn làm tròn LÊN đến nghìn (`Math.ceil`), kể cả khi phần lẻ dưới 500. Nay làm tròn như hàm ROUND của Excel: từ 500 trở lên làm tròn lên, dưới 500 làm tròn xuống (VD 4.947.111 -> 4.947.000; đúng 17.614.500 -> 17.615.000); phần chênh do làm tròn dồn vào kỳ cuối (kỳ cuối luôn trả nốt dư nợ). Lãi từng kỳ và gốc chia đều vốn đã làm tròn đúng quy tắc này nên không đổi; các nơi tính lãi khác trong app (hợp đồng, Zalo, hàm máy chủ) không đụng tới. Kiểm thử: `tests/loanCalc.test.mjs`.
 
+### 10.77. Tính lãi vay: khung xả xuống tự khép, nhập ngày sửa ngay trong ô, Ngày đáo hạn ở tab "Theo số tiền trả hàng tháng" (chỉ công cụ Tính lãi vay, KHÔNG cần deploy hay SQL)
+
+- **Khung xả xuống** (`js/views/admin/loanCalc.js`, CSS `.lc-panelw`): khung nay luôn có trong trang, đóng/mở bằng lớp `open` với hiệu ứng chiều cao (grid 0fr → 1fr) thay vì dựng lại cả trang; chọn thẻ cách trả khác (hoặc bấm mũi tên của thẻ khác) thì khung của thẻ cũ tự khép lại (`closeOthers`). Số đã nhập trong khung vẫn giữ.
+- **Nhập ngày** (`js/lib/dateInput.js`, hàm thuần, kiểm thử `tests/dateInput.test.mjs`): ô Ngày vay và Ngày đáo hạn khi ngày đã đủ dd/mm/yyyy thì gõ số = ĐÈ lên số tại con trỏ và tự nhảy qua dấu "/"; gõ "/", ".", "-", "," hoặc dấu cách = sang phần kế tiếp (1 số thì thêm số 0 phía trước); xóa sát dấu "/" xóa luôn số bên cạnh; con trỏ sau khi định dạng lại tính theo số chữ số đứng trước. Chỉ áp dụng cho 2 ô ngày của công cụ này (`maskViDate` dùng ở màn hình khác không đổi); trên điện thoại ô ngày vẫn mở lịch.
+- **Ngày đáo hạn ở tab "Theo số tiền trả hàng tháng"**: cùng hàng Ngày vay (điện thoại: Số tiền vay một hàng, Lãi suất | Số tiền trả mỗi tháng, Ngày vay | Ngày đáo hạn). Tự tính = ngày trả kỳ cuối; nhập tay thì `scheduleByPayment` nhận `endDate`: kỳ chứa ngày đó là kỳ cuối, dừng đúng ngày và trả nốt dư nợ; ngày muộn hơn ngày trả hết thì trả hết sớm như cũ (có dòng báo); không truyền thì y hệt trước. Excel/in/PDF ghi vào dòng "Số tiền này là" (không thêm dòng).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

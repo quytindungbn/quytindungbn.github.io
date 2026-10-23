@@ -2155,8 +2155,8 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-tabs button.on { background: var(--color-primary); color: #fff; box-shadow: 0 1px 2px rgba(15, 111, 97, .3); }
 .lc-tabs button:focus-visible, .lc-opt:focus-visible, .lc-tool:focus-visible, .lc-act button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .lc-row { display: grid; gap: 12px; }
-.lc-row.c4 { grid-template-columns: 1.5fr 1fr 1fr 1fr; align-items: start; }
 .lc-row.c5 { grid-template-columns: minmax(0, 1.45fr) minmax(0, .95fr) minmax(0, .8fr) minmax(0, 1.12fr) minmax(0, 1.12fr); align-items: start; }
+@media (min-width: 900px) { .lc-row.c5.pay { grid-template-columns: minmax(0, 1.3fr) minmax(0, .8fr) minmax(0, 1.3fr) minmax(0, 1.05fr) minmax(0, 1.05fr); } }
 .lc-row.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .lc-row.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lc-f label, .lc-lab { display: block; margin-bottom: 5px; font: 600 11px/14px var(--lux-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--lux-gold); }
@@ -2180,7 +2180,7 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-opt .tx > span { display: block; margin-top: 1px; font: 500 12px/1.35 var(--lux-sans); color: var(--lux-mut); }
 /* Thẻ "Cách trả" có nút xả xuống: mũi tên ở góc phải thẻ, bấm mở ô tự nhập số tiền trả mỗi tháng ngay bên dưới thẻ */
 .lc-row.opts { align-items: start; }
-.lc-optw { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.lc-optw { position: relative; display: flex; flex-direction: column; }
 .lc-optw > .lc-opt { padding-right: 52px; }
 .lc-more { position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b9cbc5; border-radius: 9px; background: #fff; color: var(--color-primary-dark); cursor: pointer; }
 .lc-more:hover { background: var(--color-primary-light); border-color: var(--color-primary); }
@@ -2188,7 +2188,12 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-more .icon { transition: transform .15s ease; }
 .lc-more[aria-expanded="true"] { background: var(--color-primary-light); border-color: var(--color-primary); }
 .lc-more[aria-expanded="true"] .icon { transform: rotate(180deg); }
-.lc-panel { padding: 10px 12px 11px; border: 1px solid #bcd6cb; border-radius: 10px; background: #f6faf8; }
+.lc-panel { margin-top: 8px; padding: 10px 12px 11px; border: 1px solid #bcd6cb; border-radius: 10px; background: #f6faf8; }
+/* Khung xả xuống: luôn có trong trang, chiều cao chạy từ 0 đến đủ (grid 0fr → 1fr) kèm mờ dần; ô ẩn không focus được (visibility) */
+.lc-panelw { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows .3s cubic-bezier(.4, 0, .2, 1), opacity .18s ease, visibility 0s linear .3s; }
+.lc-optw.open > .lc-panelw { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows .3s cubic-bezier(.4, 0, .2, 1), opacity .26s ease .05s, visibility 0s; }
+.lc-panelin { min-height: 0; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .lc-panelw, .lc-optw.open > .lc-panelw, .lc-more .icon { transition: none; } }
 .lc-panel .lc-f label { color: var(--lux-em); }
 .lc-f.auto .box { background: #f4f9f7; border-color: #cfe0da; }
 .lc-f.auto .box:focus-within { background: #fff; border-color: var(--color-primary); }
@@ -2236,13 +2241,9 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-t .c2d { display: none; }
 .lc-note { margin: 0; font: 500 12.5px/1.5 var(--lux-sans); color: var(--lux-mut); }
 @media (max-width: 899px) {
-  .lc-row.c5, .lc-row.c4, .lc-row.c3, .lc-row.c2 { grid-template-columns: 1fr 1fr; }
+  .lc-row.c5, .lc-row.c3, .lc-row.c2 { grid-template-columns: 1fr 1fr; }
   .lc-row .w { grid-column: 1 / -1; }
-  /* Cả hai cách tính cùng thứ tự: hàng 1 = Số tiền vay | Ngày vay, hàng 2 = Lãi suất | Thời hạn vay (hoặc Số tiền trả mỗi tháng). Trên máy tính vẫn một hàng 4 ô: Số tiền vay, Lãi suất, Thời hạn/Số tiền trả, Ngày vay */
-  .lc-row.q:not(.c5) .lc-f:nth-child(1) { order: 1; }
-  .lc-row.q:not(.c5) .lc-f.dt { order: 2; }
-  .lc-row.q:not(.c5) .lc-f:nth-child(2) { order: 3; }
-  .lc-row.q:not(.c5) .lc-f:nth-child(3) { order: 4; }
+  /* Hai cách tính cùng bố cục: Số tiền vay một hàng riêng, Lãi suất | Thời hạn (hoặc Số tiền trả mỗi tháng), Ngày vay | Ngày đáo hạn. Trên máy tính cả 5 ô cùng một hàng. */
   /* Ô hẹp hơn một chút để ngày dd/mm/yyyy và số tiền dài hiện trọn (chữ còn tự thu nhỏ nếu vẫn chưa vừa) */
   .lc-f .box { padding: 0 10px; gap: 4px; }
   .lc-cal { width: 26px; height: 26px; margin-right: -4px; }

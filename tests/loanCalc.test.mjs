@@ -193,3 +193,42 @@ test('gốc + lãi trả đều: số tiền trả mỗi tháng làm tròn nghì
     assert.ok(Math.abs(r.rows[r.rows.length - 1].payment - r.rows[0].payment) < 50000);
   }
 });
+
+test('theo số tiền trả hàng tháng + ngày đáo hạn: kỳ cuối dừng đúng ngày đáo hạn và trả nốt dư nợ', () => {
+  const base = { principal: 100e6, ratePercent: 10.5, payment: 5e6, startDate: d(2026, 10, 23) };
+  const r = scheduleByPayment({ ...base, kind: 'gocLai', endDate: d(2027, 10, 23) });
+  assert.equal(r.rows.length, 12);
+  assert.deepEqual(r.rows.slice(0, 11).map((x) => x.payment), Array(11).fill(5e6));
+  assert.deepEqual(r.rows[11].to, d(2027, 10, 23));
+  assert.equal(r.rows[11].closing, 0);
+  assert.equal(r.totals.principal, 100e6);
+  // chỉ tiền gốc: 11 kỳ trả gốc 5tr, kỳ cuối trả nốt 45tr
+  const g = scheduleByPayment({ ...base, kind: 'goc', endDate: d(2027, 10, 23) });
+  assert.deepEqual(g.rows.slice(0, 11).map((x) => x.principal), Array(11).fill(5e6));
+  assert.equal(g.rows[11].principal, 45e6);
+  // ngày đáo hạn không tròn tháng: kỳ cuối ngắn hơn, lãi theo đúng số ngày
+  const odd = scheduleByPayment({ ...base, kind: 'gocLai', endDate: d(2027, 4, 15) });
+  assert.equal(odd.rows.length, 6);
+  assert.equal(odd.rows[5].days, 23);
+  assert.deepEqual(odd.rows[5].to, d(2027, 4, 15));
+  assert.equal(odd.totals.days, daysBetween(d(2026, 10, 23), d(2027, 4, 15)));
+});
+
+test('theo số tiền trả hàng tháng: ngày đáo hạn muộn hơn ngày trả hết thì vẫn trả hết sớm; không truyền ngày thì y hệt cũ', () => {
+  const base = { principal: 100e6, ratePercent: 10.5, payment: 5e6, startDate: d(2026, 10, 23), kind: 'gocLai' };
+  const natural = scheduleByPayment(base);
+  const late = scheduleByPayment({ ...base, endDate: d(2030, 10, 23) });
+  assert.deepEqual(late, natural);
+  assert.deepEqual(scheduleByPayment({ ...base, endDate: null }), natural);
+});
+
+test('theo số tiền trả hàng tháng + ngày đáo hạn sai hoặc quá ngắn', () => {
+  const base = { principal: 100e6, ratePercent: 10.5, payment: 5e6, startDate: d(2026, 10, 23), kind: 'gocLai' };
+  assert.equal(scheduleByPayment({ ...base, endDate: d(2026, 10, 23) }), null);
+  assert.equal(scheduleByPayment({ ...base, endDate: d(2026, 1, 1) }), null);
+  // đáo hạn ngay trong kỳ đầu: trả hết một lần nên không cần số tiền đủ trả lãi
+  const one = scheduleByPayment({ ...base, payment: 8e5, endDate: d(2026, 11, 10) });
+  assert.equal(one.rows.length, 1);
+  assert.equal(one.rows[0].closing, 0);
+  assert.equal(scheduleByPayment({ ...base, payment: 8e5, endDate: d(2027, 10, 23) }).error, 'khong_du_tra_lai');
+});

@@ -137,20 +137,29 @@ export function scheduleByTerm({ principal, ratePercent, months, startDate, meth
  * Tính theo SỐ TIỀN TRẢ HÀNG THÁNG: trả đều `payment` mỗi tháng tới khi hết nợ → ra số tháng.
  * kind: 'gocLai' — `payment` là tổng gốc + lãi mỗi tháng (gốc = payment − lãi) |
  *       'goc'    — `payment` chỉ là tiền gốc mỗi tháng, lãi cộng thêm theo dư nợ giảm dần.
+ * endDate (tùy chọn): ngày đáo hạn — kỳ cuối dừng đúng ngày đó và trả nốt dư nợ còn lại (không truyền thì trả đều đến khi hết nợ).
  * Trả về { rows, totals } hoặc { error: 'khong_du_tra_lai', firstInterest } khi số tiền trả không đủ lãi tháng đầu (gốc không giảm), hoặc null nếu dữ liệu sai.
  */
-export function scheduleByPayment({ principal, ratePercent, payment, startDate, kind = 'gocLai' }) {
+export function scheduleByPayment({ principal, ratePercent, payment, startDate, kind = 'gocLai', endDate = null }) {
   const P = Math.round(Number(principal)), X = Math.round(Number(payment));
   if (!(P > 0) || !(Number(ratePercent) > 0) || !(X > 0)) return null;
+  // endDate (ngày đáo hạn): kỳ chứa ngày đó là kỳ cuối — rút ngắn đến đúng ngày đáo hạn và trả nốt dư nợ; trả hết sớm hơn thì dừng sớm hơn.
+  const end = endDate instanceof Date && !Number.isNaN(endDate.getTime()) ? endDate : null;
+  if (end && !(daysBetween(startDate, end) >= 1)) return null;
   const firstDays = daysBetween(startDate, addMonths(startDate, 1));
   const firstInterest = periodInterest(P, ratePercent, firstDays);
-  if (kind === 'gocLai' && X <= firstInterest) return { error: 'khong_du_tra_lai', firstInterest };
+  const oneShot = end && daysBetween(addMonths(startDate, 1), end) <= 0; // đáo hạn trong kỳ đầu: trả hết một lần, không cần đủ trả lãi
+  if (kind === 'gocLai' && X <= firstInterest && !oneShot) return { error: 'khong_du_tra_lai', firstInterest };
   let balance = P; const rows = [];
   for (let k = 1; balance > 0; k++) {
     if (k > MAX_MONTHS) return { error: 'qua_dai', firstInterest };
-    const from = addMonths(startDate, k - 1), to = addMonths(startDate, k), days = daysBetween(from, to);
+    const from = addMonths(startDate, k - 1);
+    let to = addMonths(startDate, k);
+    const lastByDate = !!end && daysBetween(to, end) <= 0;
+    if (lastByDate) to = end;
+    const days = daysBetween(from, to);
     const interest = periodInterest(balance, ratePercent, days);
-    const pr = Math.min(balance, kind === 'goc' ? X : X - interest);
+    const pr = lastByDate ? balance : Math.min(balance, kind === 'goc' ? X : X - interest);
     rows.push({ k, from, to, days, opening: balance, interest, principal: pr, payment: interest + pr, closing: balance - pr });
     balance -= pr;
   }

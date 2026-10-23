@@ -4,6 +4,7 @@ import { icon } from '../../icons.js';
 import { toast } from '../../components/toast.js';
 import { formatDate, formatVND, parseViDate, maskViDate, toDateInputValue, escapeHtml } from '../../utils.js';
 import { scheduleByTerm, scheduleByPayment, addMonths, periodsUntil } from '../../lib/loanCalc.js';
+import { typeIntoViDate, deleteFromViDate, caretAfterDigits } from '../../lib/dateInput.js';
 import { summaryItems, loanCalcFileName, buildLoanCalcXlsx, printLoanCalc } from '../../lib/loanCalcExport.js';
 import { downloadBlob, XLSX_MIME } from '../../lib/xlsxWrite.js';
 import { buildLoanCalcPdf, shareOrDownload, PDF_MIME } from '../../lib/loanCalcPdf.js';
@@ -47,7 +48,10 @@ const CUSTOM = {
   equalPrincipal: { label: 'Gốc trả mỗi tháng', note: 'Từ kỳ 1 đến kỳ áp chót trả đúng số này (lãi cộng thêm), phần gốc còn lại trả hết ở kỳ cuối. Để trống thì chia đều như bình thường.' },
   annuity: { label: 'Gốc + lãi trả mỗi tháng', note: 'Từ kỳ 1 đến kỳ áp chót trả đúng số này (gồm cả gốc và lãi), phần còn lại trả hết ở kỳ cuối. Để trống thì tính như bình thường.' },
 };
-const DUE_NOTE = 'Ngày đáo hạn tự tính theo Thời hạn vay. Khi cần (ví dụ đổi lãi suất giữa chừng), nhập thẳng ngày đáo hạn — thời hạn tự tính lại theo ngày đó.';
+const DUE_NOTE = {
+  term: 'Ngày đáo hạn tự tính theo Thời hạn vay. Khi cần (ví dụ đổi lãi suất giữa chừng), nhập thẳng ngày đáo hạn — thời hạn tự tính lại theo ngày đó.',
+  pay: 'Ngày đáo hạn tự tính theo số tiền trả mỗi tháng. Khi cần (ví dụ đổi lãi suất giữa chừng), nhập thẳng ngày đáo hạn — đến ngày đó trả nốt phần còn lại.',
+};
 const KINDS = [
   ['gocLai', 'Gốc + lãi', 'Mỗi tháng trả đúng số tiền này, gồm cả gốc và lãi'],
   ['goc', 'Chỉ tiền gốc', 'Lãi tính thêm theo dư nợ còn lại, tổng trả giảm dần'],
@@ -71,15 +75,16 @@ function readInputs() {
   if (!(principal > 0)) return { error: 'Nhập số tiền vay.' };
   if (!(ratePercent > 0) || ratePercent > 100) return { error: 'Nhập lãi suất (%/năm), từ trên 0 đến 100.' };
   if (!startDate) return { error: 'Nhập ngày vay đúng dạng ngày/tháng/năm, ví dụ 22/10/2026.' };
+  // Ngày đáo hạn nhập tay (cả hai cách tính); tự tính thì không dùng — kết quả đã nằm trong Thời hạn vay / số tiền trả mỗi tháng.
+  const dueText = st.dueManual ? String(st.due || '').trim() : '';
+  let endDate = null;
+  if (dueText) {
+    endDate = parseViDate(dueText);
+    if (!endDate) return { error: 'Nhập ngày đáo hạn đúng dạng ngày/tháng/năm, ví dụ 22/10/2028.' };
+    if (!(endDate.getTime() > startDate.getTime())) return { error: 'Ngày đáo hạn phải sau Ngày vay.' };
+    if (endDate.getTime() > addMonths(startDate, 600).getTime()) return { error: 'Ngày đáo hạn quá xa: tối đa 600 tháng kể từ Ngày vay.' };
+  }
   if (st.tab === 'term') {
-    const dueText = st.dueManual ? String(st.due || '').trim() : '';
-    let endDate = null;
-    if (dueText) {
-      endDate = parseViDate(dueText);
-      if (!endDate) return { error: 'Nhập ngày đáo hạn đúng dạng ngày/tháng/năm, ví dụ 22/10/2028.' };
-      if (!(endDate.getTime() > startDate.getTime())) return { error: 'Ngày đáo hạn phải sau Ngày vay.' };
-      if (endDate.getTime() > addMonths(startDate, 600).getTime()) return { error: 'Ngày đáo hạn quá xa: tối đa 600 tháng kể từ Ngày vay.' };
-    }
     const months = endDate ? 0 : Number(digits(st.months)) || 0;
     if (!endDate && (months < 1 || months > 600)) return { error: 'Nhập thời hạn vay từ 1 đến 600 tháng.' };
     const inputs = { tab: 'term', principal, ratePercent, startDate, months, method: st.method };
@@ -92,7 +97,9 @@ function readInputs() {
   }
   const payment = numFromMoney(st.payment);
   if (!(payment > 0)) return { error: 'Nhập số tiền trả mỗi tháng.' };
-  return { inputs: { tab: 'pay', principal, ratePercent, startDate, payment, kind: st.kind } };
+  const inputs = { tab: 'pay', principal, ratePercent, startDate, payment, kind: st.kind };
+  if (endDate) inputs.endDate = endDate;
+  return { inputs };
 }
 
 function calculate() {
@@ -101,7 +108,7 @@ function calculate() {
   const { inputs } = read;
   const result = inputs.tab === 'term'
     ? scheduleByTerm({ principal: inputs.principal, ratePercent: inputs.ratePercent, months: inputs.months, startDate: inputs.startDate, method: inputs.method, fixedAmount: inputs.fixedAmount, endDate: inputs.endDate })
-    : scheduleByPayment({ principal: inputs.principal, ratePercent: inputs.ratePercent, payment: inputs.payment, startDate: inputs.startDate, kind: inputs.kind });
+    : scheduleByPayment({ principal: inputs.principal, ratePercent: inputs.ratePercent, payment: inputs.payment, startDate: inputs.startDate, kind: inputs.kind, endDate: inputs.endDate });
   if (!result) return { error: 'Số liệu chưa hợp lệ, hãy kiểm tra lại.' };
   if (inputs.endDate && result.rows) inputs.months = result.rows.length; // có ngày đáo hạn: số kỳ do ngày đáo hạn quyết định
   if (result.error === 'khong_du_tra_lai') return { error: `Số tiền trả mỗi tháng chưa đủ trả lãi tháng đầu (${formatVND(result.firstInterest)}). Hãy nhập số tiền lớn hơn.`, firstInterest: result.firstInterest };
@@ -146,10 +153,24 @@ function fixedNoteHtml(inputs, result) {
   return `<div class="lc-callout">${icon('info', 'icon-sm')}<span>${escapeHtml(text)}</span></div>`;
 }
 
+/** Tab "Theo số tiền trả hàng tháng" có nhập ngày đáo hạn: nói rõ kỳ cuối trả nốt phần còn lại, hoặc khoản vay đã trả hết sớm hơn ngày đáo hạn. */
+function payDueNoteHtml(inputs, result) {
+  if (inputs.tab !== 'pay' || !inputs.endDate) return '';
+  const n = result.rows.length, last = result.rows[n - 1], due = formatDate(inputs.endDate);
+  let text = '';
+  if (last.to.getTime() < inputs.endDate.getTime()) text = `Với số tiền này, khoản vay trả hết vào ngày ${formatDate(last.to)}, sớm hơn ngày đáo hạn ${due}.`;
+  else if (n >= 2) {
+    text = inputs.kind === 'goc'
+      ? `Kỳ 1 đến kỳ ${n - 1}: trả gốc ${formatVND(inputs.payment)} mỗi tháng. Kỳ ${n} (kỳ cuối, đến ngày đáo hạn ${due}): trả nốt gốc còn lại ${formatVND(last.principal)} cùng lãi kỳ này.`
+      : `Kỳ 1 đến kỳ ${n - 1}: trả ${formatVND(inputs.payment)} mỗi tháng (gồm gốc và lãi). Kỳ ${n} (kỳ cuối, đến ngày đáo hạn ${due}): trả nốt ${formatVND(last.payment)}, gồm gốc còn lại ${formatVND(last.principal)} và lãi kỳ này.`;
+  }
+  return text ? `<div class="lc-callout">${icon('info', 'icon-sm')}<span>${escapeHtml(text)}</span></div>` : '';
+}
+
 function outHtml(calc) {
   if (calc.error) return `<div class="lc-msg" role="status">${icon('info', 'icon-sm')}<span>${escapeHtml(calc.error)}</span></div>`;
   return `
-    <div class="lc-sum">${tilesHtml(calc.inputs, calc.result)}</div>${fixedNoteHtml(calc.inputs, calc.result)}
+    <div class="lc-sum">${tilesHtml(calc.inputs, calc.result)}</div>${fixedNoteHtml(calc.inputs, calc.result)}${payDueNoteHtml(calc.inputs, calc.result)}
     <section class="lux-card"><h3 class="lux-h"><span>Bảng trả hàng tháng</span>
       <span class="lux-h-end lc-tools"><button type="button" class="lc-tool" id="lc-export" aria-haspopup="menu" aria-expanded="false">${icon('download', 'icon-sm')}<span>Xuất file</span>${icon('chevronDown', 'icon-sm')}</button><button type="button" class="lc-tool" id="lc-print">${icon('printer', 'icon-sm')}<span>In</span></button><button type="button" class="lc-tool" id="lc-share">${icon('share', 'icon-sm')}<span>Chia sẻ</span></button></span></h3>
       <div class="lc-tw">${tableHtml(calc.result)}</div></section>
@@ -160,6 +181,8 @@ function optionsHtml(name, list, current) {
   return list.map(([value, title, desc]) => `<button type="button" role="radio" aria-checked="${value === current}" class="lc-opt${value === current ? ' on' : ''}" data-${name}="${value}"><i class="rd"></i><span class="tx"><b>${title}</b><span>${desc}</span></span></button>`).join('');
 }
 
+const moreLabel = (m, open) => `${open ? 'Đóng' : 'Mở'} ô nhập số tiền trả mỗi tháng — ${METHODS.find((x) => x[0] === m)[1]}`;
+
 /** Ba thẻ "Cách trả": hai thẻ đầu có nút xả xuống (mũi tên) để tự nhập số tiền trả mỗi tháng, phần còn lại trả ở kỳ cuối. */
 function methodOptionsHtml() {
   return METHODS.map(([value, title, desc]) => {
@@ -167,8 +190,9 @@ function methodOptionsHtml() {
     const custom = CUSTOM[value];
     if (!custom) return opt;
     const open = !!st[`open_${value}`];
-    const panel = open ? `<div class="lc-panel" id="lc-panel-${value}"><div class="lc-f"><label for="lc-fixed-${value}">${custom.label}</label><div class="box"><input id="lc-fixed-${value}" value="${escapeHtml(st[`fixed_${value}`])}" autocomplete="off" inputmode="numeric" placeholder="Ví dụ: 5.000.000"><i>₫</i></div></div><p class="lc-panel-note">${custom.note}</p></div>` : '';
-    return `<div class="lc-optw${open ? ' open' : ''}">${opt}<button type="button" class="lc-more" data-more="${value}" aria-expanded="${open}" aria-controls="lc-panel-${value}" aria-label="${open ? 'Đóng' : 'Mở'} ô nhập số tiền trả mỗi tháng — ${title}" title="Tự nhập số tiền trả mỗi tháng">${icon('chevronDown', 'icon-sm')}</button>${panel}</div>`;
+    // Khung luôn nằm trong trang, chỉ ẩn/hiện bằng lớp "open" để xả xuống và khép lại mượt (ô ẩn không focus được).
+    const panel = `<div class="lc-panelw" id="lc-panel-${value}"><div class="lc-panelin"><div class="lc-panel"><div class="lc-f"><label for="lc-fixed-${value}">${custom.label}</label><div class="box"><input id="lc-fixed-${value}" value="${escapeHtml(st[`fixed_${value}`])}" autocomplete="off" inputmode="numeric" placeholder="Ví dụ: 5.000.000"><i>₫</i></div></div><p class="lc-panel-note">${custom.note}</p></div></div></div>`;
+    return `<div class="lc-optw${open ? ' open' : ''}" data-m="${value}">${opt}<button type="button" class="lc-more" data-more="${value}" aria-expanded="${open}" aria-controls="lc-panel-${value}" aria-label="${moreLabel(value, open)}" title="Tự nhập số tiền trả mỗi tháng">${icon('chevronDown', 'icon-sm')}</button>${panel}</div>`;
   }).join('');
 }
 
@@ -179,9 +203,10 @@ function pageHtml() {
   const dueField = `<div class="lc-f dt due${st.dueManual || !st.due ? '' : ' auto'}"><label for="lc-due">Ngày đáo hạn</label><div class="box"><input id="lc-due" value="${escapeHtml(st.due)}" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="dd/mm/yyyy"><button type="button" class="lc-cal" id="lc-cal-due" aria-label="Chọn ngày đáo hạn trên lịch">${icon('calendar', 'icon-sm')}</button><input type="date" id="lc-due-native" tabindex="-1" aria-hidden="true"></div></div>`;
   const fields = term
     ? `<div class="lc-row c5 q">${field('Số tiền vay', 'lc-principal', st.principal, '₫', 'inputmode="numeric"', 'w')}${field('Lãi suất', 'lc-rate', st.rate, '%/năm', 'inputmode="decimal"')}${field('Thời hạn vay', 'lc-months', st.months, 'tháng', 'inputmode="numeric"')}${dateField}${dueField}</div>
-       <p class="lc-hint-row">${DUE_NOTE}</p>
+       <p class="lc-hint-row">${DUE_NOTE.term}</p>
        <div class="lc-opts-wrap"><div class="lc-lab" id="lc-lab-method">Cách trả</div><div class="lc-row c3 opts" role="radiogroup" aria-labelledby="lc-lab-method">${methodOptionsHtml()}</div></div>`
-    : `<div class="lc-row c4 q">${field('Số tiền vay', 'lc-principal', st.principal, '₫', 'inputmode="numeric"')}${field('Lãi suất', 'lc-rate', st.rate, '%/năm', 'inputmode="decimal"')}<div class="lc-f pw">${field('Số tiền trả mỗi tháng', 'lc-payment', st.payment, '₫', 'inputmode="numeric"', 'nested')}<div class="hint" id="lc-hint"></div></div>${dateField}</div>
+    : `<div class="lc-row c5 q pay">${field('Số tiền vay', 'lc-principal', st.principal, '₫', 'inputmode="numeric"', 'w')}${field('Lãi suất', 'lc-rate', st.rate, '%/năm', 'inputmode="decimal"')}<div class="lc-f pw">${field('Số tiền trả mỗi tháng', 'lc-payment', st.payment, '₫', 'inputmode="numeric"', 'nested')}<div class="hint" id="lc-hint"></div></div>${dateField}${dueField}</div>
+       <p class="lc-hint-row">${DUE_NOTE.pay}</p>
        <div class="lc-opts-wrap"><div class="lc-lab" id="lc-lab-kind">Số tiền trả mỗi tháng là</div><div class="lc-row c2 opts" role="radiogroup" aria-labelledby="lc-lab-kind">${optionsHtml('kind', KINDS, st.kind)}</div></div>`;
   return `
     <div class="lux-root lc">
@@ -309,9 +334,24 @@ function fitInput(el) {
 const fitAll = (root = document) => root.querySelectorAll('.lc-f .box input:not([type="date"])').forEach(fitInput);
 let fitBound = false;
 
+/** Ngày đáo hạn tự tính (khi chưa nhập tay): theo thời hạn = Ngày vay + Thời hạn; theo số tiền trả hàng tháng = ngày trả kỳ cuối. '' khi chưa đủ số liệu. */
+function derivedDue() {
+  const start = parseViDate(st.date);
+  if (!start) return '';
+  if (st.tab === 'term') {
+    const n = Number(digits(st.months)) || 0;
+    return n >= 1 && n <= 600 ? formatDate(addMonths(start, n)) : '';
+  }
+  const principal = numFromMoney(st.principal), ratePercent = numFromRate(st.rate), payment = numFromMoney(st.payment);
+  if (!(principal > 0) || !(ratePercent > 0 && ratePercent <= 100) || !(payment > 0)) return '';
+  const r = scheduleByPayment({ principal, ratePercent, payment, startDate: start, kind: st.kind });
+  return r && r.rows ? formatDate(r.rows[r.rows.length - 1].to) : '';
+}
+
 // Tham số thứ hai của app.js là phần tử bộ lọc (không dùng ở trang này); chỉ { recalc: true } do chính trang này gọi lại khi đổi tab mới có nghĩa.
 export function render(contentEl, opts) {
   const recalc = !!(opts && opts.recalc === true);
+  if (!st.dueManual) st.due = derivedDue(); // đổi tab: ô Ngày đáo hạn tự tính theo cách tính đang chọn
   contentEl.innerHTML = pageHtml();
   const out = contentEl.querySelector('#lc-out');
   lastCalc = null;
@@ -354,39 +394,59 @@ export function render(contentEl, opts) {
   // Ngày đáo hạn đi cùng Thời hạn vay + Ngày vay: ô nào sửa sau cùng thì ô kia tự tính lại theo (23/10/2026 + 12 tháng = 23/10/2027; nhập ngày đáo hạn khác thì thời hạn = số kỳ đến ngày đó).
   const setVal = (id, v) => { const el = contentEl.querySelector(id); if (el) { el.value = v; fitInput(el); } };
   const markDue = () => { const f = contentEl.querySelector('#lc-due')?.closest('.lc-f'); if (f) f.classList.toggle('auto', !st.dueManual && !!st.due); };
-  const derivedDue = () => {
-    const start = parseViDate(st.date), n = Number(digits(st.months)) || 0;
-    return start && n >= 1 && n <= 600 ? formatDate(addMonths(start, n)) : '';
-  };
   const syncMonthsFromDue = () => {
     const start = parseViDate(st.date), end = parseViDate(st.due);
     const n = start && end ? periodsUntil(start, end) : 0;
     if (n) { st.months = String(n); setVal('#lc-months', st.months); }
   };
   const refreshDue = () => {
-    if (st.dueManual) syncMonthsFromDue();
+    if (st.dueManual) { if (st.tab === 'term') syncMonthsFromDue(); }
     else { st.due = derivedDue(); setVal('#lc-due', st.due); }
     markDue();
   };
   const onMonths = () => { st.dueManual = false; refreshDue(); };
-  const onDue = () => { st.dueManual = st.due.trim() !== ''; if (st.dueManual) syncMonthsFromDue(); markDue(); };
-  const bindInput = (id, key, mask, after) => {
+  const onDue = () => { st.dueManual = st.due.trim() !== ''; if (st.dueManual && st.tab === 'term') syncMonthsFromDue(); markDue(); };
+  // caretOf (tùy chọn): tính lại vị trí con trỏ sau khi định dạng lại ô; mặc định giữ nguyên khoảng cách tới cuối ô.
+  const bindInput = (id, key, mask, after, caretOf) => {
     const el = contentEl.querySelector(id); if (!el) return;
     el.addEventListener('input', () => {
-      const before = el.value, caretFromEnd = before.length - (el.selectionStart ?? before.length);
+      const before = el.value, selStart = el.selectionStart ?? before.length;
       const next = mask(before);
-      if (next !== before) { el.value = next; const pos = Math.max(0, next.length - caretFromEnd); try { el.setSelectionRange(pos, pos); } catch { /* ô không hỗ trợ con trỏ */ } }
+      if (next !== before) {
+        el.value = next;
+        const pos = caretOf ? caretOf(before, selStart, next) : Math.max(0, next.length - (before.length - selStart));
+        try { el.setSelectionRange(pos, pos); } catch { /* ô không hỗ trợ con trỏ */ }
+      }
       st[key] = el.value; after?.(); fitInput(el); clearOut();
     });
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); update(); el.blur(); } });
   };
-  bindInput('#lc-principal', 'principal', moneyText);
-  bindInput('#lc-rate', 'rate', rateText);
+  // Ô ngày dd/mm/yyyy: sửa ngay trong ô — gõ số đè lên số đang có và tự nhảy qua dấu "/", gõ "/" sang phần kế tiếp, xóa sát dấu "/" xóa luôn số bên cạnh (xem js/lib/dateInput.js).
+  const bindDateInput = (id, key, after) => {
+    bindInput(id, key, maskViDate, after, (before, selStart, next) => caretAfterDigits(next, before.slice(0, selStart).replace(/\D/g, '').length));
+    const el = contentEl.querySelector(id); if (!el) return;
+    el.addEventListener('beforeinput', (e) => {
+      if (el.readOnly || e.isComposing) return;
+      const a = el.selectionStart ?? 0, b = el.selectionEnd ?? a;
+      let r = null;
+      if (e.inputType === 'insertText') r = typeIntoViDate(el.value, a, b, e.data);
+      else if (e.inputType === 'deleteContentBackward') r = deleteFromViDate(el.value, a, b, false);
+      else if (e.inputType === 'deleteContentForward') r = deleteFromViDate(el.value, a, b, true);
+      if (!r) return;
+      e.preventDefault();
+      const changed = r.value !== el.value;
+      el.value = r.value;
+      try { el.setSelectionRange(r.caret, r.caret); } catch { /* ô không hỗ trợ con trỏ */ }
+      if (changed) { st[key] = el.value; after?.(); fitInput(el); clearOut(); }
+    });
+  };
+  bindInput('#lc-principal', 'principal', moneyText, refreshDue);
+  bindInput('#lc-rate', 'rate', rateText, refreshDue);
   bindInput('#lc-months', 'months', (s) => digits(s).slice(0, 3), onMonths);
-  bindInput('#lc-payment', 'payment', moneyText);
+  bindInput('#lc-payment', 'payment', moneyText, refreshDue);
   for (const m of Object.keys(CUSTOM)) bindInput(`#lc-fixed-${m}`, `fixed_${m}`, moneyText);
-  bindInput('#lc-date', 'date', maskViDate, refreshDue);
-  bindInput('#lc-due', 'due', maskViDate, onDue);
+  bindDateInput('#lc-date', 'date', refreshDue);
+  bindDateInput('#lc-due', 'due', onDue);
   // Xóa hết ô Ngày đáo hạn rồi rời ô: quay lại tự tính theo Thời hạn vay.
   contentEl.querySelector('#lc-due')?.addEventListener('change', () => { if (!st.due.trim()) { st.dueManual = false; refreshDue(); } });
 
@@ -410,17 +470,25 @@ export function render(contentEl, opts) {
   const redoIfShown = () => { if (shown) update(); };
   // Đổi sang cách tính kia: số liệu dùng chung (số tiền vay, lãi suất, ngày vay) giữ nguyên; đã có kết quả thì tính lại ngay nếu đủ số liệu, thiếu thì để trống chờ nhập.
   contentEl.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { if (st.tab !== b.dataset.tab) { const had = shown; st.tab = b.dataset.tab; render(contentEl, { recalc: had }); } }));
-  contentEl.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', () => { st.method = b.dataset.method; setChecked(contentEl, '[data-method]', 'method', st.method); redoIfShown(); }));
-  // Nút xả xuống ở thẻ: mở/đóng ô tự nhập số tiền trả mỗi tháng (mở thì chọn luôn cách trả đó). Đã có kết quả thì tính lại ngay theo trạng thái mới.
+  // Khung xả xuống ở thẻ cách trả: mở/khép bằng lớp "open" (CSS làm hiệu ứng); chỉ khung của cách trả đang chọn được mở — chọn cách trả khác thì khung kia tự khép lại.
+  const setOpen = (m, open) => {
+    st[`open_${m}`] = open;
+    const w = contentEl.querySelector(`.lc-optw[data-m="${m}"]`); if (!w) return;
+    w.classList.toggle('open', open);
+    const more = w.querySelector('[data-more]');
+    if (more) { more.setAttribute('aria-expanded', String(open)); more.setAttribute('aria-label', moreLabel(m, open)); }
+  };
+  const closeOthers = (keep) => { for (const m of Object.keys(CUSTOM)) if (m !== keep && st[`open_${m}`]) setOpen(m, false); };
+  contentEl.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', () => { st.method = b.dataset.method; closeOthers(st.method); setChecked(contentEl, '[data-method]', 'method', st.method); redoIfShown(); }));
+  // Nút xả xuống ở thẻ: mở/đóng ô tự nhập số tiền trả mỗi tháng (mở thì chọn luôn cách trả đó). Đã có kết quả thì tính lại ngay theo trạng thái mới (không tính được thì xóa kết quả cũ).
   contentEl.querySelectorAll('[data-more]').forEach((b) => b.addEventListener('click', () => {
     const m = b.dataset.more, willOpen = !st[`open_${m}`];
-    st[`open_${m}`] = willOpen;
-    if (willOpen) st.method = m;
-    const had = shown;
-    render(contentEl, { recalc: had });
-    if (willOpen) contentEl.querySelector(`#lc-fixed-${m}`)?.focus();
+    if (willOpen) { st.method = m; closeOthers(m); setChecked(contentEl, '[data-method]', 'method', m); }
+    setOpen(m, willOpen);
+    if (shown) { if (calculate().error) clearOut(); else update(); }
+    if (willOpen) contentEl.querySelector(`#lc-fixed-${m}`)?.focus({ preventScroll: true });
   }));
-  contentEl.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => { st.kind = b.dataset.kind; setChecked(contentEl, '[data-kind]', 'kind', st.kind); redoIfShown(); }));
+  contentEl.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => { st.kind = b.dataset.kind; setChecked(contentEl, '[data-kind]', 'kind', st.kind); refreshDue(); redoIfShown(); }));
   contentEl.querySelector('#lc-reset').addEventListener('click', () => { st = { ...DEFAULTS(), tab: st.tab }; render(contentEl); });
   contentEl.querySelector('#lc-go').addEventListener('click', () => {
     update();

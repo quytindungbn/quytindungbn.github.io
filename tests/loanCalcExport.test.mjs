@@ -121,3 +121,10 @@ test('điều kiện đã nhập ghi thêm số gốc/tiền trả mỗi tháng 
   assert.match(a['Cách trả'], /Gốc trả đều.*5\.000\.000/);
   assert.equal(lines.length, inputLines(term, termRes).length); // không thêm dòng mới nên bố cục in/PDF không đổi
 });
+
+test('tab trả hàng tháng: ngày đáo hạn nhập tay được ghi vào dòng "Số tiền này là", không thêm dòng mới', () => {
+  const inputs = { ...pay, endDate: new Date(2027, 9, 22) };
+  const lines = inputLines(inputs, payRes);
+  assert.equal(Object.fromEntries(lines)['Số tiền này là'], 'Gồm cả gốc và lãi, đáo hạn 22/10/2027');
+  assert.equal(lines.length, inputLines(pay, payRes).length);
+});
