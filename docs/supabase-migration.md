@@ -2965,6 +2965,16 @@ Nguyên nhân: danh sách hội thoại Tư vấn và bảng cân đối chỉ �
 - **Số tiền lãi / Gốc**: lọc theo **tổng gốc (dư nợ) và tổng lãi tạm tính của từng khách** (đúng 2 con số dùng cho sắp xếp Gốc/Lãi). **Số ngày lãi**: khách khớp khi có **ít nhất 1 hợp đồng đang vay** có số ngày lãi (`S.interestDaysAccrued`, đúng con số ở cột "Số ngày lãi") nằm trong khoảng; khách khớp vẫn hiện đủ các hợp đồng của họ. Bao gồm 2 đầu mút; áp dụng trước khi đếm số khách các nhóm Tất cả/Nợ quá hạn/Gần đến hạn nên 3 con số đó khớp với danh sách. "Từ" lớn hơn "Đến" thì hiện cảnh báo đỏ (không khách nào khớp). Gõ xong ~0,25 giây mới lọc; ghi Nhật ký "Lọc số tiền: …" khi rời ô.
 - Bộ lọc số tiền giữ khi chuyển trang rồi quay lại như Thôn/Xóm; đổi người đăng nhập thì được xóa (cùng `resetFilters()`). Không đụng công thức tính lãi/gốc nào.
 
+### 10.72. Thiết kế lại "Thông báo nộp lãi" và "Giấy báo hợp đồng đến hạn" (chỉ giao diện bản in, KHÔNG cần deploy hay SQL)
+
+File `js/lib/printNotices.js` (hàm `buildNoticeHtml()`/`printNotice()`), vẫn A4 một trang, mở ở cửa sổ mới rồi tự in như cũ:
+- **Kiểu trình bày trang trọng, chỉ đen/xám**: không khung viền, không màu nền/màu nhấn; chữ có chân (Source Serif 4, dự phòng Noto Serif/Cambria/Times New Roman; tải từ Google Fonts, `printNotice()` chờ tối đa 3 giây cho chữ tải xong rồi mới in).
+- **Đầu giấy**: logo quỹ (`icons/logo-pcf.png`, tự ẩn nếu không tải được) + tên quỹ in hoa + dòng địa chỉ/hotline lấy từ `org` (thiếu thì ẩn) + đường kẻ đôi; dòng "Số: ……" bên trái, "Bình Sơn, ngày … tháng … năm …" bên phải.
+- **Dải thông tin hợp đồng** (cả 2 giấy): Số HĐTD · Dư nợ hiện tại · Ngày đến hạn HĐ · **Lãi suất** (lãi suất ở cuối cùng).
+- **Số tiền**: cả 2 giấy dùng khung kẻ ngang một kiểu. Nộp lãi: một dòng "Lãi tạm tính đến ngày <ngày in>" + số tiền, rồi "Bằng chữ: …" (bỏ dòng "Lãi tính từ ngày … đến ngày …"). Đến hạn: Nợ gốc còn phải trả / Lãi tạm tính đến ngày <ngày in> / Tổng gốc và lãi tạm tính, rồi "Bằng chữ".
+- **Câu yêu cầu gọn**: nộp lãi — "Đề nghị ông/bà thanh toán lãi phát sinh cho Quỹ tín dụng nhân dân Bình Nguyên trước <hạn>, theo đúng cam kết tại hợp đồng tín dụng."; đến hạn — "Yêu cầu ông/bà trước <hạn> phải thanh toán gốc và lãi phát sinh theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên." Các đoạn còn lại, cách đọc số thành chữ và cách tính hạn thanh toán (`noticeDeadlineDate()`) giữ nguyên.
+- Test: `tests/printNotices.test.mjs` (thêm kiểm tra thứ tự dải thông tin, logo/dòng liên hệ có mã hóa HTML).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

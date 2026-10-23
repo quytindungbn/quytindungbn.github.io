@@ -35,13 +35,16 @@ test('hai mẫu in dùng đúng hợp đồng, địa chỉ và khoản phải t
     assert.match(html, /\(Ký, đóng dấu\)/);
     assert.doesNotMatch(html, /nếu phát hành/);
   }
-  assert.match(interest, /Số tiền lãi: 918\.000 ₫/);
-  assert.match(interest, /Đề nghị ông\/bà thanh toán đầy đủ số tiền lãi nêu trên/);
-  assert.match(interest, /trước <strong>ngày 16 tháng 10 năm 2026<\/strong>/);
+  assert.match(interest, /Lãi tạm tính đến ngày 12\/10\/2026/);
+  assert.match(interest, /918\.000 ₫/);
+  assert.match(interest, /Bằng chữ: <em>Chín trăm mười tám nghìn đồng chẵn\.<\/em>/);
+  assert.doesNotMatch(interest, /Lãi tính từ ngày/);
+  assert.match(interest, /Đề nghị ông\/bà thanh toán lãi phát sinh cho Quỹ tín dụng nhân dân Bình Nguyên trước <strong>ngày 16 tháng 10 năm 2026<\/strong>/);
   assert.match(interest, /xem xét thu hồi nợ trước hạn khi đủ điều kiện/);
   assert.doesNotMatch(interest, /chịu hoàn toàn trước pháp luật/);
   assert.match(due, /Tổng gốc và lãi/);
-  assert.match(due, /Yêu cầu ông\/bà trước <strong>ngày 20 tháng 10 năm 2026<\/strong> phải thực hiện nghĩa vụ thanh toán toàn bộ nợ gốc và lãi theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên/);
+  assert.match(due, /Lãi tạm tính đến ngày 12\/10\/2026/);
+  assert.match(due, /Yêu cầu ông\/bà trước <strong>ngày 20 tháng 10 năm 2026<\/strong> phải thanh toán gốc và lãi phát sinh theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên/);
   assert.doesNotMatch(due, /phải có mặt tại/);
   assert.match(due, /20\.918\.000 ₫/);
 });
@@ -51,4 +54,23 @@ test('dữ liệu khách hàng trong giấy báo được mã hóa HTML', () => 
   assert.doesNotMatch(html, /<img src=x/);
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
   assert.match(html, /&lt;script&gt;/);
+});
+
+test('Lãi suất đứng cuối dải thông tin hợp đồng ở cả hai giấy báo', () => {
+  for (const type of ['interest', 'due']) {
+    const html = buildNoticeHtml({ ...base, type });
+    const strip = html.slice(html.indexOf('<section class="contract">'), html.indexOf('</section>', html.indexOf('<section class="contract">')));
+    const labels = [...strip.matchAll(/<span>([^<]+)<\/span>/g)].map((m) => m[1]);
+    assert.deepEqual(labels, ['Số HĐTD', 'Dư nợ hiện tại', 'Ngày đến hạn HĐ', 'Lãi suất']);
+    assert.doesNotMatch(html, /class="frame"/);
+  }
+});
+
+test('thư đầu trang: logo và dòng liên hệ chỉ hiện khi có dữ liệu, và được mã hóa HTML', () => {
+  const plain = buildNoticeHtml({ ...base, type: 'interest' });
+  assert.doesNotMatch(plain, /<img class="logo"/);
+  assert.doesNotMatch(plain, /class="contact"/);
+  const full = buildNoticeHtml({ ...base, type: 'interest', logoUrl: 'https://x.test/icons/logo.png', org: { name: 'Quỹ A', address: 'Thôn <b>1</b>', hotline: '1900 1234' } });
+  assert.match(full, /<img class="logo" src="https:\/\/x\.test\/icons\/logo\.png"/);
+  assert.match(full, /Thôn &lt;b&gt;1&lt;\/b&gt;\s+·\s+Hotline: 1900 1234/);
 });
