@@ -2941,8 +2941,8 @@ cả (vô hại).
 
 ### 10.69. Khách hàng: 2 chấm đăng nhập/thông báo chuyển vào chi tiết; nút Gọi ra mép phải có vạch ngăn (chỉ giao diện, KHÔNG cần deploy hay SQL)
 
-- **Danh sách Khách hàng & Hợp đồng**: bỏ 2 chấm trạng thái (chấm trái = đã đăng nhập, chấm phải = đã bật thông báo) khỏi từng dòng khách; chuyển vào **chi tiết khách hàng** — dòng "Đăng nhập · Thông báo" với đúng 2 chấm như cũ (xanh = đã có, đỏ = chưa; tooltip giữ nguyên). Trang Quản lý User vẫn giữ 2 chấm như cũ.
-- **Nút Gọi** (chỉ điện thoại, máy tính vốn không có): nằm sát mép phải dòng tên khách, là viên nhỏ nằm ngang (cao 26px) có khung đậm như nút Gửi OA (viền xanh 1,5px, bóng nhẹ, chữ đậm), có vạch dọc ngăn bên trái như nút Gửi OA; cùng rộng 56px với nút Gửi OA (đã đặt cả hai = 56px) nên 2 vạch dọc của dòng tên và dòng hợp đồng thẳng hàng. Chiều cao dòng tên khách giữ 53px.
+- **Danh sách Khách hàng & Hợp đồng**: bỏ 2 chấm trạng thái (chấm trái = đã đăng nhập, chấm phải = đã bật thông báo) khỏi từng dòng khách; chuyển vào **chi tiết khách hàng** — dòng "Trạng thái" rồi từng trạng thái đi kèm chấm: ● Đăng nhập ● Thông báo (xanh = đã có, đỏ = chưa; tooltip giữ nguyên). Trang Quản lý User vẫn giữ 2 chấm như cũ.
+- **Nút Gọi** (chỉ điện thoại, máy tính vốn không có): nằm sát mép phải dòng tên khách, là viên nhỏ nằm ngang (cao 26px) có khung đậm như nút Gửi OA (viền xanh 1,5px, bóng nhẹ, chữ đậm), có vạch dọc ngăn bên trái như nút Gửi OA; cùng rộng 56px với nút Gửi OA (đã đặt cả hai = 56px) nên 2 vạch dọc của dòng tên và dòng hợp đồng thẳng hàng. Chiều cao dòng tên khách giữ 53px. **Khách chưa có số điện thoại**: nút Gọi vẫn hiện nhưng mờ đi (xám nhạt, không bấm được, tooltip "Chưa có số điện thoại") để các dòng không bị lệch.
 - Hai danh sách cảnh báo ở Tổng quan dùng chung bảng nên đổi theo.
 
 ---

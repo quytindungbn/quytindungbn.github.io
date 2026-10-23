@@ -1,7 +1,7 @@
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
-import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, statusDotsHtml, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox, installmentHintHtml, mountScrollTopButton } from '../../components/ui.js';
+import { emptyState, statusBadge, openPicker, pillSelectHtml, openResetPasswordModal, searchBoxHtml, bindSearchBox, installmentNextBoxHtml, bindInstallmentNextBox, installmentHintHtml, mountScrollTopButton } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatVND, formatDate, formatNumber, daysUntil, daysBetween, startOfDay, parseViDate, maskViDate, toDateInputValue, copyText, colorFor, initials, debounce, stripDiacritics, stripDiacriticsKeepCase, escapeHtml, boldDigits } from '../../utils.js';
@@ -368,7 +368,7 @@ export function customerLedgerGroupsHtml(groups, canManageZalo) {
               </span>
               ${contracts.length > 1 ? `<span class="customer-ledger-total">Tổng dư nợ: <strong>${formatVND(totalBalance)}</strong></span>` : ''}
             </button>
-            ${dialPhone ? `<a class="customer-ledger-call" href="tel:${escapeHtml(dialPhone)}" aria-label="Gọi ${escapeHtml(c.name)}" title="Gọi ${escapeHtml(c.phone)}">${icon('phone', 'icon-sm')} Gọi</a>` : ''}
+            ${dialPhone ? `<a class="customer-ledger-call" href="tel:${escapeHtml(dialPhone)}" aria-label="Gọi ${escapeHtml(c.name)}" title="Gọi ${escapeHtml(c.phone)}">${icon('phone', 'icon-sm')} Gọi</a>` : `<span class="customer-ledger-call is-off" role="img" aria-label="Chưa có số điện thoại" title="Chưa có số điện thoại">${icon('phone', 'icon-sm')} Gọi</span>`}
           </div>
           ${contracts.map((ct) => contractLedgerRow(ct, canManageZalo)).join('')}
         </section>`;
@@ -686,6 +686,9 @@ function zaloActionButtonHtml(inZaloList) {
     : `<button class="btn btn-outline btn-sm" id="btn-add-zalo-cust">${icon('message', 'icon-sm')} Thêm vào OA</button>`;
 }
 
+/** Chấm tròn xanh (đã có) / đỏ (chưa) nhỏ cạnh tên trạng thái trong chi tiết khách hàng. */
+const statusDotInline = (on) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${on ? 'var(--success)' : 'var(--danger)'};flex:none"></span>`;
+
 export function openCustomerDetail(customerId, { readOnly = false, context = 'customer' } = {}) {
   const c = S.getCustomer(customerId);
   S.logAdminAction('view-customer', { customerId });
@@ -701,7 +704,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       <div class="oc-line"><span>CCCD</span><b>${c.cccd}</b></div>
       <div class="oc-line"><span>SĐT</span><b>${c.phone ? `<a href="tel:${c.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${c.phone}</a>` : '—'}</b></div>
       <div class="oc-line" style="align-items:flex-start"><span>Địa chỉ</span><b style="text-align:right;max-width:65%">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || '—'}</b></div>
-      <div class="oc-line"><span>Đăng nhập · Thông báo</span><b>${statusDotsHtml(S.hasCustomerLoggedIn(c), S.hasPushEnabled(c.id))}</b></div>
+      <div class="oc-line"><span>Trạng thái</span><b style="display:inline-flex;gap:14px;font-weight:600;font-size:13px" title="${S.hasCustomerLoggedIn(c) ? 'Đã đăng nhập' : 'Chưa đăng nhập'} · ${S.hasPushEnabled(c.id) ? 'Đã bật thông báo' : 'Chưa bật thông báo'}"><span style="display:inline-flex;align-items:center;gap:6px">${statusDotInline(S.hasCustomerLoggedIn(c))}Đăng nhập</span><span style="display:inline-flex;align-items:center;gap:6px">${statusDotInline(S.hasPushEnabled(c.id))}Thông báo</span></b></div>
       ${canManageZalo ? `<div class="oc-line" id="oa-status-line"><span>Danh sách OA</span><b style="color:${inZaloList ? 'var(--success)' : 'var(--text-muted)'}">${inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}</b></div>` : ''}
       ${c.mustChangePassword && c.tempPassword ? `
       <div class="oc-line"><span>Mật khẩu hiện tại</span><b style="color:var(--color-primary)">${c.tempPassword}</b></div>
