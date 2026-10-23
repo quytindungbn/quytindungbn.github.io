@@ -115,7 +115,8 @@ export function scheduleByTerm({ principal, ratePercent, months, startDate, meth
     rows = run((p, balance, interest) => Math.max(0, fixed - interest));
   } else if (method === 'bullet') rows = run((p) => (p.k === N ? P : 0));
   else if (method === 'annuity') {
-    // Tìm số tiền trả mỗi tháng (làm tròn nghìn) sao cho kỳ cuối còn nợ ít nhất mà không âm: chia đôi trên đoạn [0, P + lãi cả kỳ].
+    // Tìm số tiền trả mỗi tháng vừa đủ để hết nợ đúng kỳ cuối (chia đôi trên đoạn [0, P + lãi cả kỳ]), rồi làm tròn đến nghìn như Excel:
+    // từ 500 trở lên làm tròn lên, dưới 500 làm tròn xuống. Phần chênh do làm tròn dồn vào kỳ cuối (kỳ cuối luôn trả nốt dư nợ).
     let lo = 0, hi = P * 2;
     for (let i = 0; i < 60; i++) {
       const mid = (lo + hi) / 2;
@@ -123,7 +124,7 @@ export function scheduleByTerm({ principal, ratePercent, months, startDate, meth
       for (const p of periods) b = b + periodInterest(b, ratePercent, p.days) - mid;
       if (b > 0) lo = mid; else hi = mid;
     }
-    const pay = Math.ceil(hi / 1000) * 1000;
+    const pay = Math.max(1000, roundThousand(hi));
     rows = run((p, balance, interest) => Math.max(0, pay - interest));
   } else {
     const each = roundThousand(P / N);

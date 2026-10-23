@@ -2993,6 +2993,10 @@ Menu Công cụ > Tính lãi vay > "Theo thời hạn vay":
 - **Ô Ngày đáo hạn** cùng hàng Ngày vay (máy tính 5 ô một hàng; điện thoại: Số tiền vay riêng một hàng, Lãi suất | Thời hạn, Ngày vay | Ngày đáo hạn). Bình thường tự tính = Ngày vay + Thời hạn vay (23/10/2026 + 12 tháng = 23/10/2027), ô có nền xanh nhạt. Nhập thẳng một ngày đáo hạn khác (đổi lãi suất giữa chừng) thì Thời hạn tự thành số kỳ đến ngày đó (kỳ cuối có thể ngắn hơn 1 tháng, lãi theo đúng số ngày) và kết quả không còn phụ thuộc Thời hạn; sửa lại Thời hạn, hoặc xóa trống ô rồi rời ô, thì quay về tự tính. Dùng được cho cả 3 cách trả; tab "Theo số tiền trả hàng tháng" không có ô này.
 - Thư viện `js/lib/loanCalc.js`: `scheduleByTerm` nhận thêm `fixedAmount` và `endDate` (không truyền thì kết quả y hệt trước; công thức lãi/làm tròn không đổi), thêm `periodsUntil(startDate, endDate)`. Excel/bản in/PDF chỉ ghi thêm vào hai dòng sẵn có "Thời hạn vay" ("12 tháng (đến ngày 22/10/2027)" khi nhập tay ngày đáo hạn) và "Cách trả" (", 5.000.000 ₫/tháng"), không thêm dòng. Kiểm thử: `tests/loanCalc.test.mjs`, `tests/loanCalcExport.test.mjs`.
 
+### 10.76. Tính lãi vay: làm tròn số tiền "Gốc + lãi trả đều mỗi tháng" như Excel (chỉ công cụ Tính lãi vay, KHÔNG cần deploy hay SQL)
+
+Trong `js/lib/loanCalc.js`, số tiền trả đều mỗi tháng của cách "Gốc + lãi trả đều" trước đây luôn làm tròn LÊN đến nghìn (`Math.ceil`), kể cả khi phần lẻ dưới 500. Nay làm tròn như hàm ROUND của Excel: từ 500 trở lên làm tròn lên, dưới 500 làm tròn xuống (VD 4.947.111 -> 4.947.000; đúng 17.614.500 -> 17.615.000); phần chênh do làm tròn dồn vào kỳ cuối (kỳ cuối luôn trả nốt dư nợ). Lãi từng kỳ và gốc chia đều vốn đã làm tròn đúng quy tắc này nên không đổi; các nơi tính lãi khác trong app (hợp đồng, Zalo, hàm máy chủ) không đụng tới. Kiểm thử: `tests/loanCalc.test.mjs`.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

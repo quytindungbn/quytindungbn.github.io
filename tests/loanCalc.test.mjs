@@ -174,3 +174,22 @@ test('số kỳ từ ngày vay đến ngày đáo hạn (periodsUntil) khớp s�
     assert.equal(scheduleByTerm({ principal: 1e8, ratePercent: 10, months: 0, startDate: s, method: 'bullet', endDate: end }).rows.length, periodsUntil(s, end));
   }
 });
+
+test('gốc + lãi trả đều: số tiền trả mỗi tháng làm tròn nghìn như Excel (từ 500 lên, dưới 500 xuống), kỳ cuối trả nốt', () => {
+  // Số vừa đủ trả hết đúng kỳ cuối = 17.614.500 (đúng 500) -> làm tròn lên 17.615.000
+  const a = scheduleByTerm({ principal: 200e6, ratePercent: 10.34, months: 12, startDate: d(2026, 10, 22), method: 'annuity' });
+  assert.equal(a.rows[0].payment, 17615000);
+  // 4.947.111 (dưới 500) -> làm tròn xuống 4.947.000, không còn làm tròn lên 4.948.000
+  const b = scheduleByTerm({ principal: 150e6, ratePercent: 11.5, months: 36, startDate: d(2026, 10, 22), method: 'annuity' });
+  assert.equal(b.rows[0].payment, 4947000);
+  assert.equal(b.rows[34].payment, 4947000);
+  // 4.801.111 -> 4.801.000; 8.602.166 -> 8.602.000
+  assert.equal(scheduleByTerm({ principal: 80e6, ratePercent: 9.9, months: 18, startDate: d(2026, 10, 22), method: 'annuity' }).rows[0].payment, 4801000);
+  assert.equal(scheduleByTerm({ principal: 50e6, ratePercent: 10.95, months: 6, startDate: d(2026, 10, 22), method: 'annuity' }).rows[0].payment, 8602000);
+  // Phần chênh do làm tròn dồn vào kỳ cuối: hết nợ, tổng gốc đúng số vay, kỳ cuối chỉ lệch rất ít so với các kỳ trước
+  for (const r of [a, b]) {
+    assert.equal(r.rows[r.rows.length - 1].closing, 0);
+    assert.equal(r.totals.principal, r.rows[0].opening);
+    assert.ok(Math.abs(r.rows[r.rows.length - 1].payment - r.rows[0].payment) < 50000);
+  }
+});
