@@ -26,7 +26,10 @@ export function inputLines(inputs, result) {
     ['Ngày vay', formatDate(inputs.startDate)],
   ];
   if (inputs.tab === 'term') {
-    lines.push(['Thời hạn vay', `${inputs.months} tháng`], ['Cách trả', METHOD_LABELS[inputs.method] || '']);
+    // Tự nhập số tiền trả mỗi tháng / ngày đáo hạn được gộp vào 2 dòng này (giữ nguyên 5 dòng điều kiện của bản in, PDF và Excel).
+    const term = inputs.endDate ? `${inputs.months} tháng (đến ngày ${formatDate(inputs.endDate)})` : `${inputs.months} tháng`;
+    const way = (METHOD_LABELS[inputs.method] || '') + (inputs.fixedAmount > 0 ? `, ${formatVND(inputs.fixedAmount)}/tháng` : '');
+    lines.push(['Thời hạn vay', term], ['Cách trả', way]);
   } else {
     lines.push(['Số tiền trả mỗi tháng', formatVND(inputs.payment)], ['Số tiền này là', KIND_LABELS[inputs.kind] || '']);
   }

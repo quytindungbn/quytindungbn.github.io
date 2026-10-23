@@ -16,6 +16,13 @@ export function daysBetween(a, b) {
   return Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / 86400000);
 }
 
+/** Số kỳ (tháng) từ ngày vay đến ngày đáo hạn — kỳ cuối có thể ngắn hơn 1 tháng; đúng bằng số dòng scheduleByTerm trả về khi truyền `endDate`. 0 nếu ngày đáo hạn không sau ngày vay hoặc xa quá 600 tháng. */
+export function periodsUntil(startDate, endDate) {
+  if (!(daysBetween(startDate, endDate) >= 1)) return 0;
+  for (let k = 1; k <= MAX_MONTHS; k++) if (daysBetween(addMonths(startDate, k), endDate) <= 0) return k;
+  return 0;
+}
+
 /** Lãi 1 kỳ làm tròn đến nghìn đồng, tính bằng số nguyên lớn để không sai ngưỡng 500 do số thực. `rate` là %/năm (có thể có số lẻ, VD 10.34). */
 export function periodInterest(balance, ratePercent, days) {
   const b = Number(balance), r = Number(ratePercent), d = Number(days);
@@ -47,15 +54,40 @@ function totals(rows) {
  * method: 'equalPrincipal' (gốc chia đều mỗi tháng, lãi theo dư nợ giảm dần) |
  *         'annuity' (số tiền gốc + lãi mỗi tháng gần bằng nhau, kỳ cuối điều chỉnh cho đủ) |
  *         'bullet' (lãi trả hàng tháng, toàn bộ gốc trả ở kỳ cuối).
+ * fixedAmount (tùy chọn, chỉ cho 'equalPrincipal' và 'annuity', cần từ 2 kỳ trở lên): tự nhập số tiền trả mỗi tháng thay cho số tự chia —
+ *   'equalPrincipal': mỗi tháng trả đúng `fixedAmount` tiền GỐC (lãi cộng thêm); 'annuity': mỗi tháng trả đúng `fixedAmount` tiền GỐC + LÃI.
+ *   Từ kỳ 1 đến kỳ áp chót trả đúng số đó, kỳ cuối trả nốt toàn bộ dư nợ còn lại. Không nhập thì tính y như trước.
+ *   Số nhập làm khoản vay hết trước kỳ cuối -> { error: 'tra_het_truoc_han', maxAmount (chỉ cho 'equalPrincipal') };
+ *   'annuity' không đủ trả lãi tháng đầu -> { error: 'khong_du_tra_lai', firstInterest }.
+ * endDate (tùy chọn): NGÀY ĐÁO HẠN — có thì kỳ cuối kết thúc đúng ngày này (có thể ngắn hơn một tháng) và `months` KHÔNG còn được dùng, số kỳ tự tính từ
+ *   ngày vay đến ngày đáo hạn (dùng khi đổi lãi suất giữa chừng: nhập số dư hiện tại, lãi suất mới, ngày bắt đầu mới và ngày đáo hạn cũ). Ngày đáo hạn
+ *   không sau ngày vay, hoặc quá 600 tháng -> trả về null.
  * Trả về { rows, totals } — mỗi dòng: { k, from, to, days, opening, interest, principal, payment, closing }.
  */
-export function scheduleByTerm({ principal, ratePercent, months, startDate, method = 'equalPrincipal' }) {
-  const P = Math.round(Number(principal)), N = Math.round(Number(months));
-  if (!(P > 0) || !(Number(ratePercent) > 0) || !(N >= 1) || N > MAX_MONTHS) return null;
+export function scheduleByTerm({ principal, ratePercent, months, startDate, method = 'equalPrincipal', fixedAmount = null, endDate = null }) {
+  const P = Math.round(Number(principal));
+  const end = endDate instanceof Date && !Number.isNaN(endDate.getTime()) ? endDate : null;
   const periods = [];
-  for (let k = 1; k <= N; k++) {
-    const from = addMonths(startDate, k - 1), to = addMonths(startDate, k);
-    periods.push({ k, from, to, days: daysBetween(from, to) });
+  if (end) {
+    if (!(daysBetween(startDate, end) >= 1)) return null;
+    for (let k = 1; k <= MAX_MONTHS + 1; k++) {
+      const from = addMonths(startDate, k - 1);
+      let to = addMonths(startDate, k);
+      const isLast = daysBetween(to, end) <= 0;
+      if (isLast) to = end;
+      periods.push({ k, from, to, days: daysBetween(from, to) });
+      if (isLast) break;
+    }
+  }
+  const N = end ? periods.length : Math.round(Number(months));
+  if (!(P > 0) || !(Number(ratePercent) > 0) || !(N >= 1) || N > MAX_MONTHS) return null;
+  const fixed = Math.round(Number(fixedAmount));
+  const useFixed = Number.isFinite(fixed) && fixed > 0 && N >= 2 && (method === 'equalPrincipal' || method === 'annuity');
+  if (!end) {
+    for (let k = 1; k <= N; k++) {
+      const from = addMonths(startDate, k - 1), to = addMonths(startDate, k);
+      periods.push({ k, from, to, days: daysBetween(from, to) });
+    }
   }
   const run = (principalFor) => {
     let balance = P; const rows = [];
@@ -69,7 +101,19 @@ export function scheduleByTerm({ principal, ratePercent, months, startDate, meth
     return rows;
   };
   let rows;
-  if (method === 'bullet') rows = run((p) => (p.k === N ? P : 0));
+  if (useFixed && method === 'equalPrincipal') {
+    if (fixed * (N - 1) >= P) return { error: 'tra_het_truoc_han', maxAmount: Math.floor((P - 1) / (N - 1)) };
+    rows = run(() => fixed);
+  } else if (useFixed && method === 'annuity') {
+    const firstInterest = periodInterest(P, ratePercent, periods[0].days);
+    if (fixed <= firstInterest) return { error: 'khong_du_tra_lai', firstInterest };
+    let b = P;
+    for (const p of periods.slice(0, N - 1)) {
+      b = b + periodInterest(b, ratePercent, p.days) - fixed;
+      if (b <= 0) return { error: 'tra_het_truoc_han' };
+    }
+    rows = run((p, balance, interest) => Math.max(0, fixed - interest));
+  } else if (method === 'bullet') rows = run((p) => (p.k === N ? P : 0));
   else if (method === 'annuity') {
     // Tìm số tiền trả mỗi tháng (làm tròn nghìn) sao cho kỳ cuối còn nợ ít nhất mà không âm: chia đôi trên đoạn [0, P + lãi cả kỳ].
     let lo = 0, hi = P * 2;

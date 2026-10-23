@@ -2986,6 +2986,13 @@ Thông báo lỗi do máy chủ trả về và chú thích trong ô Gửi OA ở
 
 Nguyên nhân: `drawList()` trong `js/views/admin/logs.js` thay TOÀN BỘ nội dung trang (kể cả ô nhập) mỗi khi lọc xong (sau 0,2 giây ngừng gõ), nên ô nhập mới không còn focus. Sửa: ô tìm kiếm dựng 1 lần và giữ nguyên, mỗi lần chỉ vẽ lại phần danh sách (`#log-list`); ô chỉ được đưa về đúng giá trị khi `searchQuery` bị đặt lại từ nơi khác lúc ô không đang được gõ. Các ô tìm kiếm khác (Khách hàng, Hỗ trợ/Tư vấn, Quản lý User, Quản lý OA) vốn nằm ngoài vùng vẽ lại nên không bị.
 
+### 10.75. Tính lãi vay: nút xả xuống nhập số tiền trả mỗi tháng + Ngày đáo hạn (chỉ giao diện, KHÔNG cần deploy hay SQL)
+
+Menu Công cụ > Tính lãi vay > "Theo thời hạn vay":
+- **Nút xả xuống** ở thẻ "Gốc trả đều mỗi tháng" và "Gốc + lãi trả đều mỗi tháng" (`js/views/admin/loanCalc.js`, trạng thái `open_*`/`fixed_*`): mở ra ô nhập số gốc (hoặc số gốc + lãi) trả mỗi tháng; kỳ 1 đến kỳ áp chót trả đúng số đó, phần dư nợ còn lại trả hết ở kỳ cuối (VD vay 200tr, 24 tháng, gốc 5tr/tháng: kỳ 24 trả nốt gốc 85.000.000 cùng lãi). Đóng nút (hoặc để trống) thì tính như cũ. Lỗi báo bằng chữ: số quá lớn (trả hết trước kỳ cuối, kèm số tối đa), số gốc + lãi không đủ trả lãi kỳ đầu.
+- **Ô Ngày đáo hạn** cùng hàng Ngày vay (máy tính 5 ô một hàng; điện thoại: Số tiền vay riêng một hàng, Lãi suất | Thời hạn, Ngày vay | Ngày đáo hạn). Bình thường tự tính = Ngày vay + Thời hạn vay (23/10/2026 + 12 tháng = 23/10/2027), ô có nền xanh nhạt. Nhập thẳng một ngày đáo hạn khác (đổi lãi suất giữa chừng) thì Thời hạn tự thành số kỳ đến ngày đó (kỳ cuối có thể ngắn hơn 1 tháng, lãi theo đúng số ngày) và kết quả không còn phụ thuộc Thời hạn; sửa lại Thời hạn, hoặc xóa trống ô rồi rời ô, thì quay về tự tính. Dùng được cho cả 3 cách trả; tab "Theo số tiền trả hàng tháng" không có ô này.
+- Thư viện `js/lib/loanCalc.js`: `scheduleByTerm` nhận thêm `fixedAmount` và `endDate` (không truyền thì kết quả y hệt trước; công thức lãi/làm tròn không đổi), thêm `periodsUntil(startDate, endDate)`. Excel/bản in/PDF chỉ ghi thêm vào hai dòng sẵn có "Thời hạn vay" ("12 tháng (đến ngày 22/10/2027)" khi nhập tay ngày đáo hạn) và "Cách trả" (", 5.000.000 ₫/tháng"), không thêm dòng. Kiểm thử: `tests/loanCalc.test.mjs`, `tests/loanCalcExport.test.mjs`.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

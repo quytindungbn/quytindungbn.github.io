@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addMonths, daysBetween, periodInterest, scheduleByTerm, scheduleByPayment } from '../js/lib/loanCalc.js';
+import { addMonths, daysBetween, periodInterest, periodsUntil, scheduleByTerm, scheduleByPayment } from '../js/lib/loanCalc.js';
 
 const d = (y, m, day) => new Date(y, m - 1, day);
 
@@ -87,4 +87,90 @@ test('dữ liệu không hợp lệ thì trả về null', () => {
   assert.equal(scheduleByTerm({ principal: 0, ratePercent: 10, months: 12, startDate: d(2026, 1, 1) }), null);
   assert.equal(scheduleByTerm({ principal: 1e6, ratePercent: 10, months: 0, startDate: d(2026, 1, 1) }), null);
   assert.equal(scheduleByPayment({ principal: 1e6, ratePercent: 0, payment: 1e5, startDate: d(2026, 1, 1) }), null);
+});
+
+test('gốc trả đều + tự nhập số gốc mỗi tháng: các kỳ đầu trả đúng số đó, phần còn lại trả hết ở kỳ cuối', () => {
+  const r = scheduleByTerm({ principal: 200e6, ratePercent: 10.5, months: 24, startDate: d(2026, 10, 23), method: 'equalPrincipal', fixedAmount: 5e6 });
+  assert.equal(r.rows.length, 24);
+  assert.deepEqual(r.rows.slice(0, 23).map((x) => x.principal), Array(23).fill(5e6));
+  assert.equal(r.rows[23].principal, 85e6);
+  assert.equal(r.rows[23].closing, 0);
+  assert.equal(r.rows[23].payment, r.rows[23].principal + r.rows[23].interest);
+  assert.equal(r.totals.principal, 200e6);
+  assert.equal(r.rows[1].opening, 195e6); // lãi kỳ sau tính trên dư nợ đã giảm
+});
+
+test('gốc + lãi trả đều + tự nhập số tiền mỗi tháng: kỳ 1 đến kỳ áp chót trả đúng số đó, kỳ cuối trả nốt', () => {
+  const r = scheduleByTerm({ principal: 200e6, ratePercent: 10.5, months: 24, startDate: d(2026, 10, 23), method: 'annuity', fixedAmount: 5e6 });
+  assert.equal(r.rows.length, 24);
+  assert.deepEqual(r.rows.slice(0, 23).map((x) => x.payment), Array(23).fill(5e6));
+  assert.ok(r.rows[23].payment > 5e6);
+  assert.equal(r.rows[23].closing, 0);
+  assert.equal(r.totals.principal, 200e6);
+});
+
+test('tự nhập số tiền quá lớn hoặc quá nhỏ thì báo lỗi rõ, không tính sai', () => {
+  const base = { principal: 200e6, ratePercent: 10.5, months: 24, startDate: d(2026, 10, 23) };
+  const big = scheduleByTerm({ ...base, method: 'equalPrincipal', fixedAmount: 10e6 });
+  assert.equal(big.error, 'tra_het_truoc_han');
+  assert.equal(big.maxAmount, Math.floor((200e6 - 1) / 23));
+  assert.equal(scheduleByTerm({ ...base, method: 'annuity', fixedAmount: 60e6 }).error, 'tra_het_truoc_han');
+  const small = scheduleByTerm({ ...base, method: 'annuity', fixedAmount: 1e6 });
+  assert.equal(small.error, 'khong_du_tra_lai');
+  assert.equal(small.firstInterest, periodInterest(200e6, 10.5, 31));
+});
+
+test('không tự nhập số tiền thì kết quả y hệt cũ; lãi hàng tháng - gốc cuối kỳ bỏ qua số tự nhập', () => {
+  for (const method of ['equalPrincipal', 'annuity', 'bullet']) {
+    const base = { principal: 200e6, ratePercent: 10.34, months: 12, startDate: d(2026, 10, 22), method };
+    assert.deepEqual(scheduleByTerm({ ...base, fixedAmount: null, endDate: null }), scheduleByTerm(base));
+  }
+  const b = { principal: 200e6, ratePercent: 10.34, months: 12, startDate: d(2026, 10, 22), method: 'bullet' };
+  assert.deepEqual(scheduleByTerm({ ...b, fixedAmount: 5e6 }), scheduleByTerm(b));
+});
+
+test('ngày đáo hạn đúng tròn tháng cho kết quả giống hệt nhập thời hạn', () => {
+  for (const method of ['equalPrincipal', 'annuity', 'bullet']) {
+    const base = { principal: 200e6, ratePercent: 10.34, startDate: d(2026, 10, 23), method };
+    assert.deepEqual(scheduleByTerm({ ...base, months: 12 }), scheduleByTerm({ ...base, months: 0, endDate: d(2027, 10, 23) }));
+  }
+});
+
+test('ngày đáo hạn không tròn tháng: số kỳ tính từ ngày vay, kỳ cuối ngắn hơn và dừng đúng ngày đáo hạn', () => {
+  const start = d(2026, 10, 23), end = d(2027, 4, 15);
+  const r = scheduleByTerm({ principal: 200e6, ratePercent: 10.5, months: 0, startDate: start, method: 'bullet', endDate: end });
+  assert.equal(r.rows.length, 6);
+  assert.equal(r.rows[5].days, 23);
+  assert.deepEqual(r.rows[5].to, end);
+  assert.equal(r.totals.days, daysBetween(start, end));
+  assert.equal(r.rows[5].principal, 200e6);
+  assert.equal(r.rows[5].closing, 0);
+});
+
+test('ngày đáo hạn kết hợp số tự nhập: kỳ cuối trả nốt gốc còn lại', () => {
+  const r = scheduleByTerm({ principal: 100e6, ratePercent: 11.5, months: 0, startDate: d(2027, 10, 22), method: 'equalPrincipal', fixedAmount: 5e6, endDate: d(2028, 10, 22) });
+  assert.equal(r.rows.length, 12);
+  assert.equal(r.rows[11].principal, 45e6);
+  assert.equal(r.rows[11].closing, 0);
+});
+
+test('ngày đáo hạn sai (không sau ngày vay, quá xa) thì trả về null', () => {
+  const base = { principal: 1e6, ratePercent: 10, months: 0, startDate: d(2026, 10, 23) };
+  assert.equal(scheduleByTerm({ ...base, endDate: d(2026, 10, 23) }), null);
+  assert.equal(scheduleByTerm({ ...base, endDate: d(2026, 1, 1) }), null);
+  assert.equal(scheduleByTerm({ ...base, endDate: d(2080, 1, 1) }), null);
+});
+
+test('số kỳ từ ngày vay đến ngày đáo hạn (periodsUntil) khớp số dòng của bảng trả', () => {
+  const s = d(2026, 10, 23);
+  assert.equal(periodsUntil(s, d(2027, 10, 23)), 12); // 23/10/2026 + 12 tháng = 23/10/2027
+  assert.equal(periodsUntil(s, d(2027, 10, 24)), 13);
+  assert.equal(periodsUntil(s, d(2027, 4, 15)), 6);
+  assert.equal(periodsUntil(s, d(2026, 11, 23)), 1);
+  assert.equal(periodsUntil(s, s), 0);
+  assert.equal(periodsUntil(s, d(2026, 1, 1)), 0);
+  assert.equal(periodsUntil(s, d(2090, 1, 1)), 0);
+  for (const end of [d(2027, 4, 15), d(2027, 10, 23), d(2028, 1, 31)]) {
+    assert.equal(scheduleByTerm({ principal: 1e8, ratePercent: 10, months: 0, startDate: s, method: 'bullet', endDate: end }).rows.length, periodsUntil(s, end));
+  }
 });

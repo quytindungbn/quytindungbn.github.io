@@ -111,3 +111,13 @@ test('file Excel: A4 ngang, vừa chiều ngang, có bảng đủ kỳ, ngày th
   const term2 = unzipEntries(buildLoanCalcXlsx({ org, inputs: term, result: termRes, printedOn: start }))['xl/worksheets/sheet1.xml'];
   assert.ok(term2.includes('Gốc trả đều mỗi tháng') && term2.includes('Thời hạn vay'));
 });
+
+test('điều kiện đã nhập ghi thêm số gốc/tiền trả mỗi tháng tự nhập và ngày đáo hạn vào đúng dòng sẵn có', () => {
+  const inputs = { ...term, months: 12, fixedAmount: 5e6, endDate: new Date(2027, 9, 22) };
+  const res = scheduleByTerm({ principal: 200e6, ratePercent: 10.34, months: 0, startDate: start, method: 'equalPrincipal', fixedAmount: 5e6, endDate: inputs.endDate });
+  const lines = inputLines(inputs, res);
+  const a = Object.fromEntries(lines);
+  assert.equal(a['Thời hạn vay'], '12 tháng (đến ngày 22/10/2027)');
+  assert.match(a['Cách trả'], /Gốc trả đều.*5\.000\.000/);
+  assert.equal(lines.length, inputLines(term, termRes).length); // không thêm dòng mới nên bố cục in/PDF không đổi
+});

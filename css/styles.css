@@ -2156,6 +2156,7 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-tabs button:focus-visible, .lc-opt:focus-visible, .lc-tool:focus-visible, .lc-act button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .lc-row { display: grid; gap: 12px; }
 .lc-row.c4 { grid-template-columns: 1.5fr 1fr 1fr 1fr; align-items: start; }
+.lc-row.c5 { grid-template-columns: minmax(0, 1.45fr) minmax(0, .95fr) minmax(0, .8fr) minmax(0, 1.12fr) minmax(0, 1.12fr); align-items: start; }
 .lc-row.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .lc-row.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lc-f label, .lc-lab { display: block; margin-bottom: 5px; font: 600 11px/14px var(--lux-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--lux-gold); }
@@ -2167,7 +2168,7 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-f.pw > .lc-f.nested { margin: 0; }
 .lc-cal { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--color-primary-dark); cursor: pointer; }
 .lc-cal:hover { background: var(--color-primary-light); }
-#lc-date-native { position: absolute; right: 8px; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+#lc-date-native, #lc-due-native, .lc-native { position: absolute; right: 8px; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .lc-opts-wrap { margin-top: 14px; }
 .lc-opt { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 11px 12px; border: 1px solid #b9cbc5; border-radius: 10px; background: #fff; text-align: left; font: inherit; cursor: pointer; }
 .lc-opt .rd { flex: none; position: relative; width: 18px; height: 18px; margin-top: 2px; border: 2px solid #9db8ad; border-radius: 50%; }
@@ -2177,6 +2178,24 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-opt .tx { min-width: 0; }
 .lc-opt b { display: block; font: 700 13.5px var(--lux-sans); color: var(--text); }
 .lc-opt .tx > span { display: block; margin-top: 1px; font: 500 12px/1.35 var(--lux-sans); color: var(--lux-mut); }
+/* Thẻ "Cách trả" có nút xả xuống: mũi tên ở góc phải thẻ, bấm mở ô tự nhập số tiền trả mỗi tháng ngay bên dưới thẻ */
+.lc-row.opts { align-items: start; }
+.lc-optw { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.lc-optw > .lc-opt { padding-right: 52px; }
+.lc-more { position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b9cbc5; border-radius: 9px; background: #fff; color: var(--color-primary-dark); cursor: pointer; }
+.lc-more:hover { background: var(--color-primary-light); border-color: var(--color-primary); }
+.lc-more:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.lc-more .icon { transition: transform .15s ease; }
+.lc-more[aria-expanded="true"] { background: var(--color-primary-light); border-color: var(--color-primary); }
+.lc-more[aria-expanded="true"] .icon { transform: rotate(180deg); }
+.lc-panel { padding: 10px 12px 11px; border: 1px solid #bcd6cb; border-radius: 10px; background: #f6faf8; }
+.lc-panel .lc-f label { color: var(--lux-em); }
+.lc-f.auto .box { background: #f4f9f7; border-color: #cfe0da; }
+.lc-f.auto .box:focus-within { background: #fff; border-color: var(--color-primary); }
+.lc-hint-row { margin: 9px 0 0; font: 500 12px/1.45 var(--lux-sans); color: var(--lux-mut); }
+.lc-panel-note { margin: 7px 0 0; font: 500 12px/1.4 var(--lux-sans); color: var(--lux-mut); }
+.lc-callout { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid #bcd6cb; border-radius: 12px; background: #f1f9f5; color: #0b4a3f; font: 600 13px/1.5 var(--lux-sans); }
+.lc-callout .icon { margin-top: 2px; flex: none; }
 .lc-act { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .lc-act .go { min-width: 170px; height: 44px; padding: 0 22px; border: 0; border-radius: 10px; background: var(--color-primary); color: #fff; font: 700 14px var(--lux-sans); cursor: pointer; }
 .lc-act .go:hover { background: var(--color-primary-dark); }
@@ -2217,13 +2236,13 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .lc-t .c2d { display: none; }
 .lc-note { margin: 0; font: 500 12.5px/1.5 var(--lux-sans); color: var(--lux-mut); }
 @media (max-width: 899px) {
-  .lc-row.c4, .lc-row.c3, .lc-row.c2 { grid-template-columns: 1fr 1fr; }
+  .lc-row.c5, .lc-row.c4, .lc-row.c3, .lc-row.c2 { grid-template-columns: 1fr 1fr; }
   .lc-row .w { grid-column: 1 / -1; }
   /* Cả hai cách tính cùng thứ tự: hàng 1 = Số tiền vay | Ngày vay, hàng 2 = Lãi suất | Thời hạn vay (hoặc Số tiền trả mỗi tháng). Trên máy tính vẫn một hàng 4 ô: Số tiền vay, Lãi suất, Thời hạn/Số tiền trả, Ngày vay */
-  .lc-row.q .lc-f:nth-child(1) { order: 1; }
-  .lc-row.q .lc-f.dt { order: 2; }
-  .lc-row.q .lc-f:nth-child(2) { order: 3; }
-  .lc-row.q .lc-f:nth-child(3) { order: 4; }
+  .lc-row.q:not(.c5) .lc-f:nth-child(1) { order: 1; }
+  .lc-row.q:not(.c5) .lc-f.dt { order: 2; }
+  .lc-row.q:not(.c5) .lc-f:nth-child(2) { order: 3; }
+  .lc-row.q:not(.c5) .lc-f:nth-child(3) { order: 4; }
   /* Ô hẹp hơn một chút để ngày dd/mm/yyyy và số tiền dài hiện trọn (chữ còn tự thu nhỏ nếu vẫn chưa vừa) */
   .lc-f .box { padding: 0 10px; gap: 4px; }
   .lc-cal { width: 26px; height: 26px; margin-right: -4px; }
