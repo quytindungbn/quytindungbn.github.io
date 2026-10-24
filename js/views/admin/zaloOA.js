@@ -54,7 +54,8 @@ const OA_TABS = [
 
 // ------------------------------------------------------------
 // "Gửi Zalo tới ai": mỗi khách có thể nhận tin ở số khách vay, số người cùng vay hoặc cả 2 (chọn ở chi tiết khách hàng, thẻ
-// "Liên hệ & Zalo OA"). Chip xanh = khách vay, chip vàng = người cùng vay; người cùng vay có trong hợp đồng nhưng chưa được chọn thì chip nét đứt.
+// "Người cùng vay & Zalo OA"). Chỉ gửi khách vay (mặc định) thì KHÔNG hiện gì thêm; chỉ khi gửi cho người cùng vay hoặc cả 2 người
+// mới có dòng "Gửi tới" — chip vàng *Người cùng vay* (kèm họ tên + SĐT), hoặc 1 nhãn *Gửi cả 2 người*.
 // ------------------------------------------------------------
 function rcvOf(customerId) {
   const co = S.getCoBorrower(customerId);
@@ -64,15 +65,11 @@ function rcvOf(customerId) {
 }
 function rcvChipsHtml(customer, { mini = false } = {}) {
   const { co, toMain, toCo } = rcvOf(customer.id);
-  // Khách vay: chỉ cần nhãn (tên + số đã ở dòng trên). Người cùng vay: thêm họ tên + số điện thoại để biết tin gửi tới đâu.
-  const person = (cls, role, sub) => `<span class="oa-rc ${cls}"><i>${icon('check', 'icon-sm')}</i><span class="oa-rc-tx"><b>${escapeHtml(role)}</b>${!mini && sub ? `<small>${sub}</small>` : ''}</span></span>`;
-  const coSub = co && co.name ? `${escapeHtml(co.name)}${co.phone ? ` · <em>${escapeHtml(co.phone)}</em>` : ''}` : '';
-  const chips = [];
-  if (toMain) chips.push(person('is-main', 'Khách vay', ''));
-  if (toCo) chips.push(person('is-co', 'Người cùng vay', coSub));
-  else if (co && co.name) chips.push(`<span class="oa-rc is-off" title="Người cùng vay trong hợp đồng — chưa chọn gửi Zalo"><span class="oa-rc-tx"><b>Người cùng vay</b>${mini ? '' : `<small>${escapeHtml(co.name)} · chưa gửi</small>`}</span></span>`);
-  const both = toMain && toCo && !mini;
-  return `<div class="oa-rcv${mini ? ' is-mini' : ''}"><span class="oa-rcv-l">Gửi tới</span>${both ? '<span class="oa-two" title="Gửi Zalo cho cả khách vay và người cùng vay">Cả 2 người</span>' : ''}${chips.join('')}</div>`;
+  if (!toCo) return ''; // chỉ gửi khách vay: như bình thường, không hiện thêm gì
+  const cls = `oa-rcv${mini ? ' is-mini' : ''}`;
+  if (toMain) return `<div class="${cls}"><span class="oa-two" title="Gửi Zalo cho cả khách vay và người cùng vay">Gửi cả 2 người</span></div>`;
+  const sub = co && co.name ? `${escapeHtml(co.name)}${co.phone ? ` · <em>${escapeHtml(co.phone)}</em>` : ''}` : '';
+  return `<div class="${cls}"><span class="oa-rcv-l">Gửi tới</span><span class="oa-rc is-co"><i>${icon('check', 'icon-sm')}</i><span class="oa-rc-tx"><b>Người cùng vay</b>${!mini && sub ? `<small>${sub}</small>` : ''}</span></span></div>`;
 }
 
 /**
@@ -309,9 +306,15 @@ function drawOATab(slot, admin) {
     const rcvCount = { all: rows.length, main: 0, co: 0, both: 0 };
     for (const x of rows) rcvCount[rcvOf(x.customer.id).mode]++;
     const rseg = slot.querySelector('#oa-rseg');
-    rseg.innerHTML = [['all', 'Tất cả'], ['main', 'Khách vay'], ['co', 'Người cùng vay'], ['both', 'Cả 2 người']]
-      .map(([k, label]) => `<button type="button" class="${oaRcv === k ? 'on' : ''}" data-rcv="${k}">${label}<em>${rcvCount[k]}</em></button>`).join('');
-    rseg.querySelectorAll('[data-rcv]').forEach((b) => b.addEventListener('click', () => { oaRcv = b.dataset.rcv; drawList(); }));
+    // Chưa có khách nào gửi cho người cùng vay thì ẩn cả ô lọc này (danh sách như bình thường).
+    const hasCoRows = rcvCount.co + rcvCount.both > 0;
+    rseg.style.display = hasCoRows ? '' : 'none';
+    if (!hasCoRows) { oaRcv = 'all'; rseg.innerHTML = ''; }
+    else {
+      rseg.innerHTML = [['all', 'Tất cả'], ['main', 'Khách vay'], ['co', 'Người cùng vay'], ['both', 'Cả 2 người']]
+        .map(([k, label]) => `<button type="button" class="${oaRcv === k ? 'on' : ''}" data-rcv="${k}">${label}<em>${rcvCount[k]}</em></button>`).join('');
+      rseg.querySelectorAll('[data-rcv]').forEach((b) => b.addEventListener('click', () => { oaRcv = b.dataset.rcv; drawList(); }));
+    }
     if (oaRcv !== 'all') rows = rows.filter((x) => rcvOf(x.customer.id).mode === oaRcv);
 
     // Nhãn "đang ở mục gửi tự động nào" — hiện cho mọi khách đã có BẤT KỲ AI thêm vào gửi tự động (không riêng lựa chọn của người đang xem).
@@ -909,13 +912,12 @@ async function loadOlderLogs(untilMs) {
   }
 }
 
-/** Dòng log gửi cho khách vay hay người cùng vay — so số điện thoại đã gửi với số hiện có của 2 người (log cũ không khớp số nào thì không hiện nhãn). */
+/** Dòng log gửi cho người cùng vay: so số điện thoại đã gửi với số người cùng vay — chỉ hiện nhãn khi đúng là người cùng vay (gửi khách vay thì như bình thường, không nhãn). */
 function logWhoChip(l, customer) {
   if (!customer || !l.phone) return '';
   const norm = (v) => String(v || '').replace(/[^\d]/g, '').replace(/^84/, '0');
   const co = S.getCoBorrower(customer.id);
   if (co && co.phone && norm(l.phone) === norm(co.phone)) return `<span class="oa-chip co">Người cùng vay</span>`;
-  if (norm(l.phone) === norm(customer.phone)) return `<span class="oa-chip kv">Khách vay</span>`;
   return '';
 }
 

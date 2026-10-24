@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normPersonName, samePerson, heirNamesOf, reconcileCoBorrower } from '../js/lib/coBorrower.js';
+import { normPersonName, samePerson, heirNamesOf, reconcileCoBorrower, checkCoPhone, sanitizeCoPhoneInput } from '../js/lib/coBorrower.js';
 
 test('so sánh tên: bỏ qua hoa/thường và khoảng trắng thừa, giữ dấu', () => {
   assert.equal(normPersonName('  Trần   Văn  Bình '), 'trần văn bình');
@@ -33,4 +33,29 @@ test('reconcile: đúng họ tên đã lưu (ở bất kỳ hợp đồng nào) 
 
 test('reconcile: khác tên thì thay người mới và ghi lại tên cũ', () => {
   assert.deepEqual(reconcileCoBorrower('ĐỖ THỊ HOA', ['TRẦN THỊ LAN']), { action: 'replace', name: 'TRẦN THỊ LAN', prev: 'ĐỖ THỊ HOA' });
+});
+
+test('checkCoPhone: đúng 10 số và có số 0 đứng đầu', () => {
+  assert.deepEqual(checkCoPhone('0988777666'), { ok: true, empty: false, phone: '0988777666' });
+  assert.deepEqual(checkCoPhone('0988 777 666'), { ok: true, empty: false, phone: '0988777666' });
+  assert.deepEqual(checkCoPhone('0988.777.666'), { ok: true, empty: false, phone: '0988777666' });
+  assert.equal(checkCoPhone('098877766').ok, false); // thiếu 1 số
+  assert.equal(checkCoPhone('09887776666').ok, false); // thừa 1 số
+  assert.equal(checkCoPhone('988777666').ok, false); // 9 số, thiếu số 0
+  assert.equal(checkCoPhone('9887776660').reason, 'Số điện thoại phải bắt đầu bằng số 0.'); // đủ 10 số nhưng không có 0 đầu
+  assert.equal(checkCoPhone('+84988777666').ok, false); // không nhận dạng +84
+  assert.equal(checkCoPhone('0988abc666').ok, false);
+});
+
+test('checkCoPhone: để trống là hợp lệ (xóa số)', () => {
+  for (const v of ['', '   ', null, undefined]) assert.deepEqual(checkCoPhone(v), { ok: true, empty: true, phone: '' });
+});
+
+test('sanitizeCoPhoneInput: chỉ giữ chữ số, tối đa 10 số, đổi +84 thành 0', () => {
+  assert.equal(sanitizeCoPhoneInput('0988 777 666'), '0988777666');
+  assert.equal(sanitizeCoPhoneInput('09ab88-777.666 123'), '0988777666');
+  assert.equal(sanitizeCoPhoneInput('+84 988 777 666'), '0988777666');
+  assert.equal(sanitizeCoPhoneInput('84988777666'), '0988777666');
+  assert.equal(sanitizeCoPhoneInput('098'), '098');
+  assert.equal(sanitizeCoPhoneInput(''), '');
 });

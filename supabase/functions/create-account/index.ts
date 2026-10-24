@@ -813,8 +813,9 @@ function zaloRecipientsOf(c: any): ZaloRecipient[] {
 }
 /** Số điện thoại hợp lệ (0xxxxxxxxx hoặc +84/84…, 9–11 chữ số sau đầu số) → chuỗi chỉ gồm chữ số/dấu +; sai thì null — y hệt kiểm tra ở màn hình. */
 function cleanVnPhone(raw: unknown): string | null {
-  const digits = String(raw ?? '').replace(/[^\d+]/g, '');
-  return /^(\+?84|0)\d{8,10}$/.test(digits) ? digits : null;
+  // Số người cùng vay: ĐÚNG 10 chữ số, bắt đầu bằng 0 (bỏ khoảng trắng, dấu chấm, gạch nối).
+  const digits = String(raw ?? '').replace(/[\s.\-()]/g, '');
+  return /^0\d{9}$/.test(digits) ? digits : null;
 }
 function samePhone(a: unknown, b: unknown): boolean {
   const n = (v: unknown) => String(v ?? '').replace(/[^\d]/g, '').replace(/^84/, '0');
@@ -1455,17 +1456,19 @@ Deno.serve(async (req) => {
       if (!raw) { coPhone = ''; patch.co_phone = null; }
       else {
         const clean = cleanVnPhone(raw);
-        if (!clean) return json({ ok: false, reason: 'Số điện thoại chưa đúng.' });
+        if (!clean) return json({ ok: false, reason: 'Số điện thoại phải đủ 10 số và bắt đầu bằng số 0.' });
         if (samePhone(clean, customer.phone)) return json({ ok: false, reason: 'Trùng số của khách vay.' });
         coPhone = clean; patch.co_phone = clean;
       }
     }
     const touchesRecipients = body.toMain !== undefined || body.toCo !== undefined;
     if (touchesRecipients && !canOa) return json({ ok: false, reason: 'Chỉ quản trị viên có quyền Quản lý OA mới đổi được người nhận Zalo OA.' }, 403);
-    const toMain = body.toMain !== undefined ? body.toMain === true : customer.zalo_to_main !== false;
+    let toMain = body.toMain !== undefined ? body.toMain === true : customer.zalo_to_main !== false;
     const toCoWanted = body.toCo !== undefined ? body.toCo === true : customer.zalo_to_co === true;
     const toCo = toCoWanted && !!coPhone;
     if (body.toCo === true && !coPhone) return json({ ok: false, reason: 'Cần nhập số điện thoại của người cùng vay trước khi bật gửi Zalo OA.' });
+    // Xóa số của người cùng vay đang là người nhận duy nhất: về mặc định gửi cho khách vay (luôn còn ít nhất 1 người nhận).
+    if (!toMain && !toCo && body.phone !== undefined && !coPhone && body.toMain === undefined) toMain = true;
     if (!toMain && !toCo) return json({ ok: false, reason: 'Cần giữ ít nhất 1 người nhận Zalo OA.' });
     if (touchesRecipients || patch.co_phone !== undefined) { patch.zalo_to_main = toMain; patch.zalo_to_co = toCo; }
     if (Object.keys(patch).length) {

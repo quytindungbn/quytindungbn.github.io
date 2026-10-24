@@ -917,23 +917,53 @@ export function getCoBorrower(customerId) {
  * Lưu số điện thoại và/hoặc lựa chọn nhận Zalo OA ({ phone?, toMain?, toCo? }) của người cùng vay — ghi lên máy chủ
  * (Edge Function create-account, type 'save-co-borrower'; cần quyền Quản lý OA hoặc Quản lý User) rồi cập nhật bộ nhớ.
  */
-export async function saveCoBorrower(customerId, patch) {
-  const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'save-co-borrower', customerId, ...patch });
-  if (!res.ok) {
-    const reason = String(res.reason || '');
-    throw new Error(/Thiếu hoặc sai "type"/.test(reason) ? 'Máy chủ chưa cập nhật để lưu người cùng vay — cần deploy lại Edge Function create-account (docs mục 10.82).' : (reason || 'Không lưu được người cùng vay.'));
-  }
+export async function saveCoBorrower(customerId, patch, { optimistic = false } = {}) {
   const c = getCustomer(customerId);
-  if (c && res.co) {
-    c.coName = res.co.name || '';
-    c.coPhone = res.co.phone || '';
-    c.coPrevName = res.co.prevName || '';
-    c.zaloToMain = res.co.toMain !== false;
-    c.zaloToCo = !!res.co.toCo;
+  const snap = c ? { zaloToMain: c.zaloToMain, zaloToCo: c.zaloToCo } : null;
+  // optimistic: tick/bỏ tick người nhận cập nhật bộ nhớ NGAY (phần chạy trước await đầu tiên), màn hình vẽ lại liền không phải chờ máy chủ;
+  // các lần lưu nối đuôi nhau theo đúng thứ tự bấm; lỗi thì chỉ trả lại đúng phần mình đã đổi.
+  if (optimistic && c) {
+    if (patch.toMain !== undefined) c.zaloToMain = !!patch.toMain;
+    if (patch.toCo !== undefined) c.zaloToCo = !!patch.toCo;
+    notify();
   }
-  notify();
+  const q = coSaveQueue.get(customerId) || { tail: Promise.resolve(), pending: 0 };
+  coSaveQueue.set(customerId, q);
+  q.pending++;
+  const run = q.tail.catch(() => {}).then(async () => {
+    const session = getSession();
+    const res = await callCreateAccountFunction(session?.sbToken, { type: 'save-co-borrower', customerId, ...patch });
+    if (!res.ok) {
+      const reason = String(res.reason || '');
+      throw new Error(/Thiếu hoặc sai "type"/.test(reason) ? 'Máy chủ chưa cập nhật để lưu người cùng vay — cần deploy lại Edge Function create-account (docs mục 10.82).' : (reason || 'Không lưu được người cùng vay.'));
+    }
+    return res;
+  });
+  q.tail = run;
+  try {
+    const res = await run;
+    // Còn lần lưu khác đang chờ phía sau thì giữ trạng thái tạm của nó, không ghi đè bằng kết quả cũ này.
+    if (c && res.co && q.pending === 1) {
+      c.coName = res.co.name || '';
+      c.coPhone = res.co.phone || '';
+      c.coPrevName = res.co.prevName || '';
+      c.zaloToMain = res.co.toMain !== false;
+      c.zaloToCo = !!res.co.toCo;
+    }
+    notify();
+  } catch (err) {
+    if (optimistic && c && snap) {
+      if (patch.toMain !== undefined) c.zaloToMain = snap.zaloToMain;
+      if (patch.toCo !== undefined) c.zaloToCo = snap.zaloToCo;
+      notify();
+    }
+    throw err;
+  } finally {
+    q.pending--;
+    if (!q.pending) coSaveQueue.delete(customerId);
+  }
 }
+const coSaveQueue = new Map(); // customerId → { tail, pending }: hàng đợi lưu người cùng vay theo từng khách
 /** Đã đọc cảnh báo "người cùng vay đã đổi" (máy chủ tự xóa dấu này khi khách được thêm lại vào OA) — xóa dấu trong bộ nhớ. */
 export function dismissCoBorrowerChange(customerId) {
   const c = getCustomer(customerId);

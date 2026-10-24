@@ -178,7 +178,7 @@ function renderRequestsList(contentEl, admin) {
   }).join('') : `<div class="card card-pad">${emptyState({ iconName: 'clipboard', title: 'Không có yêu cầu', message: 'Chưa có yêu cầu tư vấn nào phù hợp.' })}</div>`;
 
   contentEl.querySelectorAll('[data-reset-pw]').forEach((btn) => {
-    btn.addEventListener('click', () => openCustomerDetail(btn.dataset.resetPw));
+    btn.addEventListener('click', () => openCustomerDetail(btn.dataset.resetPw, { showActions: true }));
   });
   contentEl.querySelectorAll('[data-update]').forEach((btn) => {
     btn.addEventListener('click', () => {
