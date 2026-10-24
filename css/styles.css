@@ -2442,13 +2442,24 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .cd-sub { margin: 2px 0 0; font: 500 13px/1.3 var(--lux-sans, inherit); letter-spacing: .05em; color: #bfe0d6; }
 .cd-addr { display: flex; align-items: flex-start; gap: 6px; margin: 5px 0 0; font: 500 12.5px/1.45 var(--lux-sans, inherit); color: #cfe8df; }
 .cd-addr svg { flex: none; width: 14px; height: 14px; margin-top: 2px; color: #dccb99; }
-.cd-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.cd-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
 .cd-chip { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; background: rgba(255, 255, 255, .1); color: #e6f3ee; font: 600 12px/1 var(--lux-sans, inherit); white-space: nowrap; }
 .cd-chip i { width: 8px; height: 8px; border-radius: 50%; background: #7ee0a5; }
 /* Bật (đã đăng nhập / đã bật thông báo / đã thêm OA) thì cả nhãn chuyển xanh; chưa thì nhãn ngả đỏ nhạt */
 .cd-chip.on { border-color: rgba(126, 224, 165, .6); background: rgba(126, 224, 165, .18); color: #d9f8e6; }
 .cd-chip.off { border-color: rgba(240, 135, 122, .38); background: rgba(240, 135, 122, .1); color: #ffdcd6; }
 .cd-chip.off i { background: #f0877a; }
+/* Tài khoản chỉ xem có quyền OA: nhãn OA + nút Thêm/Bỏ OA đi liền nhau (xuống dòng thì xuống cùng nhau) */
+.cd-oa-grp { display: inline-flex; align-items: center; gap: 6px; }
+.cd-oa-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border: 1px solid rgba(220, 203, 153, .75); border-radius: 999px; background: rgba(220, 203, 153, .18); color: #f6ebc4; font: 700 12px/1 var(--lux-sans, inherit); white-space: nowrap; cursor: pointer; transition: background .15s, border-color .15s, transform .1s; }
+.cd-oa-btn:hover { background: rgba(220, 203, 153, .3); border-color: #dccb99; }
+.cd-oa-btn:disabled { opacity: .6; cursor: default; }
+.cd-oa-btn svg { width: 13px; height: 13px; }
+/* Thêm vào OA (dấu +): nút vàng đặc, chữ xanh đậm — là hành động chính nên nổi hẳn lên khỏi các nhãn */
+.cd-oa-btn.is-add { height: 30px; padding: 0 15px 0 11px; gap: 7px; border-color: #f3e6b4; background: linear-gradient(135deg, #f1e2a6 0%, #dcbc5e 55%, #c9a447 100%); color: #0a2f28; font-weight: 800; font-size: 13px; letter-spacing: .01em; box-shadow: 0 8px 18px -8px rgba(232, 200, 100, .85), inset 0 1px 0 rgba(255, 255, 255, .55); }
+.cd-oa-btn.is-add:hover { background: linear-gradient(135deg, #f7ebbd 0%, #e6c76d 55%, #d3ae52 100%); border-color: #fff3c4; }
+.cd-oa-btn.is-add:active { transform: translateY(1px); }
+.cd-oa-btn.is-add svg { width: 15px; height: 15px; stroke-width: 3; }
 .cd-callbar { position: sticky; top: 10px; z-index: 2; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; margin: -18px 18px 0; padding: 12px 14px; border: 1px solid var(--cd-gold2); border-radius: 16px; background: #fff; box-shadow: 0 12px 26px -16px rgba(12, 74, 63, .6); }
 .cd-num { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .cd-num-ico { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #e6f2ed; color: var(--cd-em); }
@@ -2535,6 +2546,10 @@ a.cd-callbtn:hover { filter: brightness(1.06); }
   .cd-addr { font-size: 12px; margin-top: 3px; }
   .cd-chips { gap: 6px; margin-top: 10px; }
   .cd-chip { height: 23px; padding: 0 9px; font-size: 11px; gap: 6px; }
+  .cd-oa-btn { height: 23px; padding: 0 10px; font-size: 11px; gap: 5px; }
+  .cd-oa-btn svg { width: 12px; height: 12px; }
+  .cd-oa-btn.is-add { height: 27px; padding: 0 13px 0 9px; font-size: 12px; gap: 6px; }
+  .cd-oa-btn.is-add svg { width: 14px; height: 14px; }
   .cd-callbar { grid-template-columns: minmax(0, 1fr) auto; margin: -16px 12px 0; gap: 8px 10px; padding: 10px 12px; border-radius: 14px; }
   .cd-num-ico { width: 36px; height: 36px; }
   .cd-num-ico svg { width: 17px; height: 17px; }

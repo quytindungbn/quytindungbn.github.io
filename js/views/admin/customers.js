@@ -803,10 +803,13 @@ function openSendNotificationModal(customer, preset = {}) {
  * với nhau (hợp đồng vẫn còn nguyên trong Khách hàng & Hợp đồng sau khi xóa).
  */
 /** Nút thêm/bỏ OA đúng theo trạng thái hiện tại — tách riêng để cập nhật TẠI CHỖ sau khi thêm/bỏ (xem updateZaloUi trong openCustomerDetail), khỏi phải đóng/mở lại cả modal (trước đây làm vậy gây "chớp khung như tải lại"). */
-function zaloActionButtonHtml(inZaloList) {
+function zaloActionButtonHtml(inZaloList, inline = false) {
+  // inline: nút nằm ngay sau nhãn OA ở đầu hồ sơ. "Thêm vào OA" (dấu +) nổi bật; "Bỏ khỏi OA" kín đáo hơn.
+  const addCls = inline ? 'cd-oa-btn is-add' : 'btn btn-primary btn-sm';
+  const removeCls = inline ? 'cd-oa-btn is-remove' : 'btn btn-outline btn-sm';
   return inZaloList
-    ? `<button class="btn btn-outline btn-sm" id="btn-remove-zalo-cust">${icon('message', 'icon-sm')} Bỏ khỏi OA</button>`
-    : `<button class="btn btn-outline btn-sm" id="btn-add-zalo-cust">${icon('message', 'icon-sm')} Thêm vào OA</button>`;
+    ? `<button class="${removeCls}" id="btn-remove-zalo-cust">${icon('minus', 'icon-sm')} Bỏ khỏi OA</button>`
+    : `<button class="${addCls}" id="btn-add-zalo-cust">${icon('plus', 'icon-sm')} Thêm vào OA</button>`;
 }
 
 /** Chấm tròn xanh (đã có) / đỏ (chưa) nhỏ cạnh tên trạng thái trong chi tiết khách hàng. */
@@ -894,7 +897,9 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const calls = S.listCallsByCustomer(customerId);
   const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
   const logged = S.hasCustomerLoggedIn(c), pushOn = S.hasPushEnabled(c.id);
-  const hasActions = !readOnly || canManageZalo;
+  // Tài khoản chỉ xem nhưng có quyền OA: nút Thêm/Bỏ OA nằm ngay sau nhãn OA ở đầu hồ sơ, không dựng cả khung Thao tác chỉ để chứa 1 nút.
+  const oaInline = readOnly && canManageZalo;
+  const hasActions = !readOnly;
   const addressText = c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ');
 
   const chip = (on, text, extra = '') => `<span class="cd-chip ${on ? 'on' : 'off'}" ${extra}><i></i>${text}</span>`;
@@ -911,7 +916,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         <div class="cd-chips">
           ${chip(logged, logged ? 'Đã đăng nhập' : 'Chưa đăng nhập')}
           ${chip(pushOn, pushOn ? 'Đã bật thông báo' : 'Chưa bật thông báo')}
-          ${canManageZalo ? chip(inZaloList, inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA', 'id="cd-oa-chip"') : ''}
+          ${canManageZalo ? `<span class="cd-oa-grp">${chip(inZaloList, inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA', 'id="cd-oa-chip"')}${oaInline ? `<span id="oa-action-btn-wrap" style="display:contents">${zaloActionButtonHtml(inZaloList, true)}</span>` : ''}</span>` : ''}
         </div>
       </header>
       <div class="cd-callbar" id="cd-callbar">${callBarHtml(calls, dialPhone, c)}</div>
@@ -931,7 +936,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
               ${!readOnly && context === 'use' && logged ? `<button class="btn btn-outline btn-sm" id="btn-force-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>` : ''}
               ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>` : ''}
               ${!readOnly && context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
-              ${canManageZalo ? `<span id="oa-action-btn-wrap" style="display:contents">${zaloActionButtonHtml(inZaloList)}</span>` : ''}
+              ${canManageZalo && !oaInline ? `<span id="oa-action-btn-wrap" style="display:contents">${zaloActionButtonHtml(inZaloList)}</span>` : ''}
               ${!readOnly && context === 'use' ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} Xóa Use</button>` : ''}
             </div>
           </section>` : ''}
@@ -997,7 +1002,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         const oaChip = sheet.querySelector('#cd-oa-chip');
         if (oaChip) { oaChip.classList.toggle('on', newInZaloList); oaChip.classList.toggle('off', !newInZaloList); oaChip.innerHTML = `<i></i>${newInZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}`; }
         const btnWrap = sheet.querySelector('#oa-action-btn-wrap');
-        if (btnWrap) { btnWrap.innerHTML = zaloActionButtonHtml(newInZaloList); bindZaloButtons(); }
+        if (btnWrap) { btnWrap.innerHTML = zaloActionButtonHtml(newInZaloList, oaInline); bindZaloButtons(); }
       }
       function bindZaloButtons() {
         const addZaloBtn = sheet.querySelector('#btn-add-zalo-cust');
