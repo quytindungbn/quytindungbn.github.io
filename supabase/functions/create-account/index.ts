@@ -820,9 +820,35 @@ function samePhone(a: unknown, b: unknown): boolean {
   const n = (v: unknown) => String(v ?? '').replace(/[^\d]/g, '').replace(/^84/, '0');
   return !!n(a) && n(a) === n(b);
 }
-/** Khách được thêm vào Danh sách OA (lại) thì xóa dấu "người cùng vay vừa đổi" — cảnh báo đã được xem. Lỗi/thiếu cột thì bỏ qua. */
+/**
+ * Khách được thêm vào Danh sách OA (lại) khi người cùng vay vừa đổi: xóa dấu "người cùng vay vừa đổi" (cảnh báo đã được xem) và
+ * MẶC ĐỊNH gửi theo khách vay (bỏ tick người cùng vay). Chỉ đụng tới khách đang có dấu đó. Lỗi/thiếu cột thì bỏ qua.
+ */
 async function clearCoPrevName(customerId: string): Promise<void> {
-  try { await admin.from('customers').update({ co_prev_name: null }).eq('id', customerId).not('co_prev_name', 'is', null); } catch { /* bỏ qua */ }
+  try { await admin.from('customers').update({ co_prev_name: null, zalo_to_main: true, zalo_to_co: false }).eq('id', customerId).not('co_prev_name', 'is', null); } catch { /* bỏ qua */ }
+}
+/**
+ * Người nhận báo "chưa đăng ký Zalo" (-118) khi gửi: TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA);
+ * chỉ khi KHÔNG còn người nào gửi được (số duy nhất của khách vay, hoặc cả 2 người đều báo lỗi) mới bỏ khách khỏi Danh sách OA như trước.
+ * Trả về những người đã bị bỏ tick.
+ */
+async function applyNoZaloResults(customerId: string, recipients: ZaloRecipient[], noAccountWho: Array<'main' | 'co'>): Promise<Array<'main' | 'co'>> {
+  if (!noAccountWho.length) return [];
+  try {
+    if (noAccountWho.length === recipients.length && (recipients.length > 1 || recipients[0].who === 'main')) {
+      await removeCustomerFromZaloLists(customerId);
+      await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', customerId);
+      return noAccountWho;
+    }
+    // Bỏ tick người lỗi; luôn còn ít nhất 1 người nhận (nếu người cùng vay là người duy nhất mà lỗi thì quay về gửi khách vay).
+    const patch: Record<string, unknown> = {};
+    if (noAccountWho.includes('co')) { patch.zalo_to_co = false; patch.zalo_to_main = true; }
+    if (noAccountWho.includes('main') && !noAccountWho.includes('co')) patch.zalo_to_main = false;
+    await admin.from('customers').update(patch).eq('id', customerId);
+  } catch (e) {
+    console.error('Lỗi tự bỏ tick gửi OA người không có Zalo:', e);
+  }
+  return noAccountWho;
 }
 /**
  * Sau khi nhập file: đối chiếu người cùng vay (cột D) của các khách vừa nhập với người đã lưu theo khách —
@@ -1825,23 +1851,18 @@ Deno.serve(async (req) => {
       const results = await Promise.all(recipients.map((r) => sendZaloTemplateLogged({
         accessToken, phone: r.phone, templateId, templateData,
         contractId, customerId: customer.id, kind, triggeredBy: 'manual', triggeredByAdminId: caller.id,
-        deferNoAccount: recipients.length > 1,
+        deferNoAccount: true,
       })));
       const sentCount = results.filter((r) => r.ok).length;
       const failedRecipients = recipients.map((r, i) => ({ who: r.who, res: results[i] })).filter((x) => !x.res.ok);
-      if (recipients.length > 1) {
-        // Số nào báo "chưa đăng ký Zalo": cả 2 số đều vậy thì bỏ khách khỏi OA như cũ; chỉ 1 số thì tắt riêng số đó (tin vẫn tới số còn lại).
-        const noAcc = failedRecipients.filter((x) => x.res.noAccount);
-        if (noAcc.length === recipients.length) {
-          await removeCustomerFromZaloLists(customer.id);
-          await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', customer.id);
-        } else {
-          for (const x of noAcc) await admin.from('customers').update(x.who === 'co' ? { zalo_to_co: false } : { zalo_to_main: false }).eq('id', customer.id);
-        }
-      }
+      // Người nào báo "chưa đăng ký Zalo" thì tự bỏ tick gửi OA của người đó (xem applyNoZaloResults).
+      const unticked = await applyNoZaloResults(customer.id, recipients, failedRecipients.filter((x) => x.res.noAccount).map((x) => x.who));
+      const untickNote = unticked.length === recipients.length && recipients.length === 1 && recipients[0].who === 'main'
+        ? ''
+        : unticked.length ? ` Đã tự bỏ tích gửi OA cho ${unticked.map((w) => (w === 'co' ? 'người cùng vay' : 'khách vay')).join(' và ')}.` : '';
       const result: { ok: boolean; reason?: string } = sentCount
         ? { ok: true }
-        : { ok: false, reason: [...new Set(failedRecipients.map((x) => `${recipients.length > 1 ? (x.who === 'co' ? 'Người cùng vay: ' : 'Khách vay: ') : ''}${x.res.reason || 'Gửi thất bại.'}`))].join(' · ') };
+        : { ok: false, reason: [...new Set(failedRecipients.map((x) => `${recipients.length > 1 ? (x.who === 'co' ? 'Người cùng vay: ' : 'Khách vay: ') : (x.who === 'co' ? 'Người cùng vay: ' : '')}${x.res.reason || 'Gửi thất bại.'}`))].join(' · ') + untickNote };
       // Đã có log riêng "Quản lý gửi tin" (bảng zalo_send_log, GHI ĐỦ + CÓ ĐỢI
       // cho MỌI lượt gửi kể cả lỗi — xem sendZaloTemplateLogged() ở trên) —
       // ghi thêm 1 dòng NGẮN vào Nhật ký sử dụng chung khi THÀNH CÔNG, để
@@ -1861,7 +1882,7 @@ Deno.serve(async (req) => {
       }
       if (!result.ok) return json({ ok: false, reason: result.reason });
       const failNote = failedRecipients.length
-        ? `Chưa gửi được cho ${failedRecipients.map((x) => (x.who === 'co' ? 'người cùng vay' : 'khách vay')).join(', ')}: ${failedRecipients[0].res.reason || 'Gửi thất bại.'}`
+        ? `Chưa gửi được cho ${failedRecipients.map((x) => (x.who === 'co' ? 'người cùng vay' : 'khách vay')).join(', ')}: ${failedRecipients[0].res.reason || 'Gửi thất bại.'}.${untickNote}`
         : '';
       return json({ ok: true, sent: sentCount, sentTo: sentCount > 1 ? 'both' : recipients[results.findIndex((r) => r.ok)].who, ...(failNote ? { note: failNote } : {}) });
     }

@@ -874,33 +874,18 @@ function callCardHtml(calls, { myId }) {
 // nhập số điện thoại trước nếu chưa có). Luôn còn ít nhất 1 người nhận. Người cùng vay đổi người → bỏ khỏi danh sách OA, cảnh báo khi thêm lại.
 // ------------------------------------------------------------
 function contactsInnerHtml(c, co, { canOa, canEdit, editing = false, pending = false }) {
-  const mainDial = String(c.phone || '').replace(/[^\d+]/g, '');
+  // Chỉ hiện NGƯỜI CÙNG VAY (tên + số + nút Gọi) — thông tin khách vay đã có ở đầu hồ sơ và thanh Gọi, không lặp lại. Ai có quyền OA thì thêm
+  // ô chọn "Gửi Zalo OA tới": khách vay (mặc định có tick) và người cùng vay (chỉ tick được khi đã có số điện thoại).
   const coDial = String(co.phone || '').replace(/[^\d+]/g, '');
-  const tick = (key, on, title, sub, { disabled = false, warn = false } = {}) => canOa
-    ? `<label class="cd-pp-tick${on ? ' on' : ''}${warn ? ' is-warn' : ''}${disabled ? ' is-disabled' : ''}" data-pp-tick="${key}">
-        <input type="checkbox" ${on ? 'checked' : ''} ${disabled ? 'disabled' : ''}><i class="cd-pp-box">${icon('check', 'icon-sm')}</i>
-        <span><b>${title}</b><small>${sub}</small></span></label>`
-    : '';
-  const callBtn = (key, dial, label) => dial
-    ? `<a class="cd-pp-call" href="tel:${escapeHtml(dial)}" data-pp-call="${key}" aria-label="${label}" title="${label}">${icon('phone')}</a>`
+  const callBtn = coDial
+    ? `<a class="cd-pp-call" href="tel:${escapeHtml(coDial)}" data-pp-call="co" aria-label="Gọi người cùng vay" title="Gọi người cùng vay">${icon('phone')}</a>`
     : `<span class="cd-pp-call is-off" aria-hidden="true">${icon('phone')}</span>`;
-  const single = !canOa; // không có quyền OA: chỉ 1 dòng Người cùng vay (số của khách vay đã có ở thanh Gọi phía trên)
-  const mainRow = single ? '' : `<div class="cd-pp${co.toMain ? ' is-on' : ''}">
-      <div class="cd-pp-top">
-        <span class="cd-pp-av" style="background:${colorFor(c.id)}">${escapeHtml(initials(c.name))}</span>
-        <div class="cd-pp-tx"><small>Khách vay</small><b>${escapeHtml(c.name)}</b>
-          <span class="cd-pp-ph">${c.phone ? escapeHtml(formatPhoneDisplay(c.phone)) : '<i class="is-none">Chưa có số điện thoại</i>'}</span></div>
-        ${callBtn('main', mainDial, 'Gọi khách vay')}
-      </div>
-      ${tick('main', co.toMain, 'Gửi Zalo OA tới khách vay', co.toMain ? 'Đang nhận tin' : 'Không gửi', { disabled: !c.phone })}
-    </div>`;
-  let coRow;
+  let row;
   if (!co.name) {
-    coRow = `<div class="cd-pp is-empty">
-      <div class="cd-pp-top">
+    row = `<div class="cd-pp is-empty"><div class="cd-pp-top">
         <span class="cd-pp-av is-empty">${icon('users')}</span>
         <div class="cd-pp-tx"><small>Người cùng vay</small><b class="is-none">Không có</b><span class="cd-pp-ph"><i class="is-none">Hợp đồng không ghi người cùng vay</i></span></div>
-        ${callBtn('co', '', '')}
+        ${callBtn}
       </div></div>`;
   } else {
     const phoneLine = editing ? ''
@@ -910,28 +895,37 @@ function contactsInnerHtml(c, co, { canOa, canEdit, editing = false, pending = f
           ? `<button type="button" class="cd-pp-addph" data-pp-edit>${icon('plus', 'icon-sm')} Nhập số điện thoại</button>`
           : '<span class="cd-pp-ph"><i class="is-none">Chưa có số điện thoại</i></span>';
     const form = editing ? `<div class="cd-pp-form">
-        <label for="pp-phone">${pending ? 'Nhập số điện thoại để gửi Zalo OA cho người này' : 'Số điện thoại người cùng vay'}</label>
+        <label for="pp-phone">${pending ? 'Nhập số điện thoại để bật gửi Zalo OA cho người cùng vay' : 'Số điện thoại người cùng vay'}</label>
         <div class="cd-pp-formrow"><input class="cd-pp-in" id="pp-phone" type="tel" inputmode="tel" maxlength="16" placeholder="VD: 0988 777 666" value="${escapeHtml(co.phone ? formatPhoneDisplay(co.phone) : '')}">
           <button type="button" class="btn btn-primary btn-sm" data-pp-save>Lưu</button><button type="button" class="btn btn-outline btn-sm" data-pp-cancel>Hủy</button></div>
-        <p>Có Zalo thì mới nhận được tin OA. Số này lưu cùng thông tin khách hàng.</p></div>` : '';
-    coRow = `<div class="cd-pp${co.toCo ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
+        <p>${pending ? 'Không nhập số thì không bật gửi được. ' : ''}Có Zalo thì mới nhận được tin OA. Số này lưu cùng thông tin khách hàng.</p></div>` : '';
+    row = `<div class="cd-pp${co.toCo ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="cd-pp-top">
         <span class="cd-pp-av is-co" style="background:${colorFor(co.name)}">${escapeHtml(initials(co.name))}</span>
         <div class="cd-pp-tx"><small>Người cùng vay</small><b>${escapeHtml(co.name)}</b>${phoneLine}</div>
-        ${callBtn('co', coDial, 'Gọi người cùng vay')}
+        ${callBtn}
       </div>
       ${form}
-      ${tick('co', co.toCo || pending, 'Gửi Zalo OA tới người cùng vay', pending ? 'Nhập số điện thoại để bật' : co.toCo ? 'Đang nhận tin' : co.phone ? 'Không gửi' : 'Cần số điện thoại', { warn: pending })}
     </div>`;
   }
+  // Ô chọn người nhận Zalo OA (chỉ khi có quyền OA và hợp đồng có người cùng vay): chỉ nhãn + ô tick, tick là biết đang gửi — không chú thích.
+  // Người cùng vay chưa có số điện thoại: vẫn bấm tick được, nhưng hiện ô yêu cầu nhập số; không nhập (Hủy) thì không tick.
+  const pick = (key, on, title, { need = false, warn = false } = {}) => need
+    ? `<button type="button" class="cd-pp-tile is-need${warn ? ' is-warn' : ''}" data-pp-tick="${key}" aria-label="${title} — cần nhập số điện thoại trước">
+      <i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></button>`
+    : `<label class="cd-pp-tile${on ? ' on' : ''}" data-pp-tick="${key}">
+      <input type="checkbox" ${on ? 'checked' : ''}><i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></label>`;
+  const picks = canOa && co.name ? `<div class="cd-pp-picks">
+      <div class="cd-pp-pick-h">Gửi Zalo OA tới</div>
+      <div class="cd-pp-pick-row">
+        ${pick('main', co.toMain, 'Khách vay')}
+        ${pick('co', co.toCo, 'Người cùng vay', { need: !co.phone, warn: pending })}
+      </div></div>` : '';
   const warn = co.prevName && co.name
     ? `<div class="cd-pp-warn">${icon('info')}<div><b>Người cùng vay đã đổi</b><span>Hợp đồng mới ghi <b>${escapeHtml(co.name)}</b> thay cho <b>${escapeHtml(co.prevName)}</b>. Khách đã được bỏ khỏi danh sách OA và số điện thoại cũ đã xóa — nhập số của người mới nếu muốn gửi cho họ.</span></div></div>`
     : '';
-  const summary = canOa && co.name
-    ? `<p class="cd-pp-sum"><i></i>Đang gửi Zalo OA: <b>${co.toCo && co.toMain ? 'Cả 2 người' : co.toCo ? 'Chỉ người cùng vay' : 'Chỉ khách vay'}</b></p>`
-    : '';
-  return `<h3 class="cd-h"><span>${single ? 'Người cùng vay' : 'Liên hệ &amp; Zalo OA'}</span><small>Tên người cùng vay lấy từ hợp đồng</small></h3>
-    ${warn}<div class="cd-pp-list${single ? ' is-single' : ''}">${mainRow}${coRow}</div>${summary}`;
+  return `<h3 class="cd-h"><span>${canOa ? 'Người cùng vay &amp; Zalo OA' : 'Người cùng vay'}</span><small>Tên lấy từ hợp đồng</small></h3>
+    ${warn}${row}${picks}`;
 }
 
 /** Thẻ hợp đồng gọn trong chi tiết khách hàng: vạch màu theo tình trạng, mã + nhãn tình trạng, gốc/lãi bên phải; bấm vào mở chi tiết hợp đồng. */
@@ -972,13 +966,13 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const canDeleteUse = canEditProfile && context === 'use';
   const hasActions = canManageUse;
   // Khung Thao tác: các ô nhỏ (icon + chữ) trên cùng 1 hàng — Xóa Use cũng là 1 ô (đỏ nhạt), không còn nút to tách riêng.
-  const tile = (id, ico, label, cls = '') => `<button type="button" class="cd-tile${cls ? ' ' + cls : ''}" id="${id}">${icon(ico)}<span>${label}</span></button>`;
+  const tile = (id, ico, label, hint, cls = '') => `<button type="button" class="cd-tile${cls ? ' ' + cls : ''}" id="${id}" title="${hint}" aria-label="${hint}">${icon(ico)}<span>${label}</span></button>`;
   const actionTiles = hasActions ? [
-    tile('btn-reset-pw', 'key', 'Cấp lại mật khẩu'),
-    ...(logged ? [tile('btn-force-logout', 'logout', 'Đăng xuất')] : []),
-    tile('btn-send-noti', 'bell', 'Gửi thông báo'),
-    ...(canEditProfile ? [tile('btn-edit-cust', 'edit', 'Sửa')] : []),
-    ...(canDeleteUse ? [tile('btn-del-cust', 'trash', 'Xóa Use', 'is-danger')] : []),
+    tile('btn-reset-pw', 'key', 'Mật khẩu', 'Cấp lại mật khẩu'),
+    ...(logged ? [tile('btn-force-logout', 'logout', 'Đăng xuất', 'Đăng xuất tài khoản khách đang đăng nhập')] : []),
+    tile('btn-send-noti', 'bell', 'Thông báo', 'Gửi thông báo cho khách'),
+    ...(canEditProfile ? [tile('btn-edit-cust', 'edit', 'Sửa', 'Sửa hồ sơ khách hàng')] : []),
+    ...(canDeleteUse ? [tile('btn-del-cust', 'trash', 'Xóa Use', 'Xóa tài khoản Use của khách', 'is-danger')] : []),
   ] : [];
   const addressText = c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ');
 
@@ -1001,8 +995,8 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       </header>
       <div class="cd-callbar" id="cd-callbar">${callBarHtml(calls, dialPhone, c)}</div>
       <div class="cd-cols">
-        <section class="cd-card cd-pp-card" id="cd-pp-card">${contactsInnerHtml(c, S.getCoBorrower(customerId), { canOa: canManageZalo, canEdit: canManageZalo || canManageUse })}</section>
         <div class="cd-col-main">
+          <section class="cd-card cd-pp-card" id="cd-pp-card">${contactsInnerHtml(c, S.getCoBorrower(customerId), { canOa: canManageZalo, canEdit: canManageZalo || canManageUse })}</section>
           <section class="cd-card" id="cd-calls-card">${callCardHtml(calls, { myId })}</section>
         </div>
         <aside class="cd-col-side">
@@ -1129,6 +1123,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
             redrawCalls(); return;
           }
           if (e.target.closest('[data-pp-edit]')) { ppEditing = true; ppPending = false; drawPp(); return; }
+          if (e.target.closest('.cd-pp-tile.is-need')) { ppEditing = true; ppPending = true; drawPp(); return; } // chưa có số: phải nhập số mới tick được
           if (e.target.closest('[data-pp-cancel]')) { ppEditing = false; ppPending = false; drawPp(); return; }
           if (e.target.closest('[data-pp-save]')) {
             const digits = ppCard.querySelector('#pp-phone').value.replace(/[^\d+]/g, '');

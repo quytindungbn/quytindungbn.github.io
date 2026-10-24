@@ -711,7 +711,8 @@ function zaloRecipientsOf(c: ZaloCustomer | undefined): ZaloRecipient[] {
 }
 /**
  * Gửi tin mẫu cho tất cả người nhận đã chọn của 1 khách (1 hoặc 2 số), mỗi số ghi 1 dòng log. Trả về true nếu ÍT NHẤT 1 số gửi được.
- * 1 số báo "chưa đăng ký Zalo": gửi cho 2 số mà chỉ 1 số vậy thì tắt riêng số đó (tin vẫn tới số còn lại); cả 2 số (hoặc số duy nhất) vậy thì bỏ khách khỏi OA như cũ.
+ * Người nào báo "chưa đăng ký Zalo" (-118) thì TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA); chỉ khi không còn người
+ * nào gửi được (số duy nhất của khách vay, hoặc cả 2 người đều lỗi) mới bỏ khách khỏi OA như trước.
  */
 async function sendZaloToCustomer(opts: {
   accessToken: string; customer: ZaloCustomer; templateId: string; templateData: Record<string, string>;
@@ -721,16 +722,23 @@ async function sendZaloToCustomer(opts: {
   if (!recipients.length) return false;
   const results = await Promise.all(recipients.map((r) => sendZaloTemplate({
     accessToken: opts.accessToken, phone: r.phone, templateId: opts.templateId, templateData: opts.templateData,
-    contractId: opts.contractId, customerId: opts.customerId, kind: opts.kind, deferNoAccount: recipients.length > 1,
+    contractId: opts.contractId, customerId: opts.customerId, kind: opts.kind, deferNoAccount: true,
   })));
-  if (recipients.length > 1) {
-    const noAcc = recipients.filter((_, i) => results[i].noAccount);
-    if (noAcc.length === recipients.length) {
-      noZaloCustomerIds.add(opts.customerId);
-      await removeCustomerFromZaloLists(opts.customerId);
-      await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', opts.customerId);
-    } else {
-      for (const r of noAcc) await admin.from('customers').update(r.who === 'co' ? { zalo_to_co: false } : { zalo_to_main: false }).eq('id', opts.customerId);
+  const noAcc = recipients.filter((_, i) => results[i].noAccount);
+  if (noAcc.length) {
+    try {
+      if (noAcc.length === recipients.length && (recipients.length > 1 || recipients[0].who === 'main')) {
+        noZaloCustomerIds.add(opts.customerId);
+        await removeCustomerFromZaloLists(opts.customerId);
+        await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', opts.customerId);
+      } else {
+        const patch: Record<string, unknown> = {};
+        if (noAcc.some((r) => r.who === 'co')) { patch.zalo_to_co = false; patch.zalo_to_main = true; }
+        if (noAcc.some((r) => r.who === 'main') && !noAcc.some((r) => r.who === 'co')) patch.zalo_to_main = false;
+        await admin.from('customers').update(patch).eq('id', opts.customerId);
+      }
+    } catch (e) {
+      console.error('Lỗi tự bỏ tick gửi OA người không có Zalo:', e);
     }
   }
   return results.some((r) => r.ok);

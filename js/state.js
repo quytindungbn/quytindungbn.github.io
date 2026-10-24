@@ -937,7 +937,7 @@ export async function saveCoBorrower(customerId, patch) {
 /** Đã đọc cảnh báo "người cùng vay đã đổi" (máy chủ tự xóa dấu này khi khách được thêm lại vào OA) — xóa dấu trong bộ nhớ. */
 export function dismissCoBorrowerChange(customerId) {
   const c = getCustomer(customerId);
-  if (c) { c.coPrevName = ''; notify(); }
+  if (c && c.coPrevName) { c.coPrevName = ''; c.zaloToMain = true; c.zaloToCo = false; notify(); } // máy chủ cũng đặt lại: thêm lại vào OA thì mặc định gửi theo khách vay
 }
 
 /**

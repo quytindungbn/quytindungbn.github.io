@@ -34,6 +34,7 @@ let activeTab = 'oa';
 let filterThon = [];
 let filterXom = [];
 let oaQuery = ''; // ô tìm kiếm tên/SĐT ở tab "Danh sách OA"
+let oaRcv = 'all'; // lọc theo NGƯỜI NHẬN Zalo OA ở tab "Danh sách OA": 'all' | 'main' (chỉ khách vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người)
 let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
@@ -50,6 +51,29 @@ const OA_TABS = [
   { k: 'log', label: 'Lịch sử gửi', icon: 'clock' },
   { k: 'config', label: 'Cấu hình', icon: 'settings', superOnly: true },
 ];
+
+// ------------------------------------------------------------
+// "Gửi Zalo tới ai": mỗi khách có thể nhận tin ở số khách vay, số người cùng vay hoặc cả 2 (chọn ở chi tiết khách hàng, thẻ
+// "Liên hệ & Zalo OA"). Chip xanh = khách vay, chip vàng = người cùng vay; người cùng vay có trong hợp đồng nhưng chưa được chọn thì chip nét đứt.
+// ------------------------------------------------------------
+function rcvOf(customerId) {
+  const co = S.getCoBorrower(customerId);
+  const toCo = !!co && !!co.name && co.toCo;
+  const toMain = !co || !toCo || co.toMain;
+  return { co, toMain, toCo, mode: toCo ? (toMain ? 'both' : 'co') : 'main' };
+}
+function rcvChipsHtml(customer, { mini = false } = {}) {
+  const { co, toMain, toCo } = rcvOf(customer.id);
+  // Khách vay: chỉ cần nhãn (tên + số đã ở dòng trên). Người cùng vay: thêm họ tên + số điện thoại để biết tin gửi tới đâu.
+  const person = (cls, role, sub) => `<span class="oa-rc ${cls}"><i>${icon('check', 'icon-sm')}</i><span class="oa-rc-tx"><b>${escapeHtml(role)}</b>${!mini && sub ? `<small>${sub}</small>` : ''}</span></span>`;
+  const coSub = co && co.name ? `${escapeHtml(co.name)}${co.phone ? ` · <em>${escapeHtml(co.phone)}</em>` : ''}` : '';
+  const chips = [];
+  if (toMain) chips.push(person('is-main', 'Khách vay', ''));
+  if (toCo) chips.push(person('is-co', 'Người cùng vay', coSub));
+  else if (co && co.name) chips.push(`<span class="oa-rc is-off" title="Người cùng vay trong hợp đồng — chưa chọn gửi Zalo"><span class="oa-rc-tx"><b>Người cùng vay</b>${mini ? '' : `<small>${escapeHtml(co.name)} · chưa gửi</small>`}</span></span>`);
+  const both = toMain && toCo && !mini;
+  return `<div class="oa-rcv${mini ? ' is-mini' : ''}"><span class="oa-rcv-l">Gửi tới</span>${both ? '<span class="oa-two" title="Gửi Zalo cho cả khách vay và người cùng vay">Cả 2 người</span>' : ''}${chips.join('')}</div>`;
+}
 
 /**
  * Dải thông tin đầu trang: cảnh báo nếu chưa cấu hình mẫu tin (kèm nút sang tab Cấu hình cho quản trị toàn quyền) và 3 con số nhanh —
@@ -112,7 +136,7 @@ function openAutoBreakdownModal() {
 
 /** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
 export function resetFilters() {
-  activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; logStatusFilter = 'all'; logFromDate = ''; logToDate = '';
+  activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; oaRcv = 'all'; logStatusFilter = 'all'; logFromDate = ''; logToDate = '';
   extraLogs = []; logCoveredFrom = null; logViewFrom = null;
 }
 
@@ -250,6 +274,7 @@ function drawOATab(slot, admin) {
       <button type="button" class="oa-flt" id="btn-oa-filter" title="Lọc theo Thôn / Xóm" aria-label="Lọc theo Thôn / Xóm">${icon('filter')}<span class="oa-flt-tx">Lọc</span><i class="oa-flt-n" hidden></i></button>
       <button type="button" class="oa-add" id="btn-add-oa" title="Thêm khách hàng vào OA" aria-label="Thêm khách hàng vào OA">${icon('userPlus')}</button>
     </div>
+    <div class="oa-rseg" id="oa-rseg" role="group" aria-label="Lọc theo người nhận Zalo"></div>
     <div id="oa-list"></div>
   `;
   slot.querySelector('#btn-add-oa').addEventListener('click', () => openAddCustomerToOAModal(admin, drawList));
@@ -280,6 +305,14 @@ function drawOATab(slot, admin) {
       const q = oaQuery.trim().toLowerCase();
       rows = rows.filter((x) => x.customer.name.toLowerCase().includes(q) || (x.customer.phone || '').includes(q));
     }
+    // Ô lọc "Người nhận": đếm theo danh sách đang xem (đã lọc Thôn/Xóm + tìm kiếm), bấm để chỉ xem khách gửi cho đúng nhóm đó.
+    const rcvCount = { all: rows.length, main: 0, co: 0, both: 0 };
+    for (const x of rows) rcvCount[rcvOf(x.customer.id).mode]++;
+    const rseg = slot.querySelector('#oa-rseg');
+    rseg.innerHTML = [['all', 'Tất cả'], ['main', 'Khách vay'], ['co', 'Người cùng vay'], ['both', 'Cả 2 người']]
+      .map(([k, label]) => `<button type="button" class="${oaRcv === k ? 'on' : ''}" data-rcv="${k}">${label}<em>${rcvCount[k]}</em></button>`).join('');
+    rseg.querySelectorAll('[data-rcv]').forEach((b) => b.addEventListener('click', () => { oaRcv = b.dataset.rcv; drawList(); }));
+    if (oaRcv !== 'all') rows = rows.filter((x) => rcvOf(x.customer.id).mode === oaRcv);
 
     // Nhãn "đang ở mục gửi tự động nào" — hiện cho mọi khách đã có BẤT KỲ AI thêm vào gửi tự động (không riêng lựa chọn của người đang xem).
     const autoKinds = new Map();
@@ -302,6 +335,7 @@ function drawOATab(slot, admin) {
           <div class="row-main">
             <div class="row-title oa-ttl"><span class="oa-nm">${customer.name}</span>${chipsFor(customer.id)}</div>
             <div class="row-sub oa-addr"><span class="oa-ad">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</span>${customer.phone ? `<a class="oa-ph" href="tel:${customer.phone.replace(/\s/g, '')}" data-stop-row title="Gọi/tìm Zalo nhanh">${customer.phone}</a>` : ''}</div>
+            ${rcvChipsHtml(customer)}
           </div>
         </div>
       `).join('') : emptyState({ iconName: 'message', title: 'Chưa có khách hàng nào', message: 'Bấm "Thêm khách hàng vào OA" ở trên, hoặc thêm ở chi tiết khách hàng (mục Khách hàng & Hợp đồng).' })}
@@ -400,6 +434,7 @@ function openAddCustomerToOAModal(admin, onDone) {
             <div class="row-main">
               <div class="row-title" style="font-size:13.5px">${c.name}</div>
               <div class="row-sub">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
+              ${S.getCoBorrower(c.id)?.prevName ? '<div class="oa-warn-tag">Người cùng vay đã đổi — cần xem lại</div>' : ''}
             </div>
             <b style="font-size:13px;white-space:nowrap;flex-shrink:0">${c.phone}</b>
           </div>
@@ -424,14 +459,27 @@ function openAddCustomerToOAModal(admin, onDone) {
         const ids = [...selected];
         if (!ids.length) return;
         const btn = sheet.querySelector('#add-oa-confirm');
-        btn.disabled = true;
-        let okCount = 0;
-        for (const id of ids) {
-          try { await S.addZaloCustomer(id); okCount++; } catch (err) { toast(`${err.message || 'Lỗi'} (bỏ qua, tiếp tục thêm phần còn lại)`, 'error'); }
+        const doAdd = async () => {
+          btn.disabled = true;
+          let okCount = 0;
+          for (const id of ids) {
+            try { await S.addZaloCustomer(id); S.dismissCoBorrowerChange(id); okCount++; } catch (err) { toast(`${err.message || 'Lỗi'} (bỏ qua, tiếp tục thêm phần còn lại)`, 'error'); }
+          }
+          if (okCount) toast(`Đã thêm ${okCount} khách hàng vào danh sách OA`, 'success');
+          closeFn();
+          if (onDone) onDone();
+        };
+        // Khách có người cùng vay vừa đổi (đã bị bỏ khỏi OA vì hợp đồng mới ghi người khác): cảnh báo trước khi thêm lại.
+        const changed = ids.map((id) => ({ c: S.getCustomer(id), co: S.getCoBorrower(id) })).filter((x) => x.c && x.co && x.co.prevName);
+        if (changed.length) {
+          confirmDialog({
+            title: 'Người cùng vay đã thay đổi',
+            message: `${changed.map((x) => `<b>${escapeHtml(x.c.name)}</b>: ${escapeHtml(x.co.prevName)} → <b>${escapeHtml(x.co.name)}</b>`).join('<br>')}<br><br>Số điện thoại cũ của người cùng vay đã bị xóa. Khi thêm, Zalo OA chỉ gửi cho khách vay cho đến khi nhập số của người mới. Vẫn thêm?`,
+            confirmLabel: 'Vẫn thêm vào OA', onConfirm: doAdd,
+          });
+          return;
         }
-        if (okCount) toast(`Đã thêm ${okCount} khách hàng vào danh sách OA`, 'success');
-        closeFn();
-        if (onDone) onDone();
+        await doAdd();
       });
       bindSearchBox(sheet, 'add-oa-search', (v) => { query = v; draw(); });
       renderPills();
@@ -531,6 +579,7 @@ function autoSendRowHtml(kind, r, customer, contract) {
             <button class="icon-btn oa-del" data-remove="${r.id}" title="Bỏ khỏi danh sách" aria-label="Bỏ khỏi danh sách gửi tự động" style="width:30px;height:30px;flex-shrink:0">${icon('trash', 'icon-sm')}</button>
           </span>
         </div>
+        ${rcvChipsHtml(customer, { mini: true })}
       </div>
     </div>
   `;
@@ -860,6 +909,16 @@ async function loadOlderLogs(untilMs) {
   }
 }
 
+/** Dòng log gửi cho khách vay hay người cùng vay — so số điện thoại đã gửi với số hiện có của 2 người (log cũ không khớp số nào thì không hiện nhãn). */
+function logWhoChip(l, customer) {
+  if (!customer || !l.phone) return '';
+  const norm = (v) => String(v || '').replace(/[^\d]/g, '').replace(/^84/, '0');
+  const co = S.getCoBorrower(customer.id);
+  if (co && co.phone && norm(l.phone) === norm(co.phone)) return `<span class="oa-chip co">Người cùng vay</span>`;
+  if (norm(l.phone) === norm(customer.phone)) return `<span class="oa-chip kv">Khách vay</span>`;
+  return '';
+}
+
 function drawLogTab(slot) {
   const failedFrom = new Set(); // các mốc "Từ ngày" đã thử tải log cũ mà lỗi — không tự thử lại vô hạn
   slot.innerHTML = `
@@ -934,7 +993,7 @@ function drawLogTab(slot) {
           <div class="row-thumb" style="background:${l.status === 'success' ? 'var(--success)' : 'var(--danger)'}">${icon(l.status === 'success' ? 'check' : 'x', 'icon-sm')}</div>
           <div class="row-main">
             <div class="row-title">${customer ? customer.name : '—'}${contract ? ' · ' + contract.code : ''}</div>
-            <div class="row-sub oa-sub"><span>${hh}</span><span class="oa-chip ${l.triggeredBy === 'manual' ? 'b' : 'g'}">${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}</span><span class="oa-chip ${l.kind === 'den_han' ? 'b' : 'g'}">${kindLabel(l.kind)}</span></div>
+            <div class="row-sub oa-sub"><span>${hh}</span><span class="oa-chip ${l.triggeredBy === 'manual' ? 'b' : 'g'}">${l.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}</span><span class="oa-chip ${l.kind === 'den_han' ? 'b' : 'g'}">${kindLabel(l.kind)}</span>${logWhoChip(l, customer)}</div>
             ${l.status === 'error' && l.errorMessage ? `<div class="oa-err">${l.errorMessage}</div>` : ''}
           </div>
         </div>`;
