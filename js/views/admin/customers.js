@@ -10,6 +10,7 @@ import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xls
 import { buildVietQrUrl, qrImageSrc, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 import { transferContent } from '../../lib/transferContent.js';
 import { interestAsOfForDays, MAX_INTEREST_DAYS } from '../../lib/interestDays.js';
+import { describeCallTime, formatPhoneDisplay } from '../../lib/callHistory.js';
 import { buildLoanSummaryText } from '../../lib/loanSummary.js';
 import { printNotice } from '../../lib/printNotices.js';
 import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
@@ -520,6 +521,12 @@ export function bindCustomerLedger(root, { readOnly = false } = {}) {
   }
   // MỘT bộ lắng nghe cho cả danh sách (thay vì gắn riêng từng nút) — danh sách dài hàng nghìn nút, và các khối thêm sau (vẽ dần) tự dùng được.
   wrap.addEventListener('click', (e) => {
+    const callLink = e.target.closest('a.customer-ledger-call[href^="tel:"]');
+    if (callLink && wrap.contains(callLink)) { // ghi lại lần gọi, vẫn để trình duyệt mở ứng dụng gọi điện như thường
+      const person = callLink.closest('.customer-ledger-person')?.querySelector('[data-id]');
+      if (person) S.logCall(person.dataset.id, callLink.getAttribute('href').replace(/^tel:/, ''));
+      return;
+    }
     const sendButton = e.target.closest('[data-send-oa]');
     if (sendButton && wrap.contains(sendButton)) { sendManualOa(sendButton.dataset.sendOa, sendButton); return; }
     const contractRow = e.target.closest('[data-view-contract]');
@@ -804,6 +811,76 @@ function zaloActionButtonHtml(inZaloList) {
 /** Chấm tròn xanh (đã có) / đỏ (chưa) nhỏ cạnh tên trạng thái trong chi tiết khách hàng. */
 const statusDotInline = (on) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${on ? 'var(--success)' : 'var(--danger)'};flex:none"></span>`;
 
+// ------------------------------------------------------------
+// Chi tiết khách hàng — thanh Gọi, Lịch sử cuộc gọi, thẻ hợp đồng. Mỗi lần bấm "Gọi" (ở danh sách hoặc ở đây) được ghi lại: giờ phút to rõ bên trái,
+// ngày/thứ ngay dưới, người gọi bên phải. Toàn quyền thấy cuộc gọi của mọi người; nhân viên chỉ thấy của mình (xem S.listCallsByCustomer).
+// ------------------------------------------------------------
+const CALL_PREVIEW = 4; // số cuộc gọi hiện sẵn, còn lại bấm "Xem thêm"
+
+function callBarHtml(calls, dialPhone, c) {
+  const last = calls[0];
+  const t = last ? describeCallTime(last.createdAt) : null;
+  const lastHtml = last
+    ? `<div class="cd-last"><small>Gọi gần nhất</small><b>${escapeHtml(t.ago || t.rel)}</b><span>${t.days === 0 ? 'Hôm nay' : `${escapeHtml(t.weekday)}, ${t.date}`} lúc <strong>${t.time}</strong> · ${escapeHtml(last.adminName)}</span></div>`
+    : `<div class="cd-last is-none"><small>Gọi gần nhất</small><b>Chưa gọi lần nào</b></div>`;
+  const number = c.phone
+    ? `<div class="cd-num"><span class="cd-num-ico">${icon('phone')}</span><span class="cd-num-tx"><small>Số điện thoại</small><b>${escapeHtml(formatPhoneDisplay(c.phone))}</b></span></div>`
+    : `<div class="cd-num is-off"><span class="cd-num-ico">${icon('phone')}</span><span class="cd-num-tx"><small>Số điện thoại</small><b>Chưa có số</b></span></div>`;
+  const btn = dialPhone
+    ? `<a class="cd-callbtn" href="tel:${escapeHtml(dialPhone)}" data-call-customer="${c.id}">${icon('phone')}<span>Gọi ngay</span></a>`
+    : `<span class="cd-callbtn is-off">${icon('phone')}<span>Gọi ngay</span></span>`;
+  return `${number}${lastHtml}${btn}`;
+}
+
+function callEntryHtml(call, myId) {
+  const t = describeCallTime(call.createdAt);
+  const mine = call.adminId === myId;
+  return `<li class="cd-call${mine ? ' is-mine' : ''}">
+    <div class="cd-when"><span class="cd-rel">${escapeHtml(t.rel)}</span><b class="cd-time">${t.time}</b><span class="cd-date"><em>${escapeHtml(t.weekday)}</em> ${t.date}</span></div>
+    <span class="cd-node" aria-hidden="true"></span>
+    <div class="cd-who">
+      <span class="cd-av" style="background:${colorFor(call.adminId)}">${escapeHtml(initials(call.adminName))}</span>
+      <b><span class="cd-nm">${escapeHtml(call.adminName)}</span>${mine ? '<em class="cd-me">Bạn</em>' : ''}</b>
+    </div>
+  </li>`;
+}
+
+/** Danh sách cuộc gọi (đã lọc "Của tôi" nếu chọn) kèm nút "Xem thêm". */
+function callListHtml(calls, myId, { showAll = false, mineOnly = false } = {}) {
+  const list = mineOnly ? calls.filter((x) => x.adminId === myId) : calls;
+  if (!list.length) {
+    return `<div class="cd-empty">${icon('phone')}<b>Chưa có cuộc gọi nào</b><span>Bấm “Gọi ngay” để bắt đầu — mỗi lần gọi được ghi lại tại đây kèm ngày giờ.</span></div>`;
+  }
+  const shown = showAll ? list : list.slice(0, CALL_PREVIEW);
+  return `<ol class="cd-calls">${shown.map((x) => callEntryHtml(x, myId)).join('')}</ol>
+    ${list.length > shown.length ? `<button type="button" class="cd-more" data-calls-more>Xem thêm ${list.length - shown.length} cuộc gọi cũ hơn ${icon('chevronDown', 'icon-sm')}</button>` : ''}`;
+}
+
+function callCardHtml(calls, { isSuper, myId }) {
+  const callers = new Set(calls.map((x) => x.adminId)).size;
+  const sub = isSuper ? (calls.length ? `${callers} người gọi` : 'Mọi người gọi') : 'Của riêng bạn';
+  return `<h3 class="cd-h"><span>Lịch sử cuộc gọi</span><em>${calls.length}</em><small>${sub}</small>
+      ${isSuper && calls.length ? `<span class="cd-seg" role="group" aria-label="Lọc cuộc gọi"><button type="button" class="on" data-calls-filter="all">Tất cả</button><button type="button" data-calls-filter="mine">Của tôi</button></span>` : ''}
+    </h3>
+    <div id="cd-call-list">${callListHtml(calls, myId)}</div>`;
+}
+
+/** Thẻ hợp đồng gọn trong chi tiết khách hàng: vạch màu theo tình trạng, mã + nhãn tình trạng, gốc/lãi bên phải; bấm vào mở chi tiết hợp đồng. */
+function contractCardHtml(ct) {
+  const info = S.contractAttentionInfo(ct);
+  let tone = 'ok', statusHtml;
+  if (info.level === 'qua_han') { tone = 'bad'; statusHtml = statusBadge({ badge: 'badge-red', label: `Quá hạn ${info.days} ngày` }); }
+  else if (info.level === 'gan_den_han' && info.days <= S.NEAR_DUE_DAYS) { tone = 'warn'; statusHtml = statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${info.days} ngày` }); }
+  else if (info.level === 'gan_den_han') statusHtml = `<span class="text-sm text-muted">Gần đến hạn ${info.days} ngày</span>`;
+  else statusHtml = statusBadge(S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(ct)]);
+  return `<div class="cd-ct is-${tone}" role="button" tabindex="0" data-view-contract="${ct.id}" data-customer-id="${ct.customerId}">
+    <div class="cd-ct-main"><b>Hợp đồng ${escapeHtml(ct.code)}</b><div>${statusHtml}</div>${installmentHintHtml(ct)}</div>
+    <div class="cd-ct-amt"><span>Gốc</span><b>${formatVND(ct.balance)}</b><em>Lãi ${formatVND(S.accruedInterest(ct))}</em></div>
+    <span class="cd-ct-go">${icon('chevronRight', 'icon-sm')}</span>
+  </div>`;
+}
+
+
 export function openCustomerDetail(customerId, { readOnly = false, context = 'customer' } = {}) {
   const c = S.getCustomer(customerId);
   S.logAdminAction('view-customer', { customerId });
@@ -812,32 +889,81 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const session = S.getSession();
   const canManageZalo = S.canManageZaloOA(session.id);
   const inZaloList = S.isZaloCustomer(customerId);
+  const myId = session.id;
+  const isSuper = S.isSuperAdmin(myId);
+  const calls = S.listCallsByCustomer(customerId);
+  const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
+  const logged = S.hasCustomerLoggedIn(c), pushOn = S.hasPushEnabled(c.id);
+  const hasActions = !readOnly || canManageZalo;
+  const addressText = c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ');
+
+  const chip = (on, text, extra = '') => `<span class="cd-chip ${on ? 'on' : 'off'}" ${extra}><i></i>${text}</span>`;
   const close = openModal({
-    title: c.name,
-    sheetClass: 'customer-detail-sheet',
+    title: '',
+    sheetClass: 'customer-detail-sheet cd-sheet',
     bodyHtml: `
-      <div class="oc-line"><span>CCCD</span><b>${c.cccd}</b></div>
-      <div class="oc-line"><span>SĐT</span><b>${c.phone ? `<a href="tel:${c.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${c.phone}</a>` : '—'}</b></div>
-      <div class="oc-line" style="align-items:flex-start"><span>Địa chỉ</span><b style="text-align:right;max-width:65%">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || '—'}</b></div>
-      <div class="oc-line"><span>Trạng thái</span><b style="display:inline-flex;gap:14px;font-weight:600;font-size:13px" title="${S.hasCustomerLoggedIn(c) ? 'Đã đăng nhập' : 'Chưa đăng nhập'} · ${S.hasPushEnabled(c.id) ? 'Đã bật thông báo' : 'Chưa bật thông báo'}"><span style="display:inline-flex;align-items:center;gap:6px">${statusDotInline(S.hasCustomerLoggedIn(c))}Đăng nhập</span><span style="display:inline-flex;align-items:center;gap:6px">${statusDotInline(S.hasPushEnabled(c.id))}Thông báo</span></b></div>
-      ${canManageZalo ? `<div class="oc-line" id="oa-status-line"><span>Danh sách OA</span><b style="color:${inZaloList ? 'var(--success)' : 'var(--text-muted)'}">${inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}</b></div>` : ''}
-      ${c.mustChangePassword && c.tempPassword ? `
-      <div class="oc-line"><span>Mật khẩu hiện tại</span><b style="color:var(--color-primary)">${c.tempPassword}</b></div>
-      <div class="field-hint">Khách chưa đăng nhập lần nào (hoặc đã đăng nhập nhưng chưa đổi mật khẩu) nên vẫn xem được mật khẩu này để đưa cho khách.</div>
-      ` : !readOnly ? `<div class="field-hint">Khách đã tự đổi mật khẩu — không thể xem lại, dùng nút "Cấp lại mật khẩu" nếu cần đặt mật khẩu mới.</div>` : ''}
-      ${!readOnly || canManageZalo ? `
-      <div class="flex gap-8 mt-16 mb-16" style="flex-wrap:wrap">
-        ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>` : ''}
-        ${!readOnly && context === 'use' && S.hasCustomerLoggedIn(c) ? `<button class="btn btn-outline btn-sm" id="btn-force-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>` : ''}
-        ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>` : ''}
-        ${!readOnly && context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
-        ${canManageZalo ? `<span id="oa-action-btn-wrap" style="display:contents">${zaloActionButtonHtml(inZaloList)}</span>` : ''}
-        ${!readOnly && context === 'use' ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} Xóa Use</button>` : ''}
-      </div>` : '<div class="mt-16"></div>'}
-      <div class="section-head"><h2 style="font-size:14px">Hợp đồng (${contracts.length})</h2></div>
-      <div id="contract-list">${contracts.map((ct) => contractRowCompact(ct)).join('') || '<p class="text-sm text-muted">Chưa có hợp đồng — nhập từ Excel để thêm.</p>'}</div>
+      <header class="cd-hero">
+        <button type="button" class="cd-close" data-cd-close aria-label="Đóng">${icon('x')}</button>
+        <div class="cd-id">
+          <span class="cd-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}</span>
+          <div class="cd-id-tx"><span class="cd-eyebrow">Hồ sơ khách hàng</span><h2 class="cd-name">${escapeHtml(c.name)}</h2><p class="cd-sub">CCCD ${escapeHtml(c.cccd)}</p>${addressText ? `<p class="cd-addr">${icon('mapPin', 'icon-sm')}<span>${escapeHtml(addressText)}</span></p>` : ''}</div>
+        </div>
+        <div class="cd-chips">
+          ${chip(logged, logged ? 'Đã đăng nhập' : 'Chưa đăng nhập')}
+          ${chip(pushOn, pushOn ? 'Đã bật thông báo' : 'Chưa bật thông báo')}
+          ${canManageZalo ? chip(inZaloList, inZaloList ? 'Đã thêm OA' : 'Chưa thêm OA', 'id="cd-oa-chip"') : ''}
+        </div>
+      </header>
+      <div class="cd-callbar" id="cd-callbar">${callBarHtml(calls, dialPhone, c)}</div>
+      <div class="cd-cols">
+        <div class="cd-col-main">
+          <section class="cd-card" id="cd-calls-card">${callCardHtml(calls, { isSuper, myId })}</section>
+        </div>
+        <aside class="cd-col-side">
+          <section class="cd-card cd-contracts-card">
+            <h3 class="cd-h"><span>Hợp đồng</span><em>${contracts.length}</em></h3>
+            <div id="contract-list" class="cd-contracts">${contracts.map((ct) => contractCardHtml(ct)).join('') || '<p class="cd-empty-note">Chưa có hợp đồng — nhập từ Excel để thêm.</p>'}</div>
+          </section>
+          ${hasActions ? `<section class="cd-card cd-actions">
+            <h3 class="cd-h"><span>Thao tác</span></h3>
+            <div class="cd-btns">
+              ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>` : ''}
+              ${!readOnly && context === 'use' && logged ? `<button class="btn btn-outline btn-sm" id="btn-force-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>` : ''}
+              ${!readOnly ? `<button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>` : ''}
+              ${!readOnly && context === 'customer' ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
+              ${canManageZalo ? `<span id="oa-action-btn-wrap" style="display:contents">${zaloActionButtonHtml(inZaloList)}</span>` : ''}
+              ${!readOnly && context === 'use' ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} Xóa Use</button>` : ''}
+            </div>
+          </section>` : ''}
+        </aside>
+      </div>
     `,
     onMount(sheet, closeFn) {
+      sheet.querySelector('[data-cd-close]').addEventListener('click', closeFn);
+      // Bấm Gọi (thanh Gọi hoặc số điện thoại ở mục Thông tin): ghi lại cuộc gọi rồi vẽ lại lịch sử + thanh Gọi ngay; vẫn mở ứng dụng gọi điện như thường.
+      let callsAll = false, callsMine = false;
+      const redrawCalls = () => {
+        const list = S.listCallsByCustomer(customerId);
+        const listEl = sheet.querySelector('#cd-call-list');
+        if (listEl) listEl.innerHTML = callListHtml(list, myId, { showAll: callsAll, mineOnly: callsMine });
+        const countEl = sheet.querySelector('#cd-calls-card .cd-h em');
+        if (countEl) countEl.textContent = String(list.length);
+        const bar = sheet.querySelector('#cd-callbar');
+        if (bar) bar.innerHTML = callBarHtml(list, dialPhone, c);
+      };
+      S.loadCallsForCustomer(customerId).then((ok) => { if (ok && sheet.isConnected) redrawCalls(); }); // lịch sử đầy đủ từ máy chủ (hiện ngay những gì đang có trước)
+      sheet.addEventListener('click', (e) => {
+        const callLink = e.target.closest('[data-call-customer]');
+        if (callLink) { S.logCall(customerId, c.phone); redrawCalls(); return; }
+        const more = e.target.closest('[data-calls-more]');
+        if (more) { callsAll = true; redrawCalls(); return; }
+        const filterBtn = e.target.closest('[data-calls-filter]');
+        if (filterBtn) {
+          callsMine = filterBtn.dataset.callsFilter === 'mine'; callsAll = false;
+          sheet.querySelectorAll('[data-calls-filter]').forEach((b) => b.classList.toggle('on', b === filterBtn));
+          redrawCalls();
+        }
+      });
       // Mở chi tiết hợp đồng CHỒNG lên trên (không đóng màn khách hàng này
       // trước) — đóng chi tiết hợp đồng lại là quay ngay về đúng màn khách
       // hàng đang xem, không phải mở lại từ danh sách ngoài cùng.
@@ -856,10 +982,8 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       // khung như tải lại" và chậm hơn hẳn (dựng lại toàn bộ modal + toàn bộ
       // danh sách hợp đồng bên dưới trong khi chẳng có gì trong đó đổi cả).
       function updateZaloUi(newInZaloList) {
-        const statusLine = sheet.querySelector('#oa-status-line');
-        if (statusLine) {
-          statusLine.innerHTML = `<span>Danh sách OA</span><b style="color:${newInZaloList ? 'var(--success)' : 'var(--text-muted)'}">${newInZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}</b>`;
-        }
+        const oaChip = sheet.querySelector('#cd-oa-chip');
+        if (oaChip) { oaChip.classList.toggle('on', newInZaloList); oaChip.classList.toggle('off', !newInZaloList); oaChip.innerHTML = `<i></i>${newInZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}`; }
         const btnWrap = sheet.querySelector('#oa-action-btn-wrap');
         if (btnWrap) { btnWrap.innerHTML = zaloActionButtonHtml(newInZaloList); bindZaloButtons(); }
       }
@@ -966,32 +1090,6 @@ function contractAmountsHtml(ct) {
     <div class="row-end">
       <div class="amount">Gốc: ${formatVND(ct.balance)}</div>
       <div class="amount-sub" style="color:var(--warning)">Lãi: ${formatVND(interest)}</div>
-    </div>`;
-}
-
-/** Dòng hợp đồng gọn — chỉ mã + trạng thái + gốc/lãi, bấm vào mới ra đầy đủ chi tiết (openContractView). */
-function contractRowCompact(ct) {
-  // "Trong hạn" thay bằng "Gần đến hạn"/"Quá hạn" khi sắp/đã tới ngày đến hạn
-  // — xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
-  // có, xem S.contractAttentionInfo()) để hợp đồng có kỳ giữa chừng đến/quá
-  // hạn cũng được báo ngay ở dòng gọn này, không cần bấm vào chi tiết mới
-  // biết. Trong đúng NEAR_DUE_DAYS (15 ngày) tô khung vàng như cũ, xa hơn
-  // (tới S.WIDE_NEAR_DUE_DAYS = 45 ngày) chỉ hiện chữ nhỏ bình thường.
-  const info = S.contractAttentionInfo(ct);
-  let statusHtml;
-  if (info.level === 'qua_han') statusHtml = statusBadge({ badge: 'badge-red', label: `Quá hạn ${info.days} ngày` });
-  else if (info.level === 'gan_den_han' && info.days <= S.NEAR_DUE_DAYS) statusHtml = statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${info.days} ngày` });
-  else if (info.level === 'gan_den_han') statusHtml = `<span class="text-sm text-muted">Gần đến hạn ${info.days} ngày</span>`;
-  else statusHtml = statusBadge(S.CONTRACT_STATUS_MAP[S.effectiveContractStatus(ct)]);
-  const instHint = installmentHintHtml(ct);
-  return `
-    <div class="list-row" data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" style="cursor:pointer;padding:8px 0">
-      <div class="row-main">
-        <div class="row-title" style="font-size:13.5px">Hợp đồng: ${ct.code}</div>
-        <div>${statusHtml}</div>
-        ${instHint}
-      </div>
-      ${contractAmountsHtml(ct)}
     </div>`;
 }
 

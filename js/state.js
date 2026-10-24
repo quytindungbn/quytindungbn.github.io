@@ -2531,6 +2531,53 @@ export async function listActivityLog({ before, limit = 100 } = {}) {
   return (data || []).map(mapActivityLogRow);
 }
 
+// ------------------------------------------------------------
+// Lịch sử cuộc gọi — mỗi lần quản trị viên/nhân viên bấm "Gọi" cho 1 khách thì ghi 1 dòng vào bảng call_log
+// { customerId, adminId, adminName, phone, createdAt }. Ghi THẲNG qua Row Level Security (giống chat_messages) — không qua Edge Function.
+// Quản trị viên toàn quyền xem được cuộc gọi của mọi người; nhân viên chỉ xem cuộc gọi của chính mình (RLS chặn thật ở database, xem
+// docs/supabase-migration.md mục 10.79). Chỉ tải khi mở chi tiết 1 khách (loadCallsForCustomer), không tải sẵn lúc đăng nhập.
+// ------------------------------------------------------------
+function mapCallLogRow(row) {
+  return { id: row.id, customerId: row.customer_id, adminId: row.admin_id, adminName: row.admin_name, phone: row.phone || '', createdAt: row.created_at };
+}
+/** Các cuộc gọi tới 1 khách mà người đang đăng nhập được xem, mới nhất trước. */
+export function listCallsByCustomer(customerId) {
+  const session = getSession();
+  const me = session && session.id;
+  const all = (state.callLogs || []).filter((c) => c.customerId === customerId);
+  const visible = isSuperAdmin(me) ? all : all.filter((c) => c.adminId === me);
+  return visible.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+/**
+ * Tải lịch sử cuộc gọi của 1 khách từ máy chủ rồi gộp vào bộ nhớ (thay các dòng cũ của khách đó, giữ lại lần gọi vừa bấm mà máy chủ chưa kịp có).
+ * Trả true nếu tải được; lỗi (VD chưa chạy SQL tạo bảng call_log) thì giữ nguyên những gì đang có và trả false — không ném lỗi.
+ */
+export async function loadCallsForCustomer(customerId) {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return false;
+  try {
+    const sb = getSupabaseClient(session.sbToken);
+    const { data, error } = await sb.from('call_log').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(300);
+    if (error) return false;
+    const fromServer = (data || []).map(mapCallLogRow);
+    const known = new Set(fromServer.map((c) => c.id));
+    const fresh = (state.callLogs || []).filter((c) => c.customerId === customerId && !known.has(c.id) && Date.now() - new Date(c.createdAt).getTime() < 120000);
+    state.callLogs = (state.callLogs || []).filter((c) => c.customerId !== customerId).concat(fromServer, fresh);
+    return true;
+  } catch { return false; }
+}
+/** Ghi nhận ngay 1 lần bấm Gọi (hiện luôn trong lịch sử, không chờ mạng), lưu lên máy chủ ngầm — không chặn việc mở ứng dụng gọi điện. */
+export function logCall(customerId, phone) {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return null;
+  const admin = getAdmin(session.id);
+  const row = { id: genId('call'), customer_id: customerId, admin_id: session.id, admin_name: (admin && admin.name) || 'Quản trị viên', phone: String(phone || '') };
+  const entry = mapCallLogRow({ ...row, created_at: new Date().toISOString() });
+  (state.callLogs = state.callLogs || []).push(entry);
+  try { getSupabaseClient(session.sbToken).from('call_log').insert(row).then(() => {}, () => {}); } catch { /* chưa lưu được thì thôi — lần gọi vẫn hiện trong phiên này */ }
+  return entry;
+}
+
 /**
  * Ghi 1 dòng vào Nhật ký sử dụng cho thao tác KHÔNG tự có chỗ ghi log qua
  * Edge Function khác (VD: xem chi tiết khách hàng/hợp đồng, lọc danh sách,
@@ -2660,5 +2707,5 @@ async function seedDemoData() {
     },
   ];
 
-  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloCustomers: [], zaloAutoSendList: [], zaloAutoOverview: [], zaloSendLog: [], chatUnreadCount: 0 };
+  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloCustomers: [], zaloAutoSendList: [], zaloAutoOverview: [], zaloSendLog: [], callLogs: [], chatUnreadCount: 0 };
 }
