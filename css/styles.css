@@ -2455,6 +2455,11 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .cd-num-ico svg { width: 20px; height: 20px; }
 .cd-num-tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .cd-num small, .cd-last small { font: 600 10px/1 var(--lux-sans, inherit); letter-spacing: .14em; text-transform: uppercase; color: var(--cd-gold); }
+.cd-num-line { display: flex; align-items: center; gap: 8px; }
+.cd-copy { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--cd-line); border-radius: 50%; background: #f4f8f6; color: var(--cd-em); cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.cd-copy:hover { border-color: var(--cd-gold2); background: #fbf6e6; }
+.cd-copy:focus-visible { outline: 2px solid var(--cd-em); outline-offset: 2px; }
+.cd-copy.is-done { border-color: #7ee0a5; background: #e1f6ea; color: #0c6a5a; }
 .cd-num b { font: 700 20px/1.1 var(--lux-sans, inherit); letter-spacing: .02em; font-variant-numeric: tabular-nums; color: var(--cd-em); white-space: nowrap; }
 .cd-num.is-off b { color: var(--cd-mut); font-size: 15px; }
 .cd-last { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-left: 16px; border-left: 1px solid var(--cd-line); }

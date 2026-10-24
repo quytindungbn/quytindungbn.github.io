@@ -825,7 +825,7 @@ function callBarHtml(calls, dialPhone, c) {
     ? `<div class="cd-last"><small>Gọi gần nhất</small><b>${escapeHtml(t.ago || t.rel)}</b><span>${t.days === 0 ? 'Hôm nay' : `${escapeHtml(t.weekday)}, ${t.date}`} lúc <strong>${t.time}</strong> · ${escapeHtml(last.adminName)}</span></div>`
     : `<div class="cd-last is-none"><small>Gọi gần nhất</small><b>Chưa gọi lần nào</b></div>`;
   const number = c.phone
-    ? `<div class="cd-num"><span class="cd-num-ico">${icon('phone')}</span><span class="cd-num-tx"><small>Số điện thoại</small><b>${escapeHtml(formatPhoneDisplay(c.phone))}</b></span></div>`
+    ? `<div class="cd-num"><span class="cd-num-ico">${icon('phone')}</span><span class="cd-num-tx"><small>Số điện thoại</small><span class="cd-num-line"><b>${escapeHtml(formatPhoneDisplay(c.phone))}</b><button type="button" class="cd-copy" data-copy-phone aria-label="Sao chép số điện thoại" title="Sao chép số điện thoại">${icon('copy', 'icon-sm')}</button></span></span></div>`
     : `<div class="cd-num is-off"><span class="cd-num-ico">${icon('phone')}</span><span class="cd-num-tx"><small>Số điện thoại</small><b>Chưa có số</b></span></div>`;
   const btn = dialPhone
     ? `<a class="cd-callbtn" href="tel:${escapeHtml(dialPhone)}" data-call-customer="${c.id}">${icon('phone')}<span>Gọi ngay</span></a>`
@@ -941,6 +941,16 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
     onMount(sheet, closeFn) {
       sheet.querySelector('[data-cd-close]').addEventListener('click', closeFn);
       // Bấm Gọi (thanh Gọi hoặc số điện thoại ở mục Thông tin): ghi lại cuộc gọi rồi vẽ lại lịch sử + thanh Gọi ngay; vẫn mở ứng dụng gọi điện như thường.
+      // Nút sao chép cạnh số điện thoại: chép dãy số liền (không dấu cách) để dán vào Zalo/bàn phím gọi cho tiện; đổi sang dấu ✓ một lúc.
+      const copyPhone = async (btn) => {
+        if (!dialPhone) return;
+        if (await copyText(dialPhone)) {
+          S.logUiAction('copy-phone', `Sao chép số điện thoại khách hàng "**${c.name}**"`);
+          toast('Đã sao chép số điện thoại', 'success');
+          btn.classList.add('is-done'); btn.innerHTML = icon('check', 'icon-sm');
+          setTimeout(() => { if (btn.isConnected) { btn.classList.remove('is-done'); btn.innerHTML = icon('copy', 'icon-sm'); } }, 1800);
+        } else openCopyFallback(dialPhone);
+      };
       let callsAll = false, callsMine = false;
       const redrawCalls = () => {
         const list = S.listCallsByCustomer(customerId);
@@ -953,6 +963,8 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       };
       S.loadCallsForCustomer(customerId).then((ok) => { if (ok && sheet.isConnected) redrawCalls(); }); // lịch sử đầy đủ từ máy chủ (hiện ngay những gì đang có trước)
       sheet.addEventListener('click', (e) => {
+        const copyBtn = e.target.closest('[data-copy-phone]');
+        if (copyBtn) { copyPhone(copyBtn); return; }
         const callLink = e.target.closest('[data-call-customer]');
         if (callLink) { S.logCall(customerId, c.phone); redrawCalls(); return; }
         const more = e.target.closest('[data-calls-more]');
