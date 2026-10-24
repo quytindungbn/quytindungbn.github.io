@@ -3073,6 +3073,41 @@ Khung **Thao tác** trong chi tiết khách hàng (`openCustomerDetail()` trong 
 
 **Việc cần bạn làm**: deploy lại **`create-account`** (file MỚI NHẤT). Chưa deploy thì giao diện đã ẩn nút Xóa Use cho người không đủ quyền, chỉ là máy chủ chưa chặn gọi trực tiếp.
 
+### 10.82. Người cùng vay: lưu theo khách, gửi Zalo OA cho 1 hoặc 2 người (BẮT BUỘC chạy SQL, rồi deploy lại CẢ 2 Edge Function)
+
+**Người cùng vay** = cột D file số 1 (`contracts.heir_name`, mục 10.56). Tên lấy TỰ ĐỘNG từ hợp đồng và được LƯU THEO KHÁCH HÀNG (Use) cùng số điện thoại + lựa chọn nhận tin Zalo OA.
+
+**Giao diện** (`openCustomerDetail()` — dùng chung cho Khách hàng & Hợp đồng, Quản lý User, Quản lý OA, Hỗ trợ):
+- Thẻ **"Liên hệ & Zalo OA"** có sẵn 2 dòng: *Khách vay* và *Người cùng vay*. Mỗi dòng có nút **Gọi** (bấm gọi người cùng vay ghi vào Lịch sử cuộc gọi kèm nhãn "Người cùng vay" + Nhật ký). Ô **tick bên dưới** mỗi dòng = gửi Zalo OA tới người đó. Khách vay mặc định CÓ tick, người cùng vay mặc định KHÔNG; luôn còn ít nhất 1 người nhận.
+- Tick người cùng vay khi CHƯA có số → hiện ô yêu cầu nhập số điện thoại; lưu xong mới bật gửi. Số lưu cùng thông tin khách hàng, hiện ở cả chi tiết khách hàng lẫn Quản lý User.
+- Tài khoản KHÔNG có quyền OA: thẻ chỉ có 1 dòng **Người cùng vay** (tên, số điện thoại, nút Gọi); có quyền **Quản lý User** thì sửa được số điện thoại. Tick/chọn người nhận Zalo OA chỉ dành cho quyền **Quản lý OA** (hoặc toàn quyền).
+- Khung **Thao tác** thành các ô nhỏ (icon + chữ) trên 1 hàng; **Xóa Use** là 1 ô đỏ nhạt (chỉ toàn quyền, chỉ ở Quản lý User — mục 10.81).
+
+**Đối chiếu mỗi lần nhập file** (`reconcileCoBorrowersAfterImport()`, chạy SAU khi nhập xong, không bao giờ làm hỏng lần nhập; thiếu cột thì tự bỏ qua):
+- Tên người cùng vay đã lưu **vẫn còn trong ít nhất 1 hợp đồng còn dư nợ** của khách (so khớp không phân biệt hoa/thường, khoảng trắng) → giữ nguyên số điện thoại + lựa chọn gửi OA, vẫn chọn gửi OA tiếp được.
+- Chưa lưu ai → lưu tên đầu tiên trong hợp đồng. Hợp đồng không ghi người cùng vay → giữ nguyên.
+- **Khác tên** → thay bằng người mới, xóa số cũ, đặt lại "chỉ gửi khách vay", ghi tên cũ vào `co_prev_name`, và **bỏ khách khỏi Danh sách OA + mọi lựa chọn gửi tự động**. Hồ sơ hiện khung cảnh báo vàng; bấm "Thêm vào OA" (hoặc thêm hợp đồng vào gửi tự động) sẽ hỏi lại, thêm xong thì dấu cảnh báo tự xóa. Kết quả nhập hiện danh sách khách đổi người cùng vay. *Quay lại bản trước của lần nhập KHÔNG khôi phục việc bỏ khỏi OA/số điện thoại cũ.*
+
+**Gửi Zalo OA**: gửi tay (`send-zalo-manual`) và gửi tự động (`send-due-reminders`) gửi tới các số đã chọn (1 hoặc 2 số), mỗi số 1 dòng trong `zalo_send_log`; hạn chờ 5 ngày tính theo hợp đồng. Số nào báo "chưa đăng ký Zalo" (-118): gửi 2 số mà chỉ 1 số vậy thì tắt riêng số đó (tin vẫn tới số còn lại), không bỏ khách khỏi OA; cả 2 số (hoặc số duy nhất) vậy thì bỏ khách khỏi OA như cũ. Gửi tay trả thêm `sent`, `sentTo`, `note` để màn hình báo "đã gửi cho khách vay và người cùng vay".
+
+**Máy chủ** (`create-account`): type mới `save-co-borrower` ({ customerId, phone?, toMain?, toCo? } — nhập/sửa số: toàn quyền, Quản lý User hoặc Quản lý OA; đổi người nhận: toàn quyền hoặc Quản lý OA; nhân viên chỉ với khách trong Thôn/Xóm được gán); `log-admin-action` > `call-customer` nhận thêm `callee: 'co'`. Hàm thuần có kiểm thử: `js/lib/coBorrower.js` (`tests/coBorrower.test.mjs`); bản TypeScript trong 2 Edge Function là bản sao cùng logic.
+
+**Việc cần bạn làm — THEO THỨ TỰ**: (1) chạy SQL dưới đây (SQL Editor, chạy lại nhiều lần được; file `supabase/migrations/20261024_co_borrower.sql`); (2) deploy lại **`create-account`** và **`send-due-reminders`** (file MỚI NHẤT). Chưa làm thì app vẫn chạy như cũ (gửi OA chỉ số chính); thẻ người cùng vay vẫn hiện tên nhưng chưa lưu được số.
+
+```sql
+-- Người cùng vay (cột D file số 1 → contracts.heir_name): tên lấy tự động từ hợp đồng, lưu theo khách hàng (Use) cùng số điện thoại
+-- và lựa chọn nhận tin Zalo OA. Chạy TRƯỚC khi deploy lại create-account + send-due-reminders (docs mục 10.82). Chạy lại nhiều lần được.
+alter table public.customers
+  add column if not exists co_name text,                              -- họ tên người cùng vay đã lưu (đối chiếu với hợp đồng mỗi lần nhập)
+  add column if not exists co_phone text,                             -- số điện thoại (có Zalo) của người cùng vay
+  add column if not exists co_prev_name text,                         -- tên người cùng vay trước khi bị đổi (để cảnh báo khi thêm lại vào OA)
+  add column if not exists zalo_to_main boolean not null default true, -- gửi Zalo OA cho khách vay (số chính)
+  add column if not exists zalo_to_co boolean not null default false;  -- gửi Zalo OA cho người cùng vay (cần có co_phone)
+
+-- Nhãn "Người cùng vay" trong lịch sử cuộc gọi (call_log tạo ở docs mục 10.79; chưa tạo thì dòng này tự bỏ qua).
+alter table if exists public.call_log add column if not exists callee text;
+```
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

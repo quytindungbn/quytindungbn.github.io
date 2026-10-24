@@ -11,6 +11,7 @@
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { describeOrgPatch } from './lib/activityLabels.js';
+import { heirNamesOf } from './lib/coBorrower.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
 import { clearDeviceCaches } from './lib/kvCache.js';
@@ -838,6 +839,9 @@ function mapCustomerRow(row) {
     lockedUntil: row.locked_until ? new Date(row.locked_until).getTime() : null,
     lastLoginAt: row.last_login_at || null,
     isOnline: !!row.is_online,
+    // Người cùng vay (tên lấy từ hợp đồng, lưu theo khách) + số điện thoại + chọn nhận Zalo OA; coPrevName = tên người cũ khi vừa bị đổi.
+    coName: row.co_name || '', coPhone: row.co_phone || '', coPrevName: row.co_prev_name || '',
+    zaloToMain: row.zalo_to_main !== false, zaloToCo: !!row.zalo_to_co,
     createdAt: row.created_at,
   };
 }
@@ -894,6 +898,46 @@ export async function adminResetCustomerPassword(customerId, customPassword) {
   if (c) { c.mustChangePassword = true; c.failedAttempts = 0; c.lockedUntil = null; }
   notify();
   return res.tempPassword;
+}
+
+/**
+ * Người cùng vay của 1 khách: tên đã lưu theo khách, nếu chưa lưu thì lấy từ cột người cùng vay của các hợp đồng còn dư nợ.
+ * toCo chỉ có nghĩa khi đã có số điện thoại; luôn có ít nhất 1 người nhận Zalo OA (mặc định chỉ khách vay).
+ */
+export function getCoBorrower(customerId) {
+  const c = getCustomer(customerId);
+  if (!c) return null;
+  const heirs = heirNamesOf(listContractsByCustomer(customerId).filter((ct) => effectiveContractStatus(ct) !== 'da_tat_toan'), c.name);
+  const name = c.coName || heirs[0] || '';
+  const phone = name ? (c.coPhone || '') : '';
+  const toCo = !!name && !!phone && !!c.zaloToCo;
+  return { name, phone, toCo, toMain: toCo ? c.zaloToMain !== false : true, prevName: c.coPrevName || '' };
+}
+/**
+ * Lưu số điện thoại và/hoặc lựa chọn nhận Zalo OA ({ phone?, toMain?, toCo? }) của người cùng vay — ghi lên máy chủ
+ * (Edge Function create-account, type 'save-co-borrower'; cần quyền Quản lý OA hoặc Quản lý User) rồi cập nhật bộ nhớ.
+ */
+export async function saveCoBorrower(customerId, patch) {
+  const session = getSession();
+  const res = await callCreateAccountFunction(session?.sbToken, { type: 'save-co-borrower', customerId, ...patch });
+  if (!res.ok) {
+    const reason = String(res.reason || '');
+    throw new Error(/Thiếu hoặc sai "type"/.test(reason) ? 'Máy chủ chưa cập nhật để lưu người cùng vay — cần deploy lại Edge Function create-account (docs mục 10.82).' : (reason || 'Không lưu được người cùng vay.'));
+  }
+  const c = getCustomer(customerId);
+  if (c && res.co) {
+    c.coName = res.co.name || '';
+    c.coPhone = res.co.phone || '';
+    c.coPrevName = res.co.prevName || '';
+    c.zaloToMain = res.co.toMain !== false;
+    c.zaloToCo = !!res.co.toCo;
+  }
+  notify();
+}
+/** Đã đọc cảnh báo "người cùng vay đã đổi" (máy chủ tự xóa dấu này khi khách được thêm lại vào OA) — xóa dấu trong bộ nhớ. */
+export function dismissCoBorrowerChange(customerId) {
+  const c = getCustomer(customerId);
+  if (c) { c.coPrevName = ''; notify(); }
 }
 
 /**
@@ -1606,6 +1650,7 @@ export async function importFromPastedTable(text, { fullSync = false, fileName =
     skipped: skipped + (res.skipped || 0), errors: [...parseErrors, ...(res.errors || [])],
     newAccounts: res.newAccounts || [],
     summary: res.summary || null, details: res.details || null, historyId: res.historyId || null,
+    coBorrowerChanges: res.coBorrowerChanges || [], // khách đổi người cùng vay lần nhập này (đã bỏ khỏi danh sách OA)
   };
 }
 
@@ -2541,7 +2586,7 @@ export async function listActivityLog({ before, limit = 100 } = {}) {
 // docs/supabase-migration.md mục 10.79). Chỉ tải khi mở chi tiết 1 khách (loadCallsForCustomer), không tải sẵn lúc đăng nhập.
 // ------------------------------------------------------------
 function mapCallLogRow(row) {
-  return { id: row.id, customerId: row.customer_id, adminId: row.admin_id, adminName: row.admin_name, phone: row.phone || '', createdAt: row.created_at };
+  return { id: row.id, customerId: row.customer_id, adminId: row.admin_id, adminName: row.admin_name, phone: row.phone || '', callee: row.callee === 'co' ? 'co' : 'main', createdAt: row.created_at };
 }
 /** Các cuộc gọi tới 1 khách (của mọi người), mới nhất trước. */
 export function listCallsByCustomer(customerId) {
@@ -2566,14 +2611,14 @@ export async function loadCallsForCustomer(customerId) {
   } catch { return false; }
 }
 /** Ghi nhận ngay 1 lần bấm Gọi (hiện luôn trong lịch sử, không chờ mạng), lưu lên máy chủ ngầm — không chặn việc mở ứng dụng gọi điện. */
-export function logCall(customerId, phone) {
+export function logCall(customerId, phone, callee = 'main') {
   const session = getSession();
   if (!session || session.role !== 'admin') return null;
   const admin = getAdmin(session.id);
-  const row = { id: genId('call'), customer_id: customerId, admin_id: session.id, admin_name: (admin && admin.name) || 'Quản trị viên', phone: String(phone || '') };
+  const row = { id: genId('call'), customer_id: customerId, admin_id: session.id, admin_name: (admin && admin.name) || 'Quản trị viên', phone: String(phone || ''), ...(callee === 'co' ? { callee: 'co' } : {}) };
   const entry = mapCallLogRow({ ...row, created_at: new Date().toISOString() });
   (state.callLogs = state.callLogs || []).push(entry);
-  logAdminAction('call-customer', { customerId }); // ghi cả vào Nhật ký sử dụng (server tự tra tên + số điện thoại khách)
+  logAdminAction('call-customer', { customerId, ...(callee === 'co' ? { callee: 'co' } : {}) }); // ghi cả vào Nhật ký sử dụng (server tự tra tên + số điện thoại khách)
   try { getSupabaseClient(session.sbToken).from('call_log').insert(row).then(() => {}, () => {}); } catch { /* chưa lưu được thì thôi — lần gọi vẫn hiện trong phiên này */ }
   return entry;
 }

@@ -843,6 +843,7 @@ function callEntryHtml(call, myId) {
     <div class="cd-who">
       <span class="cd-av" style="background:${colorFor(call.adminId)}">${escapeHtml(initials(call.adminName))}</span>
       <b><span class="cd-nm">${escapeHtml(call.adminName)}</span>${mine ? '<em class="cd-me">Bạn</em>' : ''}</b>
+      ${call.callee === 'co' ? `<em class="cd-callee">${icon('users', 'icon-sm')}Người cùng vay</em>` : ''}
     </div>
   </li>`;
 }
@@ -865,6 +866,72 @@ function callCardHtml(calls, { myId }) {
       ${calls.length ? `<span class="cd-seg" role="group" aria-label="Lọc cuộc gọi"><button type="button" class="on" data-calls-filter="all">Tất cả</button><button type="button" data-calls-filter="mine">Của tôi</button></span>` : ''}
     </h3>
     <div id="cd-call-list">${callListHtml(calls, myId)}</div>`;
+}
+
+// ------------------------------------------------------------
+// Chi tiết khách hàng — thẻ "Liên hệ & Zalo OA": sẵn 2 dòng — Khách vay và Người cùng vay (tên lấy tự động từ hợp đồng, lưu theo khách).
+// Mỗi dòng: tên + số điện thoại + nút Gọi; ô tick bên dưới = gửi Zalo OA tới người đó (khách vay mặc định có, người cùng vay phải
+// nhập số điện thoại trước nếu chưa có). Luôn còn ít nhất 1 người nhận. Người cùng vay đổi người → bỏ khỏi danh sách OA, cảnh báo khi thêm lại.
+// ------------------------------------------------------------
+function contactsInnerHtml(c, co, { canOa, canEdit, editing = false, pending = false }) {
+  const mainDial = String(c.phone || '').replace(/[^\d+]/g, '');
+  const coDial = String(co.phone || '').replace(/[^\d+]/g, '');
+  const tick = (key, on, title, sub, { disabled = false, warn = false } = {}) => canOa
+    ? `<label class="cd-pp-tick${on ? ' on' : ''}${warn ? ' is-warn' : ''}${disabled ? ' is-disabled' : ''}" data-pp-tick="${key}">
+        <input type="checkbox" ${on ? 'checked' : ''} ${disabled ? 'disabled' : ''}><i class="cd-pp-box">${icon('check', 'icon-sm')}</i>
+        <span><b>${title}</b><small>${sub}</small></span></label>`
+    : '';
+  const callBtn = (key, dial, label) => dial
+    ? `<a class="cd-pp-call" href="tel:${escapeHtml(dial)}" data-pp-call="${key}" aria-label="${label}" title="${label}">${icon('phone')}</a>`
+    : `<span class="cd-pp-call is-off" aria-hidden="true">${icon('phone')}</span>`;
+  const single = !canOa; // không có quyền OA: chỉ 1 dòng Người cùng vay (số của khách vay đã có ở thanh Gọi phía trên)
+  const mainRow = single ? '' : `<div class="cd-pp${co.toMain ? ' is-on' : ''}">
+      <div class="cd-pp-top">
+        <span class="cd-pp-av" style="background:${colorFor(c.id)}">${escapeHtml(initials(c.name))}</span>
+        <div class="cd-pp-tx"><small>Khách vay</small><b>${escapeHtml(c.name)}</b>
+          <span class="cd-pp-ph">${c.phone ? escapeHtml(formatPhoneDisplay(c.phone)) : '<i class="is-none">Chưa có số điện thoại</i>'}</span></div>
+        ${callBtn('main', mainDial, 'Gọi khách vay')}
+      </div>
+      ${tick('main', co.toMain, 'Gửi Zalo OA tới khách vay', co.toMain ? 'Đang nhận tin' : 'Không gửi', { disabled: !c.phone })}
+    </div>`;
+  let coRow;
+  if (!co.name) {
+    coRow = `<div class="cd-pp is-empty">
+      <div class="cd-pp-top">
+        <span class="cd-pp-av is-empty">${icon('users')}</span>
+        <div class="cd-pp-tx"><small>Người cùng vay</small><b class="is-none">Không có</b><span class="cd-pp-ph"><i class="is-none">Hợp đồng không ghi người cùng vay</i></span></div>
+        ${callBtn('co', '', '')}
+      </div></div>`;
+  } else {
+    const phoneLine = editing ? ''
+      : co.phone
+        ? `<span class="cd-pp-ph">${escapeHtml(formatPhoneDisplay(co.phone))}${canEdit ? `<button type="button" class="cd-pp-pen" data-pp-edit aria-label="Sửa số điện thoại" title="Sửa số điện thoại">${icon('edit', 'icon-sm')}</button>` : ''}</span>`
+        : canEdit
+          ? `<button type="button" class="cd-pp-addph" data-pp-edit>${icon('plus', 'icon-sm')} Nhập số điện thoại</button>`
+          : '<span class="cd-pp-ph"><i class="is-none">Chưa có số điện thoại</i></span>';
+    const form = editing ? `<div class="cd-pp-form">
+        <label for="pp-phone">${pending ? 'Nhập số điện thoại để gửi Zalo OA cho người này' : 'Số điện thoại người cùng vay'}</label>
+        <div class="cd-pp-formrow"><input class="cd-pp-in" id="pp-phone" type="tel" inputmode="tel" maxlength="16" placeholder="VD: 0988 777 666" value="${escapeHtml(co.phone ? formatPhoneDisplay(co.phone) : '')}">
+          <button type="button" class="btn btn-primary btn-sm" data-pp-save>Lưu</button><button type="button" class="btn btn-outline btn-sm" data-pp-cancel>Hủy</button></div>
+        <p>Có Zalo thì mới nhận được tin OA. Số này lưu cùng thông tin khách hàng.</p></div>` : '';
+    coRow = `<div class="cd-pp${co.toCo ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
+      <div class="cd-pp-top">
+        <span class="cd-pp-av is-co" style="background:${colorFor(co.name)}">${escapeHtml(initials(co.name))}</span>
+        <div class="cd-pp-tx"><small>Người cùng vay</small><b>${escapeHtml(co.name)}</b>${phoneLine}</div>
+        ${callBtn('co', coDial, 'Gọi người cùng vay')}
+      </div>
+      ${form}
+      ${tick('co', co.toCo || pending, 'Gửi Zalo OA tới người cùng vay', pending ? 'Nhập số điện thoại để bật' : co.toCo ? 'Đang nhận tin' : co.phone ? 'Không gửi' : 'Cần số điện thoại', { warn: pending })}
+    </div>`;
+  }
+  const warn = co.prevName && co.name
+    ? `<div class="cd-pp-warn">${icon('info')}<div><b>Người cùng vay đã đổi</b><span>Hợp đồng mới ghi <b>${escapeHtml(co.name)}</b> thay cho <b>${escapeHtml(co.prevName)}</b>. Khách đã được bỏ khỏi danh sách OA và số điện thoại cũ đã xóa — nhập số của người mới nếu muốn gửi cho họ.</span></div></div>`
+    : '';
+  const summary = canOa && co.name
+    ? `<p class="cd-pp-sum"><i></i>Đang gửi Zalo OA: <b>${co.toCo && co.toMain ? 'Cả 2 người' : co.toCo ? 'Chỉ người cùng vay' : 'Chỉ khách vay'}</b></p>`
+    : '';
+  return `<h3 class="cd-h"><span>${single ? 'Người cùng vay' : 'Liên hệ &amp; Zalo OA'}</span><small>Tên người cùng vay lấy từ hợp đồng</small></h3>
+    ${warn}<div class="cd-pp-list${single ? ' is-single' : ''}">${mainRow}${coRow}</div>${summary}`;
 }
 
 /** Thẻ hợp đồng gọn trong chi tiết khách hàng: vạch màu theo tình trạng, mã + nhãn tình trạng, gốc/lãi bên phải; bấm vào mở chi tiết hợp đồng. */
@@ -904,6 +971,15 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const canEditProfile = S.isSuperAdmin(myId);
   const canDeleteUse = canEditProfile && context === 'use';
   const hasActions = canManageUse;
+  // Khung Thao tác: các ô nhỏ (icon + chữ) trên cùng 1 hàng — Xóa Use cũng là 1 ô (đỏ nhạt), không còn nút to tách riêng.
+  const tile = (id, ico, label, cls = '') => `<button type="button" class="cd-tile${cls ? ' ' + cls : ''}" id="${id}">${icon(ico)}<span>${label}</span></button>`;
+  const actionTiles = hasActions ? [
+    tile('btn-reset-pw', 'key', 'Cấp lại mật khẩu'),
+    ...(logged ? [tile('btn-force-logout', 'logout', 'Đăng xuất')] : []),
+    tile('btn-send-noti', 'bell', 'Gửi thông báo'),
+    ...(canEditProfile ? [tile('btn-edit-cust', 'edit', 'Sửa')] : []),
+    ...(canDeleteUse ? [tile('btn-del-cust', 'trash', 'Xóa Use', 'is-danger')] : []),
+  ] : [];
   const addressText = c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ');
 
   const chip = (on, text, extra = '') => `<span class="cd-chip ${on ? 'on' : 'off'}" ${extra}><i></i>${text}</span>`;
@@ -925,6 +1001,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       </header>
       <div class="cd-callbar" id="cd-callbar">${callBarHtml(calls, dialPhone, c)}</div>
       <div class="cd-cols">
+        <section class="cd-card cd-pp-card" id="cd-pp-card">${contactsInnerHtml(c, S.getCoBorrower(customerId), { canOa: canManageZalo, canEdit: canManageZalo || canManageUse })}</section>
         <div class="cd-col-main">
           <section class="cd-card" id="cd-calls-card">${callCardHtml(calls, { myId })}</section>
         </div>
@@ -935,13 +1012,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           </section>
           ${hasActions ? `<section class="cd-card cd-actions">
             <h3 class="cd-h"><span>Thao tác</span></h3>
-            <div class="cd-btns">
-              <button class="btn btn-outline btn-sm" id="btn-reset-pw">${icon('key', 'icon-sm')} Cấp lại mật khẩu</button>
-              ${logged ? `<button class="btn btn-outline btn-sm" id="btn-force-logout">${icon('logout', 'icon-sm')} Đăng xuất</button>` : ''}
-              <button class="btn btn-outline btn-sm" id="btn-send-noti">${icon('bell', 'icon-sm')} Gửi thông báo</button>
-              ${canEditProfile ? `<button class="btn btn-outline btn-sm" id="btn-edit-cust">${icon('edit', 'icon-sm')} Sửa</button>` : ''}
-              ${canDeleteUse ? `<button class="btn btn-danger-outline btn-sm" id="btn-del-cust">${icon('trash', 'icon-sm')} Xóa Use</button>` : ''}
-            </div>
+            <div class="cd-btns" style="--n:${actionTiles.length}">${actionTiles.join('')}</div>
           </section>` : ''}
         </aside>
       </div>
@@ -1009,10 +1080,22 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       }
       function bindZaloButtons() {
         const addZaloBtn = sheet.querySelector('#btn-add-zalo-cust');
-        if (addZaloBtn) addZaloBtn.addEventListener('click', async () => {
+        const doAddZalo = async () => {
           addZaloBtn.disabled = true;
-          try { await S.addZaloCustomer(customerId); toast('Đã thêm vào danh sách OA', 'success'); updateZaloUi(true); }
+          try { await S.addZaloCustomer(customerId); S.dismissCoBorrowerChange(customerId); toast('Đã thêm vào danh sách OA', 'success'); updateZaloUi(true); sheet.querySelector('#cd-pp-card')?.querySelector('.cd-pp-warn')?.remove(); }
           catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); addZaloBtn.disabled = false; }
+        };
+        if (addZaloBtn) addZaloBtn.addEventListener('click', () => {
+          const co = S.getCoBorrower(customerId);
+          if (co && co.prevName) { // người cùng vay trong hợp đồng đã đổi từ lần trước: cảnh báo trước khi thêm lại
+            confirmDialog({
+              title: 'Người cùng vay đã thay đổi',
+              message: `Hợp đồng mới ghi người cùng vay là <b>${escapeHtml(co.name)}</b>, khác với <b>${escapeHtml(co.prevName)}</b> đã lưu trước đó. Số điện thoại cũ đã bị xóa. Chỉ gửi Zalo OA cho khách vay, hoặc nhập số của người mới trước khi gửi cho họ. Vẫn thêm khách vào danh sách OA?`,
+              confirmLabel: 'Vẫn thêm vào OA', onConfirm: doAddZalo,
+            });
+            return;
+          }
+          doAddZalo();
         });
         const removeZaloBtn = sheet.querySelector('#btn-remove-zalo-cust');
         if (removeZaloBtn) removeZaloBtn.addEventListener('click', () => {
@@ -1028,6 +1111,51 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         });
       }
       bindZaloButtons();
+      // Thẻ Liên hệ & Zalo OA: gọi (ghi lịch sử), tick gửi Zalo OA, nhập/sửa số điện thoại người cùng vay.
+      const ppCard = sheet.querySelector('#cd-pp-card');
+      if (ppCard) {
+        const canEditCo = canManageZalo || canManageUse;
+        let ppEditing = false, ppPending = false;
+        const drawPp = () => {
+          ppCard.innerHTML = contactsInnerHtml(S.getCustomer(customerId) || c, S.getCoBorrower(customerId), { canOa: canManageZalo, canEdit: canEditCo, editing: ppEditing, pending: ppPending });
+          if (ppEditing) ppCard.querySelector('#pp-phone')?.focus();
+        };
+        const coNow = () => S.getCoBorrower(customerId);
+        ppCard.addEventListener('click', async (e) => {
+          const call = e.target.closest('[data-pp-call]');
+          if (call) {
+            const co = coNow();
+            if (call.dataset.ppCall === 'co') S.logCall(customerId, co.phone, 'co'); else S.logCall(customerId, c.phone);
+            redrawCalls(); return;
+          }
+          if (e.target.closest('[data-pp-edit]')) { ppEditing = true; ppPending = false; drawPp(); return; }
+          if (e.target.closest('[data-pp-cancel]')) { ppEditing = false; ppPending = false; drawPp(); return; }
+          if (e.target.closest('[data-pp-save]')) {
+            const digits = ppCard.querySelector('#pp-phone').value.replace(/[^\d+]/g, '');
+            if (!/^(\+?84|0)\d{8,10}$/.test(digits)) { toast('Số điện thoại chưa đúng', 'error'); return; }
+            if (digits.replace(/^\+?84/, '0') === String(c.phone || '').replace(/[^\d]/g, '').replace(/^84/, '0')) { toast('Trùng số của khách vay', 'error'); return; }
+            try {
+              await S.saveCoBorrower(customerId, { phone: digits, ...(ppPending ? { toCo: true } : {}) });
+              S.logUiAction('co-borrower', `Lưu số điện thoại người cùng vay "**${coNow().name}**" của khách hàng "**${c.name}**"`);
+              toast(ppPending ? 'Đã lưu số và bật gửi Zalo OA cho người cùng vay' : 'Đã lưu số điện thoại người cùng vay', 'success');
+              ppEditing = false; ppPending = false; drawPp();
+            } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+          }
+        });
+        ppCard.addEventListener('change', async (e) => {
+          const wrap = e.target.closest('[data-pp-tick]');
+          if (!wrap) return;
+          const key = wrap.dataset.ppTick, on = e.target.checked, co = coNow();
+          if (key === 'co' && on && !co.phone) { ppEditing = true; ppPending = true; drawPp(); return; } // chưa có số: yêu cầu nhập trước
+          const next = key === 'main' ? { toMain: on, toCo: co.toCo } : { toMain: co.toMain, toCo: on };
+          if (!next.toMain && !next.toCo) { e.target.checked = true; toast('Cần giữ ít nhất 1 người nhận Zalo OA', 'error'); return; }
+          try {
+            await S.saveCoBorrower(customerId, next);
+            S.logUiAction('co-borrower', `Chọn người nhận Zalo OA của khách hàng "**${c.name}**": ${next.toMain && next.toCo ? 'cả 2 người' : next.toCo ? 'chỉ người cùng vay' : 'chỉ khách vay'}`);
+            ppEditing = false; ppPending = false; drawPp();
+          } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); drawPp(); }
+        });
+      }
       if (!hasActions) return;
       sheet.querySelector('#btn-reset-pw').addEventListener('click', () => {
         openResetPasswordModal({
@@ -1193,7 +1321,8 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = compact ? 'Đang gửi' : `${icon('refresh', 'icon-sm')} Đang gửi...`;
   try {
     const res = await S.sendZaloManual(contractId);
-    toast(res.ok ? 'Đã gửi tin Zalo OA cho khách' : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error', /chưa đăng ký Zalo/.test(res.reason || '') ? 7000 : undefined);
+    const okText = res.sent >= 2 ? 'Đã gửi tin Zalo OA cho khách vay và người cùng vay' : res.sentTo === 'co' ? 'Đã gửi tin Zalo OA cho người cùng vay' : 'Đã gửi tin Zalo OA cho khách';
+    toast(res.ok ? (res.note ? `${okText}. ${res.note}` : okText) : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error', res.note || /chưa đăng ký Zalo/.test(res.reason || '') ? 7000 : undefined);
     if (res.ok) {
       const sentAt = new Date().toISOString();
       manualOaSentAt.set(contractId, sentAt);
@@ -1630,6 +1759,7 @@ function openImportModal() {
             ${res.deletedContracts ? `<div class="text-sm mb-8" style="color:var(--warning)">${icon('alert', 'icon-sm')} Đã xóa ${res.deletedContracts} hợp đồng hết dư nợ hoặc không còn trong file này</div>` : ''}
             ${res.zaloAutoSendMigrated ? `<div class="text-sm mb-8" style="color:var(--success)">${icon('message', 'icon-sm')} Đã tự chuyển ${res.zaloAutoSendMigrated} lựa chọn "Gửi tin tự động" sang hợp đồng mới của cùng khách (khách vẫn còn vay, chỉ đổi số hợp đồng)</div>` : ''}
             ${res.deletedCustomers ? `<div class="text-sm mb-8" style="color:var(--warning)">${icon('alert', 'icon-sm')} Đã dọn ${res.deletedCustomers} hồ sơ không còn hợp đồng nào (chưa có tài khoản Use)</div>` : ''}
+            ${(res.coBorrowerChanges || []).length ? `<div class="text-sm mb-8" style="color:var(--warning)">${icon('alert', 'icon-sm')} ${res.coBorrowerChanges.length} khách đổi người cùng vay, đã bỏ khỏi danh sách OA: ${res.coBorrowerChanges.slice(0, 5).map((x) => `${escapeHtml(x.name)} (${escapeHtml(x.prev)} → ${escapeHtml(x.now)})`).join('; ')}${res.coBorrowerChanges.length > 5 ? '…' : ''}</div>` : ''}
             ${res.newAccounts.length ? `
               <div class="fw-700 text-sm mb-6">Tài khoản Use mới tự tạo (gửi cho khách hàng):</div>
               ${res.newAccounts.map((a) => `<div class="oc-line"><span>${a.name} (${a.cccd})</span><b>${a.tempPassword}</b></div>`).join('')}

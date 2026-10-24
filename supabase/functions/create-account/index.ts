@@ -658,7 +658,9 @@ async function removeCustomerFromZaloLists(customerId: string): Promise<void> {
 async function sendZaloTemplateLogged(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string; triggeredBy: 'auto' | 'manual'; triggeredByAdminId?: string | null;
-}): Promise<{ ok: boolean; reason?: string }> {
+  /** true khi đang gửi cho 2 số cùng lúc: chưa tự bỏ khách khỏi OA khi 1 số báo "chưa đăng ký Zalo" — để nơi gọi quyết định theo kết quả của cả 2 số. */
+  deferNoAccount?: boolean;
+}): Promise<{ ok: boolean; reason?: string; noAccount?: boolean }> {
   let status: 'success' | 'error' = 'error';
   let errorMessage = '';
   let noAccount = false;
@@ -680,13 +682,13 @@ async function sendZaloTemplateLogged(opts: {
   } catch (e: any) {
     errorMessage = String(e?.message || e);
   }
-  if (noAccount) await removeCustomerFromZaloLists(opts.customerId);
+  if (noAccount && !opts.deferNoAccount) await removeCustomerFromZaloLists(opts.customerId);
   await admin.from('zalo_send_log').insert({
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null,
     triggered_by: opts.triggeredBy, triggered_by_admin_id: opts.triggeredByAdminId || null,
   });
-  return status === 'success' ? { ok: true } : { ok: false, reason: errorMessage || 'Gửi thất bại.' };
+  return status === 'success' ? { ok: true } : { ok: false, reason: errorMessage || 'Gửi thất bại.', noAccount };
 }
 
 // ---------- Nhập Excel: so sánh trước/sau, lịch sử các lần nhập, quay lại bản trước ----------
@@ -768,6 +770,109 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+// ---------- Người cùng vay (cột D file số 1 → contracts.heir_name; xem docs mục 10.82) ----------
+// Bản sao của js/lib/coBorrower.js (có kiểm thử ở tests/coBorrower.test.mjs) — sửa 1 nơi thì sửa cả nơi kia.
+function normPersonName(name: unknown): string {
+  return String(name ?? '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+function samePerson(a: unknown, b: unknown): boolean {
+  const x = normPersonName(a);
+  return !!x && x === normPersonName(b);
+}
+/** Các tên người cùng vay trong danh sách hợp đồng (heir_name), không trùng nhau, bỏ tên trống và tên trùng chính khách vay. */
+function heirNamesOfRows(contracts: any[], customerName: string): string[] {
+  const out: string[] = [];
+  for (const ct of contracts || []) {
+    const n = String(ct?.heir_name ?? '').replace(/\s+/g, ' ').trim();
+    if (!n || samePerson(n, customerName)) continue;
+    if (!out.some((x) => samePerson(x, n))) out.push(n);
+  }
+  return out;
+}
+/** none = hợp đồng không ghi người cùng vay (giữ nguyên) · fill = chưa lưu ai → lưu · keep = đúng tên đã lưu → giữ như cũ · replace = khác tên → thay người mới. */
+function reconcileCoBorrower(savedName: unknown, heirNames: string[]): { action: 'none' | 'fill' | 'keep' | 'replace'; name: string; prev?: string } {
+  const names = heirNames || [];
+  if (!names.length) return { action: 'none', name: String(savedName ?? '') };
+  if (!String(savedName ?? '').trim()) return { action: 'fill', name: names[0] };
+  if (names.some((n) => samePerson(n, savedName))) return { action: 'keep', name: String(savedName) };
+  return { action: 'replace', name: names[0], prev: String(savedName) };
+}
+type ZaloRecipient = { who: 'main' | 'co'; phone: string };
+/** Những số sẽ nhận tin Zalo OA của 1 khách: mặc định chỉ số chính; luôn còn ít nhất 1 người; người cùng vay chỉ khi đã có số + được chọn. */
+function zaloRecipientsOf(c: any): ZaloRecipient[] {
+  const main = String(c?.phone ?? '').trim();
+  const co = String(c?.co_phone ?? '').trim();
+  const toCo = c?.zalo_to_co === true && !!co;
+  const toMain = c?.zalo_to_main !== false || !toCo;
+  const out: ZaloRecipient[] = [];
+  if (toMain && main) out.push({ who: 'main', phone: main });
+  if (toCo) out.push({ who: 'co', phone: co });
+  return out;
+}
+/** Số điện thoại hợp lệ (0xxxxxxxxx hoặc +84/84…, 9–11 chữ số sau đầu số) → chuỗi chỉ gồm chữ số/dấu +; sai thì null — y hệt kiểm tra ở màn hình. */
+function cleanVnPhone(raw: unknown): string | null {
+  const digits = String(raw ?? '').replace(/[^\d+]/g, '');
+  return /^(\+?84|0)\d{8,10}$/.test(digits) ? digits : null;
+}
+function samePhone(a: unknown, b: unknown): boolean {
+  const n = (v: unknown) => String(v ?? '').replace(/[^\d]/g, '').replace(/^84/, '0');
+  return !!n(a) && n(a) === n(b);
+}
+/** Khách được thêm vào Danh sách OA (lại) thì xóa dấu "người cùng vay vừa đổi" — cảnh báo đã được xem. Lỗi/thiếu cột thì bỏ qua. */
+async function clearCoPrevName(customerId: string): Promise<void> {
+  try { await admin.from('customers').update({ co_prev_name: null }).eq('id', customerId).not('co_prev_name', 'is', null); } catch { /* bỏ qua */ }
+}
+/**
+ * Sau khi nhập file: đối chiếu người cùng vay (cột D) của các khách vừa nhập với người đã lưu theo khách —
+ *  · đúng họ tên → giữ nguyên (số điện thoại + lựa chọn gửi Zalo OA như cũ);
+ *  · chưa lưu ai → lưu tên trong hợp đồng;
+ *  · khác tên → thay người mới, xóa số cũ, đặt lại chỉ gửi khách vay, ghi tên cũ (co_prev_name) để cảnh báo khi thêm lại,
+ *    và BỎ khách khỏi Danh sách OA + gửi tự động.
+ * KHÔNG BAO GIỜ làm hỏng lần nhập: chưa chạy SQL (thiếu cột) hoặc lỗi gì thì bỏ qua.
+ */
+async function reconcileCoBorrowersAfterImport(customerIds: string[]): Promise<{ changes: { name: string; prev: string; now: string }[]; filled: number; skipped?: string }> {
+  const out = { changes: [] as { name: string; prev: string; now: string }[], filled: 0 };
+  if (!customerIds.length) return out;
+  try {
+    const custRows: any[] = [];
+    for (const part of chunkArray(customerIds, 150)) {
+      const { data, error } = await admin.from('customers').select('id, name, co_name').in('id', part);
+      if (error) return { ...out, skipped: 'chưa chạy SQL cột người cùng vay' };
+      custRows.push(...(data || []));
+    }
+    const ctByCustomer = new Map<string, any[]>();
+    for (const part of chunkArray(customerIds, 150)) {
+      const { data, error } = await admin.from('contracts').select('customer_id, heir_name').in('customer_id', part).gt('balance', 0);
+      if (error) return { ...out, skipped: error.message };
+      for (const r of data || []) ctByCustomer.set((r as any).customer_id, [...(ctByCustomer.get((r as any).customer_id) || []), r]);
+    }
+    const toRemoveFromOa: string[] = [];
+    const updates: { id: string; patch: Record<string, unknown> }[] = [];
+    for (const c of custRows) {
+      const rec = reconcileCoBorrower(c.co_name, heirNamesOfRows(ctByCustomer.get(c.id) || [], c.name));
+      if (rec.action === 'fill') {
+        updates.push({ id: c.id, patch: { co_name: rec.name } });
+        out.filled++;
+      } else if (rec.action === 'replace') {
+        updates.push({ id: c.id, patch: { co_name: rec.name, co_prev_name: rec.prev, co_phone: null, zalo_to_main: true, zalo_to_co: false } });
+        toRemoveFromOa.push(c.id);
+        out.changes.push({ name: c.name || '', prev: rec.prev || '', now: rec.name });
+      }
+    }
+    await mapLimit(updates, 8, async (u) => {
+      const { error } = await admin.from('customers').update(u.patch).eq('id', u.id);
+      if (error) console.error('Lỗi cập nhật người cùng vay:', error.message);
+    });
+    for (const part of chunkArray(toRemoveFromOa, 150)) {
+      await admin.from('zalo_auto_send_list').delete().in('customer_id', part);
+      await admin.from('zalo_customers').delete().in('customer_id', part);
+    }
+  } catch (e: any) {
+    console.error('Lỗi đối chiếu người cùng vay:', e);
+    return { ...out, skipped: String(e?.message || e) };
+  }
   return out;
 }
 /** Kiểm tra bảng import_history đã được tạo (chạy SQL) trước khi ghi bất cứ thứ gì. */
@@ -1200,7 +1305,12 @@ Deno.serve(async (req) => {
       // Bấm "Gọi" cho 1 khách (ở danh sách hoặc trong hồ sơ) — server tự tra tên + số điện thoại THẬT của khách, không tin mô tả từ client.
       const customerId = String(body.customerId || '').trim();
       if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
-      const { data: cust } = await admin.from('customers').select('name, phone').eq('id', customerId).maybeSingle();
+      let { data: cust, error: custErr } = await admin.from('customers').select('name, phone, co_name, co_phone').eq('id', customerId).maybeSingle();
+      if (custErr) ({ data: cust } = await admin.from('customers').select('name, phone').eq('id', customerId).maybeSingle()); // chưa chạy SQL cột người cùng vay
+      if (body.callee === 'co') {
+        await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'call-customer', `Bấm gọi người cùng vay "**${(cust as any)?.co_name || 'người cùng vay'}**" của khách hàng "**${cust?.name || customerId}**"${(cust as any)?.co_phone ? ` (số **${(cust as any).co_phone}**)` : ''}`);
+        return json({ ok: true });
+      }
       await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'call-customer', `Bấm gọi khách hàng "**${cust?.name || customerId}**"${cust?.phone ? ` (số **${cust.phone}**)` : ''}`);
       return json({ ok: true });
     }
@@ -1280,6 +1390,65 @@ Deno.serve(async (req) => {
     await logActivity(caller.id, caller.name || caller.username, caller.username, 'send-manual-notification',
       `Gửi thông báo đẩy "**${title}**" cho khách hàng "**${notifiedCust?.name || customerId}**" (${sentCount} thiết bị)`);
     return json({ ok: true, sentCount });
+  }
+
+  // ===== type: 'save-co-borrower' — lưu số điện thoại + lựa chọn nhận Zalo OA của NGƯỜI CÙNG VAY (tên lấy từ hợp đồng, lưu theo khách).
+  // Body: { customerId, phone?, toMain?, toCo? }. Nhập/sửa SỐ ĐIỆN THOẠI: toàn quyền, hoặc có cờ Quản lý User, hoặc có cờ Quản lý OA.
+  // Đổi NGƯỜI NHẬN Zalo OA (toMain/toCo): toàn quyền hoặc có cờ Quản lý OA. Nhân viên chỉ làm được với khách trong Thôn/Xóm được gán.
+  // Luôn còn ít nhất 1 người nhận; bật gửi cho người cùng vay thì BẮT BUỘC đã có số điện thoại. =====
+  if (body.type === 'save-co-borrower') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const { data: caller, error: callerErr } = await admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerErr || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const isSuperCaller = caller.role === 'super';
+    const canOa = isSuperCaller || caller.can_manage_zalo_oa === true;
+    if (!canOa && caller.can_manage_users !== true) return json({ ok: false, reason: 'Bạn không có quyền sửa thông tin người cùng vay.' }, 403);
+    const customerId = String(body.customerId || '').trim();
+    if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+    const { data: customer } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
+    if (!customer) return json({ ok: false, reason: 'Không tìm thấy khách hàng.' }, 404);
+    if (!isSuperCaller) {
+      const allowedThon: string[] = caller.allowed_thon || [];
+      const allowedXom: string[] = caller.allowed_xom || [];
+      if (!(allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`))) {
+        return json({ ok: false, reason: 'Bạn không có quyền với khách hàng này.' }, 403);
+      }
+    }
+    if (!('co_name' in customer)) return json({ ok: false, reason: 'Chưa chạy SQL thêm cột người cùng vay trên Supabase (docs mục 10.82).' }, 500);
+    const { data: heirRows } = await admin.from('contracts').select('heir_name').eq('customer_id', customerId).gt('balance', 0);
+    const coName = String(customer.co_name || '').trim() || heirNamesOfRows(heirRows || [], customer.name || '')[0] || '';
+    if (!coName) return json({ ok: false, reason: 'Hợp đồng của khách này chưa ghi người cùng vay.' });
+    const patch: Record<string, unknown> = {};
+    if (!String(customer.co_name || '').trim()) patch.co_name = coName;
+    let coPhone: string = String(customer.co_phone || '');
+    if (body.phone !== undefined) {
+      const raw = String(body.phone ?? '').trim();
+      if (!raw) { coPhone = ''; patch.co_phone = null; }
+      else {
+        const clean = cleanVnPhone(raw);
+        if (!clean) return json({ ok: false, reason: 'Số điện thoại chưa đúng.' });
+        if (samePhone(clean, customer.phone)) return json({ ok: false, reason: 'Trùng số của khách vay.' });
+        coPhone = clean; patch.co_phone = clean;
+      }
+    }
+    const touchesRecipients = body.toMain !== undefined || body.toCo !== undefined;
+    if (touchesRecipients && !canOa) return json({ ok: false, reason: 'Chỉ quản trị viên có quyền Quản lý OA mới đổi được người nhận Zalo OA.' }, 403);
+    const toMain = body.toMain !== undefined ? body.toMain === true : customer.zalo_to_main !== false;
+    const toCoWanted = body.toCo !== undefined ? body.toCo === true : customer.zalo_to_co === true;
+    const toCo = toCoWanted && !!coPhone;
+    if (body.toCo === true && !coPhone) return json({ ok: false, reason: 'Cần nhập số điện thoại của người cùng vay trước khi bật gửi Zalo OA.' });
+    if (!toMain && !toCo) return json({ ok: false, reason: 'Cần giữ ít nhất 1 người nhận Zalo OA.' });
+    if (touchesRecipients || patch.co_phone !== undefined) { patch.zalo_to_main = toMain; patch.zalo_to_co = toCo; }
+    if (Object.keys(patch).length) {
+      const { error } = await admin.from('customers').update(patch).eq('id', customerId);
+      if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      await logActivity(caller.id, caller.name || caller.username, caller.username, 'save-co-borrower',
+        `Cập nhật người cùng vay "**${coName}**" của khách hàng "**${customer.name || customerId}**"${touchesRecipients ? ` — gửi Zalo OA: ${toMain && toCo ? 'cả 2 người' : toCo ? 'chỉ người cùng vay' : 'chỉ khách vay'}` : ''}`);
+    }
+    return json({ ok: true, co: { name: coName, phone: coPhone, prevName: String(customer.co_prev_name || ''), toMain, toCo } });
   }
 
   // Tổng quan "ai đã thêm khách/hợp đồng nào vào gửi tự động" của MỌI người —
@@ -1405,6 +1574,7 @@ Deno.serve(async (req) => {
     async function ensureZaloCustomer(customerId: string) {
       await admin.from('zalo_customers').insert({ customer_id: customerId, added_by: caller.id }).select().maybeSingle();
       // Bỏ qua lỗi trùng (đã có sẵn) — chỉ cần đảm bảo tồn tại, không cần biết vừa tạo mới hay đã có.
+      await clearCoPrevName(customerId);
     }
 
     if (body.type === 'add-zalo-customer') {
@@ -1416,6 +1586,7 @@ Deno.serve(async (req) => {
       if (existing) return json({ ok: false, reason: 'Khách hàng này đã có trong danh sách OA rồi.' });
       const { error } = await admin.from('zalo_customers').insert({ customer_id: customerId, added_by: caller.id });
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      await clearCoPrevName(customerId);
       await logActivity(caller.id, caller.name || caller.username, caller.username, 'add-zalo-customer', `Thêm khách hàng "**${scope.customer?.name || customerId}**" vào Danh sách OA`);
       return json({ ok: true });
     }
@@ -1593,7 +1764,9 @@ Deno.serve(async (req) => {
         const inScope = allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`);
         if (!inScope) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       }
-      if (!customer.phone) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
+      // Người nhận: mặc định chỉ số chính; khách đã nhập số người cùng vay + chọn gửi thì gửi riêng số đó hoặc cả 2 số.
+      const recipients = zaloRecipientsOf(customer);
+      if (!recipients.length) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
 
       // PHẢI đã có sẵn trong Tầng 1 "Danh sách OA" mới gửi tay được — KHÔNG
       // còn tự thêm ngầm lúc gửi như trước nữa (đổi theo yêu cầu: admin phải
@@ -1649,10 +1822,26 @@ Deno.serve(async (req) => {
         // Ngày gửi tin (hôm nay) — KHÁC với NGAY_DAO_HAN (ngày đến hạn thật của hợp đồng/kỳ).
         NGAY_KE_HOACH: formatDateVNZalo(now.toISOString()),
       };
-      const result = await sendZaloTemplateLogged({
-        accessToken, phone: customer.phone, templateId, templateData,
+      const results = await Promise.all(recipients.map((r) => sendZaloTemplateLogged({
+        accessToken, phone: r.phone, templateId, templateData,
         contractId, customerId: customer.id, kind, triggeredBy: 'manual', triggeredByAdminId: caller.id,
-      });
+        deferNoAccount: recipients.length > 1,
+      })));
+      const sentCount = results.filter((r) => r.ok).length;
+      const failedRecipients = recipients.map((r, i) => ({ who: r.who, res: results[i] })).filter((x) => !x.res.ok);
+      if (recipients.length > 1) {
+        // Số nào báo "chưa đăng ký Zalo": cả 2 số đều vậy thì bỏ khách khỏi OA như cũ; chỉ 1 số thì tắt riêng số đó (tin vẫn tới số còn lại).
+        const noAcc = failedRecipients.filter((x) => x.res.noAccount);
+        if (noAcc.length === recipients.length) {
+          await removeCustomerFromZaloLists(customer.id);
+          await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', customer.id);
+        } else {
+          for (const x of noAcc) await admin.from('customers').update(x.who === 'co' ? { zalo_to_co: false } : { zalo_to_main: false }).eq('id', customer.id);
+        }
+      }
+      const result: { ok: boolean; reason?: string } = sentCount
+        ? { ok: true }
+        : { ok: false, reason: [...new Set(failedRecipients.map((x) => `${recipients.length > 1 ? (x.who === 'co' ? 'Người cùng vay: ' : 'Khách vay: ') : ''}${x.res.reason || 'Gửi thất bại.'}`))].join(' · ') };
       // Đã có log riêng "Quản lý gửi tin" (bảng zalo_send_log, GHI ĐỦ + CÓ ĐỢI
       // cho MỌI lượt gửi kể cả lỗi — xem sendZaloTemplateLogged() ở trên) —
       // ghi thêm 1 dòng NGẮN vào Nhật ký sử dụng chung khi THÀNH CÔNG, để
@@ -1665,11 +1854,16 @@ Deno.serve(async (req) => {
       // trả response) — không sao vì zalo_send_log (nguồn THẬT của lượt gửi
       // này) vẫn luôn ghi đủ, không phụ thuộc dòng này.
       if (result.ok) {
+        const sentWho = recipients.filter((_, i) => results[i].ok).map((r) => (r.who === 'co' ? 'người cùng vay' : 'khách vay'));
         logActivity(caller.id, caller.name || caller.username, caller.username, 'send-zalo-manual',
-          `Gửi tay Zalo OA (mẫu **${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}**) cho khách hàng "**${customer.name || contractId}**"`)
+          `Gửi tay Zalo OA (mẫu **${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}**) cho khách hàng "**${customer.name || contractId}**"${recipients.length > 1 || recipients[0].who === 'co' ? ` — tới ${sentWho.join(' và ')}` : ''}`)
           .catch((e) => console.error('Lỗi ghi activity_log (send-zalo-manual):', e));
       }
-      return json(result.ok ? { ok: true } : { ok: false, reason: result.reason });
+      if (!result.ok) return json({ ok: false, reason: result.reason });
+      const failNote = failedRecipients.length
+        ? `Chưa gửi được cho ${failedRecipients.map((x) => (x.who === 'co' ? 'người cùng vay' : 'khách vay')).join(', ')}: ${failedRecipients[0].res.reason || 'Gửi thất bại.'}`
+        : '';
+      return json({ ok: true, sent: sentCount, sentTo: sentCount > 1 ? 'both' : recipients[results.findIndex((r) => r.ok)].who, ...(failNote ? { note: failNote } : {}) });
     }
   }
 
@@ -2736,14 +2930,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    const importSummary = buildImportSummary();
+    // Đối chiếu người cùng vay (cột D) của các khách vừa nhập — chạy SAU khi mọi bước ghi/dọn đã xong, không bao giờ làm hỏng lần nhập.
+    const coReconcile = await reconcileCoBorrowersAfterImport([...touchedCccds].map((cccd) => (customerByCccd.get(cccd) as any)?.id as string).filter(Boolean));
+    if (coReconcile.changes.length) (importDetails as any).coBorrowerChanges = coReconcile.changes;
+    const importSummary = { ...buildImportSummary(), coBorrowerChanged: coReconcile.changes.length };
     // Ghi nhật ký sử dụng và lưu lịch sử nhập CÙNG LÚC (2 việc độc lập nhau).
     const [, savedHistory] = await Promise.all([
       logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import',
         `Nhập dữ liệu Excel${fullSync ? ' (đồng bộ toàn bộ)' : ''}: **${result.contracts} hợp đồng, ${result.newAccounts.length} tài khoản mới**` +
         (result.deletedContracts ? `, xóa **${result.deletedContracts} hợp đồng**` : '') +
         (result.deletedCustomers ? `, xóa **${result.deletedCustomers} khách hàng**` : '') +
-        (result.skipped ? `, bỏ qua **${result.skipped} dòng lỗi**` : '')),
+        (result.skipped ? `, bỏ qua **${result.skipped} dòng lỗi**` : '') +
+        (coReconcile.changes.length ? `, đổi người cùng vay **${coReconcile.changes.length} khách** (đã bỏ khỏi danh sách OA)` : '')),
       saveImportHistory({
         adminId: callerAdmin.id, adminName: callerAdmin.name || callerAdmin.username, kind: 'import', fileName, fullSync,
         summary: importSummary, details: importDetails, snapshot: importSnapshot,
@@ -2751,7 +2949,7 @@ Deno.serve(async (req) => {
     ]);
     if (savedHistory.error) result.errors.push('Đã nhập xong nhưng chưa lưu được lịch sử nhập: ' + savedHistory.error);
     // snapshotsChanged: số liệu chốt các tháng có bị sửa không — app chỉ tải lại số liệu chốt (nặng) khi true.
-    return json({ ok: true, ...result, summary: importSummary, details: importDetails, historyId: savedHistory.id, snapshotsChanged: historySync.updated > 0 });
+    return json({ ok: true, ...result, summary: importSummary, details: importDetails, historyId: savedHistory.id, snapshotsChanged: historySync.updated > 0, coBorrowerChanges: coReconcile.changes });
   }
 
   return json({ ok: false, reason: 'Thiếu hoặc sai "type".' }, 400);
