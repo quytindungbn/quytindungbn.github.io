@@ -592,6 +592,7 @@ function showContractNoticeMenu(contractId, clientX, clientY, { anchor = null } 
       close();
       const opened = printNotice({ type, contract, customer, org: S.getOrg(), interest: S.accruedInterest(contract) });
       if (!opened) toast('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.', 'error');
+      else S.logUiAction('print-notice', `In ${type === 'due' ? 'Giấy báo hợp đồng đến hạn' : 'Thông báo nộp lãi'} cho hợp đồng **${contract.code}**${customer ? ` (khách hàng "**${customer.name}**")` : ''}`);
     });
   });
   menu.querySelector('button')?.focus();
@@ -1323,7 +1324,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         <div class="customer-contract-actions">
           <section class="customer-contract-panel">
             <h4>Liên hệ và gửi thông báo</h4>
-            ${customer && customer.phone && canPay ? `<a href="${buildSmsLink(customer, contract)}" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS cho khách</a>` : ''}
+            ${customer && customer.phone && canPay ? `<a href="${buildSmsLink(customer, contract)}" id="btn-sms-ct" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS cho khách</a>` : ''}
             ${customer && canPay ? `<button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-noti-app-ct">${icon('bell', 'icon-sm')} Thông báo qua ứng dụng</button>` : ''}
             ${customer && customer.phone && canPay && canManageZalo ? `
               <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
@@ -1421,10 +1422,12 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       if (settleCb) settleCb.addEventListener('change', (e) => { settleFull = e.target.checked; syncSettleFull(); updateQrTotal(); refreshQr(); });
       if (gocInput) bindMoneyInput(gocInput, 0, (v) => { gocAmount = v; syncLaiLock(); updateQrTotal(); refreshQrDebounced(); }, contract.balance);
       if (laiInput) bindMoneyInput(laiInput, accrued, (v) => { laiAmount = v; updateQrTotal(); refreshQrDebounced(); });
+      const smsBtn = sheet.querySelector('#btn-sms-ct');
+      if (smsBtn) smsBtn.addEventListener('click', () => S.logUiAction('sms', `Soạn tin nhắn SMS cho khách hàng "**${customer.name}**" (hợp đồng **${contract.code}**)`));
       const downloadQrBtn = sheet.querySelector('#btn-download-qr-ct');
-      if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`));
+      if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => { S.logUiAction('qr', `Tải mã QR thanh toán hợp đồng **${contract.code}**`); downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`); });
       const shareQrBtn = sheet.querySelector('#btn-share-qr-ct');
-      if (shareQrBtn) shareQrBtn.addEventListener('click', () => shareQrImage(qrImgEl.src, qrContent(gocAmount, laiAmount, settleFull).shown));
+      if (shareQrBtn) shareQrBtn.addEventListener('click', () => { S.logUiAction('qr', `Chia sẻ mã QR thanh toán hợp đồng **${contract.code}**`); shareQrImage(qrImgEl.src, qrContent(gocAmount, laiAmount, settleFull).shown); });
       // ---- Sửa "Tính đến ngày" / "Số ngày lãi": CHỈ ĐỂ TÍNH XEM (không lưu vào hợp đồng, mở lại là về hôm nay). Sửa ngày -> số ngày tự tính lại và ngược lại; lãi, "Cách tính lãi", ô Lãi và mã QR đổi theo. ----
       const accruedEl = sheet.querySelector('#ct-accrued');
       const asOfInput = sheet.querySelector('#ct-asof');
@@ -1514,6 +1517,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             nextInstallment: inst && inst.next ? { date: inst.next.dueDate, amount: inst.next.dueAmount } : null,
           });
           if (await copyText(text)) {
+            S.logUiAction('copy-loan', `Sao chép thông tin khoản vay hợp đồng **${contract.code}**`);
             toast('Đã sao chép thông tin khoản vay', 'success');
             copyBtn.classList.add('is-done'); copyBtn.innerHTML = icon('check');
             setTimeout(() => { copyBtn.classList.remove('is-done'); copyBtn.innerHTML = icon('copy'); }, 1800);

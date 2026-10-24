@@ -1196,6 +1196,27 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (body.action === 'call-customer') {
+      // Bấm "Gọi" cho 1 khách (ở danh sách hoặc trong hồ sơ) — server tự tra tên + số điện thoại THẬT của khách, không tin mô tả từ client.
+      const customerId = String(body.customerId || '').trim();
+      if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+      const { data: cust } = await admin.from('customers').select('name, phone').eq('id', customerId).maybeSingle();
+      await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'call-customer', `Bấm gọi khách hàng "**${cust?.name || customerId}**"${cust?.phone ? ` (số **${cust.phone}**)` : ''}`);
+      return json({ ok: true });
+    }
+
+    if (body.action === 'ui-action') {
+      // Ngoại lệ THỨ 3 cho phép mô tả từ client (cùng 'filter-customers' và 'nav-page' ở trên): các thao tác trên màn hình không gắn với 1 bản ghi để
+      // server tự tra cứu (tính lãi vay, in/xuất file, nhắn SMS, mã QR, sửa cài đặt, đổi mật khẩu, đăng xuất...). `kind` chỉ gồm chữ thường/số/gạch ngang
+      // (ghi vào cột action dạng "ui-<kind>"), mô tả bỏ ký tự điều khiển và cắt tối đa 200 ký tự — chặn spam/ghi rác dài. Người thao tác LUÔN lấy từ JWT.
+      const kind = String(body.kind || '').trim().toLowerCase();
+      if (!/^[a-z0-9-]{1,40}$/.test(kind)) return json({ ok: false, reason: 'Sai loại thao tác.' }, 400);
+      const label = String(body.label || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (!label) return json({ ok: false, reason: 'Thiếu mô tả thao tác.' }, 400);
+      await logActivity(selfAdmin.id, actorName, selfAdmin.username, `ui-${kind}`, label);
+      return json({ ok: true });
+    }
+
     return json({ ok: false, reason: 'Thiếu hoặc sai "action".' }, 400);
   }
 

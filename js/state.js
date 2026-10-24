@@ -10,6 +10,7 @@
 // thị TẠM lúc app chưa kết nối được mạng, không phải nguồn sự thật nữa.
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
+import { describeOrgPatch } from './lib/activityLabels.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
 import { clearDeviceCaches } from './lib/kvCache.js';
@@ -259,6 +260,7 @@ export async function updateOrg(patch) {
   const { error } = await sb.from('orgs').update(dbPatch).eq('id', state.org.id);
   if (error) throw new Error('Không lưu được cài đặt, thử lại sau.');
   Object.assign(state.org, patch);
+  logUiAction('settings', `Sửa cài đặt: **${describeOrgPatch(patch)}**`);
   notify();
 }
 
@@ -2268,6 +2270,7 @@ export async function setStaffPassword(id, newPassword, opts = {}) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'set-own-password', newPassword, mustChangePassword: !!opts.mustChangePassword });
   if (!res.ok) throw new Error(res.reason || 'Không đổi được mật khẩu.');
+  logUiAction('change-password', 'Tự đổi mật khẩu đăng nhập');
   const a = getAdmin(id);
   if (a) a.mustChangePassword = !!opts.mustChangePassword;
   notify();
@@ -2574,6 +2577,7 @@ export function logCall(customerId, phone) {
   const row = { id: genId('call'), customer_id: customerId, admin_id: session.id, admin_name: (admin && admin.name) || 'Quản trị viên', phone: String(phone || '') };
   const entry = mapCallLogRow({ ...row, created_at: new Date().toISOString() });
   (state.callLogs = state.callLogs || []).push(entry);
+  logAdminAction('call-customer', { customerId }); // ghi cả vào Nhật ký sử dụng (server tự tra tên + số điện thoại khách)
   try { getSupabaseClient(session.sbToken).from('call_log').insert(row).then(() => {}, () => {}); } catch { /* chưa lưu được thì thôi — lần gọi vẫn hiện trong phiên này */ }
   return entry;
 }
@@ -2594,6 +2598,14 @@ export function logAdminAction(action, extra = {}) {
   if (!session || session.role !== 'admin') return;
   callCreateAccountFunction(session.sbToken, { type: 'log-admin-action', action, ...extra }).catch(() => {});
 }
+/**
+ * Ghi 1 thao tác trên màn hình vào Nhật ký sử dụng (loại 'ui-action' của log-admin-action): `kind` = chữ thường/số/gạch ngang ngắn gọn
+ * (VD 'loan-calc', 'print-notice', 'settings'), `label` = câu mô tả (dùng **...** cho phần giá trị chính, xem js/lib/activityLabels.js).
+ * Chạy ngầm, không chặn UI; tự bỏ qua nếu không phải phiên quản trị viên.
+ */
+export function logUiAction(kind, label) {
+  logAdminAction('ui-action', { kind, label });
+}
 
 // ------------------------------------------------------------
 // Session (đăng nhập hiện tại)
@@ -2610,6 +2622,7 @@ export function setSession(session) { state.session = session; notify(); }
  */
 export function logout() {
   const session = state.session;
+  if (session && session.role === 'admin') logUiAction('logout', 'Đăng xuất khỏi hệ thống');
   if (session && session.role === 'customer') {
     callCreateAccountFunction(session.sbToken, { type: 'customer-logout' }).catch(() => {});
   }

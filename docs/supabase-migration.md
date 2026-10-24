@@ -3060,6 +3060,16 @@ create policy "staff sees own calls" on call_log
 
 **Việc cần bạn làm**: chạy đoạn SQL trên trong Supabase Dashboard → SQL Editor (chạy lại nhiều lần được). Chưa chạy thì app vẫn dùng bình thường nhưng lịch sử cuộc gọi chỉ hiện trong phiên đang mở (không lưu lại, không thấy trên máy khác).
 
+### 10.80. Nhật ký sử dụng: ghi thêm bấm Gọi và các thao tác còn thiếu (CẦN deploy lại Edge Function `create-account`, KHÔNG cần SQL)
+
+Trước đây Nhật ký (mục 10.33) đã ghi: đăng nhập, vào trang, lọc danh sách, xem khách/hợp đồng, trả lời chat, đổi trạng thái yêu cầu, gửi thông báo, thêm/bỏ OA, gửi Zalo, tạo/sửa/xóa tài khoản, cấp lại mật khẩu, đăng xuất khách, xóa hợp đồng, nhập Excel, chụp bảng cân đối... Mục này ghi thêm các thao tác còn thiếu, qua `type: 'log-admin-action'` của `supabase/functions/create-account/index.ts`:
+- `action: 'call-customer'` — **bấm Gọi** khách (nút "Gọi" ở danh sách hoặc "Gọi ngay" trong hồ sơ): "Bấm gọi khách hàng "X" (số 09...)". Server tự tra tên + số điện thoại thật từ bảng `customers`, không tin mô tả từ client.
+- `action: 'ui-action'` + `kind` + `label` — các thao tác trên màn hình không gắn với 1 bản ghi để server tự tra cứu. `kind` chỉ gồm chữ thường/số/gạch ngang (≤ 40), ghi vào cột `action` dạng `ui-<kind>`; `label` bỏ ký tự điều khiển, tối đa 200 ký tự; người thao tác luôn lấy từ JWT (client không giả được). Hiện được ghi: Tính lãi vay (`loan-calc`: số vay, lãi suất, thời hạn/số tiền trả — chỉ khi bấm "Tính lãi" hoặc Enter, tính lại tự động không ghi), tải Excel/PDF (`loan-calc-export`), In (`loan-calc-print`), Chia sẻ (`loan-calc-share`), In Thông báo nộp lãi / Giấy báo đến hạn (`print-notice`), Nhắn SMS (`sms`), tải/chia sẻ mã QR (`qr`), sao chép thông tin khoản vay (`copy-loan`), sửa Cài đặt (`settings` — chỉ ghi tên mục, không ghi giá trị), tự đổi mật khẩu (`change-password`), đăng xuất (`logout`).
+- Phía app: `logUiAction(kind, label)` và `logCall()` trong `js/state.js`; câu mô tả dựng ở `js/lib/activityLabels.js` (kiểm thử `tests/activityLabels.test.mjs`). Muốn ghi thêm 1 thao tác mới chỉ cần gọi `S.logUiAction('<kind>', '<câu mô tả>')` — không phải sửa/deploy Edge Function nữa.
+- Tài khoản có tên đăng nhập đúng `admin` vẫn KHÔNG bị ghi nhật ký (như `logActivity()` hiện có).
+
+**Việc cần bạn làm**: deploy lại **`create-account`** (file MỚI NHẤT) — Supabase Dashboard → Edge Functions → chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy. Chưa deploy thì app vẫn dùng bình thường, các thao tác mới chỉ chưa hiện trong Nhật ký.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

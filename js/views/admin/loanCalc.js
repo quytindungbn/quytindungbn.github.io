@@ -8,6 +8,7 @@ import { typeIntoViDate, deleteFromViDate, caretAfterDigits } from '../../lib/da
 import { summaryItems, loanCalcFileName, buildLoanCalcXlsx, printLoanCalc } from '../../lib/loanCalcExport.js';
 import { downloadBlob, XLSX_MIME } from '../../lib/xlsxWrite.js';
 import { buildLoanCalcPdf, shareOrDownload, PDF_MIME } from '../../lib/loanCalcPdf.js';
+import { describeLoanCalc } from '../../lib/activityLabels.js';
 
 // ------------------------------------------------------------
 // Trang "Tính lãi vay" (menu Công cụ) — tính nhanh lãi và số gốc + lãi phải trả từng tháng cho một khoản vay, không lưu vào hợp đồng.
@@ -237,6 +238,7 @@ let closeExportMenu = null;
 function downloadExcel() {
   const data = exportData(); if (!data) return;
   downloadBlob(buildLoanCalcXlsx(data), loanCalcFileName(new Date(), 'xlsx'), XLSX_MIME);
+  S.logUiAction('loan-calc-export', 'Tải file **Excel** bảng tính lãi vay');
   toast('Đã tải file Excel', 'success');
 }
 
@@ -248,6 +250,7 @@ async function downloadPdf() {
   try {
     const bytes = await job.promise;
     downloadBlob(bytes, loanCalcFileName(new Date(), 'pdf'), PDF_MIME);
+    S.logUiAction('loan-calc-export', 'Tải file **PDF** bảng tính lãi vay');
     toast('Đã tải file PDF', 'success');
   } catch (e) {
     toast('Không tạo được file PDF, hãy thử lại.', 'error');
@@ -313,6 +316,7 @@ async function sharePdf(btn) {
   try {
     const bytes = await job.promise;
     const result = await shareOrDownload(bytes, loanCalcFileName(new Date(), 'pdf'), 'Bảng tính lãi vay');
+    if (result !== 'need-tap') S.logUiAction('loan-calc-share', 'Chia sẻ bảng tính lãi vay (file PDF)');
     if (result === 'download') toast('Đã lưu file PDF', 'success');
     else if (result === 'need-tap') toast('File PDF đã sẵn sàng. Bấm Chia sẻ lần nữa để gửi.');
   } catch (e) {
@@ -369,6 +373,8 @@ export function render(contentEl, opts) {
     if (hint) hint.textContent = '';
   };
 
+  // Người dùng chủ động bấm "Tính lãi" (nút hoặc Enter): tính + ghi vào Nhật ký sử dụng (tính lại tự động khi đổi cách trả thì không ghi).
+  const pressCalc = () => { update(); S.logUiAction('loan-calc', describeLoanCalc(lastCalc ? lastCalc.inputs : null)); };
   const update = () => {
     shown = true;
     const calc = calculate();
@@ -388,6 +394,7 @@ export function render(contentEl, opts) {
     if (p) p.addEventListener('click', () => {
       const data = exportData(); if (!data) return;
       if (!printLoanCalc(data)) toast('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.', 'error');
+      else S.logUiAction('loan-calc-print', 'In bảng tính lãi vay');
     });
     if (sh) sh.addEventListener('click', () => sharePdf(sh));
   };
@@ -419,7 +426,7 @@ export function render(contentEl, opts) {
       }
       st[key] = el.value; after?.(); fitInput(el); clearOut();
     });
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); update(); el.blur(); } });
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); pressCalc(); el.blur(); } });
   };
   // Ô ngày dd/mm/yyyy: sửa ngay trong ô — gõ số đè lên số đang có và tự nhảy qua dấu "/", gõ "/" sang phần kế tiếp, xóa sát dấu "/" xóa luôn số bên cạnh (xem js/lib/dateInput.js).
   const bindDateInput = (id, key, after) => {
@@ -491,7 +498,7 @@ export function render(contentEl, opts) {
   contentEl.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => { st.kind = b.dataset.kind; setChecked(contentEl, '[data-kind]', 'kind', st.kind); refreshDue(); redoIfShown(); }));
   contentEl.querySelector('#lc-reset').addEventListener('click', () => { st = { ...DEFAULTS(), tab: st.tab }; render(contentEl); });
   contentEl.querySelector('#lc-go').addEventListener('click', () => {
-    update();
+    pressCalc();
     if (window.matchMedia('(max-width: 899px)').matches) out.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
   if (recalc && !calculate().error) update();
