@@ -2592,6 +2592,12 @@ a.cd-callbtn:hover { filter: brightness(1.06); }
 .cd-pp-picks { margin-top: 10px; }
 .cd-pp-pick-h { margin-bottom: 5px; font: 700 10px/1 var(--lux-sans, inherit); letter-spacing: .14em; text-transform: uppercase; color: var(--cd-gold); }
 .cd-pp-pick-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+/* Máy tính: nhãn "Gửi Zalo OA tới" và 2 ô tick cùng 1 hàng (không xuống dòng cho đỡ tốn chỗ); chỗ hẹp quá thì nhãn tự lên trên. */
+@media (min-width: 760px) {
+  .cd-pp-picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .cd-pp-pick-h { margin: 0; white-space: nowrap; }
+  .cd-pp-pick-row { flex: 1 1 250px; min-width: 0; }
+}
 .cd-pp-tile { position: relative; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 10px; text-align: left; font: inherit; color: inherit; border: 1px solid var(--cd-line); border-radius: 10px; background: #fbfdfc; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
 .cd-pp-tile.on { border-color: #86cfae; background: #eff8f3; }
 .cd-pp-tile input { position: absolute; opacity: 0; width: 1px; height: 1px; }
