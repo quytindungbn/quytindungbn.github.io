@@ -2530,6 +2530,7 @@ a.cd-callbtn:hover { filter: brightness(1.06); }
 .cd-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .cd-btns .btn { justify-content: center; width: 100%; }
 .cd-btns .btn-danger-outline { grid-column: 1 / -1; }
+.cd-btns .btn:last-child:nth-child(odd) { grid-column: 1 / -1; } /* nút lẻ cuối cùng giãn hết hàng */
 @media (max-width: 639px) {
   /* Điện thoại: gọn lại — các khung xếp theo thứ tự dùng nhiều: Thao tác ngay dưới thanh Gọi, rồi Hợp đồng, Lịch sử cuộc gọi */
   .cd-cols { display: flex; flex-direction: column; gap: 10px; padding: 12px; }

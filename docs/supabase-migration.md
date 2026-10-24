@@ -3014,7 +3014,7 @@ Trong `js/lib/loanCalc.js`, số tiền trả đều mỗi tháng của cách "G
 **Giao diện** (`openCustomerDetail()` trong `js/views/admin/customers.js`, CSS `.cd-*` cuối `css/styles.css`; dùng chung cho trang Khách hàng, Quản lý User, Quản lý OA, Hỗ trợ):
 - Phần đầu hồ sơ tối màu viền vàng: tên, CCCD, địa chỉ ngay dưới CCCD, 3 nhãn trạng thái (Đăng nhập / Thông báo / OA — bật thì cả nhãn xanh, chưa thì ngả đỏ nhạt). Đã bỏ mục "Thông tin" (kể cả "Danh sách OA") và dòng "Mật khẩu hiện tại" — cần mật khẩu mới thì dùng "Cấp lại mật khẩu" (vẫn hiện mật khẩu mới sau khi cấp).
 - Thanh Gọi (dính khi cuộn): số điện thoại, "Gọi gần nhất" (bao lâu trước, ngày giờ, ai gọi) và nút **Gọi ngay**. Lịch sử cuộc gọi: giờ phút to bên trái, ngày/thứ ngay dưới, tên người gọi bên phải (không hiện số điện thoại/quyền); hiện sẵn 4 dòng, còn lại "Xem thêm". Ai cũng có lọc "Tất cả | Của tôi".
-- Máy tính 2 cột: trái Lịch sử cuộc gọi, phải Hợp đồng + Thao tác. Điện thoại 1 cột: Gọi, Thao tác, Hợp đồng, Lịch sử cuộc gọi. Nhân viên chỉ xem không có khung Thao tác; nếu có quyền OA thì nút **Thêm vào OA** (dấu +, vàng đặc) / **Bỏ khỏi OA** (dấu −) nằm ngay sau nhãn OA ở đầu hồ sơ. Với admin/TK sửa được, nút "Thêm vào OA" trong khung Thao tác là nút xanh đặc.
+- Máy tính 2 cột: trái Lịch sử cuộc gọi, phải Hợp đồng + Thao tác. Điện thoại 1 cột: Gọi, Thao tác, Hợp đồng, Lịch sử cuộc gọi. Nút **Thêm vào OA** (dấu +, vàng đặc) / **Bỏ khỏi OA** (dấu −) luôn nằm ngay sau nhãn OA ở đầu hồ sơ, không nằm trong khung Thao tác. Khung Thao tác hiện theo quyền — xem mục 10.81.
 - Bấm **Gọi** ở danh sách khách hàng (nút "Gọi") hoặc **Gọi ngay** trong hồ sơ đều ghi 1 dòng (`logCall()` trong `js/state.js`) — chỉ ghi được LÚC BẤM GỌI, điện thoại không cho biết cuộc gọi có nghe máy hay kéo dài bao lâu. Hàm thuần định dạng ngày giờ: `js/lib/callHistory.js` (kiểm thử `tests/callHistory.test.mjs`).
 
 **Quyền xem**: MỌI quản trị viên/nhân viên đều xem được cuộc gọi của tất cả mọi người (để biết ai đã gọi khách, tránh gọi trùng); chỉ ghi được cuộc gọi mang tên chính mình; không ai sửa/xóa được. (Bản đầu của mục này từng cho nhân viên chỉ xem cuộc gọi của mình — nếu bạn đã chạy bản SQL cũ thì chạy lại đoạn SQL dưới đây, nó tự bỏ 2 policy cũ.)
@@ -3062,6 +3062,16 @@ Trước đây Nhật ký (mục 10.33) đã ghi: đăng nhập, vào trang, l�
 - Tài khoản có tên đăng nhập đúng `admin` vẫn KHÔNG bị ghi nhật ký (như `logActivity()` hiện có).
 
 **Việc cần bạn làm**: deploy lại **`create-account`** (file MỚI NHẤT) — Supabase Dashboard → Edge Functions → chọn `create-account` → dán đè toàn bộ nội dung file mới → Deploy. Chưa deploy thì app vẫn dùng bình thường, các thao tác mới chỉ chưa hiện trong Nhật ký.
+
+### 10.81. Chi tiết khách hàng / Quản lý User: nút Thao tác theo quyền (CẦN deploy lại Edge Function `create-account`, KHÔNG cần SQL)
+
+Khung **Thao tác** trong chi tiết khách hàng (`openCustomerDetail()` trong `js/views/admin/customers.js`) hiện theo **quyền của tài khoản đang đăng nhập**, giống nhau dù mở từ trang Khách hàng hay từ Quản lý User (không còn phụ thuộc cờ `readOnly` của lối vào):
+- **Cấp lại mật khẩu, Đăng xuất (chỉ khi khách đang đăng nhập), Gửi thông báo**: quản trị viên toàn quyền, hoặc quản trị viên "chỉ xem" có cờ **Quản lý User** (`S.canManageUsers`).
+- **Sửa** (hồ sơ khách): chỉ toàn quyền — máy chủ vốn đã chỉ cho `super` (`update-customer-profile` nằm trong `SUPER_ONLY_TYPES`).
+- **Xóa Use**: chỉ toàn quyền **và chỉ khi mở từ Quản lý User**. Máy chủ: `deactivate-customer` và `delete-customer` đã được đưa vào `SUPER_ONLY_TYPES` — nhân viên có cờ Quản lý User gọi thẳng cũng bị từ chối.
+- Quản trị viên chỉ xem không có quyền Quản lý User: không có khung Thao tác. Nút Thêm/Bỏ OA ở trên hiện cho mọi tài khoản có quyền OA.
+
+**Việc cần bạn làm**: deploy lại **`create-account`** (file MỚI NHẤT). Chưa deploy thì giao diện đã ẩn nút Xóa Use cho người không đủ quyền, chỉ là máy chủ chưa chặn gọi trực tiếp.
 
 ---
 

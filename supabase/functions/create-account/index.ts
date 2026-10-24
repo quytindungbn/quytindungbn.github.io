@@ -1754,6 +1754,9 @@ Deno.serve(async (req) => {
     'import-preview', 'import-supplement-preview', 'import-history', 'import-history-detail', 'import-rollback',
     'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff', 'force-logout-staff',
     'update-staff-name',
+    // Xóa/vô hiệu hóa tài khoản khách hàng (nút "Xóa Use" ở Quản lý User): CHỈ toàn quyền — nhân viên có cờ canManageUsers
+    // vẫn cấp lại mật khẩu/đăng xuất/gửi thông báo được nhưng KHÔNG xóa được Use.
+    'deactivate-customer', 'delete-customer',
     // Dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu toàn quỹ, mục 10.46
     // docs) — số liệu tài chính TOÀN QUỸ, chỉ super mới chốt/xem được, y hệt
     // trang "Nhật ký" (activity_log) đã CHỈ dành riêng cho super từ trước.
