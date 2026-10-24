@@ -890,7 +890,7 @@ function contactsInnerHtml(c, co, { canOa, canEdit, editing = false, pending = f
   const editVal = String(co.phone || '').replace(/[^\d+]/g, '').replace(/^\+?84/, '0').slice(0, 10);
   const form = editing ? `<div class="cd-pp-form">
         <label for="pp-phone">${pending ? 'Nhập số điện thoại để bật gửi Zalo OA cho người cùng vay' : 'Số điện thoại người cùng vay'}</label>
-        <div class="cd-pp-formrow"><input class="cd-pp-in" id="pp-phone" type="tel" inputmode="numeric" maxlength="16" autocomplete="off" placeholder="VD: 0988777666" value="${escapeHtml(editVal)}">
+        <div class="cd-pp-formrow"><input class="cd-pp-in" id="pp-phone" type="tel" inputmode="numeric" maxlength="16" autocomplete="off" value="${escapeHtml(editVal)}">
           <button type="button" class="btn btn-primary btn-sm" data-pp-save>Lưu</button><button type="button" class="btn btn-outline btn-sm" data-pp-cancel>Hủy</button></div>
       </div>` : '';
   const row = `<div class="cd-pp${co.toCo ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
