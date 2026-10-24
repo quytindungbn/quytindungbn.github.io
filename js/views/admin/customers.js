@@ -892,7 +892,7 @@ function contactsInnerHtml(c, co, { canOa, canEdit, editing = false, pending = f
         <label for="pp-phone">${pending ? 'Nhập số điện thoại để bật gửi Zalo OA cho người cùng vay' : 'Số điện thoại người cùng vay'}</label>
         <div class="cd-pp-formrow"><input class="cd-pp-in" id="pp-phone" type="tel" inputmode="numeric" maxlength="16" autocomplete="off" placeholder="VD: 0988777666" value="${escapeHtml(editVal)}">
           <button type="button" class="btn btn-primary btn-sm" data-pp-save>Lưu</button><button type="button" class="btn btn-outline btn-sm" data-pp-cancel>Hủy</button></div>
-        <p>Đúng 10 số, bắt đầu bằng số 0. ${pending ? 'Không nhập số thì không bật gửi được.' : 'Để trống rồi bấm Lưu nếu muốn xóa số.'}</p></div>` : '';
+      </div>` : '';
   const row = `<div class="cd-pp${co.toCo ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="cd-pp-top">
         <span class="cd-pp-av is-co" style="background:${colorFor(co.name)}">${escapeHtml(initials(co.name))}</span>
