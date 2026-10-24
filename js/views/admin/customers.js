@@ -924,7 +924,7 @@ function contactsInnerHtml(c, co, { canOa, canEdit, editing = false, pending = f
   const warn = co.prevName && co.name
     ? `<div class="cd-pp-warn">${icon('info')}<div><b>Người cùng vay đã đổi</b><span>Hợp đồng mới ghi <b>${escapeHtml(co.name)}</b> thay cho <b>${escapeHtml(co.prevName)}</b>. Khách đã được bỏ khỏi danh sách OA và số điện thoại cũ đã xóa — nhập số của người mới nếu muốn gửi cho họ.</span></div></div>`
     : '';
-  return `<h3 class="cd-h"><span>${canOa ? 'Người cùng vay &amp; Zalo OA' : 'Người cùng vay'}</span><small>Tên lấy từ hợp đồng</small></h3>
+  return `<h3 class="cd-h"><span>${canOa ? 'Người cùng vay &amp; Zalo OA' : 'Người cùng vay'}</span></h3>
     ${warn}${row}${picks}`;
 }
 
