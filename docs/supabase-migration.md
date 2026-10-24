@@ -3013,11 +3013,11 @@ Trong `js/lib/loanCalc.js`, số tiền trả đều mỗi tháng của cách "G
 
 **Giao diện** (`openCustomerDetail()` trong `js/views/admin/customers.js`, CSS `.cd-*` cuối `css/styles.css`; dùng chung cho trang Khách hàng, Quản lý User, Quản lý OA, Hỗ trợ):
 - Phần đầu hồ sơ tối màu viền vàng: tên, CCCD, địa chỉ ngay dưới CCCD, 3 nhãn trạng thái (Đăng nhập / Thông báo / OA — bật thì cả nhãn xanh, chưa thì ngả đỏ nhạt). Đã bỏ mục "Thông tin" (kể cả "Danh sách OA") và dòng "Mật khẩu hiện tại" — cần mật khẩu mới thì dùng "Cấp lại mật khẩu" (vẫn hiện mật khẩu mới sau khi cấp).
-- Thanh Gọi (dính khi cuộn): số điện thoại, "Gọi gần nhất" (bao lâu trước, ngày giờ, ai gọi) và nút **Gọi ngay**. Lịch sử cuộc gọi: giờ phút to bên trái, ngày/thứ ngay dưới, tên người gọi bên phải (không hiện số điện thoại/quyền); hiện sẵn 4 dòng, còn lại "Xem thêm". Toàn quyền có lọc "Tất cả | Của tôi".
+- Thanh Gọi (dính khi cuộn): số điện thoại, "Gọi gần nhất" (bao lâu trước, ngày giờ, ai gọi) và nút **Gọi ngay**. Lịch sử cuộc gọi: giờ phút to bên trái, ngày/thứ ngay dưới, tên người gọi bên phải (không hiện số điện thoại/quyền); hiện sẵn 4 dòng, còn lại "Xem thêm". Ai cũng có lọc "Tất cả | Của tôi".
 - Máy tính 2 cột: trái Lịch sử cuộc gọi, phải Hợp đồng + Thao tác. Điện thoại 1 cột: Gọi, Thao tác, Hợp đồng, Lịch sử cuộc gọi. Nhân viên chỉ xem không có khung Thao tác.
 - Bấm **Gọi** ở danh sách khách hàng (nút "Gọi") hoặc **Gọi ngay** trong hồ sơ đều ghi 1 dòng (`logCall()` trong `js/state.js`) — chỉ ghi được LÚC BẤM GỌI, điện thoại không cho biết cuộc gọi có nghe máy hay kéo dài bao lâu. Hàm thuần định dạng ngày giờ: `js/lib/callHistory.js` (kiểm thử `tests/callHistory.test.mjs`).
 
-**Quyền xem**: toàn quyền thấy cuộc gọi của mọi người; nhân viên chỉ thấy cuộc gọi của CHÍNH MÌNH — chặn thật bằng RLS ở database (không chỉ ẩn trên giao diện).
+**Quyền xem**: MỌI quản trị viên/nhân viên đều xem được cuộc gọi của tất cả mọi người (để biết ai đã gọi khách, tránh gọi trùng); chỉ ghi được cuộc gọi mang tên chính mình; không ai sửa/xóa được. (Bản đầu của mục này từng cho nhân viên chỉ xem cuộc gọi của mình — nếu bạn đã chạy bản SQL cũ thì chạy lại đoạn SQL dưới đây, nó tự bỏ 2 policy cũ.)
 
 Ghi/đọc **thẳng qua Row Level Security** (giống `chat_messages`, mục 10.24) nên không cần deploy lại Edge Function. Lịch sử chỉ tải khi mở hồ sơ 1 khách (`loadCallsForCustomer()`), không tải sẵn lúc đăng nhập.
 
@@ -3043,19 +3043,12 @@ create policy "admin logs own call" on call_log
     and admin_id = (auth.jwt() ->> 'row_id')
   );
 
--- Toàn quyền xem tất cả; nhân viên chỉ xem cuộc gọi do chính mình thực hiện.
+-- Mọi quản trị viên/nhân viên đã đăng nhập đều xem được cuộc gọi của tất cả mọi người.
 drop policy if exists "super sees all calls" on call_log;
-create policy "super sees all calls" on call_log
-  for select using (
-    (auth.jwt() ->> 'app_role') = 'admin'
-    and exists (select 1 from admins a where a.id = (auth.jwt() ->> 'row_id') and a.role = 'super')
-  );
 drop policy if exists "staff sees own calls" on call_log;
-create policy "staff sees own calls" on call_log
-  for select using (
-    (auth.jwt() ->> 'app_role') = 'admin'
-    and admin_id = (auth.jwt() ->> 'row_id')
-  );
+drop policy if exists "admins see all calls" on call_log;
+create policy "admins see all calls" on call_log
+  for select using ((auth.jwt() ->> 'app_role') = 'admin');
 ```
 
 **Việc cần bạn làm**: chạy đoạn SQL trên trong Supabase Dashboard → SQL Editor (chạy lại nhiều lần được). Chưa chạy thì app vẫn dùng bình thường nhưng lịch sử cuộc gọi chỉ hiện trong phiên đang mở (không lưu lại, không thấy trên máy khác).

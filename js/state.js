@@ -2537,19 +2537,15 @@ export async function listActivityLog({ before, limit = 100 } = {}) {
 // ------------------------------------------------------------
 // Lịch sử cuộc gọi — mỗi lần quản trị viên/nhân viên bấm "Gọi" cho 1 khách thì ghi 1 dòng vào bảng call_log
 // { customerId, adminId, adminName, phone, createdAt }. Ghi THẲNG qua Row Level Security (giống chat_messages) — không qua Edge Function.
-// Quản trị viên toàn quyền xem được cuộc gọi của mọi người; nhân viên chỉ xem cuộc gọi của chính mình (RLS chặn thật ở database, xem
+// Mọi quản trị viên/nhân viên đều xem được cuộc gọi của tất cả mọi người (RLS ở database chỉ cho tài khoản quản trị đã đăng nhập đọc, xem
 // docs/supabase-migration.md mục 10.79). Chỉ tải khi mở chi tiết 1 khách (loadCallsForCustomer), không tải sẵn lúc đăng nhập.
 // ------------------------------------------------------------
 function mapCallLogRow(row) {
   return { id: row.id, customerId: row.customer_id, adminId: row.admin_id, adminName: row.admin_name, phone: row.phone || '', createdAt: row.created_at };
 }
-/** Các cuộc gọi tới 1 khách mà người đang đăng nhập được xem, mới nhất trước. */
+/** Các cuộc gọi tới 1 khách (của mọi người), mới nhất trước. */
 export function listCallsByCustomer(customerId) {
-  const session = getSession();
-  const me = session && session.id;
-  const all = (state.callLogs || []).filter((c) => c.customerId === customerId);
-  const visible = isSuperAdmin(me) ? all : all.filter((c) => c.adminId === me);
-  return visible.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return (state.callLogs || []).filter((c) => c.customerId === customerId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 /**
  * Tải lịch sử cuộc gọi của 1 khách từ máy chủ rồi gộp vào bộ nhớ (thay các dòng cũ của khách đó, giữ lại lần gọi vừa bấm mà máy chủ chưa kịp có).

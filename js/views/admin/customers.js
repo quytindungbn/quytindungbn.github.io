@@ -857,11 +857,11 @@ function callListHtml(calls, myId, { showAll = false, mineOnly = false } = {}) {
     ${list.length > shown.length ? `<button type="button" class="cd-more" data-calls-more>Xem thêm ${list.length - shown.length} cuộc gọi cũ hơn ${icon('chevronDown', 'icon-sm')}</button>` : ''}`;
 }
 
-function callCardHtml(calls, { isSuper, myId }) {
+function callCardHtml(calls, { myId }) {
   const callers = new Set(calls.map((x) => x.adminId)).size;
-  const sub = isSuper ? (calls.length ? `${callers} người gọi` : 'Mọi người gọi') : 'Của riêng bạn';
+  const sub = calls.length ? `${callers} người gọi` : 'Mọi người gọi';
   return `<h3 class="cd-h"><span>Lịch sử cuộc gọi</span><em>${calls.length}</em><small>${sub}</small>
-      ${isSuper && calls.length ? `<span class="cd-seg" role="group" aria-label="Lọc cuộc gọi"><button type="button" class="on" data-calls-filter="all">Tất cả</button><button type="button" data-calls-filter="mine">Của tôi</button></span>` : ''}
+      ${calls.length ? `<span class="cd-seg" role="group" aria-label="Lọc cuộc gọi"><button type="button" class="on" data-calls-filter="all">Tất cả</button><button type="button" data-calls-filter="mine">Của tôi</button></span>` : ''}
     </h3>
     <div id="cd-call-list">${callListHtml(calls, myId)}</div>`;
 }
@@ -891,7 +891,6 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const canManageZalo = S.canManageZaloOA(session.id);
   const inZaloList = S.isZaloCustomer(customerId);
   const myId = session.id;
-  const isSuper = S.isSuperAdmin(myId);
   const calls = S.listCallsByCustomer(customerId);
   const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
   const logged = S.hasCustomerLoggedIn(c), pushOn = S.hasPushEnabled(c.id);
@@ -918,7 +917,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       <div class="cd-callbar" id="cd-callbar">${callBarHtml(calls, dialPhone, c)}</div>
       <div class="cd-cols">
         <div class="cd-col-main">
-          <section class="cd-card" id="cd-calls-card">${callCardHtml(calls, { isSuper, myId })}</section>
+          <section class="cd-card" id="cd-calls-card">${callCardHtml(calls, { myId })}</section>
         </div>
         <aside class="cd-col-side">
           <section class="cd-card cd-contracts-card">
