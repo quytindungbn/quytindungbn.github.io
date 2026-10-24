@@ -828,27 +828,27 @@ async function clearCoPrevName(customerId: string): Promise<void> {
   try { await admin.from('customers').update({ co_prev_name: null, zalo_to_main: true, zalo_to_co: false }).eq('id', customerId).not('co_prev_name', 'is', null); } catch { /* bỏ qua */ }
 }
 /**
- * Người nhận báo "chưa đăng ký Zalo" (-118) khi gửi: TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA);
- * chỉ khi KHÔNG còn người nào gửi được (số duy nhất của khách vay, hoặc cả 2 người đều báo lỗi) mới bỏ khách khỏi Danh sách OA như trước.
- * Trả về những người đã bị bỏ tick.
+ * Người nhận báo "chưa đăng ký Zalo" (-118) khi gửi: TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA, người còn lại vẫn nhận).
+ * Khi KHÔNG CÒN người nào nhận được Zalo (số duy nhất lỗi, cả 2 người cùng lỗi, hoặc người cuối cùng còn lại lỗi) thì TỰ BỎ KHÁCH KHỎI Danh sách OA
+ * + mọi lựa chọn gửi tự động, đặt lại mặc định gửi khách vay. Trả về những người bị bỏ tick và khách có bị bỏ khỏi OA không.
  */
-async function applyNoZaloResults(customerId: string, recipients: ZaloRecipient[], noAccountWho: Array<'main' | 'co'>): Promise<Array<'main' | 'co'>> {
-  if (!noAccountWho.length) return [];
+async function applyNoZaloResults(customerId: string, recipients: ZaloRecipient[], noAccountWho: Array<'main' | 'co'>): Promise<{ unticked: Array<'main' | 'co'>; removed: boolean }> {
+  if (!noAccountWho.length) return { unticked: [], removed: false };
   try {
-    if (noAccountWho.length === recipients.length && (recipients.length > 1 || recipients[0].who === 'main')) {
+    const remaining = recipients.filter((r) => !noAccountWho.includes(r.who));
+    if (!remaining.length) {
       await removeCustomerFromZaloLists(customerId);
       await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', customerId);
-      return noAccountWho;
+      return { unticked: noAccountWho, removed: true };
     }
-    // Bỏ tick người lỗi; luôn còn ít nhất 1 người nhận (nếu người cùng vay là người duy nhất mà lỗi thì quay về gửi khách vay).
     const patch: Record<string, unknown> = {};
-    if (noAccountWho.includes('co')) { patch.zalo_to_co = false; patch.zalo_to_main = true; }
-    if (noAccountWho.includes('main') && !noAccountWho.includes('co')) patch.zalo_to_main = false;
+    if (noAccountWho.includes('co')) patch.zalo_to_co = false;
+    if (noAccountWho.includes('main')) patch.zalo_to_main = false;
     await admin.from('customers').update(patch).eq('id', customerId);
   } catch (e) {
     console.error('Lỗi tự bỏ tick gửi OA người không có Zalo:', e);
   }
-  return noAccountWho;
+  return { unticked: noAccountWho, removed: false };
 }
 /**
  * Sau khi nhập file: đối chiếu người cùng vay (cột D) của các khách vừa nhập với người đã lưu theo khách —
@@ -1856,9 +1856,8 @@ Deno.serve(async (req) => {
       const sentCount = results.filter((r) => r.ok).length;
       const failedRecipients = recipients.map((r, i) => ({ who: r.who, res: results[i] })).filter((x) => !x.res.ok);
       // Người nào báo "chưa đăng ký Zalo" thì tự bỏ tick gửi OA của người đó (xem applyNoZaloResults).
-      const unticked = await applyNoZaloResults(customer.id, recipients, failedRecipients.filter((x) => x.res.noAccount).map((x) => x.who));
-      const untickNote = unticked.length === recipients.length && recipients.length === 1 && recipients[0].who === 'main'
-        ? ''
+      const { unticked, removed } = await applyNoZaloResults(customer.id, recipients, failedRecipients.filter((x) => x.res.noAccount).map((x) => x.who));
+      const untickNote = removed ? ' Không còn số nào có Zalo — đã tự bỏ khách khỏi danh sách OA.'
         : unticked.length ? ` Đã tự bỏ tích gửi OA cho ${unticked.map((w) => (w === 'co' ? 'người cùng vay' : 'khách vay')).join(' và ')}.` : '';
       const result: { ok: boolean; reason?: string } = sentCount
         ? { ok: true }

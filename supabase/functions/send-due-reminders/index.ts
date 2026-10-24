@@ -711,8 +711,8 @@ function zaloRecipientsOf(c: ZaloCustomer | undefined): ZaloRecipient[] {
 }
 /**
  * Gửi tin mẫu cho tất cả người nhận đã chọn của 1 khách (1 hoặc 2 số), mỗi số ghi 1 dòng log. Trả về true nếu ÍT NHẤT 1 số gửi được.
- * Người nào báo "chưa đăng ký Zalo" (-118) thì TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA); chỉ khi không còn người
- * nào gửi được (số duy nhất của khách vay, hoặc cả 2 người đều lỗi) mới bỏ khách khỏi OA như trước.
+ * Người nào báo "chưa đăng ký Zalo" (-118) thì TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA); khi không còn người
+ * nào nhận được Zalo (số duy nhất lỗi, cả 2 người cùng lỗi, hoặc người cuối cùng còn lại lỗi) thì tự bỏ khách khỏi OA.
  */
 async function sendZaloToCustomer(opts: {
   accessToken: string; customer: ZaloCustomer; templateId: string; templateData: Record<string, string>;
@@ -727,14 +727,16 @@ async function sendZaloToCustomer(opts: {
   const noAcc = recipients.filter((_, i) => results[i].noAccount);
   if (noAcc.length) {
     try {
-      if (noAcc.length === recipients.length && (recipients.length > 1 || recipients[0].who === 'main')) {
+      const remaining = recipients.filter((r) => !noAcc.some((x) => x.who === r.who));
+      if (!remaining.length) {
+        // Không còn người nào nhận được Zalo → bỏ khách khỏi Danh sách OA + gửi tự động, đặt lại mặc định gửi khách vay.
         noZaloCustomerIds.add(opts.customerId);
         await removeCustomerFromZaloLists(opts.customerId);
         await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', opts.customerId);
       } else {
         const patch: Record<string, unknown> = {};
-        if (noAcc.some((r) => r.who === 'co')) { patch.zalo_to_co = false; patch.zalo_to_main = true; }
-        if (noAcc.some((r) => r.who === 'main') && !noAcc.some((r) => r.who === 'co')) patch.zalo_to_main = false;
+        if (noAcc.some((r) => r.who === 'co')) patch.zalo_to_co = false;
+        if (noAcc.some((r) => r.who === 'main')) patch.zalo_to_main = false;
         await admin.from('customers').update(patch).eq('id', opts.customerId);
       }
     } catch (e) {
