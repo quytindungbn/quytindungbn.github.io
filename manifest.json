@@ -6,6 +6,7 @@
   "start_url": ".",
   "scope": "/",
   "display": "standalone",
+  "related_applications": [{ "platform": "webapp", "url": "https://quytindungbn.github.io/manifest.json" }],
   "background_color": "#f2f5f4",
   "theme_color": "#0f6f61",
   "lang": "vi",

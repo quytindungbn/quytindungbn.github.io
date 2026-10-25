@@ -52,6 +52,20 @@ export function isIOS() {
   return currentInstallEnv().os === 'ios';
 }
 
+/**
+ * Máy này ĐÃ cài app rồi (dù đang mở bằng tab trình duyệt)? Chỉ Chrome/Edge mới hỏi được (getInstalledRelatedApps, cần
+ * related_applications trong manifest.json) — trình duyệt khác/không rõ thì trả false (coi như chưa cài, vẫn mời).
+ */
+export async function looksInstalled() {
+  try {
+    if (typeof navigator.getInstalledRelatedApps === 'function') {
+      const apps = await navigator.getInstalledRelatedApps();
+      return Array.isArray(apps) && apps.length > 0;
+    }
+  } catch { /* trình duyệt không cho hỏi — coi như chưa biết */ }
+  return false;
+}
+
 /** Trình duyệt đã báo "cài được" và đang giữ sẵn hộp thoại cài đặt thật (bấm nút là hiện ngay). */
 export function hasNativePrompt() {
   return !!deferredPrompt;

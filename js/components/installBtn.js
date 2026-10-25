@@ -6,22 +6,20 @@ import { icon } from '../icons.js';
 import { openModal } from './modal.js';
 import { toast } from './toast.js';
 import { copyText } from '../utils.js';
-import { promptInstall, isStandalone, onInstallable } from '../lib/installPwa.js';
+import { promptInstall, isStandalone, onInstallable, looksInstalled } from '../lib/installPwa.js';
 import { currentInstallEnv, installGuideKind } from '../lib/installEnv.js';
 
-const SNOOZE_KEY = 'qtd_install_snooze_at'; // lúc khách bấm "Để sau"/mở hướng dẫn — 7 ngày sau mới mời lại
-const LEGACY_IOS_KEY = 'qtd_install_ios_seen'; // khóa cũ (iPhone chỉ mời 1 lần) — gặp thì đổi sang cách mới
-const SNOOZE_MS = 7 * 24 * 3600 * 1000;
+const ASKED_KEY = 'qtd_install_asked'; // sessionStorage: khách đã bấm "Để sau"/"Cài đặt" ở lần vào này → tải lại trang trong cùng phiên không hỏi lại; mở lại app/tab mới thì hỏi tiếp
+const OLD_KEYS = ['qtd_install_snooze_at', 'qtd_install_ios_seen']; // khóa cũ (nhớ 7 ngày / iPhone mời 1 lần) — không còn dùng, dọn đi
 
-function snoozed() {
-  try {
-    if (localStorage.getItem(LEGACY_IOS_KEY)) { localStorage.removeItem(LEGACY_IOS_KEY); localStorage.setItem(SNOOZE_KEY, String(Date.now())); }
-    const t = Number(localStorage.getItem(SNOOZE_KEY));
-    return !!t && Date.now() - t < SNOOZE_MS;
-  } catch { return false; }
+function askedThisVisit() {
+  try { return !!sessionStorage.getItem(ASKED_KEY); } catch { return false; }
 }
-function snooze() {
-  try { localStorage.setItem(SNOOZE_KEY, String(Date.now())); } catch { /* bỏ qua — chỉ là nhớ để khỏi mời liên tục */ }
+function markAsked() {
+  try { sessionStorage.setItem(ASKED_KEY, '1'); } catch { /* bỏ qua — chỉ là nhớ để khỏi hỏi lại khi tải lại trang */ }
+}
+function cleanOldKeys() {
+  try { OLD_KEYS.forEach((k) => localStorage.removeItem(k)); } catch { /* bỏ qua */ }
 }
 
 /** Gắn hành vi bấm cho 1 nút "Cài đặt ứng dụng" có sẵn trong DOM (sidebar, menu Thêm, trang đăng nhập...). */
@@ -190,21 +188,27 @@ function closeBanner() {
 window.addEventListener('appinstalled', closeBanner);
 
 /**
- * Điểm vào DUY NHẤT để tự mời cài đặt ngay khi vừa vào app trên máy CHƯA cài — gọi 1 LẦN lúc khởi động app (xem app.js).
- *   - Chrome/Edge/Samsung/Opera: hiện thẻ mời ngay khi trình duyệt xác nhận "cài được" — bấm "Cài đặt" là hiện hộp
- *     thoại thật của trình duyệt, đồng ý là xong.
- *   - iPhone, Firefox/trình duyệt khác trên điện thoại, và trình duyệt nhúng trong Zalo/Facebook: tự hiện thẻ mời (không có
- *     hộp thoại thật) — bấm "Cài đặt" mở hướng dẫn đúng với máy đang dùng.
- *   - Máy tính: chỉ mời khi trình duyệt có hộp thoại thật (Chrome/Edge), không làm phiền các trình duyệt khác.
- * Bấm "Để sau" hoặc "Cài đặt" thì 7 ngày sau mới mời lại; nút "Cài đặt ứng dụng" ở trang đăng nhập/menu vẫn luôn có sẵn.
+ * Điểm vào DUY NHẤT để tự mời cài đặt — gọi 1 LẦN lúc khởi động app (xem app.js). MỖI LẦN VÀO APP trên máy CHƯA cài (trang
+ * đăng nhập lẫn đã đăng nhập rồi, điện thoại lẫn máy tính, TRÌNH DUYỆT NÀO CŨNG VẬY) đều hiện thẻ mời ở dưới màn hình:
+ *   - Chrome/Edge/Samsung/Opera: hiện ngay khi trình duyệt báo "cài được"; sau ~2,5 giây vẫn không có tín hiệu (đã cài sẵn
+ *     rồi, hoặc trình duyệt chưa báo) thì hiện nếu chưa chắc là đã cài. Bấm "Cài đặt" → hộp thoại cài thật, đồng ý là xong.
+ *   - iPhone, Firefox, Safari máy Mac/máy tính, trình duyệt nhúng trong Zalo/Facebook...: không có hộp thoại thật nên tự hiện
+ *     thẻ mời, bấm "Cài đặt" mở hướng dẫn đúng với máy đang dùng.
+ * Bấm "Để sau" hoặc "Cài đặt" thì thẻ đóng; tải lại trang trong cùng phiên không hỏi lại, lần vào sau (mở lại app/tab mới) hỏi tiếp.
+ * Máy đã cài và mở bằng icon (chạy như app) thì không bao giờ hiện. Nút "Cài đặt ứng dụng" ở trang đăng nhập/menu vẫn luôn có.
  */
 export function initAutoInstallPrompt() {
-  if (isStandalone() || snoozed()) return;
+  cleanOldKeys();
+  if (isStandalone() || askedThisVisit()) return;
   const env = currentInstallEnv();
-  const go = (run) => () => { snooze(); run(); };
+  const show = () => {
+    if (askedThisVisit()) return;
+    showInstallBanner(() => { markAsked(); runInstallFlow(null); }, markAsked);
+  };
   if (env.chromium) {
-    onInstallable(() => showInstallBanner(go(() => runInstallFlow(null)), snooze));
+    onInstallable(show);
+    setTimeout(async () => { if (!bannerEl && !askedThisVisit() && !(await looksInstalled())) show(); }, 2500);
     return;
   }
-  if (env.mobile) setTimeout(() => showInstallBanner(go(openInstallGuide), snooze), 1200);
+  setTimeout(show, 1200);
 }
