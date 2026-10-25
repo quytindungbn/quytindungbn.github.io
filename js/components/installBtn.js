@@ -7,7 +7,7 @@ import { openModal } from './modal.js';
 import { toast } from './toast.js';
 import { copyText } from '../utils.js';
 import { promptInstall, isStandalone, onInstallable, looksInstalled } from '../lib/installPwa.js';
-import { currentInstallEnv, installGuideKind, androidIntentUrl } from '../lib/installEnv.js';
+import { currentInstallEnv, installGuideKind } from '../lib/installEnv.js';
 
 const ASKED_KEY = 'qtd_install_asked'; // sessionStorage: khách đã bấm "Để sau"/"Cài đặt" ở lần vào này → tải lại trang trong cùng phiên không hỏi lại; mở lại app/tab mới thì hỏi tiếp
 const OLD_KEYS = ['qtd_install_snooze_at', 'qtd_install_ios_seen']; // khóa cũ (nhớ 7 ngày / iPhone mời 1 lần) — không còn dùng, dọn đi
@@ -70,10 +70,7 @@ function guideContent(kind, env) {
         steps: env.os === 'ios'
           ? [ST(1, 'Bấm nút <b>⋯</b> (hoặc biểu tượng <b>chia sẻ</b>) ở góc màn hình'), ST(2, 'Chọn <b>Mở bằng Safari</b>'), ST(3, 'Trang mở ra trong Safari, bấm lại <b>Cài đặt ứng dụng</b> rồi làm theo hướng dẫn')]
           : [ST(1, 'Bấm nút <b>⋮</b> (3 chấm) hoặc <b>⋯</b> ở góc trên bên phải'), ST(2, 'Chọn <b>Mở bằng trình duyệt</b> (hoặc <b>Mở trong Chrome</b>)'), ST(3, 'Trang mở ra trong Chrome, bấm lại <b>Cài đặt ứng dụng</b>')],
-        foot: env.os === 'android'
-          ? 'Hoặc bấm nút bên dưới để mở thẳng bằng trình duyệt (nếu không được, dùng <b>Sao chép liên kết</b> rồi dán vào ô địa chỉ):'
-          : 'Hoặc bấm <b>Sao chép liên kết</b> bên dưới rồi dán vào ô địa chỉ của Chrome/Safari.',
-        openButtons: env.os === 'android', // nút "Mở bằng Chrome" / "Không có Chrome? Mở bằng trình duyệt khác" (liên kết intent của Android)
+        foot: 'Hoặc bấm <b>Sao chép liên kết</b> bên dưới rồi dán vào ô địa chỉ của Chrome/Safari.',
         copy: true,
       };
     case 'ios-safari':
@@ -144,16 +141,9 @@ export function openInstallGuide() {
       <p class="inst-lead">${g.lead}</p>
       ${g.steps.length ? `<ol class="inst-steps">${g.steps.join('')}</ol>` : ''}
       ${g.foot ? `<p class="inst-foot">${g.foot}</p>` : ''}
-      ${g.openButtons ? `<div class="inst-actions">
-        <button type="button" class="btn btn-primary btn-block" id="inst-open-chrome">${icon('externalLink', 'icon-sm')} Mở bằng Chrome</button>
-        <button type="button" class="btn btn-outline btn-block" id="inst-open-any">Không có Chrome? Mở bằng trình duyệt khác</button>
-      </div>` : ''}
       ${g.copy ? `<button type="button" class="btn btn-outline btn-block" id="inst-copy">${icon('copy', 'icon-sm')} Sao chép liên kết</button>` : ''}
     `,
     onMount(sheet) {
-      const pageUrl = location.origin + location.pathname;
-      sheet.querySelector('#inst-open-chrome')?.addEventListener('click', () => openOutsideApp(androidIntentUrl(pageUrl, 'chrome')));
-      sheet.querySelector('#inst-open-any')?.addEventListener('click', () => openOutsideApp(androidIntentUrl(pageUrl, 'any')));
       const copyBtn = sheet.querySelector('#inst-copy');
       if (copyBtn) copyBtn.addEventListener('click', async () => {
         if (await copyText(location.origin + location.pathname)) toast('Đã sao chép liên kết — dán vào ô địa chỉ của trình duyệt', 'success');
@@ -161,26 +151,6 @@ export function openInstallGuide() {
       });
     },
   });
-}
-
-/**
- * Chuyển liên kết intent cho hệ thống Android để mở bằng trình duyệt ngoài. Chạy được hay không tùy ứng dụng nhúng (Zalo, Facebook...)
- * có cho chuyển hay không — nên nếu sau ~1,5 giây trang vẫn còn ở đây (không bị đẩy ra nền) thì báo khách dùng cách thủ công.
- * `window.__qtdNavigate` chỉ để kiểm thử tự động thay cho việc đổi location.
- */
-function openOutsideApp(href) {
-  let left = false;
-  const mark = () => { left = true; };
-  document.addEventListener('visibilitychange', mark, { once: true });
-  window.addEventListener('pagehide', mark, { once: true });
-  window.addEventListener('blur', mark, { once: true });
-  try { (window.__qtdNavigate || ((h) => { location.href = h; }))(href); } catch { /* bỏ qua — dưới đây sẽ báo cách thủ công */ }
-  setTimeout(() => {
-    document.removeEventListener('visibilitychange', mark);
-    window.removeEventListener('pagehide', mark);
-    window.removeEventListener('blur', mark);
-    if (!left && !document.hidden) toast('Không tự mở được — hãy bấm ⋮ → "Mở bằng trình duyệt" ở góc trên, hoặc bấm Sao chép liên kết rồi dán vào Chrome.', 'error', 5000);
-  }, 1500);
 }
 
 let bannerEl = null;

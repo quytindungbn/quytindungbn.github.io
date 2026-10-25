@@ -55,16 +55,3 @@ export function installGuideKind(env) {
   if (env.chromium) return 'desktop-chromium';
   return 'desktop-other';
 }
-
-/**
- * Liên kết "intent:" của Android để mở trang bằng ứng dụng NGOÀI (trình duyệt nhúng trong Zalo/Facebook chuyển liên kết này cho hệ thống).
- * `url` là địa chỉ https đầy đủ của trang (không kèm #). Chrome: ép đúng gói com.android.chrome; không có Chrome thì hệ thống dùng
- * S.browser_fallback_url (chính địa chỉ đó). Trình duyệt bất kỳ: không ép gói — hệ thống mở bằng trình duyệt mặc định (hoặc hỏi chọn).
- */
-export function androidIntentUrl(url, browser = 'chrome') {
-  const u = new URL(url);
-  const scheme = u.protocol.replace(':', '');
-  const base = `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=${scheme};`;
-  if (browser === 'chrome') return `${base}package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
-  return `${base}action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
-}
