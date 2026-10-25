@@ -66,7 +66,7 @@ function guideContent(kind, env) {
     case 'in-app':
       return {
         title: 'Mở bằng trình duyệt để cài',
-        lead: `Bạn đang mở trang trong <b>${env.inApp}</b> — ứng dụng này <b>không cho cài đặt</b>. Hãy mở bằng trình duyệt của điện thoại:`,
+        lead: `Bạn đang mở trang trong <b>${env.inApp}</b> — trình duyệt này <b>không hỗ trợ cài đặt trực tiếp</b>. Hãy mở bằng trình duyệt của điện thoại:`,
         steps: env.os === 'ios'
           ? [ST(1, 'Bấm nút <b>⋯</b> (hoặc biểu tượng <b>chia sẻ</b>) ở góc màn hình'), ST(2, 'Chọn <b>Mở bằng Safari</b>'), ST(3, 'Trang mở ra trong Safari, bấm lại <b>Cài đặt ứng dụng</b> rồi làm theo hướng dẫn')]
           : [ST(1, 'Bấm nút <b>⋮</b> (3 chấm) hoặc <b>⋯</b> ở góc trên bên phải'), ST(2, 'Chọn <b>Mở bằng trình duyệt</b> (hoặc <b>Mở trong Chrome</b>)'), ST(3, 'Trang mở ra trong Chrome, bấm lại <b>Cài đặt ứng dụng</b>')],

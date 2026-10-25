@@ -82,7 +82,8 @@ export function hasNativePrompt() {
  */
 export async function promptInstall() {
   if (isStandalone()) return 'already-installed';
-  if (currentInstallEnv().inApp) return 'in-app';
+  // Trình duyệt ĐÃ báo "cài được" (có hộp thoại thật) thì dùng luôn, kể cả khi mở từ Zalo/Facebook — vd Zalo mở link bằng tab Chrome
+  // thì cài như Chrome bình thường. Chỉ khi không có hộp thoại thật mà đang ở trình duyệt nhúng mới hướng dẫn "mở bằng trình duyệt".
   if (deferredPrompt) {
     const promptEvent = deferredPrompt;
     deferredPrompt = null;
@@ -90,6 +91,7 @@ export async function promptInstall() {
     const choice = await promptEvent.userChoice;
     return choice.outcome; // 'accepted' | 'dismissed'
   }
+  if (currentInstallEnv().inApp) return 'in-app';
   if (isIOS()) return 'ios-manual';
   return 'unsupported';
 }

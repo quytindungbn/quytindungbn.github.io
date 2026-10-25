@@ -101,7 +101,7 @@ dữ liệu cá nhân trước khi lưu CCCD khách hàng thật.
 |---|---|---|
 | Android: Chrome, Edge, Samsung Internet, Opera; máy tính: Chrome, Edge | Tự hiện khi trình duyệt báo "cài được" (`beforeinstallprompt`); sau ~2,5 giây không có tín hiệu mà chưa chắc là đã cài (`getInstalledRelatedApps`) thì vẫn hiện, bấm "Cài đặt" ra hướng dẫn | Hiện **hộp thoại cài thật của trình duyệt** — bấm đồng ý là xong (trình duyệt luôn hỏi xác nhận 1 lần, app không bỏ qua được) |
 | iPhone/iPad (Safari, Chrome, Edge, Firefox) | Tự hiện (Apple không có sự kiện nào) | Hướng dẫn 3 bước: Chia sẻ → Thêm vào MH chính → Thêm (Apple **không cho** web tự cài) |
-| **Mở trong Zalo / Facebook / Messenger / Instagram / TikTok...** (trình duyệt nhúng) | Tự hiện | Hướng dẫn **mở bằng trình duyệt** (⋮ → Mở bằng trình duyệt / Safari) + nút **Sao chép liên kết** — trình duyệt nhúng **không cài được** |
+| **Mở trong Zalo / Facebook / Messenger / Instagram / TikTok...** | Tự hiện | Tùy cách ứng dụng đó mở link: nếu mở bằng **tab Chrome** (trình duyệt báo "cài được") thì bấm "Cài đặt" ra hộp thoại cài thật như Chrome; nếu mở bằng **trình duyệt riêng của ứng dụng** (không có hộp thoại) thì ra hướng dẫn **mở bằng trình duyệt** (⋮ → Mở bằng trình duyệt / Safari) + nút **Sao chép liên kết** |
 | Firefox Android và trình duyệt Android khác | Tự hiện | Hướng dẫn ⋮ → Cài đặt / Thêm vào màn hình chính |
 | Safari máy Mac (macOS 14+), Firefox máy tính | Tự hiện | Safari: Tệp → Thêm vào Dock; Firefox: dùng Chrome/Edge |
 
