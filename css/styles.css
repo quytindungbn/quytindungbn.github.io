@@ -1285,6 +1285,40 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
   background: linear-gradient(160deg, #0f6f61 0%, #0a2e28 100%);
   padding: 20px;
 }
+.login-wrap.has-install { padding-top: 68px; }
+/* Nút "Cài đặt ứng dụng" (icon + chữ) NGOÀI khung đăng nhập, ở góc trên bên phải — cả điện thoại lẫn máy tính. */
+.login-install {
+  position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); right: calc(14px + env(safe-area-inset-right, 0px)); z-index: 5;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 16px 0 13px;
+  border: 1.5px solid rgba(255, 255, 255, .5); border-radius: 999px; background: rgba(255, 255, 255, .15); color: #fff;
+  font: 700 13.5px/1 Inter, system-ui, sans-serif; letter-spacing: .01em; white-space: nowrap; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .1s ease;
+}
+.login-install svg { width: 18px; height: 18px; }
+.login-install:hover { background: rgba(255, 255, 255, .24); border-color: rgba(255, 255, 255, .8); }
+.login-install:active { transform: scale(.97); }
+.login-install:disabled { opacity: .6; cursor: default; }
+/* Thẻ mời cài ứng dụng nổi ở dưới màn hình (xem components/installBtn.js) + màn hướng dẫn cài tay. */
+.inst-banner {
+  position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 60; max-width: 420px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 12px; padding: 14px; background: var(--surface, #fff);
+  border: 1px solid var(--border-strong, #b9cbc5); border-radius: 18px; box-shadow: 0 18px 40px -12px rgba(8, 40, 33, .45);
+}
+.has-inst-banner .login-wrap { padding-bottom: 190px; }
+.inst-banner-top { display: flex; align-items: center; gap: 12px; }
+.inst-banner-ic { flex: none; width: 44px; height: 44px; border-radius: 11px; box-shadow: 0 4px 10px -4px rgba(8, 40, 33, .5); }
+.inst-banner-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.inst-banner-tx b { font-size: 14.5px; line-height: 1.25; color: var(--text, #14352d); }
+.inst-banner-tx span { font-size: 12.5px; line-height: 1.35; color: var(--text-muted, #667069); }
+.inst-banner-act { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px; }
+.inst-banner-act .btn { justify-content: center; min-height: 42px; }
+.inst-lead { margin: 0 0 12px; font-size: 13.5px; line-height: 1.5; color: var(--text, #14352d); }
+.inst-steps { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.inst-steps li { display: flex; align-items: flex-start; gap: 11px; font-size: 13.5px; line-height: 1.5; color: var(--text, #14352d); }
+.inst-steps li > div { min-width: 0; padding-top: 2px; }
+.inst-steps svg { display: inline-block; width: 18px; height: 18px; margin: 0 2px; vertical-align: -3px; color: #0b6cf0; }
+.inst-n { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--color-primary, #0f6f61); color: #fff; font: 700 13px/1 Inter, system-ui, sans-serif; }
+.inst-foot { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #eef8f3; font-size: 12.5px; line-height: 1.5; color: #14352d; }
 .login-card {
   background: #fff; border-radius: 20px; padding: 32px 26px; width: 100%; max-width: 380px;
   box-shadow: var(--shadow-lg);

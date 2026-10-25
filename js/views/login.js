@@ -11,12 +11,8 @@ let mode = 'customer';
 export function renderLogin(root, onLoggedIn) {
   const org = S.getOrg();
   root.innerHTML = `
-    <div class="login-wrap">
-      ${!isStandalone() ? `
-      <button id="btn-install-shortcut" title="Cài ứng dụng" aria-label="Cài ứng dụng"
-        style="position:fixed;top:16px;right:16px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,0.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5">
-        ${icon('download', 'icon-sm')}
-      </button>` : ''}
+    <div class="login-wrap${!isStandalone() ? ' has-install' : ''}">
+      ${!isStandalone() ? `<button type="button" class="login-install" id="btn-install-shortcut">${icon('download', 'icon-sm')}<span>Cài đặt ứng dụng</span></button>` : ''}
       <div class="login-card">
         <div class="logo-mark">${icon('landmark', 'icon-lg')}</div>
         <h1 style="text-align:center;font-size:18px;margin-bottom:4px">${org.name}</h1>

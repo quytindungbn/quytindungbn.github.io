@@ -90,3 +90,19 @@ Nếu muốn người dùng tải qua Play Store thay vì gửi file `.apk` tay:
 khách hàng thật dùng qua app đã đóng gói, vẫn cần hoàn tất checklist đã ghi trong `README.md` (mục
 "Trước khi dùng thật"): OTP thật, rà soát bảo mật độc lập, tuân thủ Nghị định 13/2023/NĐ-CP về bảo vệ
 dữ liệu cá nhân trước khi lưu CCCD khách hàng thật.
+
+## Mời khách cài ứng dụng ngay trên trang web (đã có sẵn trong app)
+
+- **Trang đăng nhập** có nút **"Cài đặt ứng dụng"** (icon tải xuống + chữ) nằm ở **góc trên bên phải** (ngoài khung đăng nhập), cả điện thoại lẫn máy tính; máy đã mở như app (đã cài) thì không hiện.
+- **Thẻ mời cài** tự hiện ở dưới màn hình khi vào app trên máy chưa cài (`initAutoInstallPrompt()` trong `js/components/installBtn.js`, gọi 1 lần ở `js/app.js`). Bấm **Để sau** hoặc **Cài đặt** thì **7 ngày sau** mới mời lại (nhớ bằng `localStorage` khóa `qtd_install_snooze_at`); nút ở trang đăng nhập/menu vẫn luôn có.
+- Theo loại máy (nhận diện ở `js/lib/installEnv.js`, có kiểm thử `tests/installEnv.test.mjs`):
+
+| Máy / trình duyệt | Thẻ mời | Bấm "Cài đặt" |
+|---|---|---|
+| Android: Chrome, Edge, Samsung Internet, Opera; máy tính: Chrome, Edge | Tự hiện khi trình duyệt báo "cài được" (`beforeinstallprompt`) | Hiện **hộp thoại cài thật của trình duyệt** — bấm đồng ý là xong (trình duyệt luôn hỏi xác nhận 1 lần, app không bỏ qua được) |
+| iPhone/iPad (Safari, Chrome, Edge, Firefox) | Tự hiện (Apple không có sự kiện nào) | Hướng dẫn 3 bước: Chia sẻ → Thêm vào MH chính → Thêm (Apple **không cho** web tự cài) |
+| **Mở trong Zalo / Facebook / Messenger / Instagram / TikTok...** (trình duyệt nhúng) | Tự hiện | Hướng dẫn **mở bằng trình duyệt** (⋮ → Mở bằng trình duyệt / Safari) + nút **Sao chép liên kết** — trình duyệt nhúng **không cài được** |
+| Firefox Android và trình duyệt Android khác | Tự hiện | Hướng dẫn ⋮ → Cài đặt / Thêm vào màn hình chính |
+| Safari máy Mac (macOS 14+), Firefox máy tính | Không mời tự động (chỉ khi khách bấm nút) | Safari: Tệp → Thêm vào Dock; Firefox: dùng Chrome/Edge |
+
+- `manifest.json` có `id` + `scope` rõ ràng (giữ nguyên định danh cũ, máy đã cài không bị ảnh hưởng).

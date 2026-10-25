@@ -1,8 +1,10 @@
 // "Thêm lối tắt vào màn hình chính" — dùng chuẩn PWA beforeinstallprompt.
-// CHỈ Android/Chrome/Edge (và Chrome/Edge trên máy tính) hỗ trợ tự động hóa
-// việc này — iPhone/iPad (Safari) KHÔNG có API nào cho web tự bấm hộ được,
-// đây là giới hạn CỐ Ý của Apple (không phải app thiếu sót gì), chỉ có thể
-// HƯỚNG DẪN người dùng tự làm qua nút Chia sẻ. Xem docs/dong-goi-android.md.
+// CHỈ Android/Chrome/Edge/Samsung Internet/Opera (và Chrome/Edge trên máy tính) hỗ trợ tự động hóa
+// việc này — iPhone/iPad (Safari), Firefox, Safari máy tính KHÔNG có API nào cho web tự bấm hộ được,
+// đây là giới hạn CỐ Ý của hãng (không phải app thiếu sót gì), chỉ có thể
+// HƯỚNG DẪN người dùng tự làm. Trình duyệt NHÚNG trong Zalo/Facebook... thì không cài được
+// hẳn — phải mở bằng trình duyệt thật (xem lib/installEnv.js). Xem docs/dong-goi-android.md.
+import { currentInstallEnv } from './installEnv.js';
 
 let deferredPrompt = null;
 const installableCallbacks = [];
@@ -47,7 +49,12 @@ export function isStandalone() {
 
 /** iPhone/iPad — nơi KHÔNG có cách nào tự động thêm lối tắt được. */
 export function isIOS() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return currentInstallEnv().os === 'ios';
+}
+
+/** Trình duyệt đã báo "cài được" và đang giữ sẵn hộp thoại cài đặt thật (bấm nút là hiện ngay). */
+export function hasNativePrompt() {
+  return !!deferredPrompt;
 }
 
 /**
@@ -55,11 +62,13 @@ export function isIOS() {
  *   'already-installed' — đã cài sẵn rồi, không cần làm gì thêm.
  *   'accepted' — Android/Chrome/Edge, người dùng đã đồng ý, THÊM THÀNH CÔNG.
  *   'dismissed' — Android/Chrome/Edge, người dùng bấm "Không, cảm ơn".
+ *   'in-app' — đang mở trong Zalo/Facebook/... (trình duyệt nhúng): không cài được, phải mở bằng trình duyệt thật.
  *   'ios-manual' — iPhone/iPad, KHÔNG tự làm được, cần tự hướng dẫn 3 bước.
- *   'unsupported' — trình duyệt khác chưa hỗ trợ (VD: Safari máy tính, Firefox).
+ *   'unsupported' — trình duyệt khác chưa hỗ trợ (VD: Safari máy tính, Firefox) hoặc đã cài rồi — màn hình hướng dẫn cài tay.
  */
 export async function promptInstall() {
   if (isStandalone()) return 'already-installed';
+  if (currentInstallEnv().inApp) return 'in-app';
   if (deferredPrompt) {
     const promptEvent = deferredPrompt;
     deferredPrompt = null;
