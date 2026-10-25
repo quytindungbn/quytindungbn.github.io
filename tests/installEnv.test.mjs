@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectInstallEnv, installGuideKind } from '../js/lib/installEnv.js';
+import { detectInstallEnv, installGuideKind, androidIntentUrl } from '../js/lib/installEnv.js';
 
 const UA = {
   androidChrome: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
@@ -68,4 +68,12 @@ test('UA rỗng không gây lỗi', () => {
   const e = detectInstallEnv({});
   assert.equal(e.os, 'desktop'); assert.equal(e.inApp, ''); assert.ok(!e.chromium);
   assert.equal(installGuideKind(e), 'desktop-other');
+});
+
+test('androidIntentUrl: mở bằng Chrome (kèm địa chỉ dự phòng) và bằng trình duyệt bất kỳ', () => {
+  const url = 'https://quytindungbn.github.io/';
+  assert.equal(androidIntentUrl(url), 'intent://quytindungbn.github.io/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fquytindungbn.github.io%2F;end');
+  assert.equal(androidIntentUrl(url, 'any'), 'intent://quytindungbn.github.io/#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end');
+  assert.ok(!androidIntentUrl(url, 'any').includes('package='));
+  assert.ok(androidIntentUrl('https://a.b/x/y?z=1').startsWith('intent://a.b/x/y?z=1#Intent;'));
 });
