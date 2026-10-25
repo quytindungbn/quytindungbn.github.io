@@ -1323,6 +1323,9 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
 .inst-steps li { display: flex; align-items: flex-start; gap: 11px; font-size: 13.5px; line-height: 1.5; color: var(--text, #14352d); }
 .inst-steps li > div { min-width: 0; padding-top: 2px; }
 .inst-steps svg { display: inline-block; width: 18px; height: 18px; margin: 0 2px; vertical-align: -3px; color: #0b6cf0; }
+.inst-steps svg.inst-pic { display: block; width: 100%; max-width: 236px; height: auto; margin: 7px 0 0; vertical-align: baseline; }
+@media (prefers-reduced-motion: no-preference) { .inst-ring { animation: inst-ring-pulse 1.6s ease-in-out infinite; } }
+@keyframes inst-ring-pulse { 50% { opacity: .35; } }
 .inst-n { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--color-primary, #0f6f61); color: #fff; font: 700 13px/1 Inter, system-ui, sans-serif; }
 .inst-foot { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #eef8f3; font-size: 12.5px; line-height: 1.5; color: #14352d; }
 .login-card {

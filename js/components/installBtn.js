@@ -8,6 +8,7 @@ import { toast } from './toast.js';
 import { copyText } from '../utils.js';
 import { promptInstall, isStandalone, onInstallable, looksInstalled } from '../lib/installPwa.js';
 import { currentInstallEnv, installGuideKind } from '../lib/installEnv.js';
+import { inAppPics } from './installPics.js';
 
 const ASKED_KEY = 'qtd_install_asked'; // sessionStorage: khách đã bấm "Để sau"/"Cài đặt" ở lần vào này → tải lại trang trong cùng phiên không hỏi lại; mở lại app/tab mới thì hỏi tiếp
 const OLD_KEYS = ['qtd_install_snooze_at', 'qtd_install_ios_seen']; // khóa cũ (nhớ 7 ngày / iPhone mời 1 lần) — không còn dùng, dọn đi
@@ -57,22 +58,24 @@ async function runInstallFlow(btn) {
   }
 }
 
-const ST = (n, html) => `<li><span class="inst-n">${n}</span><div>${html}</div></li>`;
+const ST = (n, html, pic = '') => `<li><span class="inst-n">${n}</span><div>${html}${pic}</div></li>`;
 const SHARE = icon('shareIos', 'icon-sm');
 
 /** Nội dung hướng dẫn cài tay theo loại máy/trình duyệt (xem installGuideKind). */
 function guideContent(kind, env) {
   switch (kind) {
-    case 'in-app':
+    case 'in-app': {
+      const pic = inAppPics(env.os === 'ios' ? 'ios' : 'android');
       return {
         title: 'Mở bằng trình duyệt để cài',
         lead: `Bạn đang mở trang trong <b>${env.inApp}</b> — trình duyệt này <b>không hỗ trợ cài đặt trực tiếp</b>. Hãy mở bằng trình duyệt của điện thoại:`,
         steps: env.os === 'ios'
-          ? [ST(1, 'Bấm nút <b>⋯</b> (hoặc biểu tượng <b>chia sẻ</b>) ở góc màn hình'), ST(2, 'Chọn <b>Mở bằng Safari</b>'), ST(3, 'Trang mở ra trong Safari, bấm lại <b>Cài đặt ứng dụng</b> rồi làm theo hướng dẫn')]
-          : [ST(1, 'Bấm nút <b>⋮</b> (3 chấm) hoặc <b>⋯</b> ở góc trên bên phải'), ST(2, 'Chọn <b>Mở bằng trình duyệt</b> (hoặc <b>Mở trong Chrome</b>)'), ST(3, 'Trang mở ra trong Chrome, bấm lại <b>Cài đặt ứng dụng</b>')],
+          ? [ST(1, 'Bấm nút <b>⋯</b> (hoặc biểu tượng <b>chia sẻ</b>) ở góc màn hình', pic[0]), ST(2, 'Chọn <b>Mở bằng Safari</b>', pic[1]), ST(3, 'Trang mở ra trong Safari, bấm lại <b>Cài đặt ứng dụng</b> rồi làm theo hướng dẫn', pic[2])]
+          : [ST(1, 'Bấm nút <b>⋮</b> (3 chấm) ở góc trên bên phải', pic[0]), ST(2, 'Chọn <b>Mở bằng trình duyệt</b> (hoặc <b>Mở trong Chrome</b>)', pic[1]), ST(3, 'Trang mở ra trong Chrome, bấm lại <b>Cài đặt ứng dụng</b>', pic[2])],
         foot: 'Hoặc bấm <b>Sao chép liên kết</b> bên dưới rồi dán vào ô địa chỉ của Chrome/Safari.',
         copy: true,
       };
+    }
     case 'ios-safari':
       return {
         title: 'Cài đặt ứng dụng trên iPhone',
