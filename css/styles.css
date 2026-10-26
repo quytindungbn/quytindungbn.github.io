@@ -2624,9 +2624,11 @@ a.cd-callbtn:hover { filter: brightness(1.06); }
 .cd-pp-tx > b.is-none { font: 600 14px/1.25 var(--lux-sans, inherit); color: var(--cd-mut); }
 .cd-pp-ph { display: inline-flex; align-items: center; gap: 6px; font: 600 14px/1.2 var(--lux-sans, inherit); letter-spacing: .02em; font-variant-numeric: tabular-nums; color: var(--cd-em); }
 .cd-pp-ph i.is-none { font-style: normal; font-weight: 500; font-size: 12.5px; letter-spacing: 0; color: var(--cd-mut); }
-.cd-pp-pen { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--cd-line); border-radius: 50%; background: #f4f8f6; color: var(--cd-mut); cursor: pointer; }
-.cd-pp-pen:hover { border-color: var(--cd-gold2); color: var(--cd-em); }
-.cd-pp-pen svg { width: 12px; height: 12px; }
+.cd-pp-pen, .cd-pp-copy { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--cd-line); border-radius: 50%; background: #f4f8f6; color: var(--cd-mut); cursor: pointer; }
+.cd-pp-pen:hover, .cd-pp-copy:hover { border-color: var(--cd-gold2); color: var(--cd-em); }
+.cd-pp-pen svg, .cd-pp-copy svg { width: 12px; height: 12px; }
+.cd-pp-copy:focus-visible, .cd-pp-pen:focus-visible { outline: 2px solid var(--cd-em); outline-offset: 2px; }
+.cd-pp-copy.is-done { border-color: #7ee0a5; background: #e1f6ea; color: #0c6a5a; }
 .cd-pp-addph { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; height: 26px; padding: 0 11px 0 8px; border: 1px dashed var(--cd-gold); border-radius: 999px; background: #fffbef; color: #8a6a22; font: 700 12px/1 var(--lux-sans, inherit); cursor: pointer; }
 .cd-pp-addph:hover { background: #fbf1d0; }
 .cd-pp-addph svg { width: 13px; height: 13px; stroke-width: 3; }

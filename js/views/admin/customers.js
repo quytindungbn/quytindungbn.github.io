@@ -924,7 +924,7 @@ function coPersonHtml(p, { canEdit, editing, pending }) {
     : `<span class="cd-pp-call is-off" aria-hidden="true">${icon('phone')}</span>`;
   const phoneLine = editing ? ''
     : p.phone
-      ? `<span class="cd-pp-ph">${escapeHtml(formatPhoneDisplay(p.phone))}${canEdit ? `<button type="button" class="cd-pp-pen" data-pp-edit="${key}" aria-label="Sửa số điện thoại" title="Sửa số điện thoại">${icon('edit', 'icon-sm')}</button>` : ''}</span>`
+      ? `<span class="cd-pp-ph">${escapeHtml(formatPhoneDisplay(p.phone))}<button type="button" class="cd-pp-copy" data-pp-copy="${key}" aria-label="Sao chép số điện thoại" title="Sao chép số điện thoại">${icon('copy', 'icon-sm')}</button>${canEdit ? `<button type="button" class="cd-pp-pen" data-pp-edit="${key}" aria-label="Sửa số điện thoại" title="Sửa số điện thoại">${icon('edit', 'icon-sm')}</button>` : ''}</span>`
       : canEdit
         ? `<button type="button" class="cd-pp-addph" data-pp-edit="${key}">${icon('plus', 'icon-sm')} Nhập số điện thoại</button>`
         : '<span class="cd-pp-ph"><i class="is-none">Chưa có số điện thoại</i></span>';
@@ -1232,7 +1232,27 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           const v = sanitizeCoPhoneInput(inp.value);
           if (v !== inp.value) inp.value = v;
         });
+        // Bấm Enter trong ô số điện thoại = bấm Lưu (không làm khi đang gõ dấu tiếng Việt bằng bộ gõ).
+        ppCard.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' || e.isComposing || !e.target.closest('#pp-phone')) return;
+          e.preventDefault();
+          ppCard.querySelector('[data-pp-save]')?.click();
+        });
         ppCard.addEventListener('click', async (e) => {
+          // Sao chép số người cùng vay: chép dãy số liền (không dấu cách); đổi sang dấu ✓ một lúc.
+          const cp = e.target.closest('[data-pp-copy]');
+          if (cp) {
+            const p = personOf(cp.dataset.ppCopy);
+            const digits = String((p && p.phone) || '').replace(/[^\d+]/g, '');
+            if (!digits) return;
+            if (await copyText(digits)) {
+              S.logUiAction('copy-phone', `Sao chép số điện thoại người cùng vay "**${p.name}**" của khách hàng "**${c.name}**"`);
+              toast('Đã sao chép số điện thoại', 'success');
+              cp.classList.add('is-done'); cp.innerHTML = icon('check', 'icon-sm');
+              setTimeout(() => { if (cp.isConnected) { cp.classList.remove('is-done'); cp.innerHTML = icon('copy', 'icon-sm'); } }, 1800);
+            } else openCopyFallback(digits);
+            return;
+          }
           const call = e.target.closest('[data-pp-call]');
           if (call) {
             const p = personOf(call.dataset.ppCall);
