@@ -899,11 +899,92 @@ async function applyNoZaloResults(customerId: string, contractId: string, noAcco
   }
   return { unticked: noAccountWho, removed: false };
 }
+/** Gộp 2 sổ người cùng vay theo tên (không phân biệt hoa/thường): `over` đè lên `base` cùng tên; người chỉ có ở 1 bên vẫn giữ. Bỏ dòng không có tên. */
+function mergeCoBooks(base: unknown, over: unknown): { name: string; phone: string }[] {
+  const out: { name: string; phone: string }[] = [];
+  for (const x of [...(Array.isArray(base) ? base : []), ...(Array.isArray(over) ? over : [])]) {
+    const name = String((x as any)?.name ?? '').replace(/\s+/g, ' ').trim();
+    if (!name) continue;
+    const entry = { name, phone: String((x as any)?.phone ?? '').trim() };
+    const i = out.findIndex((y) => samePerson(y.name, name));
+    if (i >= 0) out[i] = entry; else out.push(entry);
+  }
+  return out;
+}
+/**
+ * Hồ sơ khách sắp bị dọn (hết dư nợ, chưa có tài khoản — xem bước dọn khi nhập file) thì CẤT sổ người cùng vay (tên + số điện thoại) vào bảng co_people_archive
+ * theo CCCD của khách, để lần vay sau (khách được tạo lại từ file) nếu hợp đồng ghi đúng người đó thì dùng lại luôn số đã lưu (xem restoreCoPeopleFromArchive).
+ * Khách có tài khoản Use không bị dọn nên sổ vẫn nằm sẵn trong hồ sơ. Gộp với sổ đã cất trước đó (người nào chỉ có ở bản cũ vẫn giữ).
+ * KHÔNG BAO GIỜ làm hỏng lần nhập: chưa chạy SQL (thiếu bảng/cột) hoặc lỗi gì thì bỏ qua. Trả về số khách đã cất.
+ */
+async function archiveCoPeopleBeforePrune(customerIds: string[]): Promise<number> {
+  let saved = 0;
+  try {
+    for (const part of chunkArray(customerIds, 150)) {
+      const { data: custs, error } = await admin.from('customers').select('id, cccd, co_people').in('id', part);
+      if (error) return saved; // chưa chạy SQL gửi OA theo hợp đồng (thiếu cột co_people)
+      const withBook = (custs || []).filter((c: any) => String(c.cccd ?? '').trim() && mergeCoBooks(c.co_people, []).length);
+      if (!withBook.length) continue;
+      const { data: old, error: oldErr } = await admin.from('co_people_archive').select('cccd, people').in('cccd', withBook.map((c: any) => c.cccd));
+      if (oldErr) return saved; // chưa chạy SQL tạo bảng co_people_archive
+      const oldByCccd = new Map<string, unknown>((old || []).map((r: any) => [r.cccd, r.people]));
+      const rows = withBook.map((c: any) => ({ cccd: c.cccd, people: mergeCoBooks(oldByCccd.get(c.cccd), c.co_people), updated_at: new Date().toISOString() }));
+      const { error: upErr } = await admin.from('co_people_archive').upsert(rows, { onConflict: 'cccd' });
+      if (upErr) console.error('Lỗi cất sổ người cùng vay:', upErr.message); else saved += rows.length;
+    }
+  } catch (e) {
+    console.error('Lỗi cất sổ người cùng vay:', e);
+  }
+  return saved;
+}
+/**
+ * Sau khi nhập file: khách có hợp đồng còn dư nợ ghi 1 người cùng vay mà sổ của khách CHƯA CÓ người đó, nhưng bảng co_people_archive (theo CCCD) đã cất số của đúng người
+ * đó từ lần vay trước → điền lại số vào sổ (không đè người đã có trong sổ, kể cả khi số đang để trống). Số trùng số người vay thì bỏ qua. Trả về số khách được điền.
+ */
+async function restoreCoPeopleFromArchive(custById: Map<string, any>, ctRows: any[]): Promise<number> {
+  const namesByCust = new Map<string, any[]>();
+  for (const ct of ctRows) { const a = namesByCust.get(ct.customer_id) || []; a.push(ct); namesByCust.set(ct.customer_id, a); }
+  const need = new Map<string, string[]>();
+  for (const [id, cust] of custById) {
+    if (!String(cust?.cccd ?? '').trim()) continue;
+    const names = heirNamesOfRows(namesByCust.get(id) || [], String(cust.name ?? ''))
+      .filter((n) => !(Array.isArray(cust.co_people) ? cust.co_people : []).some((x: any) => samePerson(x?.name, n)));
+    if (names.length) need.set(id, names);
+  }
+  if (!need.size) return 0;
+  const archived = new Map<string, unknown>();
+  for (const part of chunkArray([...need.keys()].map((id) => custById.get(id).cccd as string), 150)) {
+    const { data, error } = await admin.from('co_people_archive').select('cccd, people').in('cccd', part);
+    if (error) return 0; // chưa chạy SQL tạo bảng
+    for (const r of data || []) archived.set((r as any).cccd, (r as any).people);
+  }
+  const updates: { id: string; people: { name: string; phone: string }[] }[] = [];
+  for (const [id, names] of need) {
+    const cust = custById.get(id);
+    const book = archived.get(cust.cccd);
+    if (!book) continue;
+    const people = mergeCoBooks(cust.co_people, []);
+    let changed = false;
+    for (const n of names) {
+      const phone = coPhoneOfPeople(book, n);
+      if (!phone || samePhone(phone, cust.phone)) continue;
+      people.push({ name: n, phone });
+      changed = true;
+    }
+    if (changed) { updates.push({ id, people }); cust.co_people = people; }
+  }
+  await mapLimit(updates, 8, async (u) => {
+    const { error } = await admin.from('customers').update({ co_people: u.people }).eq('id', u.id);
+    if (error) console.error('Lỗi điền lại số người cùng vay từ sổ đã cất:', error.message);
+  });
+  return updates.length;
+}
 /**
  * Sau khi nhập file: hợp đồng nào đang tick gửi cho 1 người cùng vay (oa_to_co) mà TÊN GHI TRÊN HỢP ĐỒNG nay đã đổi sang người khác (hoặc bị xóa)
  * thì tick mất hiệu lực — bỏ tick người cùng vay (hợp đồng về gửi người vay), ghi tên người cũ (co_prev_name) để cảnh báo khi thêm lại,
  * và BỎ khách khỏi Danh sách OA + gửi tự động. Số điện thoại của người cũ vẫn giữ trong sổ người cùng vay (không còn hợp đồng nào ghi tên họ thì
  * không hiện, không gửi). Hợp đồng không đổi người thì giữ nguyên mọi lựa chọn.
+ * Đồng thời điền lại số người cùng vay đã lưu từ lần vay trước (restoreCoPeopleFromArchive).
  * KHÔNG BAO GIỜ làm hỏng lần nhập: chưa chạy SQL (thiếu cột) hoặc lỗi gì thì bỏ qua.
  */
 async function reconcileCoBorrowersAfterImport(customerIds: string[]): Promise<{ changes: { name: string; prev: string; now: string }[]; filled: number; skipped?: string }> {
@@ -912,7 +993,7 @@ async function reconcileCoBorrowersAfterImport(customerIds: string[]): Promise<{
   try {
     const custById = new Map<string, any>();
     for (const part of chunkArray(customerIds, 150)) {
-      const { data, error } = await admin.from('customers').select('id, name, co_people').in('id', part);
+      const { data, error } = await admin.from('customers').select('id, name, cccd, phone, co_people').in('id', part);
       if (error) return { ...out, skipped: 'chưa chạy SQL gửi OA theo hợp đồng' };
       for (const c of data || []) custById.set((c as any).id, c);
     }
@@ -922,6 +1003,8 @@ async function reconcileCoBorrowersAfterImport(customerIds: string[]): Promise<{
       if (error) return { ...out, skipped: error.message };
       ctRows.push(...(data || []));
     }
+    // Người cùng vay đã lưu từ lần vay trước (hợp đồng đã tất toán, hồ sơ khách đã dọn) → dùng lại số đã lưu cho đúng người đó.
+    try { out.filled = await restoreCoPeopleFromArchive(custById, ctRows); } catch (e) { console.error('Lỗi điền lại sổ người cùng vay:', e); }
     const toRemoveFromOa = new Set<string>();
     const prevByCustomer = new Map<string, string>();
     const ctUpdates: string[] = [];
@@ -3092,6 +3175,7 @@ Deno.serve(async (req) => {
         const deletedIds = new Set<string>();
         for (const part of chunkArray(pruneRows.map((c: any) => c.id as string), 150)) {
           const { data: zaloRows } = await admin.from('zalo_customers').select('*').in('customer_id', part);
+          await archiveCoPeopleBeforePrune(part); // cất sổ người cùng vay (tên + số) theo CCCD để lần vay sau dùng lại
           const { error } = await admin.from('customers').delete().in('id', part);
           if (error) break;
           part.forEach((id) => deletedIds.add(id));

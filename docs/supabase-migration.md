@@ -3174,6 +3174,36 @@ update public.contracts ct
    and ct.oa_co_key is null;
 ```
 
+
+### 10.84. Người cùng vay còn được lưu lại sau khi hợp đồng tất toán — lần vay sau dùng lại số luôn (BẮT BUỘC chạy SQL, rồi deploy lại Edge Function create-account)
+
+**Vấn đề**: nhập file (đồng bộ đầy đủ) thì hợp đồng đã tất toán / không còn trong file bị xóa; hồ sơ khách hết dư nợ **và chưa có tài khoản Use** cũng bị dọn — kéo theo sổ người cùng vay (`customers.co_people`) mất. Lần vay sau phải nhập lại số điện thoại của người cùng vay.
+
+**Cách làm**
+- Khách **có tài khoản Use**: hồ sơ không bị dọn → sổ người cùng vay (tên + số) nằm sẵn trong hồ sơ; lần vay sau hợp đồng ghi đúng tên người đó (không phân biệt hoa/thường, khoảng trắng thừa) thì dùng luôn số đã lưu, không phải nhập lại.
+- Khách **chưa có tài khoản Use** bị dọn: trước khi xóa hồ sơ, máy chủ **cất** sổ người cùng vay vào bảng mới `co_people_archive` (khóa là **CCCD** của khách; gộp với bản đã cất trước đó, bản mới đè bản cũ cùng tên). Lần nhập sau, khách được tạo lại từ file (cùng CCCD) mà hợp đồng ghi đúng người cùng vay đó thì máy chủ **điền lại số** vào sổ của khách (`restoreCoPeopleFromArchive`, chạy trong `reconcileCoBorrowersAfterImport`). Không đè người đã có trong sổ (kể cả khi số đang để trống — đó là lựa chọn của bạn); số trùng số người vay thì bỏ qua.
+- **Không tự tick**: hợp đồng mới vẫn mặc định gửi cho người vay; muốn gửi người cùng vay thì tick ở chi tiết khách hàng (số đã có sẵn nên tick được ngay, không phải nhập lại).
+- Xóa khách bằng tay (nút xóa khách hàng) **không** cất sổ. Chưa chạy SQL thì bước cất/điền bị bỏ qua, không làm hỏng lần nhập.
+- **Gửi tự động** gửi đúng người theo tùy chỉnh của **từng hợp đồng** (`contractRecipients` trong `send-due-reminders`): hợp đồng tắt không gửi, người cùng vay chỉ nhận hợp đồng có tên họ và đã tick, người báo chưa đăng ký Zalo thì tự bỏ tick — đã có kiểm thử riêng cho từng trường hợp.
+
+**Việc cần bạn làm — THEO THỨ TỰ**: (1) chạy SQL dưới đây (SQL Editor; file `supabase/migrations/20261027_co_people_archive.sql`); (2) deploy lại Edge Function **`create-account`**. `send-due-reminders` không đổi.
+
+```sql
+-- Cất sổ người cùng vay (tên + số điện thoại) theo CCCD của khách khi hồ sơ khách bị dọn lúc nhập file (hết dư nợ, chưa có tài khoản Use) — docs mục 10.84.
+-- Lần vay sau, khách được tạo lại từ file mà hợp đồng ghi đúng người cùng vay đó thì dùng lại luôn số đã lưu.
+-- Chạy TRƯỚC khi deploy lại create-account. Chạy lại nhiều lần được. Bảng chỉ truy cập qua Edge Function (service role);
+-- không cấp quyền gì cho anon/authenticated nên trình duyệt không đọc/ghi trực tiếp được.
+create table if not exists public.co_people_archive (
+  cccd text primary key,                                   -- CCCD của khách (người vay)
+  people jsonb not null default '[]'::jsonb,                -- [{ "name": "TRẦN THỊ BÍCH", "phone": "0988777666" }]
+  updated_at timestamptz not null default now()
+);
+
+alter table public.co_people_archive enable row level security;
+revoke all on public.co_people_archive from anon, authenticated;
+grant select, insert, update, delete on public.co_people_archive to service_role;
+```
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
