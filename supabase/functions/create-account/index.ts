@@ -899,17 +899,80 @@ async function applyNoZaloResults(customerId: string, contractId: string, noAcco
   }
   return { unticked: noAccountWho, removed: false };
 }
-/** Gộp 2 sổ người cùng vay theo tên (không phân biệt hoa/thường): `over` đè lên `base` cùng tên; người chỉ có ở 1 bên vẫn giữ. Bỏ dòng không có tên. */
-function mergeCoBooks(base: unknown, over: unknown): { name: string; phone: string }[] {
-  const out: { name: string; phone: string }[] = [];
+/** Lựa chọn gửi Zalo OA gần nhất của 1 người cùng vay (lưu trong sổ: entry.oa) — người vay có nhận không, người cùng vay có nhận không. */
+type CoPref = { toMain: boolean; toCo: boolean };
+type CoEntry = { name: string; phone: string; oa?: CoPref };
+function cleanCoPref(v: unknown): CoPref | undefined {
+  return v && typeof v === 'object' ? { toMain: (v as any).toMain !== false, toCo: (v as any).toCo === true } : undefined;
+}
+/** Gộp 2 sổ người cùng vay theo tên (không phân biệt hoa/thường): `over` đè lên `base` cùng tên (lựa chọn gửi `oa` của bản cũ vẫn giữ nếu bản mới chưa có); người chỉ có ở 1 bên vẫn giữ. Bỏ dòng không có tên. */
+function mergeCoBooks(base: unknown, over: unknown): CoEntry[] {
+  const out: CoEntry[] = [];
   for (const x of [...(Array.isArray(base) ? base : []), ...(Array.isArray(over) ? over : [])]) {
     const name = String((x as any)?.name ?? '').replace(/\s+/g, ' ').trim();
     if (!name) continue;
-    const entry = { name, phone: String((x as any)?.phone ?? '').trim() };
     const i = out.findIndex((y) => samePerson(y.name, name));
+    const oa = cleanCoPref((x as any)?.oa) ?? (i >= 0 ? out[i].oa : undefined);
+    const entry: CoEntry = { name, phone: String((x as any)?.phone ?? '').trim(), ...(oa ? { oa } : {}) };
     if (i >= 0) out[i] = entry; else out.push(entry);
   }
   return out;
+}
+/**
+ * Trước khi nhập file (hợp đồng cũ có thể bị xóa): ghi lại LỰA CHỌN GỬI hiện tại của từng người cùng vay vào sổ của khách (entry.oa = { toMain, toCo }) — lấy từ các hợp đồng còn dư nợ
+ * đang ghi tên người đó: có hợp đồng nào tick người cùng vay → { người vay như hợp đồng đó, toCo: true }, không có → mặc định { toMain: true, toCo: false }.
+ * Người không còn ghi trên hợp đồng nào thì giữ nguyên lựa chọn đã ghi. Hợp đồng MỚI ghi đúng người đó sau này sẽ được áp lại lựa chọn này (applyCoPrefToNewContracts).
+ * Trả về danh sách khách cần ghi lại sổ (chỉ những khách có thay đổi thật).
+ */
+function coPrefUpdates(customers: any[], contracts: any[]): { id: string; people: CoEntry[] }[] {
+  const byCust = new Map<string, any[]>();
+  for (const ct of contracts || []) {
+    if (!(Number(ct?.balance) > 0)) continue;
+    const arr = byCust.get(ct.customer_id) || [];
+    arr.push(ct); byCust.set(ct.customer_id, arr);
+  }
+  const out: { id: string; people: CoEntry[] }[] = [];
+  for (const cust of customers || []) {
+    const people = mergeCoBooks(cust?.co_people, []);
+    if (!people.length) continue;
+    const cts = byCust.get(cust.id) || [];
+    let changed = false;
+    for (const p of people) {
+      const named = cts.filter((ct) => samePerson(heirOfRow(ct, cust.name), p.name));
+      if (!named.length) continue;
+      const ticked = named.find((ct) => ct.oa_to_co === true && samePerson(ct.oa_co_key, p.name));
+      const pref: CoPref = ticked ? { toMain: ticked.oa_to_main !== false, toCo: true } : { toMain: true, toCo: false };
+      if (!p.oa && !pref.toCo) continue; // chưa từng ghi + đúng mặc định → khỏi ghi
+      if (!p.oa || p.oa.toMain !== pref.toMain || p.oa.toCo !== pref.toCo) { p.oa = pref; changed = true; }
+    }
+    if (changed) out.push({ id: cust.id, people });
+  }
+  return out;
+}
+/**
+ * Hợp đồng MỚI (vừa tạo trong lần nhập này — hợp đồng thay thế hợp đồng đã tất toán, hoặc vay lại sau một thời gian) ghi đúng người cùng vay đã có lựa chọn gửi trong sổ
+ * (entry.oa.toCo = true) và người đó có số điện thoại → tick lại y như trước (người vay theo lựa chọn cũ). Người cùng vay KHÁC thì không có lựa chọn → mặc định gửi người vay.
+ * Hợp đồng cũ (không phải mới) không bị đụng. Trả về số hợp đồng được tick.
+ */
+async function applyCoPrefToNewContracts(custById: Map<string, any>, ctRows: any[], newContractIds: string[]): Promise<number> {
+  const fresh = new Set(newContractIds || []);
+  if (!fresh.size) return 0;
+  const updates: { id: string; patch: Record<string, unknown> }[] = [];
+  for (const ct of ctRows) {
+    if (!fresh.has(ct.id) || ct.oa_to_co === true) continue;
+    const cust = custById.get(ct.customer_id);
+    if (!cust) continue;
+    const name = heirOfRow(ct, cust.name);
+    if (!name) continue;
+    const entry = mergeCoBooks(cust.co_people, []).find((x) => samePerson(x.name, name));
+    if (!entry?.oa || entry.oa.toCo !== true || !entry.phone || samePhone(entry.phone, cust.phone)) continue;
+    updates.push({ id: ct.id, patch: { oa_to_co: true, oa_co_key: normPersonName(name), oa_to_main: entry.oa.toMain !== false } });
+  }
+  await mapLimit(updates, 8, async (u) => {
+    const { error } = await admin.from('contracts').update(u.patch).eq('id', u.id);
+    if (error) console.error('Lỗi tick lại người cùng vay cho hợp đồng mới:', error.message);
+  });
+  return updates.length;
 }
 /**
  * Hồ sơ khách sắp bị dọn (hết dư nợ, chưa có tài khoản — xem bước dọn khi nhập file) thì CẤT sổ người cùng vay (tên + số điện thoại) vào bảng co_people_archive
@@ -966,9 +1029,9 @@ async function restoreCoPeopleFromArchive(custById: Map<string, any>, ctRows: an
     const people = mergeCoBooks(cust.co_people, []);
     let changed = false;
     for (const n of names) {
-      const phone = coPhoneOfPeople(book, n);
-      if (!phone || samePhone(phone, cust.phone)) continue;
-      people.push({ name: n, phone });
+      const saved = mergeCoBooks(book, []).find((x) => samePerson(x.name, n));
+      if (!saved || !saved.phone || samePhone(saved.phone, cust.phone)) continue;
+      people.push({ name: n, phone: saved.phone, ...(saved.oa ? { oa: saved.oa } : {}) }); // kèm lựa chọn gửi đã lưu
       changed = true;
     }
     if (changed) { updates.push({ id, people }); cust.co_people = people; }
@@ -984,11 +1047,11 @@ async function restoreCoPeopleFromArchive(custById: Map<string, any>, ctRows: an
  * thì tick mất hiệu lực — bỏ tick người cùng vay (hợp đồng về gửi người vay), ghi tên người cũ (co_prev_name) để cảnh báo khi thêm lại,
  * và BỎ khách khỏi Danh sách OA + gửi tự động. Số điện thoại của người cũ vẫn giữ trong sổ người cùng vay (không còn hợp đồng nào ghi tên họ thì
  * không hiện, không gửi). Hợp đồng không đổi người thì giữ nguyên mọi lựa chọn.
- * Đồng thời điền lại số người cùng vay đã lưu từ lần vay trước (restoreCoPeopleFromArchive).
+ * Đồng thời điền lại số người cùng vay đã lưu từ lần vay trước (restoreCoPeopleFromArchive) và tick lại lựa chọn gửi cũ cho hợp đồng MỚI ghi đúng người đó (applyCoPrefToNewContracts).
  * KHÔNG BAO GIỜ làm hỏng lần nhập: chưa chạy SQL (thiếu cột) hoặc lỗi gì thì bỏ qua.
  */
-async function reconcileCoBorrowersAfterImport(customerIds: string[]): Promise<{ changes: { name: string; prev: string; now: string }[]; filled: number; skipped?: string }> {
-  const out = { changes: [] as { name: string; prev: string; now: string }[], filled: 0 };
+async function reconcileCoBorrowersAfterImport(customerIds: string[], newContractIds: string[] = []): Promise<{ changes: { name: string; prev: string; now: string }[]; filled: number; ticked: number; skipped?: string }> {
+  const out = { changes: [] as { name: string; prev: string; now: string }[], filled: 0, ticked: 0 };
   if (!customerIds.length) return out;
   try {
     const custById = new Map<string, any>();
@@ -1035,6 +1098,8 @@ async function reconcileCoBorrowersAfterImport(customerIds: string[]): Promise<{
       await admin.from('zalo_auto_send_list').delete().in('customer_id', part);
       await admin.from('zalo_customers').delete().in('customer_id', part);
     }
+    // Hợp đồng MỚI ghi đúng người cùng vay đã có lựa chọn gửi → tick lại y như trước.
+    try { out.ticked = await applyCoPrefToNewContracts(custById, ctRows, newContractIds); } catch (e) { console.error('Lỗi tick lại người cùng vay:', e); }
   } catch (e: any) {
     console.error('Lỗi đối chiếu người cùng vay:', e);
     return { ...out, skipped: String(e?.message || e) };
@@ -1647,10 +1712,10 @@ Deno.serve(async (req) => {
       if (samePhone(clean, customer.phone)) return json({ ok: false, reason: 'Trùng số của người vay.' });
       phone = clean;
     }
-    const people: { name: string; phone: string }[] = (Array.isArray(customer.co_people) ? customer.co_people : [])
-      .map((x: any) => ({ name: String(x?.name ?? ''), phone: String(x?.phone ?? '') })).filter((x: any) => x.name);
+    const people: CoEntry[] = (Array.isArray(customer.co_people) ? customer.co_people : [])
+      .map((x: any) => ({ name: String(x?.name ?? ''), phone: String(x?.phone ?? ''), ...(cleanCoPref(x?.oa) ? { oa: cleanCoPref(x?.oa) } : {}) })).filter((x: any) => x.name);
     const idx = people.findIndex((x) => samePerson(x.name, personName));
-    if (idx >= 0) people[idx] = { name: people[idx].name, phone };
+    if (idx >= 0) people[idx] = { ...people[idx], name: people[idx].name, phone };
     else people.push({ name: String((named[0] as any).heir_name || personName).replace(/\s+/g, ' ').trim(), phone });
     const { error: upErr } = await admin.from('customers').update({ co_people: people }).eq('id', customerId);
     if (upErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
@@ -3064,6 +3129,22 @@ Deno.serve(async (req) => {
     });
     if (isPreview) return json({ ok: true, preview: true, fullSync, summary: buildImportSummary(), details: importDetails });
 
+    // Ghi lại lựa chọn gửi Zalo OA của từng người cùng vay vào sổ của khách TRƯỚC khi ghi/xóa bất cứ thứ gì (hợp đồng cũ có thể bị xóa ngay trong lần nhập này) — xem coPrefUpdates.
+    // Cập nhật luôn bản trong bộ nhớ để lệnh ghi hồ sơ khách bên dưới không ghi đè lại sổ cũ. Chưa chạy SQL (thiếu cột co_people) hoặc lỗi gì thì bỏ qua.
+    try {
+      const prefUpdates = coPrefUpdates(allCustomers || [], allContracts || []);
+      for (const u of prefUpdates) {
+        const orig = allCustomerById.get(u.id);
+        if (orig) orig.co_people = u.people;
+        const cur = orig ? customerByCccd.get(orig.cccd) : null;
+        if (cur) (cur as any).co_people = u.people;
+      }
+      await mapLimit(prefUpdates, 8, async (u) => {
+        const { error } = await admin.from('customers').update({ co_people: u.people }).eq('id', u.id);
+        if (error) console.error('Lỗi ghi lựa chọn gửi của người cùng vay:', error.message);
+      });
+    } catch (e) { console.error('Lỗi ghi lựa chọn gửi của người cùng vay:', e); }
+
     // Khách đã có sẵn: chỉ ghi lại khi hồ sơ (tên, SĐT, địa chỉ và các cột tách từ địa chỉ) thật sự đổi.
     const existingCustomerWrites = existingCustomerUpserts.filter((cust: any) => {
       const orig = originalCustomerByCccd.get(cust.cccd);
@@ -3188,7 +3269,7 @@ Deno.serve(async (req) => {
     }
 
     // Đối chiếu người cùng vay (cột D) của các khách vừa nhập — chạy SAU khi mọi bước ghi/dọn đã xong, không bao giờ làm hỏng lần nhập.
-    const coReconcile = await reconcileCoBorrowersAfterImport([...touchedCccds].map((cccd) => (customerByCccd.get(cccd) as any)?.id as string).filter(Boolean));
+    const coReconcile = await reconcileCoBorrowersAfterImport([...touchedCccds].map((cccd) => (customerByCccd.get(cccd) as any)?.id as string).filter(Boolean), importSnapshot.createdContractIds as string[]);
     if (coReconcile.changes.length) (importDetails as any).coBorrowerChanges = coReconcile.changes;
     const importSummary = { ...buildImportSummary(), coBorrowerChanged: coReconcile.changes.length };
     // Ghi nhật ký sử dụng và lưu lịch sử nhập CÙNG LÚC (2 việc độc lập nhau).
