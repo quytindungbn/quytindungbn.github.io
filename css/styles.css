@@ -2864,6 +2864,7 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cv-hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, #b08d3c, #dccb99 50%, #b08d3c); }
 .cv-head { display: flex; align-items: flex-start; gap: 12px; }
 .cv-block { flex: 1; min-width: 0; }
+.cv-main, .cv-cust { min-width: 0; }
 .cv-eyebrow { display: block; margin-bottom: 1px; font: 600 10px/1 var(--lux-sans); letter-spacing: .18em; text-transform: uppercase; color: #dccb99; }
 .cv-main { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 12px; }
 .cv-code { margin: 0; font: 700 24px/1.1 var(--font-serif, serif); letter-spacing: .01em; color: #fff; }
@@ -2873,17 +2874,20 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cv-state.is-over { border-color: rgba(255, 143, 134, .6); background: rgba(255, 120, 110, .18); color: #ffd9d5; }
 .cv-state.is-over i { background: #ff8f86; box-shadow: 0 0 0 3px rgba(255, 143, 134, .25); }
 .cv-state .p, .cv-cell .p { display: none; }
-.cv-cust { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 0 auto; font: 500 13.5px/1.15 var(--lux-sans); color: #cfe8df; }
+.cv-cust { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; max-width: 100%; margin: 0 0 0 auto; font: 500 13.5px/1.15 var(--lux-sans); color: #cfe8df; }
 .cv-cust .nm { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .4em; min-width: 0; }
 .cv-cust b { font: 700 14px/1.15 var(--lux-sans); letter-spacing: .02em; color: #fff; }
 .cv-cust i { font-style: normal; font-weight: 500; color: #cfe8df; }
 .cv-call { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 26px; padding: 0 15px 0 11px; border-radius: 999px; background: linear-gradient(180deg, #f2e0a0, #cfae55); color: #3a2c06; font: 700 12.5px/1 var(--lux-sans); text-decoration: none; box-shadow: 0 8px 16px -9px rgba(0, 0, 0, .6); }
 .cv-call svg { width: 15px; height: 15px; }
 .cv-main.has-co .cv-cust { flex-basis: 100%; flex-wrap: nowrap; margin-left: 0; }
-.cv-main.has-co .cv-cust .nm { flex-wrap: nowrap; align-items: center; gap: 0 8px; max-width: 100%; }
-.cv-main.has-co .cv-cust .nm b { flex: 0 1 auto; min-width: 0; margin: -3px 0; padding-top: 2px; overflow: hidden; line-height: 1.7; text-overflow: ellipsis; white-space: nowrap; }
+.cv-main.has-co .cv-cust .nm { flex-wrap: nowrap; align-items: center; gap: 0 12px; width: 100%; max-width: 100%; }
+.cv-main.has-co .cv-cust .nm .g { flex: none; display: flex; align-items: center; gap: 0 8px; }
+.cv-main.has-co .cv-cust .nm b { flex: none; line-height: 1.5; white-space: nowrap; }
 .cv-main.has-co .cv-cust .nm i { flex: none; align-self: center; padding-top: 3px; line-height: 1; }
-.cv-main.has-co .cv-cust .nm .cv-call { margin-right: 6px; }
+.cv-main.has-co .cv-cust.is-wrap .nm { flex-wrap: wrap; gap: 4px 12px; }
+.cv-main.has-co .cv-cust.is-wrap .nm .g { flex: 0 1 auto; max-width: 100%; }
+.cv-main.has-co .cv-cust.is-wrap .nm b { flex: 0 1 auto; min-width: 0; white-space: normal; }
 .cv-tools { flex: none; display: flex; align-items: center; gap: 8px; }
 .cv-tbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; min-width: 34px; padding: 0; border: 1px solid rgba(255, 255, 255, .28); border-radius: 999px; background: rgba(255, 255, 255, .08); color: #fff; font: 600 12.5px/1 var(--lux-sans); cursor: pointer; }
 .cv-tbtn:hover, .cv-tbtn.is-open { background: rgba(255, 255, 255, .18); }
@@ -3007,10 +3011,11 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-cust b { font-size: 13px; }
   .cv-call { height: 28px; }
   .cv-main.has-co .cv-cust { justify-content: flex-start; }
-  .cv-main.has-co .cv-cust .nm { width: 100%; gap: 0 5px; }
-  .cv-main.has-co .cv-cust .nm b { font-size: 12.5px; letter-spacing: .01em; }
+  .cv-main.has-co .cv-cust .nm { width: 100%; gap: 0 8px; }
+  .cv-main.has-co .cv-cust .nm .g { gap: 0 5px; }
+  .cv-main.has-co .cv-cust .nm b { font-size: 13px; letter-spacing: .01em; }
   .cv-main.has-co .cv-cust .nm i { font-size: 12px; }
-  .cv-main.has-co .cv-cust .nm .cv-call { width: 28px; padding: 0; margin-right: 2px; }
+  .cv-main.has-co .cv-cust .nm .cv-call { width: 28px; padding: 0; }
   .cv-main.has-co .cv-cust .nm .cv-call .t { display: none; }
   .cv-term { gap: 0 10px; margin-top: 7px; }
   .cv-term .e { display: none; }

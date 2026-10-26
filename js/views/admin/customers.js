@@ -1367,6 +1367,19 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = originalLabel;
 }
 
+function fitCoNames(cust) {
+  const nm = cust && cust.querySelector('.nm');
+  if (!nm) return;
+  const bs = [...nm.querySelectorAll('b')];
+  if (bs.length < 2) return;
+  cust.classList.remove('is-wrap');
+  bs.forEach((b) => { b.style.fontSize = ''; });
+  const base = parseFloat(getComputedStyle(bs[0]).fontSize) || 13;
+  let size = base;
+  while (nm.scrollWidth > nm.clientWidth + 0.5 && size > 10.5) { size -= 0.5; bs.forEach((b) => { b.style.fontSize = `${size}px`; }); }
+  if (nm.scrollWidth > nm.clientWidth + 0.5) { bs.forEach((b) => { b.style.fontSize = ''; }); cust.classList.add('is-wrap'); }
+}
+
 function fitOneLine(el, minPx = 9) {
   el.style.fontSize = '';
   let size = parseFloat(getComputedStyle(el).fontSize) || 16;
@@ -1419,7 +1432,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const coDial = coName ? dialOf(coPhoneOf(customer.coPeople, coName)) : '';
   const callBtn = (who, dial, label) => (dial ? `<a class="cv-call" href="tel:${escapeHtml(dial)}" data-cv-call="${who}" aria-label="${label}" title="${label}">${icon('phone', 'icon-sm')}<span class="t">Gọi</span></a>` : '');
   const custHtml = !customer ? '' : coName
-    ? `<p class="cv-cust"><span class="nm"><b>${escapeHtml(customer.name)}</b>${callBtn('main', mainDial, 'Gọi người vay')}<i>và</i><b>${escapeHtml(coName)}</b>${callBtn('co', coDial, 'Gọi người cùng vay')}</span></p>`
+    ? `<p class="cv-cust"><span class="nm"><span class="g"><b>${escapeHtml(customer.name)}</b>${callBtn('main', mainDial, 'Gọi người vay')}</span><span class="g"><i>và</i><b>${escapeHtml(coName)}</b>${callBtn('co', coDial, 'Gọi người cùng vay')}</span></span></p>`
     : `<p class="cv-cust"><span class="nm"><b>${escapeHtml(customer.name)}</b></span>${callBtn('main', mainDial, 'Gọi người vay')}</p>`;
 
   const principalNum = Number(contract.principal) || 0;
@@ -1435,7 +1448,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const actBtns = [
     customer && customer.phone && canPay ? `<a href="${buildSmsLink(customer, contract)}" id="btn-sms-ct" class="cv-act">${icon('message')}<span>Nhắn SMS cho khách</span></a>` : '',
     customer && canPay ? `<button type="button" class="cv-act" id="btn-noti-app-ct">${icon('bell')}<span>Thông báo qua ứng dụng</span></button>` : '',
-    zaloShown ? `<button type="button" class="cv-act" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message')}<span>Gửi tin Zalo OA ngay</span></button>` : '',
+    zaloShown ? `<button type="button" class="cv-act" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('send')}<span>Gửi tin Zalo OA ngay</span></button>` : '',
   ].filter(Boolean);
   const contactHtml = canPay ? `
             <section class="cv-card cv-c-contact">
@@ -1720,7 +1733,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       }
 
       const moneyEls = [...sheet.querySelectorAll('.cv-cells .cv-val'), ...sheet.querySelectorAll('.cv-fx')];
-      const fitMoney = () => moneyEls.forEach((el) => fitOneLine(el));
+      const custEl = sheet.querySelector('.cv-main.has-co .cv-cust');
+      const fitMoney = () => { moneyEls.forEach((el) => fitOneLine(el)); fitCoNames(custEl); };
       fitMoney();
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitMoney);
       if (typeof ResizeObserver === 'function') new ResizeObserver(fitMoney).observe(sheet.querySelector('.cv-cells'));
