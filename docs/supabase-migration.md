@@ -3209,7 +3209,7 @@ grant select, insert, update, delete on public.co_people_archive to service_role
 
 **Dùng để**: điền hàng loạt số điện thoại người cùng vay (lấy từ file khách hàng của quỹ) thay vì nhập tay từng người ở chi tiết khách hàng.
 
-**File**: bảng Excel (.xls/.xlsx), dòng tiêu đề (trong 15 dòng đầu) có cột **"Số HĐTD"** và cột **"SĐT người cùng vay"** (hoặc "SĐT người thừa kế" / "Số điện thoại người cùng vay"…; chữ hoa/thường, dấu không quan trọng). Các cột khác bỏ qua. File mẫu: `SDT_nguoi_cung_vay.xlsx` — 189 dòng theo đúng thứ tự trong ảnh danh sách hợp đồng, số điện thoại tra từ file KH.xls: cột "Người thừa kế" của danh sách là **mã khách hàng** của người cùng vay → tra `MA_KHACH_HANG` trong KH.xls → lấy `SO_DI_DONG` (mã `0` hoặc để trống = không có người cùng vay).
+**File**: bảng Excel (.xls/.xlsx), dòng tiêu đề (trong 15 dòng đầu) có cột **"Số HĐTD"** và cột **"SĐT người cùng vay"** (hoặc "SĐT người thừa kế" / "Số điện thoại người cùng vay"…; chữ hoa/thường, dấu không quan trọng). Các cột khác bỏ qua. File mẫu: `SDT_nguoi_cung_vay_day_du.xlsx` — 524 dòng (STT 1–524) theo đúng thứ tự trong ảnh danh sách hợp đồng, số điện thoại tra từ file KH.xls: cột "Người thừa kế" của danh sách là **mã khách hàng** của người cùng vay → tra `MA_KHACH_HANG` trong KH.xls → lấy `SO_DI_DONG` (mã `0` hoặc để trống = không có người cùng vay).
 
 **Cách dùng**: Khách hàng & Hợp đồng → **Nhập từ Excel** → mục **"File số điện thoại người cùng vay"** → chọn file → **Đọc file & xem trước số điện thoại**. Màn hình hiện: sẽ lưu bao nhiêu số cho bao nhiêu khách, các dòng bỏ qua (kèm lý do), danh sách dòng cần chú ý và danh sách số sẽ lưu — **chưa ghi gì** cho đến khi bấm **Lưu N số điện thoại**. Chạy lại cùng file được (số y hệt thì bỏ qua).
 
