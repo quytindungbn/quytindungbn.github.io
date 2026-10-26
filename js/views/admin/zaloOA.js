@@ -1,19 +1,3 @@
-// Trang "Quản lý OA" — quản lý gửi tin Zalo OA (ZBS Template Message), 2 tầng:
-//   Tầng 1 "Danh sách OA": khách hàng nào "có Zalo, đủ điều kiện gửi" — theo
-//     KHÁCH HÀNG (không hiện thông tin hợp đồng ở đây), CHUNG cho mọi người
-//     có quyền (không riêng ai), giống "Use" không tự xóa khi hết hợp
-//     đồng/dư nợ. Là điều kiện BẮT BUỘC để gửi tay mẫu "Đến hạn/Quá hạn" ở
-//     chi tiết hợp đồng — mẫu này KHÔNG tự động gửi (chỉ gửi tay, giới hạn
-//     5 ngày/lần cho mỗi hợp đồng).
-//   Tầng 2 "Gửi tin tự động": CHỈ còn 2 mục báo lãi (Báo lãi tự động hàng
-//     tháng / Gửi theo ngày cụ thể), RÚT RA từ khách đã ở Tầng 1 — RIÊNG TƯ
-//     theo từng người tự chọn, 1 hợp đồng chỉ ở được 1 trong 2 mục (loại
-//     trừ nhau) và chỉ 1 người chọn được — người khác cố chọn trùng bị
-//     chặn, báo rõ tên người đã chọn + mục họ chọn.
-//   "Quản lý gửi tin": log mọi lần gửi (tự động lẫn gửi tay) — thành công/lỗi,
-//     lọc được theo trạng thái + khoảng thời gian.
-//   "Cấu hình" (CHỈ quản trị viên toàn quyền): nhập Template ID cho 2 mẫu
-//     ("Đến hạn" và "Báo lãi").
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
@@ -30,25 +14,24 @@ const AUTO_SEND_SECTIONS = [
   { kind: 'lai_hang_thang_auto', title: 'Báo lãi tự động hàng tháng' },
   { kind: 'lai_hang_thang_custom_day', title: 'Gửi theo ngày cụ thể' },
 ];
-const PAGE_SIZE = 20; // hiện ít trước, bấm "Xem thêm" mới tải thêm — tránh dồn cả danh sách dài gây chậm/khó kéo
-const pendingAdds = new Set(); // hợp đồng vừa bấm thêm, máy chủ chưa trả lời (để mở lại cửa sổ không hiện lại và không thêm trùng)
+const PAGE_SIZE = 20;
+const pendingAdds = new Set();
 
 let activeTab = 'oa';
 let filterThon = [];
 let filterXom = [];
-let oaQuery = ''; // ô tìm kiếm tên/SĐT ở tab "Danh sách OA"
-let oaRcv = 'all'; // lọc theo NGƯỜI NHẬN Zalo OA ở tab "Danh sách OA": 'all' | 'main' (chỉ người vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người)
-let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
-let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
+let oaQuery = '';
+let oaRcv = 'all';
+let logStatusFilter = 'all';
+let logFromDate = '';
 let logToDate = '';
-let logQuery = ''; // ô tìm kiếm ở tab Lịch sử gửi: tên khách, số HĐTD, số điện thoại (người vay / người cùng vay), tên người cùng vay
-// "Quản lý gửi tin": mặc định chỉ hiện 1 tháng gần nhất; bấm "Xem thêm" hoặc chọn "Từ ngày" cũ hơn thì tải thêm log cũ từ máy chủ (giữ tạm trong bộ nhớ).
-let extraLogs = [];        // log cũ hơn khoảng đã tải sẵn lúc đăng nhập
-let logCoveredFrom = null; // mốc thời gian (ms) cũ nhất mà dữ liệu đã tải phủ kín; -Infinity = đã tải hết
-let logViewFrom = null;    // sau khi bấm "Xem thêm": hiện từ mốc này trở đi (null = 1 tháng gần nhất)
+let logQuery = '';
+
+let extraLogs = [];
+let logCoveredFrom = null;
+let logViewFrom = null;
 const LOG_PAGE = 500;
 
-// Hàng tab nổi bật (icon + chữ); "Cấu hình" chỉ hiện với quản trị viên toàn quyền.
 const OA_TABS = [
   { k: 'oa', label: 'Danh sách OA', icon: 'users' },
   { k: 'auto', label: 'Gửi tự động', icon: 'refresh' },
@@ -56,24 +39,18 @@ const OA_TABS = [
   { k: 'config', label: 'Cấu hình', icon: 'settings', superOnly: true },
 ];
 
-// ------------------------------------------------------------
-// "Gửi Zalo tới ai": cấu hình THEO TỪNG HỢP ĐỒNG (chi tiết khách hàng, thẻ "Người cùng vay & Zalo OA", hoặc chi tiết hợp đồng): bật/tắt cả hợp đồng + tick
-// người vay / người cùng vay (người có tên trong chính hợp đồng đó). Mặc định (mọi hợp đồng bật, chỉ gửi người vay) thì KHÔNG hiện gì thêm. Có gì khác
-// thì có dòng "Gửi tới": 1 hợp đồng — nhãn *Gửi cả 2 người* hoặc chip vàng *Người cùng vay: tên · số* (trên máy tính viết trên 1 dòng); nhiều hợp đồng — mỗi hợp đồng 1 ô nhỏ
-// ("461/26 Người vay + Bích", "463/26 không gửi").
-// ------------------------------------------------------------
 function rcvOf(customerId) {
   const ov = S.customerOaOverview(customerId);
-  // Chưa chọn người nhận (hoặc mọi hợp đồng đang tắt) thì mặc định là NGƯỜI VAY — không có nhóm "chưa có người nhận" riêng, để các ô lọc cộng lại đúng bằng "Tất cả".
+
   return { ov, mode: !ov || ov.mode === 'none' ? 'main' : ov.mode };
 }
 function rcvChipsHtml(customer, { mini = false } = {}) {
   const { ov } = rcvOf(customer.id);
-  if (!ov || !ov.custom) return ''; // mặc định: như bình thường, không hiện thêm gì
+  if (!ov || !ov.custom) return '';
   const cls = `oa-rcv${mini ? ' is-mini' : ''}`;
   const items = ov.items;
   if (!ov.detail) {
-    // Cùng 1 người cùng vay cho mọi hợp đồng (hoặc không có): như trước — 1 nhãn chung cho cả khách.
+
     if (ov.anyCo && ov.anyMain) return `<div class="${cls}"><span class="oa-two" title="Gửi Zalo cho cả người vay và người cùng vay">Gửi cả 2 người</span></div>`;
     if (ov.anyCo) {
       const p = ov.people[0] || {};
@@ -85,7 +62,7 @@ function rcvChipsHtml(customer, { mini = false } = {}) {
     return '';
   }
   if (items.length <= 1) return `<div class="${cls}"><span class="oa-hc off">Hợp đồng đã tắt gửi OA</span></div>`;
-  // Nhiều hợp đồng: mỗi hợp đồng 1 ô nhỏ cho biết hợp đồng đó gửi ai.
+
   const chips = items.map(({ contract, state: st }) => {
     const code = `<b>${escapeHtml(contract.code)}</b>`;
     if (!st.enabled) return `<span class="oa-hc off">${code} không gửi</span>`;
@@ -99,10 +76,6 @@ function rcvChipsHtml(customer, { mini = false } = {}) {
   return `<div class="${cls} oa-inline"><span class="oa-rcv-l">Gửi tới</span>${chips}</div>`;
 }
 
-/**
- * Dải thông tin đầu trang: cảnh báo nếu chưa cấu hình mẫu tin (kèm nút sang tab Cấu hình cho quản trị toàn quyền) và 3 con số nhanh —
- * khách trong OA, tổng hợp đồng đang gửi tự động của tất cả nhân viên, số lần gửi thành công trong 30 ngày qua.
- */
 function summaryHtml(isSuper) {
   const org = S.getOrg();
   const missing = [];
@@ -110,9 +83,9 @@ function summaryHtml(isSuper) {
   if (!org.zaloTemplateInterestId) missing.push('“Báo lãi”');
   const since = Date.now() - 30 * 86400000;
   const recent = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= since && S.isZaloLogVisible(l));
-  const sends = groupSendLogs(recent); // gửi cho cả 2 người = 1 lần gửi (cùng cách đếm với tab Lịch sử gửi)
+  const sends = groupSendLogs(recent);
   const ok = sends.filter((g) => g.logs.every((l) => l.status === 'success')).length;
-  // Tổng hợp đồng đang gửi tự động của TẤT CẢ nhân viên (ai có quyền quản lý OA cũng thấy cùng một con số); bấm vào ô để xem từng người bao nhiêu.
+
   const autoCount = S.summarizeZaloAutoByOwner().total;
   const banner = missing.length && activeTab !== 'config' ? `
     <div class="oa-ban"><span class="oa-ban-dot"></span>
@@ -122,7 +95,7 @@ function summaryHtml(isSuper) {
     </div>` : '';
   const tile = (num, label, sub, cls = '') => `<div class="oa-kp ${cls}"><b>${num}</b><span>${label}</span><em>${sub}</em></div>`;
   const autoSub = S.hasZaloAutoOverview() ? 'cả nhóm' : 'của bạn';
-  // Chỉ quản trị toàn quyền bấm vào ô để xem từng người bao nhiêu hợp đồng; nhân viên chỉ thấy con số tổng.
+
   const autoTile = isSuper
     ? `<button type="button" class="oa-kp oa-kp-btn g" data-auto-breakdown aria-label="Xem số hợp đồng gửi tự động theo từng người"><b>${autoCount} <small>HĐTD</small></b><span>Báo lãi tự động</span><em>${autoSub} ›</em></button>`
     : tile(`${autoCount} <small>HĐTD</small>`, 'Báo lãi tự động', autoSub, 'g');
@@ -139,9 +112,8 @@ function bindSummary(root, contentEl) {
   if (brk) brk.addEventListener('click', openAutoBreakdownModal);
 }
 
-/** Cửa sổ "Gửi tự động theo từng người": tổng cả nhóm + số hợp đồng của mỗi người (mọi người có quyền quản lý OA đều thấy cùng số; danh sách chi tiết thì mỗi người chỉ thấy của mình). */
 function openAutoBreakdownModal() {
-  if (S.getAdmin(S.getSession()?.id)?.role !== 'super') return; // chỉ quản trị toàn quyền xem chi tiết từng người
+  if (S.getAdmin(S.getSession()?.id)?.role !== 'super') return;
   const { total, owners } = S.summarizeZaloAutoByOwner();
   const full = S.hasZaloAutoOverview();
   openModal({
@@ -159,7 +131,6 @@ function openAutoBreakdownModal() {
   });
 }
 
-/** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
 export function resetFilters() {
   activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; oaRcv = 'all'; logStatusFilter = 'all'; logFromDate = ''; logToDate = ''; logQuery = '';
   extraLogs = []; logCoveredFrom = null; logViewFrom = null;
@@ -174,7 +145,6 @@ function currentAdmin() {
   return S.getAdmin(session.id);
 }
 
-// Tổng quan gửi tự động của mọi người (nhãn + số tổng) tải riêng từ máy chủ; hỏi lại tối đa 15 giây một lần, và chỉ vẽ lại khi có đổi.
 let overviewAskedAt = 0;
 function loadAutoOverview(contentEl) {
   if (Date.now() - overviewAskedAt < 15000) return;
@@ -211,18 +181,12 @@ export function render(contentEl) {
   loadAutoOverview(contentEl);
 }
 
-/**
- * Có dữ liệu mới nhưng vẫn đang đứng ở trang này (xem renderApp() trong
- * app.js) — chỉ vẽ lại ĐÚNG tab đang mở, KHÔNG dựng lại cả khung (thanh tab
- * + bộ lọc) như render() — đỡ giật/"như bị tải lại khung" mỗi khi thêm/bỏ
- * OA, nhất là thêm hàng loạt nhiều khách liền (mỗi khách xong 1 lượt notify()).
- */
 export function refresh(contentEl) {
   const slot = contentEl.querySelector('#zalo-tab-content');
-  if (!slot) { render(contentEl); return; } // chưa từng render() lần nào ở trang này -> vẽ đầy đủ
+  if (!slot) { render(contentEl); return; }
   const admin = currentAdmin();
   const sum = contentEl.querySelector('#oa-summary');
-  if (sum) { sum.innerHTML = summaryHtml(admin.role === 'super'); bindSummary(sum, contentEl); } // số liệu đầu trang cập nhật theo dữ liệu mới
+  if (sum) { sum.innerHTML = summaryHtml(admin.role === 'super'); bindSummary(sum, contentEl); }
   if (activeTab === 'oa') drawOATab(slot, admin);
   else if (activeTab === 'auto') drawAutoTab(slot, admin);
   else if (activeTab === 'log') drawLogTab(slot);
@@ -230,11 +194,6 @@ export function refresh(contentEl) {
   loadAutoOverview(contentEl);
 }
 
-// ------------------------------------------------------------
-// Bộ lọc Thôn/Xóm dùng chung — KHÔNG gắn cứng vào 1 biến module-level, để
-// dùng lại được cho cả bộ lọc ở tab lẫn bộ lọc RIÊNG bên trong từng popup
-// (mỗi nơi tự giữ state của mình qua get/set, tránh đụng lẫn nhau).
-// ------------------------------------------------------------
 function thonXomFilterPillsHtml(idPrefix, thon, xom) {
   return `
     ${pillSelectHtml(`${idPrefix}-thon`, multiPillLabel('Thôn', thon), thon.length > 0)}
@@ -267,10 +226,7 @@ function bindThonXomFilterPills(wrap, idPrefix, allowedThon, getState, setState,
     });
   });
 }
-/**
- * Khách có khớp bộ lọc Thôn/Xóm không. Tên Xóm có thể trùng giữa các Thôn: nhân viên chỉ chọn Xóm (chưa chọn Thôn) thì chỉ tính các Xóm thuộc
- * địa bàn được cấp, không lẫn Xóm cùng tên ở Thôn ngoài phạm vi.
- */
+
 function matchThonXom(customer, thonSel, xomSel) {
   if (thonSel.length && !thonSel.includes(customer.thon)) return false;
   if (!xomSel.length) return true;
@@ -282,16 +238,9 @@ function multiPillLabel(label, arr) {
   return `${label}: ${arr.length} đã chọn `;
 }
 
-// ------------------------------------------------------------
-// Tab "Danh sách OA" (Tầng 1) — CHUNG cho mọi người có quyền. KHÔNG hiện
-// thông tin hợp đồng ở đây (chỉ khi thêm vào Tầng 2 mới cần chọn hợp đồng).
-// ------------------------------------------------------------
 function drawOATab(slot, admin) {
-  // "Danh sách OA" giờ hiện TOÀN BỘ cho bất kỳ ai có quyền canManageZaloOA
-  // (không giới hạn theo Thôn/Xóm nữa, xem docs mục 10.11) — bộ lọc Thôn ở
-  // đây vì vậy cũng cho chọn TOÀN BỘ Thôn (không chỉ đúng địa bàn của
-  // staff), khớp với dữ liệu thật sự đang hiển thị.
-  const allowedThon = S.territoryThonList(admin.id); // bộ lọc chỉ liệt kê Thôn/Xóm trong địa bàn được cấp
+
+  const allowedThon = S.territoryThonList(admin.id);
 
   slot.innerHTML = `
     <div class="oa-tool">
@@ -313,7 +262,6 @@ function drawOATab(slot, admin) {
   updateFilterBtn();
   drawList();
 
-  /** Số Thôn/Xóm đang chọn hiện thành chấm số trên nút Lọc; nút đổi màu khi đang lọc. */
   function updateFilterBtn() {
     const btn = slot.querySelector('#btn-oa-filter');
     const n = filterThon.length + filterXom.length;
@@ -330,11 +278,11 @@ function drawOATab(slot, admin) {
       const q = oaQuery.trim().toLowerCase();
       rows = rows.filter((x) => x.customer.name.toLowerCase().includes(q) || (x.customer.phone || '').includes(q));
     }
-    // Ô lọc "Người nhận": đếm theo danh sách đang xem (đã lọc Thôn/Xóm + tìm kiếm), bấm để chỉ xem khách gửi cho đúng nhóm đó.
+
     const rcvCount = { all: rows.length, main: 0, co: 0, both: 0, none: 0 };
     for (const x of rows) rcvCount[rcvOf(x.customer.id).mode]++;
     const rseg = slot.querySelector('#oa-rseg');
-    // Chưa có khách nào gửi cho người cùng vay thì ẩn cả ô lọc này (danh sách như bình thường).
+
     const hasCoRows = rcvCount.co + rcvCount.both > 0;
     rseg.style.display = hasCoRows ? '' : 'none';
     if (!hasCoRows) { oaRcv = 'all'; rseg.innerHTML = ''; }
@@ -345,7 +293,6 @@ function drawOATab(slot, admin) {
     }
     if (oaRcv !== 'all') rows = rows.filter((x) => rcvOf(x.customer.id).mode === oaRcv);
 
-    // Nhãn "đang ở mục gửi tự động nào" — hiện cho mọi khách đã có BẤT KỲ AI thêm vào gửi tự động (không riêng lựa chọn của người đang xem).
     const autoKinds = new Map();
     for (const a of S.listZaloAutoOverview()) {
       const set = autoKinds.get(a.customerId) || new Set();
@@ -375,15 +322,11 @@ function drawOATab(slot, admin) {
     listEl.querySelectorAll('[data-open]').forEach((row) => {
       row.addEventListener('click', () => openCustomerDetail(row.dataset.open, { readOnly: false, context: 'customer' }));
     });
-    // SĐT nằm TRONG dòng bấm-để-xem — chặn nổi bọt để bấm gọi không mở luôn chi tiết khách hàng.
+
     listEl.querySelectorAll('[data-stop-row]').forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
   }
 }
 
-/**
- * Cửa sổ "Lọc" Thôn / Xóm (nhiều lựa chọn) — dùng chung cho Danh sách OA và cửa sổ "Xem thêm" của Gửi tự động. Bộ lọc nằm ở nơi gọi
- * (getState() -> { thon, xom }; setState(thon, xom)); đổi là danh sách phía sau cập nhật ngay qua onChange().
- */
 function openThonXomFilterModal({ title, hint, allowedThon, getState, setState, onChange }) {
   openModal({
     title,
@@ -408,7 +351,6 @@ function openThonXomFilterModal({ title, hint, allowedThon, getState, setState, 
   });
 }
 
-/** Popup tìm + thêm (chọn nhiều) khách hàng vào Tầng 1 "Danh sách OA". */
 function openAddCustomerToOAModal(admin, onDone) {
   const zaloIds = new Set(S.listZaloCustomers().map((r) => r.customerId));
   const isStaff = admin.role === 'staff';
@@ -429,8 +371,7 @@ function openAddCustomerToOAModal(admin, onDone) {
     footHtml: `<button class="btn btn-primary btn-block" id="add-oa-confirm" disabled>Thêm đã chọn (0)</button>`,
     onMount(sheet, closeFn) {
       function getFiltered() {
-        // Chỉ gửi được Zalo khi có ít nhất 1 số: người vay có SĐT, hoặc người cùng vay (ghi trên hợp đồng) có SĐT — cả 2 đều chưa có số thì
-        // ẩn khỏi danh sách này luôn, khỏi thêm nhầm rồi không gửi được (S.oaAddBlockReason; máy chủ cũng chặn).
+
         let list = S.listCustomers({ adminId: isStaff ? admin.id : undefined }).filter((c) => !zaloIds.has(c.id) && !S.oaAddBlockReason(c.id));
         if (pThon.length || pXom.length) list = list.filter((c) => matchThonXom(c, pThon, pXom));
         if (query) {
@@ -453,11 +394,9 @@ function openAddCustomerToOAModal(admin, onDone) {
         btn.disabled = selected.size === 0;
       }
       function draw() {
-        // Hiện TOÀN BỘ khách phù hợp (không phân trang) — mục này cần thấy
-        // hết để tích chọn nhiều cùng lúc, có ô tìm + lọc Thôn/Xóm để thu hẹp.
+
         const list = getFiltered();
-        // Checkbox + avatar thu nhỏ hơn hẳn mặc định (danh sách chọn nhiều,
-        // ưu tiên chỗ cho tên — tên dài dễ bị che nếu 2 thứ này quá to).
+
         sheet.querySelector('#add-oa-list').innerHTML = list.length ? list.map((c) => `
           <div class="list-row" data-row="${c.id}" style="cursor:pointer;padding:8px 4px">
             <input type="checkbox" data-check="${c.id}" ${selected.has(c.id) ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0"/>
@@ -472,7 +411,7 @@ function openAddCustomerToOAModal(admin, onDone) {
         `).join('') : `<p class="text-sm text-muted">Không có khách hàng phù hợp (đã lọc bớt khách chưa có SĐT nào — cả người vay lẫn người cùng vay — hoặc đã có sẵn trong danh sách OA).</p>`;
         sheet.querySelectorAll('[data-row]').forEach((row) => {
           row.addEventListener('click', (e) => {
-            if (e.target.matches('[data-check]')) return; // để checkbox tự xử lý, khỏi bấm 2 lần
+            if (e.target.matches('[data-check]')) return;
             const id = row.dataset.row;
             if (selected.has(id)) selected.delete(id); else selected.add(id);
             row.querySelector('[data-check]').checked = selected.has(id);
@@ -500,7 +439,7 @@ function openAddCustomerToOAModal(admin, onDone) {
           closeFn();
           if (onDone) onDone();
         };
-        // Khách có người cùng vay vừa đổi (đã bị bỏ khỏi OA vì hợp đồng mới ghi người khác): cảnh báo trước khi thêm lại.
+
         const changed = ids.map((id) => ({ c: S.getCustomer(id), chg: S.coChangeInfo(id) })).filter((x) => x.c && x.chg);
         if (changed.length) {
           confirmDialog({
@@ -520,11 +459,7 @@ function openAddCustomerToOAModal(admin, onDone) {
   return close;
 }
 
-// ------------------------------------------------------------
-// Tab "Gửi tin tự động" (Tầng 2) — CHỈ hiện lựa chọn của CHÍNH người đang
-// xem (server/RLS đã tự lọc). 2 mục quản lý riêng, loại trừ nhau.
-// ------------------------------------------------------------
-const AUTO_PREVIEW_COUNT = 4; // trang chính chỉ hiện vài dòng đầu — bấm "Xem chi tiết" mới ra hết + có tìm/lọc
+const AUTO_PREVIEW_COUNT = 4;
 
 function drawAutoTab(slot, admin) {
   slot.innerHTML = `
@@ -543,7 +478,7 @@ function drawAutoTab(slot, admin) {
   slot.querySelectorAll('[data-add-kind]').forEach((btn) => {
     btn.addEventListener('click', () => openAddAutoSendModal(btn.dataset.addKind, admin, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind))));
   });
-  // Gắn 1 LẦN duy nhất ở đây (thanh "Xem thêm" nằm ngoài vùng danh sách nên KHÔNG bị vẽ lại mỗi lần drawSection()) — tránh gắn trùng listener.
+
   slot.querySelectorAll('[data-view-all]').forEach((btn) => {
     const kind = btn.dataset.viewAll;
     btn.addEventListener('click', () => openAutoSendListModal(kind, admin, () => drawSection(kind)));
@@ -557,7 +492,7 @@ function drawAutoTab(slot, admin) {
       .map((r) => ({ r, customer: S.getCustomer(r.customerId), contract: S.getContract(r.contractId) }))
       .filter((x) => x.customer && x.contract);
     const preview = allRows.slice(0, AUTO_PREVIEW_COUNT);
-    if (countEl) countEl.textContent = `(${allRows.length})`; // số hợp đồng đã thêm ở mục này
+    if (countEl) countEl.textContent = `(${allRows.length})`;
     listEl.innerHTML = preview.length ? preview.map(({ r, customer, contract }) => autoSendRowHtml(kind, r, customer, contract)).join('') : `<p class="text-sm text-muted">Chưa có hợp đồng nào — bấm "Thêm" ở góc trên để thêm.</p>`;
     bindAutoRowHandlers(listEl, kind, () => drawSection(kind));
     if (viewAllBtn) {
@@ -567,32 +502,10 @@ function drawAutoTab(slot, admin) {
   }
 }
 
-/**
- * Ô chọn định kỳ báo (1-4 tháng) — hiện NGAY sau số hợp đồng trong danh sách 2
- * mục Tầng 2, tự đổi ngay khi chọn (xem bindAutoRowHandlers). flex-shrink:0 để
- * KHÔNG BAO GIỜ bị bóp/cắt chữ dù dòng chật (tên/mã HĐ dài) — trước đây ô này
- * cùng nằm chung 1 khối text bị .row-title "..." nuốt mất khi hết chỗ, chữ
- * "1 tháng" hiện thiếu dù phần margin bên phải nhìn còn rộng (rộng đó là của
- * hàng DƯỚI, không phải hàng này) và bấm cũng không trúng được đúng lựa chọn.
- * Nay ô này đứng RIÊNG 1 khối flex-shrink:0 (xem autoSendRowHtml) nên luôn
- * hiện đủ chữ + bấm chọn được, phần tên/mã HĐ dài quá thì tự "..." bớt lại.
- */
 function intervalSelectHtml(rowId, intervalMonths) {
   return `<select data-interval="${rowId}" style="flex-shrink:0;font-size:11.5px;padding:1px 3px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:inherit;cursor:pointer;vertical-align:middle" title="Ngưỡng lãi chưa trả: đủ số tháng đã chọn thì báo mỗi tháng cho đến khi khách trả lãi">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${(intervalMonths || 1) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`;
 }
 
-/**
- * Dòng hiển thị 1 hợp đồng trong 1 trong 2 mục Tầng 2 — dùng chung cho preview
- * lẫn popup "Xem chi tiết". Hàng trên là 1 khối flex: bên trái tên khách + mã
- * hợp đồng (+ "· Ngày X" với mục "Gửi theo ngày cụ thể", chữ nhỏ không đậm) —
- * PHẦN NÀY tự "..." khi hết chỗ; bên phải ô chọn định kỳ báo (1-4 tháng) —
- * flex-shrink:0, LUÔN hiện đủ chữ + bấm chọn được, không bao giờ bị phần tên
- * dài che/cắt mất nữa (xem intervalSelectHtml). Hàng dưới: địa chỉ bên trái,
- * số tiền + nút xóa đứng chung 1 nhóm cố định bên phải (không co lại) — GIỐNG
- * NHAU cho cả 2 mục. Bấm SỐ TIỀN luôn mở xem chi tiết hợp đồng (kể cả mục
- * "Gửi theo ngày cụ thể", nơi bấm chỗ khác trong dòng mở SỬA NGÀY thay vì xem
- * chi tiết — xem bindAutoRowHandlers).
- */
 function autoSendRowHtml(kind, r, customer, contract) {
   const addr = [customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn';
   const dayLabel = kind === 'lai_hang_thang_custom_day' ? ` · <span style="font-weight:400;font-size:12px">Ngày ${r.customDay || '?'}</span>` : '';
@@ -616,7 +529,6 @@ function autoSendRowHtml(kind, r, customer, contract) {
   `;
 }
 
-/** Gắn sự kiện click-mở-chi-tiết/sửa-ngày + bấm-xóa cho danh sách dòng Tầng 2 — dùng chung cho preview lẫn popup. */
 function bindAutoRowHandlers(listEl, kind, refresh) {
   listEl.querySelectorAll('[data-row]').forEach((row) => {
     row.addEventListener('click', (e) => {
@@ -628,9 +540,7 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
       }
     });
   });
-  // Bấm riêng vào SỐ TIỀN luôn mở xem chi tiết hợp đồng, kể cả ở mục "Gửi
-  // theo ngày cụ thể" (bấm chỗ khác trong dòng mở SỬA NGÀY thay vì xem chi
-  // tiết ở mục này — cần 1 chỗ bấm riêng để vẫn xem được chi tiết hợp đồng).
+
   listEl.querySelectorAll('[data-view-contract]').forEach((el) => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -638,8 +548,7 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
       openContractView(row.dataset.customer, S.getContract(row.dataset.contract), { readOnly: true });
     });
   });
-  // Bấm thùng rác thì HỎI LẠI trước khi bỏ — tránh lỡ tay chạm nhầm trên điện thoại. Chỉ là bỏ khỏi DANH SÁCH GỬI TỰ ĐỘNG
-  // (không xóa hợp đồng/khách hàng, thêm lại được ngay), nên nội dung hỏi nói rõ điều đó.
+
   listEl.querySelectorAll('[data-remove]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -659,8 +568,7 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
       });
     });
   });
-  // Đổi định kỳ báo — chặn nổi bọt để không mở nhầm chi tiết hợp đồng/sửa
-  // ngày (row phía dưới), đổi xong áp dụng ngay, không cần bấm lưu riêng.
+
   listEl.querySelectorAll('[data-interval]').forEach((sel) => {
     sel.addEventListener('click', (e) => e.stopPropagation());
     sel.addEventListener('change', async () => {
@@ -672,7 +580,6 @@ function bindAutoRowHandlers(listEl, kind, refresh) {
   });
 }
 
-/** Popup "Xem thêm" — toàn bộ danh sách của 1 mục Tầng 2, có thanh tìm + nút Lọc (phễu) Thôn/Xóm cùng hàng. */
 function openAutoSendListModal(kind, admin, onDone) {
   const allowedThon = S.territoryThonList(admin.id);
   let query = '';
@@ -702,7 +609,7 @@ function openAutoSendListModal(kind, admin, onDone) {
         }
         return rows;
       }
-      /** Số Thôn/Xóm đang chọn hiện thành chấm số trên nút Lọc; nút đổi màu khi đang lọc. */
+
       function updateFilterBtn() {
         const btn = sheet.querySelector('#auto-list-filter');
         const n = pThon.length + pXom.length;
@@ -732,7 +639,6 @@ function openAutoSendListModal(kind, admin, onDone) {
   return close;
 }
 
-/** Popup sửa ngày gửi (mục "Gửi theo ngày cụ thể"). */
 function openEditCustomDayModal(id, onDone) {
   const row = S.listZaloAutoSend().find((r) => r.id === id);
   const close = openModal({
@@ -755,7 +661,6 @@ function openEditCustomDayModal(id, onDone) {
   return close;
 }
 
-/** Popup tìm + thêm 1 hợp đồng vào 1 trong 2 mục Tầng 2 — chỉ liệt kê hợp đồng của khách ĐÃ ở Tầng 1 và CHƯA ở mục nào (loại trừ nhau). */
 function openAddAutoSendModal(kind, admin, onDone) {
   const zaloCustomerIds = [...new Set(S.listZaloCustomers().map((r) => r.customerId))];
   const usedContractIds = new Set([...S.listZaloAutoOverview().map((r) => r.contractId), ...pendingAdds]);
@@ -783,15 +688,14 @@ function openAddAutoSendModal(kind, admin, onDone) {
       <button class="btn btn-outline btn-sm btn-block mt-8" id="add-auto-more" style="display:none">Xem thêm</button>
     `,
     onMount(sheet) {
-      // Mỗi khách chỉ MỘT người được thêm vào gửi tự động: khách đã có người KHÁC thêm không thêm được nữa (máy chủ cũng chặn).
-      // Khi đang gõ tìm kiếm thì vẫn liệt kê các khách đó (mờ, kèm tên người đã thêm) để biết vì sao không thêm được.
+
       function getRows() {
         let rows = [];
         const blocked = [];
         for (const custId of zaloCustomerIds) {
           const customer = S.getCustomer(custId);
           if (!customer) continue;
-          // Chỉ chọn được khách trong địa bàn được cấp (Danh sách OA có thể có cả khách ngoài địa bàn, nhưng nhân viên không thêm gửi tự động cho họ được; máy chủ cũng chặn)
+
           if (!S.isCustomerInTerritory(customer, admin.id)) continue;
           if (!matchThonXom(customer, pThon, pXom)) continue;
           const active = S.listContractsByCustomer(custId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
@@ -808,7 +712,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
         } else blockedRows = [];
         return { rows, blockedRows };
       }
-      /** Số Thôn/Xóm đang chọn hiện thành chấm số trên nút Lọc; nút đổi màu khi đang lọc. */
+
       function updateFilterBtn() {
         const btn = sheet.querySelector('#add-auto-filter');
         const n = pThon.length + pXom.length;
@@ -840,11 +744,10 @@ function openAddAutoSendModal(kind, admin, onDone) {
         sheet.querySelectorAll('[data-add]').forEach((row) => {
           row.addEventListener('click', () => {
             const contractId = row.dataset.add;
-            if (row.classList.contains('is-busy')) return; // đã bấm rồi, bấm thêm lần nữa không có tác dụng
+            if (row.classList.contains('is-busy')) return;
             const customDay = isCustomDay ? clampDay(sheet.querySelector('#day-input').value) : null;
             const intervalMonths = Number(sheet.querySelector('#interval-input').value) || 1;
-            // Phản hồi NGAY khi bấm (không chờ máy chủ): dòng chuyển thành "✓ Đã thêm", chừng nửa giây sau gọn khỏi danh sách để bấm tiếp
-            // hợp đồng khác. Việc gửi lên máy chủ chạy ngầm; bị từ chối (VD khách đã có người khác thêm) thì trả dòng lại + báo lỗi.
+
             row.classList.add('is-busy', 'is-added');
             const amountEl = row.querySelector('b');
             if (amountEl) amountEl.textContent = '✓ Đã thêm';
@@ -867,7 +770,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
       sheet.querySelector('#add-auto-more').addEventListener('click', () => { visibleCount += PAGE_SIZE; draw(); });
       bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; draw(); });
       if (isCustomDay) {
-        // Ô ngày: chỉ nhận chữ số, tối đa 30; rời ô thì tự thêm số 0 đầu cho đủ 2 chữ số (1 -> 01, bỏ trống -> 01).
+
         const dayInput = sheet.querySelector('#day-input');
         dayInput.addEventListener('input', () => {
           let v = dayInput.value.replace(/\D/g, '').slice(0, 2);
@@ -890,12 +793,11 @@ function openAddAutoSendModal(kind, admin, onDone) {
   return close;
 }
 
-/** Ngày gửi hàng tháng chỉ hợp lệ 1-30 (tháng nào cũng có) — ép về đúng khoảng khi lưu. */
 function clampDay(value) {
   const n = Number(value) || 1;
   return Math.min(30, Math.max(1, n));
 }
-/** Chặn gõ tay vượt khoảng ngay khi nhập — thuộc tính max của input number chỉ chặn nút mũi tên, không chặn gõ tay. */
+
 function bindDayInputClamp(inputEl) {
   if (!inputEl) return;
   inputEl.addEventListener('input', () => {
@@ -904,10 +806,6 @@ function bindDayInputClamp(inputEl) {
     if (String(clamped) !== inputEl.value) inputEl.value = clamped;
   });
 }
-
-// ------------------------------------------------------------
-// Tab "Quản lý gửi tin" (log)
-// ------------------------------------------------------------
 
 const logTime = (l) => new Date(l.sentAt).getTime();
 function allLoadedLogs() {
@@ -920,13 +818,13 @@ function allLoadedLogs() {
   }
   return out.sort((a, b) => logTime(b) - logTime(a));
 }
-/** Mốc cũ nhất mà dữ liệu đã tải phủ kín. Lúc đăng nhập chỉ tải 31 ngày gần nhất (tối đa 1.000 dòng) — đủ 1.000 dòng thì mốc là dòng cũ nhất. */
+
 function logCoverage() {
   if (logCoveredFrom !== null) return logCoveredFrom;
   const recent = S.listZaloSendLog();
   return recent.length >= 1000 ? Math.min(...recent.map(logTime)) : Date.now() - 31 * 86400000;
 }
-/** Tải thêm log cũ: tới tận `untilMs` (chọn "Từ ngày"), hoặc đúng 1 trang tiếp theo khi `untilMs` = null ("Xem thêm"). */
+
 async function loadOlderLogs(untilMs) {
   for (let guard = 0; guard < 40 && logCoveredFrom !== -Infinity; guard++) {
     const from = logCoverage();
@@ -935,12 +833,11 @@ async function loadOlderLogs(untilMs) {
     extraLogs.push(...rows);
     if (!hasMore) { logCoveredFrom = -Infinity; break; }
     const oldest = Math.min(...rows.map(logTime));
-    logCoveredFrom = oldest < from ? oldest : from - 1; // luôn tiến lùi được, không kẹt khi nhiều dòng cùng 1 mốc giờ
+    logCoveredFrom = oldest < from ? oldest : from - 1;
     if (untilMs === null) break;
   }
 }
 
-/** Chip 1 người nhận của 1 lần gửi: người vay / người cùng vay (kèm tên gọi ngắn) / số khác, luôn kèm số điện thoại đã gửi. `mark` = '' | 'ok' | 'err' (chỉ hiện dấu ✓/✕ khi 1 lần gửi cho 2 người mà kết quả mỗi người khác nhau). */
 function logToHtml(rc, mark = '') {
   const ph = rc.phone ? `<em>${escapeHtml(formatPhoneDisplay(rc.phone))}</em>` : '';
   const mk = mark ? `<s class="lg-mk is-${mark}" title="${mark === 'ok' ? 'Gửi thành công' : 'Gửi lỗi'}">${icon(mark === 'ok' ? 'check' : 'x', 'icon-sm')}</s>` : '';
@@ -951,10 +848,6 @@ function logToHtml(rc, mark = '') {
 const logWhoLabel = (rc) => (rc.who === 'main' ? 'Người vay' : rc.who === 'co' ? `Người cùng vay${rc.name ? ` · ${shortPersonName(rc.name)}` : ''}` : (rc.phone ? formatPhoneDisplay(rc.phone) : 'Số khác'));
 const LOG_WHO_ORDER = { main: 0, co: 1, other: 2 };
 
-/**
- * Gộp các dòng log thành TỪNG LẦN GỬI (xem lib/sendLogGroups.js): gửi cho cả người vay lẫn người cùng vay là 1 lần gửi = 1 dòng, liệt kê từng người nhận.
- * allOk = mọi người nhận đều thành công; partial = có người nhận được, có người lỗi;
- */
 function buildLogItems(logs) {
   return groupSendLogs(logs).map((g) => {
     const first = g.logs[0];
@@ -966,10 +859,6 @@ function buildLogItems(logs) {
   });
 }
 
-/**
- * Ô tìm kiếm của tab Lịch sử gửi: khớp tên khách (không phân biệt hoa/thường và dấu), số HĐTD, số điện thoại của khách hoặc của người đã nhận tin
- * (gõ có hay không có dấu cách đều được), tên người cùng vay. Nhiều từ thì phải khớp đủ các từ.
- */
 function logMatchesQuery(raw) {
   const words = stripDiacritics(raw).split(' ').filter(Boolean);
   const digits = String(raw).replace(/[\s.\-()]/g, '');
@@ -982,7 +871,6 @@ function logMatchesQuery(raw) {
   };
 }
 
-/** Một dòng lịch sử gửi tin = 1 LẦN GỬI: trạng thái · khách + hợp đồng · gửi tới ai (1 hoặc 2 người) · gửi tay/tự động + loại tin · giờ gửi (lỗi thì có thêm dòng báo lỗi). */
 function logRowHtml(it) {
   const { first, customer, contract, recips } = it;
   const d = new Date(it.time);
@@ -1008,7 +896,7 @@ function logRowHtml(it) {
 }
 
 function drawLogTab(slot) {
-  const failedFrom = new Set(); // các mốc "Từ ngày" đã thử tải log cũ mà lỗi — không tự thử lại vô hạn
+  const failedFrom = new Set();
   slot.innerHTML = `
     <div class="lg-bar">
       <div class="oa-search lg-search">${searchBoxHtml('log-search', 'Tìm tên khách, số HĐTD, số điện thoại...', escapeHtml(logQuery))}</div>
@@ -1023,8 +911,7 @@ function drawLogTab(slot) {
   drawList();
 
   function drawList() {
-    // Mặc định chỉ hiện 1 tháng gần nhất. Chọn "Từ ngày" cũ hơn → tự tải log cũ về rồi hiện bình thường;
-    // bấm "Xem thêm" → tải thêm 1 trang log cũ hơn nữa.
+
     const fromMs = logFromDate ? new Date(`${logFromDate}T00:00:00`).getTime() : null;
     if (fromMs !== null && !failedFrom.has(fromMs) && logCoveredFrom !== -Infinity && fromMs < logCoverage()) {
       slot.querySelector('#log-list').innerHTML = '<div class="text-sm text-muted" style="padding:16px 4px">Đang tải lịch sử gửi tin cũ hơn...</div>';
@@ -1036,17 +923,16 @@ function drawLogTab(slot) {
       return;
     }
     const viewFromMs = fromMs !== null ? fromMs : (logViewFrom !== null ? logViewFrom : Date.now() - 30 * 86400000);
-    let base = allLoadedLogs().filter((l) => logTime(l) >= viewFromMs && S.isZaloLogVisible(l)); // hợp đồng đã tắt gửi OA: không hiện lịch sử của nó
+    let base = allLoadedLogs().filter((l) => logTime(l) >= viewFromMs && S.isZaloLogVisible(l));
     if (logToDate) base = base.filter((l) => new Date(l.sentAt) <= new Date(`${logToDate}T23:59:59`));
-    let items = buildLogItems(base); // mỗi phần tử = 1 LẦN GỬI (gửi cho cả 2 người vẫn là 1)
-    if (logQuery.trim()) items = items.filter(logMatchesQuery(logQuery)); // tìm theo ô tìm kiếm trước, rồi mới đếm các nút lọc
-    // Số trên 3 nút trạng thái tính theo ô tìm kiếm + khoảng ngày đang chọn nên khớp danh sách bên dưới.
-    // "Lỗi" = có ít nhất 1 người nhận bị lỗi; "Thành công" = mọi người nhận đều thành công.
+    let items = buildLogItems(base);
+    if (logQuery.trim()) items = items.filter(logMatchesQuery(logQuery));
+
     const statusCnt = { all: items.length, success: items.filter((x) => x.allOk).length };
     statusCnt.error = items.length - statusCnt.success;
     const rows = items.filter((x) => logStatusFilter === 'all' || (logStatusFilter === 'success' ? x.allOk : !x.allOk));
     const hasFilter = logStatusFilter !== 'all' || logFromDate || logToDate || logQuery.trim();
-    // Nút "Xem thêm" (khi không chọn "Từ ngày"): còn log cũ hơn để tải thì hiện nút, hết thì báo đã hiện toàn bộ.
+
     const canLoadMore = fromMs === null && logCoveredFrom !== -Infinity;
     const moreHtml = fromMs !== null ? '' : (canLoadMore
       ? '<button type="button" class="btn btn-outline btn-block mt-8" id="log-more">Xem thêm lịch sử cũ hơn</button>'
@@ -1055,7 +941,7 @@ function drawLogTab(slot) {
       .map(([k, label, n]) => `<button type="button" class="${logStatusFilter === k ? 'on' : ''}" data-lg-status="${k}">${label}<em>${n}</em></button>`).join('');
     const successCount = rows.filter((x) => x.allOk).length;
     const errorCount = rows.length - successCount;
-    // Gom theo ngày (kèm số lần gửi trong ngày) để mỗi ngày có 1 tiêu đề riêng.
+
     const todayKey = new Date().toDateString(), yesterdayKey = new Date(Date.now() - 86400000).toDateString();
     const days = [];
     for (const x of rows) {
@@ -1081,7 +967,7 @@ function drawLogTab(slot) {
         moreBtn.disabled = true;
         moreBtn.textContent = 'Đang tải...';
         try {
-          await loadOlderLogs(null); // tải thêm 1 trang log cũ hơn, rồi hiện từ mốc đó trở đi
+          await loadOlderLogs(null);
           logViewFrom = logCoveredFrom === -Infinity ? 0 : logCoveredFrom;
         } catch (err) { toast(err.message || 'Không tải được thêm lịch sử', 'error'); }
         drawList();
@@ -1090,9 +976,6 @@ function drawLogTab(slot) {
   }
 }
 
-// ------------------------------------------------------------
-// Tab "Cấu hình" (chỉ super) — 2 mẫu: Đến hạn + Báo lãi.
-// ------------------------------------------------------------
 function drawConfigTab(slot) {
   const org = S.getOrg();
   const bothSet = !!(org.zaloTemplateDueId && org.zaloTemplateInterestId);

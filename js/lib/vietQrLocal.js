@@ -1,9 +1,5 @@
-// Ảnh QR chuyển khoản VietQR tự vẽ ngay trên máy (không cần mạng, không phụ thuộc img.vietqr.io).
-// Dùng để hiện QR trong popup thanh toán và cho nút "Chia sẻ ảnh QR" / "Tải ảnh QR" — xem contractDetail.js.
-// Nội dung QR theo chuẩn VietQR (EMVCo, NAPAS 247): chuyển nhanh tới số tài khoản, có số tiền và nội dung chuyển khoản.
 import { encodeQr } from './qrEncode.js';
 
-/** CRC-16/CCITT-FALSE (đa thức 0x1021, khởi tạo 0xFFFF) — mã kiểm tra cuối chuỗi QR theo chuẩn EMVCo. */
 export function crc16(text) {
   let crc = 0xFFFF;
   for (let i = 0; i < text.length; i++) {
@@ -15,7 +11,6 @@ export function crc16(text) {
 
 const tlv = (id, value) => `${id}${String(value.length).padStart(2, '0')}${value}`;
 
-/** Bỏ dấu, chỉ giữ ký tự in được của bảng mã ASCII (nội dung chuyển khoản trong QR không dùng tiếng Việt có dấu). */
 function asciiOnly(text, max) {
   return String(text || '')
     .replace(/[đ]/g, 'd').replace(/[Đ]/g, 'D')
@@ -23,10 +18,6 @@ function asciiOnly(text, max) {
     .replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-/**
- * Cắt chuỗi hiển thị (có dấu) sao cho khi bỏ dấu/in hoa/bỏ ký tự lạ thì dài không quá `max` — đúng bằng phần nội dung
- * thật sự nằm trong mã QR (buildVietQrPayload cắt ở 50 ký tự), để chữ người xem đọc không dài hơn thứ ngân hàng nhận được.
- */
 export function clipDisplay(display, max = 50) {
   const norm = (t) => asciiOnly(t, Infinity).toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   let out = String(display || '').replace(/\s+/g, ' ').trim();
@@ -34,7 +25,6 @@ export function clipDisplay(display, max = 50) {
   return out.trim();
 }
 
-/** Chuỗi nội dung của mã QR chuyển khoản VietQR. */
 export function buildVietQrPayload({ bin, accountNo, amount, content }) {
   const money = Math.round(Number(amount) || 0);
   const info = asciiOnly(content, 50);
@@ -53,7 +43,7 @@ export function buildVietQrPayload({ bin, accountNo, amount, content }) {
 }
 
 const SANS = '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-const GREEN = '#0c4a3f'; // xanh đậm của tên quỹ và số tiền
+const GREEN = '#0c4a3f';
 
 function wrapLines(ctx, text, maxWidth) {
   const words = String(text).split(/\s+/).filter(Boolean);
@@ -67,17 +57,12 @@ function wrapLines(ctx, text, maxWidth) {
   return lines.length ? lines : [''];
 }
 
-/**
- * Cạnh (tính bằng số ô) của ô logo đặt giữa mã QR. Nhỏ (~14% bề ngang) và là số lẻ để cân giữa: phần bị che chỉ
- * chiếm vài byte mỗi khối, mã sửa lỗi mức M bù thừa — xem tests/qrEncode.test.mjs.
- */
 export function logoBoxModules(size) {
   let b = Math.round(size * 0.14);
   if (b % 2 === 0) b++;
   return Math.max(5, b);
 }
 
-/** Đặt logo vào chính giữa mã QR (trên ô nền trắng). (x, y) là góc trái-trên của khung QR gồm cả viền trắng. */
 function paintLogo(ctx, qr, x, y, mod, quiet, logo) {
   if (!logo) return;
   const box = logoBoxModules(qr.size);
@@ -90,7 +75,6 @@ function paintLogo(ctx, qr, x, y, mod, quiet, logo) {
   ctx.drawImage(logo, lx + (side - iw * k) / 2, ly + (side - ih * k) / 2, iw * k, ih * k);
 }
 
-/** Vẽ mã QR từng ô vuông nguyên pixel (nét, không nhòe) trên nền trắng, có viền trắng `quiet` ô xung quanh. */
 function paintQr(ctx, qr, x, y, mod, quiet) {
   const box = mod * (qr.size + quiet * 2);
   ctx.fillStyle = '#ffffff'; ctx.fillRect(x, y, box, box);
@@ -102,12 +86,6 @@ function paintQr(ctx, qr, x, y, mod, quiet) {
   }
 }
 
-/**
- * Khung QR nhỏ gọn (cho ô nhỏ trong popup nhân viên): mã QR có logo quỹ ở giữa, rồi vài dòng thông tin chính như ảnh VietQR cũ
- * (chủ tài khoản, số tài khoản, số tiền).
- * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string }} p
- * @param {{ logo?: CanvasImageSource | null }} [opts] logo quỹ (ảnh đã tải xong), không có thì bỏ qua
- */
 export function drawVietQrCompact(p, { logo = null } = {}) {
   const qr = encodeQr(buildVietQrPayload(p), 'M');
   const W = 400, PAD = 16, QUIET = 2;
@@ -135,7 +113,7 @@ export function drawVietQrCompact(p, { logo = null } = {}) {
   lines.forEach((l) => {
     let size = l.size;
     ctx.font = `${l.weight} ${size}px ${SANS}`;
-    while (size > 13 && ctx.measureText(l.text).width > W - PAD * 2) { size -= 1; ctx.font = `${l.weight} ${size}px ${SANS}`; } // tên dài thì thu nhỏ chữ cho vừa khung
+    while (size > 13 && ctx.measureText(l.text).width > W - PAD * 2) { size -= 1; ctx.font = `${l.weight} ${size}px ${SANS}`; }
     ctx.fillStyle = l.color;
     ctx.fillText(l.text, W / 2, y + l.size, W - PAD * 2);
     y += gap(l);
@@ -143,12 +121,6 @@ export function drawVietQrCompact(p, { logo = null } = {}) {
   return canvas;
 }
 
-/**
- * Vẽ "thẻ" QR chuyển khoản (tên quỹ, mã QR, chủ tài khoản, số tài khoản, số tiền, nội dung) lên canvas, nền trắng.
- * `content` / `accountName` là bản KHÔNG DẤU đi vào mã QR; `displayContent` / `displayAccountName` (nếu có) là bản CÓ DẤU chỉ để hiện chữ trên thẻ.
- * @param {{ bin: string, accountNo: string, amount: number, content: string, accountName?: string, displayContent?: string, displayAccountName?: string, bankName?: string, orgName?: string }} p
- * @param {{ logo?: CanvasImageSource | null }} [opts] logo quỹ (ảnh đã tải xong) đặt giữa mã QR
- */
 export function drawVietQrCard(p, { logo = null } = {}) {
   const qr = encodeQr(buildVietQrPayload(p), 'M');
   const W = 720, PAD = 40, QUIET = 4;
@@ -170,7 +142,7 @@ export function drawVietQrCard(p, { logo = null } = {}) {
     measure.font = `700 ${big ? 34 : 26}px ${SANS}`;
     return { label, big, green, lines: wrapLines(measure, value, W - PAD * 2) };
   });
-  let H = PAD + 40 + 30 + 26 + qrBox + 28; // tên quỹ + dòng hướng dẫn + khung QR
+  let H = PAD + 40 + 30 + 26 + qrBox + 28;
   laid.forEach((r) => { H += 26 + r.lines.length * (r.big ? 42 : 34) + 14; });
   H += PAD - 6;
 

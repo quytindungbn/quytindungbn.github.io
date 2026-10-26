@@ -27,12 +27,12 @@ test('cùng ngày vay: số thứ tự HĐTD lớn trước (461 trước 99), n
     { id: 'b', code: '461/26', disbursedDate: '2026-05-05' },
     { id: 'c', code: '460/26', disbursedDate: '2026-05-05' },
   ]), ['b', 'c', 'a']);
-  // số thứ tự quyết định trước năm: 461/25 vẫn đứng trước 460/26
+
   assert.deepEqual(ids([
     { id: 'x', code: '460/26', disbursedDate: '2026-05-05' },
     { id: 'y', code: '461/25', disbursedDate: '2026-05-05' },
   ]), ['y', 'x']);
-  // cùng số thứ tự: năm lớn trước
+
   assert.deepEqual(ids([
     { id: 'x', code: '461/25', disbursedDate: '2026-05-05' },
     { id: 'y', code: '461/26', disbursedDate: '2026-05-05' },

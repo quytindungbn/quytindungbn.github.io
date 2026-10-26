@@ -1,27 +1,3 @@
-// Khung chat hỗ trợ — dùng CHUNG cho cả 2 phía: khách hàng (mở hội thoại của
-// CHÍNH mình qua nút nổi, xem shell.js renderChatFab) và quản trị viên/nhân
-// viên (mở hội thoại của 1 khách hàng cụ thể, xem js/views/admin/support.js).
-// Chỉ khác nhau đúng 1 điểm: customerId truyền vào — S.sendChatMessage() tự
-// biết gửi với vai trò nào dựa theo session đang đăng nhập, không cần phân
-// biệt gì thêm ở đây.
-//
-// Cập nhật tin nhắn mới bằng POLLING NGẮN (mỗi 3 giây) — NHƯNG chỉ chạy
-// trong lúc khung chat này đang mở (bắt đầu lúc mở, tự dừng lúc đóng, xem
-// onClose) — KHÔNG phải polling toàn app kiểu setInterval đã bị bỏ trước đây
-// (xem ghi chú ở js/state.js refreshSessionData()) — 2 việc khác hẳn nhau:
-// polling ở ĐÂY chỉ ảnh hưởng đúng khung chat, người dùng đang thật sự nhìn
-// vào màn hình này nên không có gì để "mất" (không có ô lọc/gõ dở nào khác).
-//
-// Giao diện kiểu Messenger, CỐ ĐỊNH theo VAI TRÒ (không đổi theo ai đang
-// xem): tin của KHÁCH HÀNG luôn ở bên TRÁI, tin của QUẢN TRỊ VIÊN/NHÂN VIÊN
-// (bất kể ai trong số họ trả lời) luôn ở bên PHẢI — cả 2 phía (khách hàng tự
-// xem hội thoại của mình lẫn admin xem hộ) đều thấy giống nhau, khỏi phải
-// suy nghĩ "bên nào là mình". Avatar tách 2 bên (khách hàng dùng tên viết
-// tắt của chính họ; quản trị viên/nhân viên dùng icon chung của quỹ, KHÔNG
-// hiện tên ai cụ thể — biết đang chat với "Quỹ tín dụng" là đủ, đúng ý không
-// cần lộ tên riêng từng nhân viên). Gộp nhóm tin nhắn liên tiếp cùng phía
-// (chỉ hiện avatar ở tin ĐẦU nhóm) + vạch chia ngày + giờ gửi nhỏ gọn nằm
-// ngay trong bong bóng, không chiếm riêng 1 dòng.
 import { openModal } from './modal.js';
 import * as S from '../state.js';
 import { icon } from '../icons.js';
@@ -30,12 +6,7 @@ import { escapeHtml, initials, colorFor, formatDate } from '../utils.js';
 
 const POLL_MS = 3000;
 const COMPOSER_MAX_HEIGHT = 110;
-// Tiêu đề mặc định khi mở khung chat KHÔNG truyền title cụ thể — dùng cho
-// khách hàng tự mở chat của chính mình (xem renderChatFab() trong shell.js,
-// không cần thấy tên mình làm tiêu đề). CŨNG dùng làm "chuỗi nhận biết" để
-// phân biệt "đang xem chat của CHÍNH MÌNH" (customer) với "admin đang xem hộ
-// 1 khách hàng cụ thể" (title lúc đó là TÊN KHÁCH, khác chuỗi này) — xem
-// customerName bên dưới.
+
 export const DEFAULT_CHAT_TITLE = 'Hỗ trợ tư vấn';
 
 function isNearBottom(el) {
@@ -47,7 +18,6 @@ function hhmm(d) {
   return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
 }
 
-/** "Hôm nay" / "Hôm qua" / dd/mm/yyyy — dùng cho vạch chia ngày giữa các cụm tin nhắn. */
 function dateDividerLabel(d) {
   const dt = d instanceof Date ? d : new Date(d);
   const today = new Date();
@@ -67,11 +37,10 @@ function dividerHtml(label) {
   return `<div class="chat-date-divider"><span>${escapeHtml(label)}</span></div>`;
 }
 
-/** Avatar bên khách hàng — viết tắt tên thật, màu riêng theo customerId (giống avatar dùng khắp app, xem colorFor/initials). */
 function customerAvatarHtml(customerName, customerId) {
   return `<div class="chat-avatar" style="background:${colorFor(customerId || customerName || 'KH')}">${initials(customerName || 'KH')}</div>`;
 }
-/** Avatar bên quỹ tín dụng — icon CHUNG (không phải initials/tên riêng từng nhân viên), đại diện "quỹ đang trả lời" chứ không lộ danh tính người trả lời cụ thể. */
+
 function orgAvatarHtml() {
   return `<div class="chat-avatar chat-avatar-org">${icon('landmark', 'icon-sm')}</div>`;
 }
@@ -95,14 +64,8 @@ function autoResizeComposer(el) {
   el.style.height = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT) + 'px';
 }
 
-/**
- * Mở khung chat cho hội thoại của customerId. `title` hiện ở đầu khung (VD:
- * tên khách hàng, hoặc "Hỗ trợ" khi khách tự mở). `opts.onClose` (tùy chọn) —
- * gọi lúc khung chat đóng lại, dùng ở trang "Hỗ trợ" (admin) để tải lại danh
- * sách hội thoại ngay sau khi xem xong (cập nhật lại chấm đỏ "chưa đọc").
- */
 export function openChatPanel(customerId, title, opts = {}) {
-  let lastGroupKey = null; // 'customer' | 'admin' của tin gần nhất đã vẽ — đổi phía mới hiện lại avatar
+  let lastGroupKey = null;
   let lastDayKey = null;
   let renderedIds = new Set();
   let emptyShown = false;
@@ -130,7 +93,7 @@ export function openChatPanel(customerId, title, opts = {}) {
         sendBtn.disabled = !input.value.trim();
       });
       input.addEventListener('keydown', (e) => {
-        // Enter gửi tin, Shift+Enter xuống dòng — đúng quy ước của mọi app nhắn tin phổ biến.
+
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
       });
 
@@ -148,7 +111,7 @@ export function openChatPanel(customerId, title, opts = {}) {
             div.innerHTML = dividerHtml(dateDividerLabel(m.createdAt));
             frag.appendChild(div.firstElementChild);
             lastDayKey = dk;
-            lastGroupKey = null; // sang ngày mới thì luôn hiện lại avatar, không gộp xuyên ngày
+            lastGroupKey = null;
           }
 
           const showHead = m.senderRole !== lastGroupKey;
@@ -170,7 +133,7 @@ export function openChatPanel(customerId, title, opts = {}) {
         if (!session) return;
         let list;
         try { list = await S.listChatMessages(customerId); }
-        catch (e) { return; } // im lặng, thử lại ở lượt sau (giữ đúng nội dung đang hiện)
+        catch (e) { return; }
         const wasNearBottom = isNearBottom(logEl);
         if (!list.length) {
           if (!renderedIds.size && !emptyShown) {
@@ -199,7 +162,7 @@ export function openChatPanel(customerId, title, opts = {}) {
           await loadAndRender({ forceScroll: true });
         } catch (err) {
           toast(err.message || 'Không gửi được tin nhắn', 'error');
-          input.value = text; // trả lại nội dung vừa gõ để không mất chữ khi gửi lỗi
+          input.value = text;
           autoResizeComposer(input);
           sendBtn.disabled = false;
         }

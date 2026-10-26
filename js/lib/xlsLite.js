@@ -1,8 +1,3 @@
-// Bộ đọc file .xls CŨ (Excel 97-2003: OLE2 Compound File Binary + BIFF8),
-// thuần trình duyệt, không dùng thư viện ngoài (không phải SheetJS/xlrd...).
-// Chỉ hỗ trợ cấu trúc CFB "chuẩn" (cỡ sector 512 byte) — đúng với hầu hết
-// file .xls xuất ra từ Excel / phần mềm kế toán.
-
 const FREESECT = 0xffffffff;
 const ENDOFCHAIN = 0xfffffffe;
 const FATSECT = 0xfffffffd;
@@ -79,7 +74,7 @@ function readOle2(arrayBuffer) {
     const name = nameLen > 1 ? new TextDecoder('utf-16le').decode(dirData.subarray(base, base + nameLen - 2)) : '';
     const objType = dirData[base + 66];
     const startSect = dirView.getUint32(base + 116, true);
-    const size = dirView.getUint32(base + 120, true); // đủ dùng cho file .xls (< 4GB)
+    const size = dirView.getUint32(base + 120, true);
     entries.push({ name, type: objType, start: startSect, size });
   }
 
@@ -126,9 +121,6 @@ function readOle2(arrayBuffer) {
   return { entries, readStream };
 }
 
-// ------------------------------------------------------------
-// BIFF8: đọc các "bản ghi" (record) dạng [type(2) len(2) data(len)]
-// ------------------------------------------------------------
 function walkRecords(buf, startOffset = 0) {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   const records = [];
@@ -140,12 +132,11 @@ function walkRecords(buf, startOffset = 0) {
     const end = Math.min(buf.length, offset + len);
     records.push({ type, offset, len: end - offset, pos });
     pos = offset + len;
-    if (type === 0x000a) break; // dừng ở EOF — hết 1 substream (globals hoặc 1 sheet)
+    if (type === 0x000a) break;
   }
   return records;
 }
 
-/** Bảng chuỗi dùng chung (Shared String Table) — record SST (0xFC) + các CONTINUE (0x3C) nối theo sau. */
 function parseSST(buf, records) {
   const sstIdx = records.findIndex((r) => r.type === 0x00fc);
   if (sstIdx < 0) return [];
@@ -166,7 +157,7 @@ function parseSST(buf, records) {
   const getU32 = () => (getByte() | (getByte() << 8) | (getByte() << 16) | (getByte() << 24)) >>> 0;
   const skip = (n) => { for (let i = 0; i < n; i++) getByte(); };
 
-  getU32(); // cstTotal — không dùng
+  getU32();
   const cstUnique = getU32();
   const strings = [];
   for (let idx = 0; idx < cstUnique; idx++) {
@@ -191,14 +182,12 @@ function parseSST(buf, records) {
   return strings;
 }
 
-/** Vị trí (offset) bắt đầu substream của sheet đầu tiên, lấy từ record BOUNDSHEET (0x85) đầu tiên. */
 function firstSheetOffset(buf, records) {
   const rec = records.find((r) => r.type === 0x0085);
   if (!rec) return null;
   return new DataView(buf.buffer, buf.byteOffset + rec.offset, rec.len).getUint32(0, true);
 }
 
-/** Giải mã số kiểu RK (BIFF nén số thực/nguyên vào 4 byte để tiết kiệm chỗ). */
 function decodeRk(rk) {
   const fX100 = rk & 0x1;
   const fInt = rk & 0x2;
@@ -229,28 +218,28 @@ function parseBiffFirstSheet(wbBuf) {
     if (rec.len < 4) continue;
     const dv = new DataView(wbBuf.buffer, wbBuf.byteOffset + rec.offset, rec.len);
     switch (rec.type) {
-      case 0x00fd: { // LABELSST — chuỗi tham chiếu vào SST
+      case 0x00fd: {
         const rw = dv.getUint16(0, true), col = dv.getUint16(2, true), isst = dv.getUint32(6, true);
         setCell(rw, col, sst[isst] ?? '');
         break;
       }
-      case 0x0203: { // NUMBER — số thực đầy đủ (8 byte)
+      case 0x0203: {
         const rw = dv.getUint16(0, true), col = dv.getUint16(2, true);
         setCell(rw, col, dv.getFloat64(6, true));
         break;
       }
-      case 0x027e: { // RK — số nén 4 byte
+      case 0x027e: {
         const rw = dv.getUint16(0, true), col = dv.getUint16(2, true);
         setCell(rw, col, decodeRk(dv.getInt32(6, true)));
         break;
       }
-      case 0x00bd: { // MULRK — nhiều ô RK liên tiếp trong 1 record
+      case 0x00bd: {
         const rw = dv.getUint16(0, true), colFirst = dv.getUint16(2, true);
         const n = Math.floor((rec.len - 6) / 6);
         for (let i = 0; i < n; i++) setCell(rw, colFirst + i, decodeRk(dv.getInt32(4 + i * 6 + 2, true)));
         break;
       }
-      case 0x0204: { // LABEL — chuỗi kiểu cũ (không qua SST), hiếm gặp trong BIFF8
+      case 0x0204: {
         const rw = dv.getUint16(0, true), col = dv.getUint16(2, true);
         const cch = dv.getUint16(6, true);
         const grbit = dv.getUint8(8);
@@ -260,18 +249,13 @@ function parseBiffFirstSheet(wbBuf) {
         break;
       }
       default:
-        break; // BLANK, ROW, FORMULA, định dạng... không cần cho việc đọc dữ liệu bảng
+        break;
     }
   }
   for (let i = 0; i < rows.length; i++) if (!rows[i]) rows[i] = [];
   return rows;
 }
 
-/**
- * Đọc file .xls (Excel 97-2003, đối tượng File từ input) -> trả về mảng 2
- * chiều (rows x cols) của sheet đầu tiên trong workbook — cùng định dạng
- * kết quả với readXlsxFirstSheet() ở xlsxLite.js.
- */
 export async function readXlsFirstSheet(file) {
   const buf = await file.arrayBuffer();
   const ole = readOle2(buf);

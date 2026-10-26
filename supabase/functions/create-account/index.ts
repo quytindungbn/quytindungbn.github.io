@@ -1,94 +1,5 @@
-// Edge Function GỘP CHUNG (1 function duy nhất, đỡ phải deploy nhiều chỗ) —
-// xử lý: đăng nhập, tạo/xóa/sửa tài khoản khách hàng & quản trị viên, và
-// nhập dữ liệu Excel. Toàn bộ logic nhạy cảm (băm/so mật khẩu, cấp JWT, ghi
-// database) chạy Ở ĐÂY (server), KHÔNG chạy trong trình duyệt — dùng
-// service_role key không lộ ra ngoài. Xem docs/supabase-migration.md.
-//
-// Cách gọi: POST body luôn có field "type":
-//   { type: 'login', role: 'customer'|'admin', identifier, password }
-//     -> PHẢI gọi trước để lấy JWT — không cần JWT sẵn có.
-//   { type: 'forgot-password', cccd, phone } -> khách quên mật khẩu, KHÔNG
-//     cần JWT sẵn có — khớp đúng CCCD+SĐT thì ghi 1 yêu cầu "quen_mat_khau"
-//     vào bảng requests để admin gọi điện xác minh + cấp lại mật khẩu.
-//   { type: 'verify-own-password', password } / { type: 'set-own-password',
-//     newPassword, mustChangePassword? } -> tự đổi mật khẩu CHÍNH MÌNH, cần
-//     JWT hợp lệ (khách hàng hoặc admin đều được, KHÔNG cần role='super').
-//   { type: 'save-push-subscription', endpoint, p256dh, auth } / { type:
-//     'delete-push-subscription', endpoint } -> tự bật/tắt thông báo đẩy cho
-//     CHÍNH MÌNH, cần JWT hợp lệ (không cần role='super'). Việc GỬI thông
-//     báo định kỳ nằm ở Edge Function riêng "send-due-reminders".
-//   { type: 'customer-logout' } -> khách hàng bấm "Đăng xuất", cần JWT hợp
-//     lệ — tắt cờ is_online NGAY để 2 chấm trạng thái ở trang admin chuyển
-//     sang "chưa đăng nhập" ngay lập tức, không cần đợi hết hạn phiên.
-//   { type: 'send-manual-notification', customerId, title, body } -> BẤT KỲ
-//     admin/nhân viên nào (không cần role='super') tự soạn + gửi ngay 1
-//     thông báo đẩy cho 1 khách hàng (khách phải đã bật thông báo trên ít
-//     nhất 1 thiết bị). Nhân viên (role='staff') CHỈ gửi được cho khách
-//     trong đúng phạm vi Thôn/Xóm được gán — y hệt điều kiện RLS bảng
-//     customers, xem docs/supabase-migration.md mục 5b.
-//   { type: 'add-zalo-customer', customerId } / { type: 'remove-zalo-customer',
-//     customerId } -> Tầng 1 "Danh sách đã thêm vào OA" — DANH SÁCH CHUNG,
-//     ai có canManageZaloOA/super cũng thêm/bỏ được (trong đúng Thôn/Xóm).
-//   { type: 'add-zalo-auto-send', contractId, kind? ('lai_hang_thang_auto'
-//     mặc định | 'lai_hang_thang_custom_day'), customDay?, intervalMonths?
-//     (1-4, mặc định 1 = hàng tháng) } / { type: 'remove-zalo-auto-send', id }
-//     (MỖI KHÁCH HÀNG chỉ MỘT người được thêm — người khác thêm hợp đồng của
-//     khách đó sẽ bị chặn kèm tên người đã thêm; { type: 'list-zalo-auto-overview' }
-//     trả ai đã thêm khách/hợp đồng nào cho mọi người quản lý OA xem nhãn + đếm tổng)
-//     / { type: 'update-zalo-auto-send-settings', id, customDay?,
-//     intervalMonths? } -> Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi
-//     (KHÔNG còn 'đến hạn' — đến hạn giờ tự động theo Tầng 1, xem
-//     send-due-reminders/index.ts), loại trừ nhau (1 hợp đồng chỉ ở 1 trong
-//     2 mục). intervalMonths cho phép báo mỗi 2/3/4 tháng thay vì tháng nào
-//     cũng báo — áp dụng cho CẢ 2 mục. RIÊNG TƯ theo từng người chọn (chỉ
-//     người tự thêm mới xóa/sửa được lựa chọn của mình; add tự đảm bảo
-//     khách đã ở Tầng 1, trùng hợp đồng với người khác thì bị chặn kèm tên
-//     người đã chọn + mục họ chọn).
-//   { type: 'send-zalo-manual', contractId } -> gửi tay ngay 1 khách, TỰ
-//     CHỌN MẪU theo tình huống hợp đồng (gần/đã đến hạn dùng mẫu Đến hạn,
-//     còn xa hạn dùng mẫu Báo lãi) — không cần tự chọn templateId nữa. BẮT
-//     BUỘC khách đã có sẵn trong Tầng 1 "Danh sách OA" (KHÔNG còn tự thêm
-//     ngầm lúc gửi như trước — chưa có thì báo lỗi, phải tự thêm trước qua
-//     nút "Thêm vào OA" ở chi tiết khách hàng). Giới hạn 5 NGÀY mới gửi tay
-//     lại được cho cùng 1 hợp đồng (tính theo lần gửi thành công gần nhất,
-//     bất kể tự động hay gửi tay), báo rõ đã gửi ngày nào nếu còn trong hạn
-//     chờ. Cần cờ RIÊNG canManageZaloOA (không dùng chung canManageUsers)
-//     HOẶC role='super'. Nhân viên staff chỉ thao tác được hợp đồng/khách
-//     trong đúng phạm vi Thôn/Xóm được gán — xem docs/supabase-migration.md
-//     mục 10.
-//   Tất cả các "type" còn lại BẮT BUỘC header Authorization: Bearer <JWT>
-//   của 1 admin đã đăng nhập (xác minh lại tại server, không tin JWT mù) —
-//   2 nhóm quyền khác nhau:
-//   - CHỈ role='super' (toàn quyền) mới gọi được — gồm MỌI thao tác đụng đến
-//     tài khoản QUẢN TRỊ VIÊN/nhân viên (tạo/xóa/đổi vai trò/đổi quyền/cấp
-//     lại mật khẩu), không có ngoại lệ cho canManageUsers: nhân viên "chỉ
-//     xem" được cấp cờ này CHỈ quản lý được Use KHÁCH HÀNG, không được đụng
-//     tới tài khoản Quản trị viên nào khác (kể cả nhân viên chỉ xem khác):
-//     { type: 'update-customer-profile', cccd, name?, phone?, address? }
-//     { type: 'delete-contract', contractId }
-//     { type: 'import', fullSync, rows: [...], fileName? } — nhập Excel/dán tay hàng loạt
-//     { type: 'import-preview', fullSync, rows: [...] } — y hệt 'import' nhưng CHỈ trả danh sách cụ thể sẽ làm gì, không ghi gì
-//     { type: 'import-supplement-preview', rows: [...] } — như trên cho file số 2
-//     { type: 'import-history' } / { type: 'import-history-detail', id } — lịch sử các lần nhập
-//     { type: 'import-rollback', id } — quay lại bản trước của lần nhập mới nhất chưa quay lại
-//     { type: 'update-staff-role', staffId, role } — đổi Toàn quyền <-> Chỉ
-//       xem cho 1 tài khoản đã có sẵn (giữ lại ít nhất 1 toàn quyền)
-//     { type: 'staff', username, name?, password?, role, allowedThon?, allowedXom?, canManageUsers?, canManageZaloOA?, canViewBalanceSheet? }
-//     { type: 'reset-staff-password', staffId, password? }
-//     { type: 'force-logout-staff', staffId } — đăng xuất ngay, KHÔNG cấp lại mật khẩu
-//     { type: 'update-staff-permissions', staffId, allowedThon?, allowedXom?, canManageUsers?, canManageZaloOA? }
-//     { type: 'delete-staff', staffId }
-//   - role='super' HOẶC nhân viên "chỉ xem" được cấp cờ canManageUsers=true
-//     đều gọi được — CHỈ giới hạn trong phạm vi Use KHÁCH HÀNG:
-//     { type: 'customer', cccd, name?, phone?, password? }
-//     { type: 'reset-customer-password', customerId, password? }
-//     { type: 'force-logout-customer', customerId } — đăng xuất ngay, KHÔNG cấp lại mật khẩu
-//     { type: 'deactivate-customer', customerId }
-//     { type: 'delete-customer', customerId }
-// password bỏ trống thì tự sinh mật khẩu tạm ngẫu nhiên (trả về trong response).
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-// @ts-ignore — thư viện Node "web-push" chạy được trên Deno qua npm: specifier (Supabase Edge Runtime hỗ trợ sẵn). Dùng chung VAPID secret với send-due-reminders (đã đặt sẵn ở project, không cần thêm secret mới).
+// @ts-ignore
 import webpush from 'npm:web-push@3.6.7';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -98,22 +9,12 @@ const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') || '';
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') || '';
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-// Zalo OA (ZBS Template Message) — dùng cho gửi tay 1 khách ngay tại đây
-// (type 'send-zalo-manual'), Y HỆT cặp secret đã đặt cho send-due-reminders
-// (gửi tự động theo lịch) — xem docs/supabase-migration.md mục 10.
+
 const ZALO_APP_ID = Deno.env.get('ZALO_APP_ID') || '';
 const ZALO_SECRET_KEY = Deno.env.get('ZALO_SECRET_KEY') || '';
 
 const LOCK_AFTER_FAILS = 5;
 const LOCK_MINUTES = 15;
-// Phiên đăng nhập (JWT tự ký) KHÔNG còn tự động hết hạn theo thời gian nữa
-// (bỏ hẳn theo yêu cầu — trước lần lượt là 8 tiếng rồi 1 năm, giờ bỏ luôn
-// mốc thời gian, xem signJwt()/verifyJwt() bên dưới: token không còn field
-// "exp"). Đăng nhập 1 lần là duy trì mãi mãi, chỉ hết khi khách/nhân viên tự
-// bấm "Đăng xuất" hoặc tự xóa dữ liệu trình duyệt. Đánh đổi: JWT bị lộ (máy
-// bị mất/lộ) thì dùng được vĩnh viễn — chấp nhận được với quy mô app này
-// (không có cơ chế thu hồi token/refresh token riêng). Đổi mật khẩu KHÔNG tự
-// vô hiệu hóa JWT cũ đang có sẵn.
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -127,7 +28,6 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 }
 
-// ---------- Mật khẩu — GIỐNG HỆT thuật toán trong js/state.js ----------
 async function sha256Hex(text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest('SHA-256', data);
@@ -153,9 +53,9 @@ async function verifyCredential(password: string, salt: string, hash: string): P
 function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
-/** Y hệt REQUEST_STATUS_MAP trong js/state.js — chỉ dùng để soạn mô tả nhật ký (type 'log-admin-action'/'update-request-status'), không phải nguồn dữ liệu chính. */
+
 const REQUEST_STATUS_LABELS: Record<string, string> = { moi: 'Mới', dang_xu_ly: 'Đang xử lý', da_lien_he: 'Đã liên hệ' };
-/** Escape ký tự đặc biệt của LIKE/ILIKE ("%", "_", "\\") trước khi đưa vào ilike() — tránh username chứa các ký tự này bị hiểu nhầm thành wildcard. */
+
 function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => '\\' + c);
 }
@@ -165,26 +65,6 @@ function addDaysISO(iso: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-/**
- * Ghi 1 dòng vào nhật ký sử dụng (bảng activity_log) — CHỈ quản trị viên
- * toàn quyền (role='super') xem được (RLS chặn hẳn ở tầng database, không
- * chỉ ẩn trên giao diện — xem docs/supabase-migration.md mục 10.33). Ghi
- * bằng service role (client `admin` ở trên, bỏ qua RLS) nên LUÔN ghi được
- * bất kể người thao tác là ai. CÓ ĐỢI ghi xong (không chạy ngầm kiểu
- * "fire-and-forget" như zalo_send_log) — vì đây là nhật ký AN TOÀN/ĐỐI
- * SOÁT, cần chắc chắn ghi được chứ không ưu tiên tốc độ như lúc gửi Zalo;
- * các hành động được ghi log ở đây (tạo/xóa tài khoản, xóa hợp đồng, nhập
- * Excel...) vốn đã không phải thao tác cần phản hồi tức thì như gửi tin.
- * KHÔNG chặn luồng chính nếu ghi log lỗi (chỉ log ra console) — 1 lỗi ghi
- * nhật ký không được phép làm hỏng thao tác THẬT của người dùng.
- *
- * NGOẠI LỆ: tài khoản có TÊN ĐĂNG NHẬP đúng "admin" (không phân biệt hoa/
- * thường, khớp cách kiểm tra trùng tên đăng nhập lúc tạo tài khoản — xem
- * type 'staff') KHÔNG ghi vào nhật ký (theo yêu cầu — tài khoản này dùng để
- * quản trị/kiểm tra hệ thống, không tính là 1 nhân viên/quản trị viên thật
- * cần theo dõi). Mọi tài khoản quản trị KHÁC (toàn quyền lẫn chỉ xem) vẫn
- * ghi bình thường, không phân biệt vai trò.
- */
 async function logActivity(adminId: string, adminName: string, adminUsername: string, action: string, description: string): Promise<void> {
   if (String(adminUsername || '').trim().toLowerCase() === 'admin') return;
   try {
@@ -194,7 +74,6 @@ async function logActivity(adminId: string, adminName: string, adminUsername: st
   }
 }
 
-/** Y hệt parseAddress trong js/state.js. */
 function parseAddress(raw: string) {
   const text = String(raw || '').trim();
   const withoutNote = text.replace(/\([^)]*\)/g, '');
@@ -221,7 +100,6 @@ function parseAddress(raw: string) {
   return result;
 }
 
-// ---------- JWT tự ký/tự xác minh (không dùng Supabase Auth/auth.users thật) ----------
 function base64url(input: Uint8Array | string): string {
   const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
   let str = '';
@@ -250,22 +128,11 @@ async function verifyJwt(token: string): Promise<Record<string, any> | null> {
   const ok = await crypto.subtle.verify('HMAC', key, base64urlDecode(encSig), new TextEncoder().encode(`${encHeader}.${encPayload}`));
   if (!ok) return null;
   const payload = JSON.parse(new TextDecoder().decode(base64urlDecode(encPayload)));
-  // Không còn tự động hết hạn theo thời gian nữa (bỏ theo yêu cầu — "duy trì
-  // đăng nhập", không bắt đăng nhập lại) — JWT cấp ra (xem 'login' bên dưới)
-  // KHÔNG còn field "exp" nữa nên payload.exp luôn undefined, chỉ còn xác
-  // minh đúng chữ ký (ok ở trên). CHỈ khi nào exp CÓ MẶT (JWT cũ cấp từ
-  // trước lúc đổi, vẫn còn "exp") mới kiểm tra hết hạn như trước, để không
-  // làm hỏng phiên đăng nhập đang có sẵn của khách/nhân viên.
+
   if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
   return payload;
 }
 
-// ------------------------------------------------------------
-// Zalo OA (ZBS Template Message) — Y HỆT logic trong send-due-reminders/index.ts
-// (function riêng, không chia sẻ code được giữa 2 Edge Function nên phải chép
-// lại) — dùng cho type 'send-zalo-manual' (gửi tay ngay 1 khách từ màn hình
-// chi tiết hợp đồng).
-// ------------------------------------------------------------
 function daysBetweenZalo(a: Date, b: Date): number {
   const sa = new Date(a); sa.setHours(0, 0, 0, 0);
   const sb = new Date(b); sb.setHours(0, 0, 0, 0);
@@ -276,24 +143,12 @@ function effectiveStatusZalo(contract: any, asOf: Date): 'da_tat_toan' | 'qua_ha
   if (daysBetweenZalo(new Date(contract.due_date), asOf) > 0) return 'qua_han';
   return 'dang_vay';
 }
-// Ngưỡng "gần đến hạn" cho gửi tay (mục 'send-zalo-manual') — còn xa hạn thì
-// dùng mẫu Báo lãi, gần/đã đến hạn thì dùng mẫu Đến hạn. Admin tự nhập số
-// ngày này trong "Quản lý OA" > "Cấu hình" (cột orgs.zalo_near_due_days) —
-// hằng số dưới đây chỉ còn là giá trị MẶC ĐỊNH khi admin chưa từng lưu gì
-// (cột null), KHỚP ĐÚNG với DEFAULT_NEAR_DUE_DAYS_ZALO trong
-// send-due-reminders/index.ts (đồng nhất gửi tay/gửi tự động).
+
 const DEFAULT_NEAR_DUE_DAYS_ZALO = 15;
-/**
- * Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu có,
- * xem nextInstallmentInfoZalo() bên dưới) — hợp đồng có 1 kỳ giữa chừng
- * (chưa tới ngày đáo hạn cuối) gần/quá hạn cũng tự chuyển sang mẫu "Đến
- * hạn" y hệt ngày đáo hạn hợp đồng gốc, KHỚP ĐÚNG với isNearOrPastDueZalo()
- * trong send-due-reminders/index.ts (theo đúng yêu cầu mở rộng, đồng nhất
- * gửi tay/gửi tự động).
- */
+
 function isNearOrPastDueZalo(contract: any, asOf: Date, nearDueDays: number): boolean {
   const d = daysBetweenZalo(asOf, new Date(contract.due_date));
-  if (d <= nearDueDays) return true; // <=0 nghĩa là đã đến/quá hạn, 1..nearDueDays là gần đến hạn
+  if (d <= nearDueDays) return true;
   const inst = nextInstallmentInfoZalo(contract, asOf);
   return inst != null && inst.next.daysLeft <= nearDueDays;
 }
@@ -306,12 +161,6 @@ function withYearZalo(date: Date, year: number): Date {
   return d;
 }
 
-/**
- * Y HỆT toLocalISODate() trong js/state.js / send-due-reminders/index.ts.
- * TUYỆT ĐỐI KHÔNG dùng date.toISOString().slice(0,10) ở đây — toISOString()
- * luôn quy đổi ra GIỜ UTC trước, ở múi giờ Việt Nam (UTC+7) sẽ làm ngày bị
- * lùi lại 1 ngày (VD: 23/08/2026 hiện thành 22/08/2026).
- */
 function toLocalISODateZalo(date: Date): string {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -319,10 +168,6 @@ function toLocalISODateZalo(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/**
- * Y HỆT restoreLeadingInstallment() trong js/lib/installmentPlan.js (xem ghi chú đầy đủ ở đó) — dựng lại kỳ ĐẦU đã trả đủ
- * mà file nhập ghi 0 nên không còn được lưu, để tiền đã trả không bị tính nhầm vào kỳ kế và "Kỳ tới" không bị nhảy qua kỳ còn phải trả.
- */
 function restoreLeadingInstallment(
   entries: { year: number; amount: number; restored?: boolean }[],
   info: { principal: number; balance: number; disbursedYear: number },
@@ -336,11 +181,6 @@ function restoreLeadingInstallment(
   return entries;
 }
 
-/**
- * Y HỆT mergeInstallmentSchedule() trong js/lib/installmentPlan.js — gộp phân kỳ của file mới vào phân kỳ đã lưu: GIỮ NGUYÊN
- * các kỳ cũ đứng trước kỳ có số tiền đầu tiên của file mới (kỳ đã trả đủ nên file ghi 0, trước đây bị mất), từ kỳ đó trở đi lấy theo file mới.
- * `incoming` chỉ chứa năm có số tiền > 0; incoming rỗng -> trả lại phân kỳ đã lưu.
- */
 function mergeInstallmentSchedule(existing: any, incoming: Record<string, number>): Record<string, number> | null {
   const years = Object.keys(incoming || {}).map(Number).filter(Number.isFinite);
   if (!years.length) return existing || null;
@@ -355,7 +195,6 @@ function mergeInstallmentSchedule(existing: any, incoming: Record<string, number
 
 type InstallmentEntryZalo = { year: number; dueDate: string; amount: number; dueAmount: number; daysLeft: number };
 
-/** Y HỆT computeInstallmentPlan() trong js/state.js / send-due-reminders/index.ts (xem ghi chú đầy đủ ở 2 nơi đó) — dùng để tính đúng số tiền GỐC của "Kỳ tới" cho Zalo OA gửi tay. */
 function computeInstallmentPlanZalo(contract: any, asOf: Date): InstallmentEntryZalo[] | null {
   const schedule = contract.installment_schedule;
   if (!schedule) return null;
@@ -390,7 +229,6 @@ function computeInstallmentPlanZalo(contract: any, asOf: Date): InstallmentEntry
   });
 }
 
-/** Y HỆT nextInstallmentInfo() trong js/state.js — kỳ ĐẦU TIÊN còn thiếu tiền. null nếu không có phân kỳ, hoặc đã trả đủ hết mọi kỳ. */
 function nextInstallmentInfoZalo(contract: any, asOf: Date): { idx: number; next: InstallmentEntryZalo } | null {
   const plan = computeInstallmentPlanZalo(contract, asOf);
   if (!plan) return null;
@@ -404,8 +242,7 @@ function interestDaysAccruedZalo(contract: any, asOf: Date): number {
   if (contract.disbursed_date && daysBetweenZalo(new Date(contract.disbursed_date), new Date(paidUntil)) === 1) days += 1;
   return Math.max(0, days);
 }
-// Tinh lai bang phan so nguyen de khong sai nguong 500 do so thuc.
-// Chi lam tron MOT LAN den nghin dong, khong lam tron truoc den dong.
+
 function interestRoundedToThousand(balance: number | string, days: number, annualRate: number | string): number {
   if (![balance, days, annualRate].every(v => Number.isFinite(Number(v)))) {
     throw new Error('Du lieu tinh lai khong hop le');
@@ -440,7 +277,6 @@ function accruedInterestZalo(contract: any, asOf: Date): number {
   return interestRoundedToThousand(contract.balance, days, contract.interest_rate);
 }
 
-/** Y HỆT daysOverdue() trong js/state.js — dùng để xếp Nhóm nợ cho dashboard "Tổng quan" (mục 10.46 docs). null nếu đã tất toán. */
 function daysOverdueZalo(contract: any, asOf: Date): number | null {
   if ((Number(contract.balance) || 0) <= 0) return null;
   const mainOverdue = daysBetweenZalo(new Date(contract.due_date), asOf);
@@ -448,13 +284,9 @@ function daysOverdueZalo(contract: any, asOf: Date): number | null {
   const instOverdue = inst ? -inst.next.daysLeft : -Infinity;
   return Math.max(0, mainOverdue, instOverdue);
 }
-/** Ngưỡng "gần đến hạn" RỘNG cho cột "Cần chú ý" — Y HỆT WIDE_NEAR_DUE_DAYS trong js/state.js. */
+
 const WIDE_NEAR_DUE_DAYS_ATTENTION = 45;
-/**
- * Y HỆT contractAttentionInfo() trong js/state.js — mức cần chú ý CAO NHẤT của 1 hợp đồng tại ngày `asOf`
- * (quá hạn lấy NHIỀU ngày nhất, gần đến hạn lấy ÍT ngày nhất; xét cả ngày đáo hạn hợp đồng gốc lẫn "Kỳ tới" của phân kỳ).
- * Lưu vào bản chốt tháng để mục "Cần chú ý" của Tổng quan xem lại đúng số của tháng đó.
- */
+
 function contractAttentionZalo(contract: any, asOf: Date): { level: 'qua_han' | 'gan_den_han' | null; days: number; dueAmount: number } {
   const balance = Number(contract.balance) || 0;
   if (balance <= 0) return { level: null, days: 0, dueAmount: 0 };
@@ -480,21 +312,20 @@ function contractAttentionZalo(contract: any, asOf: Date): { level: 'qua_han' | 
   return { level: null, days: 0, dueAmount: balance };
 }
 
-/** Y HỆT debtGroup() trong js/state.js — Nhóm nợ 1-5 theo Thông tư 02/2013 NHNN. null nếu đã tất toán. */
 function debtGroupZalo(contract: any, asOf: Date): number | null {
   const d = daysOverdueZalo(contract, asOf);
   if (d === null) return null;
-  if (d < 10) return 1; // Nhóm 1 = quá hạn DƯỚI 10 ngày; từ đúng 10 ngày là Nhóm 2 — khớp debtGroup() trong js/state.js
+  if (d < 10) return 1;
   if (d <= 90) return 2;
   if (d <= 180) return 3;
   if (d <= 360) return 4;
   return 5;
 }
-/** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 — Y HỆT SPECIFIC_PROVISION_RATE trong js/state.js (dùng cho type 'capture-monthly-snapshot', mục 10.52 docs). */
+
 const PROVISION_SPECIFIC_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
-/** Tỷ lệ dự phòng CHUNG, áp trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
+
 const PROVISION_GENERAL_RATE = 0.0075;
-/** Tỷ lệ khấu trừ TSBĐ do quỹ quy định. Mã khác là tài sản giữ tạm, không được khấu trừ. */
+
 function collateralDeductionRate(ct: any): number {
   if (!ct.has_collateral) return 0;
   const type = String(ct.collateral_type || '').trim().toUpperCase();
@@ -504,9 +335,6 @@ function collateralDeductionRate(ct: any): number {
   return 0;
 }
 
-/** Đồng bộ TSBĐ theo đúng HĐTD vào chi tiết các tháng đã chốt. Giữ nguyên
- * dư nợ/nhóm nợ/ngày chốt của từng tháng; chỉ tính lại dự phòng cụ thể khi
- * chi tiết hợp đồng cộng khớp với số dư của bản chốt. */
 async function syncHistoricalCollateral(admin: any): Promise<{ updated: number; error?: string }> {
   const readAll = async (table: string, columns: string) => {
     const rows: any[] = [];
@@ -571,15 +399,11 @@ function formatDateVNZalo(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
-/**
- * Định dạng số tiền cho MỌI tham số tiền trong mẫu Zalo OA — CHỈ chuỗi chữ
- * số thuần, không dấu chấm ngăn hàng nghìn, không chữ "đ", y hệt
- * send-due-reminders/index.ts — xem ghi chú đầy đủ ở đó.
- */
+
 function formatVNDZaloTemplate(n: number): string {
   return String(Math.round(n));
 }
-/** Y HỆT stripDiacritics() trong js/utils.js — bỏ dấu tiếng Việt, in hoa, bỏ ký tự lạ, dùng cho nội dung chuyển khoản. */
+
 function stripDiacriticsUpper(str: string): string {
   return str
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -596,17 +420,7 @@ function normalizeZaloPhone(phone: string): string {
   if (digits.startsWith('0')) return '84' + digits.slice(1);
   return digits;
 }
-/**
- * Lấy Access Token hiện hành, tự làm mới bằng Refresh Token lưu trong bảng
- * zalo_oa_tokens — xem ghi chú y hệt trong send-due-reminders/index.ts.
- * DÙNG LẠI access_token đã lưu nếu còn mới (< 50 phút, an toàn hơn hạn thật
- * ~60 phút của Zalo) thay vì gọi API làm mới MỖI LẦN gửi — đỡ mất thêm 1
- * lượt gọi mạng ra ngoài (ngoài lượt gửi tin thật sự), bấm "Gửi tin Zalo OA
- * ngay" phản hồi nhanh hơn hẳn. AN TOÀN với việc Refresh Token tự xoay
- * vòng: xoay vòng chỉ xảy ra ĐÚNG lúc gọi API làm mới, không liên quan gì
- * tới việc tái sử dụng access_token đã có để GỬI TIN — gọi làm mới ít lại
- * còn giảm rủi ro đá nhau giữa nhiều lượt gửi cùng lúc.
- */
+
 async function getZaloAccessToken(): Promise<string | null> {
   if (!ZALO_APP_ID || !ZALO_SECRET_KEY) return null;
   const { data: tokenRow } = await admin.from('zalo_oa_tokens').select('*').eq('id', 'default').maybeSingle();
@@ -634,11 +448,7 @@ async function getZaloAccessToken(): Promise<string | null> {
     return null;
   }
 }
-// Zalo báo SĐT KHÔNG có tài khoản Zalo ("Zalo account not existed", mã -118 =
-// tài khoản Zalo không tồn tại/đã bị vô hiệu hóa): báo lại bằng tiếng Việt,
-// và TỰ BỎ khách đó khỏi Danh sách OA (Tầng 1) lẫn mọi lựa chọn gửi tự động
-// (Tầng 2) — SĐT này gửi Zalo không bao giờ tới được. Muốn gửi lại sau này
-// (VD khách đổi sang SĐT có Zalo) thì cập nhật SĐT rồi thêm lại vào OA.
+
 const ZALO_NO_ACCOUNT_MESSAGE = 'Số điện thoại này chưa đăng ký Zalo';
 function isZaloNoAccountError(resp: any): boolean {
   if (!resp) return false;
@@ -654,13 +464,12 @@ async function removeCustomerFromZaloLists(customerId: string): Promise<void> {
   }
 }
 
-/** Gửi 1 tin mẫu Zalo qua SĐT, TỰ GHI LOG vào zalo_send_log (dùng cho cả gửi tay lẫn xem trong "Quản lý gửi tin"). */
 async function sendZaloTemplateLogged(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string; triggeredBy: 'auto' | 'manual'; triggeredByAdminId?: string | null;
-  /** Người nhận của số này ('main' = người vay, 'co' = người cùng vay) + tên — ghi vào nhật ký để lịch sử luôn đúng dù sau này số điện thoại được sửa (xem docs mục 10.89). */
+
   who?: 'main' | 'co'; whoName?: string;
-  /** true khi đang gửi cho 2 số cùng lúc: chưa tự bỏ khách khỏi OA khi 1 số báo "chưa đăng ký Zalo" — để nơi gọi quyết định theo kết quả của cả 2 số. */
+
   deferNoAccount?: boolean;
 }): Promise<{ ok: boolean; reason?: string; noAccount?: boolean }> {
   let status: 'success' | 'error' = 'error';
@@ -693,19 +502,13 @@ async function sendZaloTemplateLogged(opts: {
   if (opts.who) { logRow.recipient_who = opts.who; logRow.recipient_name = opts.whoName || null; }
   const { error: logErr } = await admin.from('zalo_send_log').insert(logRow);
   if (logErr && opts.who && /recipient_(who|name)/i.test(String(logErr.message || ''))) {
-    // Chưa chạy SQL thêm cột người nhận (docs mục 10.89): ghi như trước để vẫn có nhật ký, không làm hỏng việc gửi.
+
     delete logRow.recipient_who; delete logRow.recipient_name;
     await admin.from('zalo_send_log').insert(logRow);
   }
   return status === 'success' ? { ok: true } : { ok: false, reason: errorMessage || 'Gửi thất bại.', noAccount };
 }
 
-// ---------- Nhập Excel: so sánh trước/sau, lịch sử các lần nhập, quay lại bản trước ----------
-// Mỗi lần nhập file thật (type 'import' / 'import-supplement') ghi 1 dòng vào
-// bảng import_history: `details` = danh sách CỤ THỂ đã làm gì (hợp đồng nào,
-// của ai, đổi gì) để hiện lại cho người xem; `snapshot` = dữ liệu cũ để quay
-// lại bản trước. Bảng chỉ truy cập qua Edge Function (service role), giao
-// diện chỉ hiện cho quản trị viên toàn quyền (xem SUPER_ONLY_TYPES).
 const CONTRACT_WRITE_COLS = [
   'id', 'customer_id', 'code', 'principal', 'disbursed_date', 'due_date', 'interest_rate', 'balance',
   'interest_paid_until', 'has_collateral', 'collateral_value', 'collateral_type', 'loan_term',
@@ -747,7 +550,7 @@ function normField(kind: FieldKind, v: any): string | number | boolean {
   }
   return v == null ? '' : String(v).trim();
 }
-/** Các trường khác nhau giữa bản cũ và bản mới: [{ field, label, kind, from, to }]. */
+
 function diffFields(meta: Record<string, { label: string; kind: FieldKind }>, before: any, after: any) {
   const changes: { field: string; label: string; kind: FieldKind; from: unknown; to: unknown }[] = [];
   for (const [field, m] of Object.entries(meta)) {
@@ -762,13 +565,13 @@ function pickCols(row: any, cols: string[]): Record<string, unknown> {
   for (const c of cols) out[c] = row?.[c] ?? null;
   return out;
 }
-/** Chia mảng thành từng đợt nhỏ — URL của .in() và kích thước 1 lệnh ghi đều có giới hạn. */
+
 function chunkArray<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 }
-/** Chạy fn cho từng phần tử với tối đa `limit` việc cùng lúc (giữ nguyên thứ tự kết quả) — dùng cho các lượt đọc nhỏ độc lập, thay vì chờ lần lượt từng lượt. */
+
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
@@ -781,8 +584,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
 }
-// ---------- Người cùng vay & gửi Zalo OA THEO TỪNG HỢP ĐỒNG (cột D file số 1 → contracts.heir_name; xem docs mục 10.83) ----------
-// Bản sao của js/lib/coBorrower.js (có kiểm thử ở tests/coBorrower.test.mjs) — sửa 1 nơi thì sửa cả nơi kia.
+
 function normPersonName(name: unknown): string {
   return String(name ?? '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
 }
@@ -790,12 +592,12 @@ function samePerson(a: unknown, b: unknown): boolean {
   const x = normPersonName(a);
   return !!x && x === normPersonName(b);
 }
-/** Họ tên người cùng vay ghi trên 1 hợp đồng ('' nếu không ghi, hoặc ghi trùng chính người vay). */
+
 function heirOfRow(ct: any, customerName: unknown): string {
   const n = String(ct?.heir_name ?? '').replace(/\s+/g, ' ').trim();
   return !n || samePerson(n, customerName) ? '' : n;
 }
-/** Các tên người cùng vay trong danh sách hợp đồng (heir_name), không trùng nhau, bỏ tên trống và tên trùng chính người vay. */
+
 function heirNamesOfRows(contracts: any[], customerName: string): string[] {
   const out: string[] = [];
   for (const ct of contracts || []) {
@@ -804,27 +606,18 @@ function heirNamesOfRows(contracts: any[], customerName: string): string[] {
   }
   return out;
 }
-/** Số điện thoại đã lưu của 1 người trong sổ người cùng vay (customers.co_people = [{ name, phone }]); không phân biệt hoa/thường; chưa có thì ''. */
+
 function coPhoneOfPeople(people: unknown, name: unknown): string {
   const p = (Array.isArray(people) ? people : []).find((x: any) => samePerson(x?.name, name));
   return p ? String((p as any).phone ?? '').trim() : '';
 }
-/**
- * Khách có ít nhất 1 số để gửi Zalo OA không (contracts: các hợp đồng còn dư nợ): người vay có số, hoặc có người cùng vay (ghi trên các hợp đồng đó)
- * đã có số trong sổ người cùng vay. Cả 2 đều chưa có số → không cho thêm vào Danh sách OA (y hệt hasOaPhone ở màn hình).
- */
+
 function customerHasOaPhone(contracts: any[], customer: any): boolean {
   if (String(customer?.phone ?? '').trim()) return true;
   return heirNamesOfRows(contracts, customer?.name).some((n) => !!coPhoneOfPeople(customer?.co_people, n));
 }
 type ZaloRecipient = { who: 'main' | 'co'; phone: string };
-/**
- * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG (customer: { name, phone, co_people }):
- *  · hợp đồng tắt gửi OA (oa_enabled = false) → không ai;
- *  · người vay: mặc định có; luôn còn ít nhất 1 người nhận (người cùng vay không nhận được thì người vay nhận);
- *  · người cùng vay: CHỈ người có tên TRÊN HỢP ĐỒNG NÀY, đã có số, số không trùng số người vay, và đã được tick đúng người đó (oa_co_key khớp tên hiện tại)
- *    HOẶC người vay chưa có số điện thoại (khi đó người cùng vay có số TỰ ĐỘNG nhận — tick sẵn).
- */
+
 function contractRecipients(ct: any, customer: any): ZaloRecipient[] {
   if (ct?.oa_enabled === false) return [];
   const main = String(customer?.phone ?? '').trim();
@@ -838,23 +631,17 @@ function contractRecipients(ct: any, customer: any): ZaloRecipient[] {
   if (toCo) out.push({ who: 'co', phone: coPhone });
   return out;
 }
-/**
- * Người nhận khi GỬI TAY ở 1 hợp đồng: luôn gửi được (bấm gửi ở hợp đồng nào là chọn hợp đồng đó). Mặc định chỉ gửi người vay; hợp đồng có cài đặt tùy chỉnh
- * (tick người cùng vay / bỏ tick người vay) thì gửi đúng như cài đặt. Hợp đồng đang "tắt" (không gửi tự động, ẩn lịch sử) vẫn gửi tay được — chỉ tới người vay.
- */
+
 function manualRecipients(ct: any, customer: any): ZaloRecipient[] {
   return contractRecipients(ct?.oa_enabled === false ? { ...ct, oa_enabled: true, oa_to_main: true, oa_to_co: false, oa_co_key: null } : ct, customer);
 }
-/** Số điện thoại hợp lệ (0xxxxxxxxx hoặc +84/84…, 9–11 chữ số sau đầu số) → chuỗi chỉ gồm chữ số/dấu +; sai thì null — y hệt kiểm tra ở màn hình. */
+
 function cleanVnPhone(raw: unknown): string | null {
-  // Số người cùng vay: ĐÚNG 10 chữ số, bắt đầu bằng 0 (bỏ khoảng trắng, dấu chấm, gạch nối).
+
   const digits = String(raw ?? '').replace(/[\s.\-()]/g, '');
   return /^0\d{9}$/.test(digits) ? digits : null;
 }
-/**
- * Số điện thoại đọc từ ô trong file Excel: bỏ khoảng trắng/dấu chấm/gạch nối/ngoặc; ô số bị mất số 0 đầu (9 chữ số, không bắt đầu bằng 0) thì thêm lại; +84/84xxxxxxxxx đổi về 0xxxxxxxxx.
- * Trả '' khi ô trống, null khi sai định dạng (phải đủ 10 số, bắt đầu bằng 0), ngược lại là số đã chuẩn hóa.
- */
+
 function phoneFromFile(raw: unknown): string | null {
   let d = String(raw ?? '').replace(/[\s.\-()]/g, '');
   if (!d) return '';
@@ -866,18 +653,11 @@ function samePhone(a: unknown, b: unknown): boolean {
   const n = (v: unknown) => String(v ?? '').replace(/[^\d]/g, '').replace(/^84/, '0');
   return !!n(a) && n(a) === n(b);
 }
-/**
- * Khách được thêm vào Danh sách OA (lại) khi người cùng vay vừa đổi: xóa dấu "người cùng vay vừa đổi" (cảnh báo đã được xem).
- * Chỉ đụng tới khách đang có dấu đó. Lỗi/thiếu cột thì bỏ qua.
- */
+
 async function clearCoPrevName(customerId: string): Promise<void> {
-  try { await admin.from('customers').update({ co_prev_name: null }).eq('id', customerId).not('co_prev_name', 'is', null); } catch { /* bỏ qua */ }
+  try { await admin.from('customers').update({ co_prev_name: null }).eq('id', customerId).not('co_prev_name', 'is', null); } catch {  }
 }
-/**
- * Kế hoạch tự bỏ tick khi người nhận báo "chưa đăng ký Zalo" (-118) lúc gửi tin của hợp đồng `contractId` (cust: { name, phone, co_people }; cts: các hợp đồng còn dư nợ của khách):
- *  · patches: hợp đồng nào cần đổi gì — người vay: bỏ tick ở MỌI hợp đồng của khách; người cùng vay: bỏ tick ở mọi hợp đồng ghi tên người đó;
- *  · hasLeft: sau khi bỏ tick còn hợp đồng nào có người nhận được không (đếm theo tick thật sự, không tính quy tắc "luôn còn người vay" để khỏi gửi mãi vào số không có Zalo).
- */
+
 function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWho: Array<'main' | 'co'>): { patches: Map<string, Record<string, unknown>>; hasLeft: boolean } {
   const coPerson = heirOfRow(cts.find((c) => c.id === contractId), cust?.name);
   const patches = new Map<string, Record<string, unknown>>();
@@ -887,7 +667,7 @@ function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWh
     if (noAccountWho.includes('co') && coPerson && samePerson(heirOfRow(ct, cust?.name), coPerson)) { p.oa_to_co = false; p.oa_co_key = null; }
     if (Object.keys(p).length) patches.set(ct.id, p);
   }
-  // Người cùng vay báo "chưa đăng ký Zalo" thì không còn được tự động nhận nữa (kể cả khi người vay chưa có số điện thoại).
+
   const coDead = noAccountWho.includes('co') ? coPerson : '';
   const main = String(cust?.phone ?? '').trim();
   const hasLeft = cts.some((ct) => {
@@ -902,11 +682,7 @@ function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWh
   });
   return { patches, hasLeft };
 }
-/**
- * Người nhận báo "chưa đăng ký Zalo" (-118) khi gửi tin của hợp đồng `contractId`: TỰ BỎ TICK gửi OA của đúng người đó (xem planNoZaloUntick) — người còn lại vẫn nhận.
- * Khi KHÔNG CÒN hợp đồng nào của khách có người nhận được thì TỰ BỎ KHÁCH KHỎI Danh sách OA + gửi tự động và đặt lại mặc định
- * (mọi hợp đồng gửi người vay). Trả về những người bị bỏ tick và khách có bị bỏ khỏi OA không.
- */
+
 async function applyNoZaloResults(customerId: string, contractId: string, noAccountWho: Array<'main' | 'co'>): Promise<{ unticked: Array<'main' | 'co'>; removed: boolean }> {
   if (!noAccountWho.length) return { unticked: [], removed: false };
   try {
@@ -926,13 +702,13 @@ async function applyNoZaloResults(customerId: string, contractId: string, noAcco
   }
   return { unticked: noAccountWho, removed: false };
 }
-/** Lựa chọn gửi Zalo OA gần nhất của 1 người cùng vay (lưu trong sổ: entry.oa) — người vay có nhận không, người cùng vay có nhận không. */
+
 type CoPref = { toMain: boolean; toCo: boolean };
 type CoEntry = { name: string; phone: string; oa?: CoPref };
 function cleanCoPref(v: unknown): CoPref | undefined {
   return v && typeof v === 'object' ? { toMain: (v as any).toMain !== false, toCo: (v as any).toCo === true } : undefined;
 }
-/** Gộp 2 sổ người cùng vay theo tên (không phân biệt hoa/thường): `over` đè lên `base` cùng tên (lựa chọn gửi `oa` của bản cũ vẫn giữ nếu bản mới chưa có); người chỉ có ở 1 bên vẫn giữ. Bỏ dòng không có tên. */
+
 function mergeCoBooks(base: unknown, over: unknown): CoEntry[] {
   const out: CoEntry[] = [];
   for (const x of [...(Array.isArray(base) ? base : []), ...(Array.isArray(over) ? over : [])]) {
@@ -945,12 +721,7 @@ function mergeCoBooks(base: unknown, over: unknown): CoEntry[] {
   }
   return out;
 }
-/**
- * Trước khi nhập file (hợp đồng cũ có thể bị xóa): ghi lại LỰA CHỌN GỬI hiện tại của từng người cùng vay vào sổ của khách (entry.oa = { toMain, toCo }) — lấy từ các hợp đồng còn dư nợ
- * đang ghi tên người đó: có hợp đồng nào tick người cùng vay → { người vay như hợp đồng đó, toCo: true }, không có → mặc định { toMain: true, toCo: false }.
- * Người không còn ghi trên hợp đồng nào thì giữ nguyên lựa chọn đã ghi. Hợp đồng MỚI ghi đúng người đó sau này sẽ được áp lại lựa chọn này (applyCoPrefToNewContracts).
- * Trả về danh sách khách cần ghi lại sổ (chỉ những khách có thay đổi thật).
- */
+
 function coPrefUpdates(customers: any[], contracts: any[]): { id: string; people: CoEntry[] }[] {
   const byCust = new Map<string, any[]>();
   for (const ct of contracts || []) {
@@ -969,18 +740,14 @@ function coPrefUpdates(customers: any[], contracts: any[]): { id: string; people
       if (!named.length) continue;
       const ticked = named.find((ct) => ct.oa_to_co === true && samePerson(ct.oa_co_key, p.name));
       const pref: CoPref = ticked ? { toMain: ticked.oa_to_main !== false, toCo: true } : { toMain: true, toCo: false };
-      if (!p.oa && !pref.toCo) continue; // chưa từng ghi + đúng mặc định → khỏi ghi
+      if (!p.oa && !pref.toCo) continue;
       if (!p.oa || p.oa.toMain !== pref.toMain || p.oa.toCo !== pref.toCo) { p.oa = pref; changed = true; }
     }
     if (changed) out.push({ id: cust.id, people });
   }
   return out;
 }
-/**
- * Hợp đồng MỚI (vừa tạo trong lần nhập này — hợp đồng thay thế hợp đồng đã tất toán, hoặc vay lại sau một thời gian) ghi đúng người cùng vay đã có lựa chọn gửi trong sổ
- * (entry.oa.toCo = true) và người đó có số điện thoại → tick lại y như trước (người vay theo lựa chọn cũ). Người cùng vay KHÁC thì không có lựa chọn → mặc định gửi người vay.
- * Hợp đồng cũ (không phải mới) không bị đụng. Trả về số hợp đồng được tick.
- */
+
 async function applyCoPrefToNewContracts(custById: Map<string, any>, ctRows: any[], newContractIds: string[]): Promise<number> {
   const fresh = new Set(newContractIds || []);
   if (!fresh.size) return 0;
@@ -1001,22 +768,17 @@ async function applyCoPrefToNewContracts(custById: Map<string, any>, ctRows: any
   });
   return updates.length;
 }
-/**
- * Hồ sơ khách sắp bị dọn (hết dư nợ, chưa có tài khoản — xem bước dọn khi nhập file) thì CẤT sổ người cùng vay (tên + số điện thoại) vào bảng co_people_archive
- * theo CCCD của khách, để lần vay sau (khách được tạo lại từ file) nếu hợp đồng ghi đúng người đó thì dùng lại luôn số đã lưu (xem restoreCoPeopleFromArchive).
- * Khách có tài khoản Use không bị dọn nên sổ vẫn nằm sẵn trong hồ sơ. Gộp với sổ đã cất trước đó (người nào chỉ có ở bản cũ vẫn giữ).
- * KHÔNG BAO GIỜ làm hỏng lần nhập: chưa chạy SQL (thiếu bảng/cột) hoặc lỗi gì thì bỏ qua. Trả về số khách đã cất.
- */
+
 async function archiveCoPeopleBeforePrune(customerIds: string[]): Promise<number> {
   let saved = 0;
   try {
     for (const part of chunkArray(customerIds, 150)) {
       const { data: custs, error } = await admin.from('customers').select('id, cccd, co_people').in('id', part);
-      if (error) return saved; // chưa chạy SQL gửi OA theo hợp đồng (thiếu cột co_people)
+      if (error) return saved;
       const withBook = (custs || []).filter((c: any) => String(c.cccd ?? '').trim() && mergeCoBooks(c.co_people, []).length);
       if (!withBook.length) continue;
       const { data: old, error: oldErr } = await admin.from('co_people_archive').select('cccd, people').in('cccd', withBook.map((c: any) => c.cccd));
-      if (oldErr) return saved; // chưa chạy SQL tạo bảng co_people_archive
+      if (oldErr) return saved;
       const oldByCccd = new Map<string, unknown>((old || []).map((r: any) => [r.cccd, r.people]));
       const rows = withBook.map((c: any) => ({ cccd: c.cccd, people: mergeCoBooks(oldByCccd.get(c.cccd), c.co_people), updated_at: new Date().toISOString() }));
       const { error: upErr } = await admin.from('co_people_archive').upsert(rows, { onConflict: 'cccd' });
@@ -1027,10 +789,7 @@ async function archiveCoPeopleBeforePrune(customerIds: string[]): Promise<number
   }
   return saved;
 }
-/**
- * Sau khi nhập file: khách có hợp đồng còn dư nợ ghi 1 người cùng vay mà sổ của khách CHƯA CÓ người đó, nhưng bảng co_people_archive (theo CCCD) đã cất số của đúng người
- * đó từ lần vay trước → điền lại số vào sổ (không đè người đã có trong sổ, kể cả khi số đang để trống). Số trùng số người vay thì bỏ qua. Trả về số khách được điền.
- */
+
 async function restoreCoPeopleFromArchive(custById: Map<string, any>, ctRows: any[]): Promise<number> {
   const namesByCust = new Map<string, any[]>();
   for (const ct of ctRows) { const a = namesByCust.get(ct.customer_id) || []; a.push(ct); namesByCust.set(ct.customer_id, a); }
@@ -1045,7 +804,7 @@ async function restoreCoPeopleFromArchive(custById: Map<string, any>, ctRows: an
   const archived = new Map<string, unknown>();
   for (const part of chunkArray([...need.keys()].map((id) => custById.get(id).cccd as string), 150)) {
     const { data, error } = await admin.from('co_people_archive').select('cccd, people').in('cccd', part);
-    if (error) return 0; // chưa chạy SQL tạo bảng
+    if (error) return 0;
     for (const r of data || []) archived.set((r as any).cccd, (r as any).people);
   }
   const updates: { id: string; people: { name: string; phone: string }[] }[] = [];
@@ -1058,7 +817,7 @@ async function restoreCoPeopleFromArchive(custById: Map<string, any>, ctRows: an
     for (const n of names) {
       const saved = mergeCoBooks(book, []).find((x) => samePerson(x.name, n));
       if (!saved || !saved.phone || samePhone(saved.phone, cust.phone)) continue;
-      people.push({ name: n, phone: saved.phone, ...(saved.oa ? { oa: saved.oa } : {}) }); // kèm lựa chọn gửi đã lưu
+      people.push({ name: n, phone: saved.phone, ...(saved.oa ? { oa: saved.oa } : {}) });
       changed = true;
     }
     if (changed) { updates.push({ id, people }); cust.co_people = people; }
@@ -1069,14 +828,7 @@ async function restoreCoPeopleFromArchive(custById: Map<string, any>, ctRows: an
   });
   return updates.length;
 }
-/**
- * Sau khi nhập file: hợp đồng nào đang tick gửi cho 1 người cùng vay (oa_to_co) mà TÊN GHI TRÊN HỢP ĐỒNG nay đã đổi sang người khác (hoặc bị xóa)
- * thì tick mất hiệu lực — bỏ tick người cùng vay (hợp đồng về gửi người vay), ghi tên người cũ (co_prev_name) để cảnh báo khi thêm lại,
- * và BỎ khách khỏi Danh sách OA + gửi tự động. Số điện thoại của người cũ vẫn giữ trong sổ người cùng vay (không còn hợp đồng nào ghi tên họ thì
- * không hiện, không gửi). Hợp đồng không đổi người thì giữ nguyên mọi lựa chọn.
- * Đồng thời điền lại số người cùng vay đã lưu từ lần vay trước (restoreCoPeopleFromArchive) và tick lại lựa chọn gửi cũ cho hợp đồng MỚI ghi đúng người đó (applyCoPrefToNewContracts).
- * KHÔNG BAO GIỜ làm hỏng lần nhập: chưa chạy SQL (thiếu cột) hoặc lỗi gì thì bỏ qua.
- */
+
 async function reconcileCoBorrowersAfterImport(customerIds: string[], newContractIds: string[] = []): Promise<{ changes: { name: string; prev: string; now: string }[]; filled: number; ticked: number; skipped?: string }> {
   const out = { changes: [] as { name: string; prev: string; now: string }[], filled: 0, ticked: 0 };
   if (!customerIds.length) return out;
@@ -1093,7 +845,7 @@ async function reconcileCoBorrowersAfterImport(customerIds: string[], newContrac
       if (error) return { ...out, skipped: error.message };
       ctRows.push(...(data || []));
     }
-    // Người cùng vay đã lưu từ lần vay trước (hợp đồng đã tất toán, hồ sơ khách đã dọn) → dùng lại số đã lưu cho đúng người đó.
+
     try { out.filled = await restoreCoPeopleFromArchive(custById, ctRows); } catch (e) { console.error('Lỗi điền lại sổ người cùng vay:', e); }
     const toRemoveFromOa = new Set<string>();
     const prevByCustomer = new Map<string, string>();
@@ -1103,7 +855,7 @@ async function reconcileCoBorrowersAfterImport(customerIds: string[], newContrac
       const cust = custById.get(ct.customer_id);
       if (!cust) continue;
       const now = heirOfRow(ct, cust.name);
-      if (now && samePerson(ct.oa_co_key, now)) continue; // vẫn đúng người đã tick
+      if (now && samePerson(ct.oa_co_key, now)) continue;
       ctUpdates.push(ct.id);
       toRemoveFromOa.add(ct.customer_id);
       if (!prevByCustomer.has(ct.customer_id)) {
@@ -1125,7 +877,7 @@ async function reconcileCoBorrowersAfterImport(customerIds: string[], newContrac
       await admin.from('zalo_auto_send_list').delete().in('customer_id', part);
       await admin.from('zalo_customers').delete().in('customer_id', part);
     }
-    // Hợp đồng MỚI ghi đúng người cùng vay đã có lựa chọn gửi → tick lại y như trước.
+
     try { out.ticked = await applyCoPrefToNewContracts(custById, ctRows, newContractIds); } catch (e) { console.error('Lỗi tick lại người cùng vay:', e); }
   } catch (e: any) {
     console.error('Lỗi đối chiếu người cùng vay:', e);
@@ -1133,12 +885,12 @@ async function reconcileCoBorrowersAfterImport(customerIds: string[], newContrac
   }
   return out;
 }
-/** Kiểm tra bảng import_history đã được tạo (chạy SQL) trước khi ghi bất cứ thứ gì. */
+
 async function importHistoryReady(): Promise<string | null> {
   const { error } = await admin.from('import_history').select('id').limit(1);
   return error ? 'Chưa tạo bảng lịch sử nhập (import_history) trên Supabase — chạy SQL tạo bảng trước; chưa thay đổi dữ liệu.' : null;
 }
-/** Ghi 1 lần nhập vào lịch sử rồi dọn bớt các dòng cũ quá IMPORT_HISTORY_KEEP lần gần nhất. Trả về id, hoặc lỗi (không làm hỏng lần nhập đã xong). */
+
 async function saveImportHistory(entry: {
   adminId: string; adminName: string; kind: 'import' | 'supplement'; fileName: string | null; fullSync: boolean;
   summary: unknown; details: unknown; snapshot: unknown;
@@ -1154,13 +906,6 @@ async function saveImportHistory(entry: {
   return { id };
 }
 
-/**
- * Quay lại bản trước của 1 lần nhập: trả dữ liệu về đúng như trước khi nhập
- * (hợp đồng/khách đã xóa được tạo lại, giá trị đã đổi được trả về giá trị
- * cũ, hợp đồng/khách mới tạo bị xóa). Mọi bước đều idempotent (upsert/xóa
- * theo id) nên nếu giữa chừng lỗi thì bấm quay lại lần nữa vẫn an toàn; dừng
- * ngay ở bước lỗi đầu tiên để không làm dữ liệu lệch thêm.
- */
 async function rollbackImportSnapshot(snapshot: any): Promise<{ errors: string[]; counts: Record<string, number> }> {
   const errors: string[] = [];
   const counts: Record<string, number> = {
@@ -1234,7 +979,7 @@ async function rollbackImportSnapshot(snapshot: any): Promise<{ errors: string[]
   });
   await step('Xóa hợp đồng do lần nhập này tạo ra', async () => {
     for (const part of chunkArray(snapshot.createdContractIds || [], 150)) {
-      // Nhật ký gửi tin là lịch sử, giữ lại (chỉ bỏ liên kết) — y hệt cách xóa hợp đồng lúc nhập.
+
       for (const table of ['notification_log', 'zalo_send_log']) {
         const { error } = await admin.from(table).update({ contract_id: null }).in('contract_id', part);
         must(error);
@@ -1259,8 +1004,6 @@ async function rollbackImportSnapshot(snapshot: any): Promise<{ errors: string[]
   return { errors, counts };
 }
 
-
-/** Hợp đồng + khách của nó. Thử 1 truy vấn (nhúng khách); không được thì quay về 2 truy vấn nối đuôi như cũ. null nếu không có hợp đồng/khách. */
 async function loadContractWithCustomer(contractId: string): Promise<{ contract: any; customer: any } | null> {
   try {
     const { data, error } = await admin.from('contracts').select('*, customers(*)').eq('id', contractId).maybeSingle();
@@ -1269,7 +1012,7 @@ async function loadContractWithCustomer(contractId: string): Promise<{ contract:
       const customer = Array.isArray(customers) ? customers[0] : customers;
       if (customer && contract.customer_id === customer.id) return { contract, customer };
     }
-  } catch { /* quay về cách cũ bên dưới */ }
+  } catch {  }
   const { data: contract } = await admin.from('contracts').select('*').eq('id', contractId).maybeSingle();
   if (!contract) return null;
   const { data: customer } = await admin.from('customers').select('*').eq('id', contract.customer_id).maybeSingle();
@@ -1288,7 +1031,6 @@ Deno.serve(async (req) => {
     return json({ ok: false, reason: 'Yêu cầu không hợp lệ.' }, 400);
   }
 
-  // ===== type: 'login' — KHÔNG cần JWT sẵn có, đây là chỗ tạo ra JWT =====
   if (body.type === 'login') {
     const { role, identifier, password } = body;
     if (!identifier || !password || (role !== 'customer' && role !== 'admin')) {
@@ -1304,7 +1046,7 @@ Deno.serve(async (req) => {
       if (error) { console.error('query customers error:', error); return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500); }
       row = (data || []).find((c) => c.cccd === idTrim || (c.phone && c.phone.replace(/\s/g, '') === noSpace)) || null;
     } else {
-      // Tên đăng nhập quản trị viên KHÔNG phân biệt hoa/thường — dùng ilike().
+
       const { data, error } = await admin.from('admins').select('*').ilike('username', escapeLike(idTrim)).maybeSingle();
       if (error) { console.error('query admins error:', error); return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500); }
       row = data;
@@ -1327,46 +1069,25 @@ Deno.serve(async (req) => {
       return json({ ok: false, reason: role === 'customer' ? 'Số CCCD/số điện thoại hoặc mật khẩu không đúng.' : 'Sai tên đăng nhập hoặc mật khẩu.' });
     }
 
-    // last_login_at + is_online CHỈ ghi cho customer — dùng cho 2 chấm trạng
-    // thái ở trang Khách hàng & Hợp đồng / Quản lý User. is_online bật NGAY
-    // ở đây (chấm "đã đăng nhập" nghĩa là ĐANG có phiên hoạt động, không phải
-    // "đã từng đăng nhập") — tắt lại NGAY lúc khách bấm "Đăng xuất" (type
-    // 'customer-logout' bên dưới). Trường hợp khách tắt app/rớt mạng mà
-    // KHÔNG bấm đăng xuất, server không có cách nào tự biết để tắt is_online
-    // — hasCustomerLoggedIn() (js/state.js) tự đặt 1 mốc hiển thị riêng (chỉ
-    // để chấm không kẹt xanh mãi trên màn hình, KHÔNG phải hạn phiên đăng
-    // nhập thật — phiên đăng nhập giờ không còn tự hết hạn nữa, xem trên).
     const loginPatch: Record<string, unknown> = { failed_attempts: 0, locked_until: null };
     if (role === 'customer') { loginPatch.last_login_at = new Date().toISOString(); loginPatch.is_online = true; }
     await admin.from(table).update(loginPatch).eq('id', row.id);
 
     const now = Math.floor(Date.now() / 1000);
-    // KHÔNG còn field "exp" (thời hạn) — bỏ hẳn tự động đăng xuất theo thời
-    // gian, đăng nhập 1 lần là duy trì mãi mãi (chỉ hết khi khách/nhân viên
-    // tự bấm "Đăng xuất", hoặc tự xóa dữ liệu trình duyệt). Xem verifyJwt()
-    // ở trên — thiếu "exp" giờ được hiểu là "không hết hạn", không còn bị từ
-    // chối như trước.
+
     const token = await signJwt({
       sub: row.auth_user_id, role: 'authenticated', app_role: role, row_id: row.id,
       iat: now,
     });
-    // Ghi nhật ký CHỈ đăng nhập của quản trị viên/nhân viên — KHÔNG ghi đăng
-    // nhập của khách hàng (không thuộc "nhật ký sử dụng của quản trị viên").
+
     if (role === 'admin') {
-      // Thiết bị do trình duyệt tự khai (đoán theo User-Agent) — chỉ để tham khảo trong nhật ký, không dùng để phân quyền.
+
       const deviceLabel = ({ phone: 'điện thoại', tablet: 'máy tính bảng', desktop: 'máy tính' } as Record<string, string>)[String(body.device || '')];
       await logActivity(row.id, row.name || row.username, row.username, 'login', `Đăng nhập hệ thống (**${row.username}**)${deviceLabel ? ` bằng **${deviceLabel}**` : ''}`);
     }
     return json({ ok: true, token, id: row.id, mustChangePassword: !!row.must_change_password });
   }
 
-  // ===== type: 'forgot-password' — KHÔNG cần JWT sẵn có (khách chưa đăng
-  // nhập được nên chưa có JWT). Khách nhập CCCD + SĐT để "xác minh danh
-  // tính" (chưa có OTP thật nên chỉ dừng ở mức khớp 2 thông tin này, không
-  // tự đổi mật khẩu) — khớp đúng cả 2 mới ghi 1 "yêu cầu cấp lại mật khẩu"
-  // vào bảng requests, admin xem yêu cầu (có tên/SĐT khách) rồi tự gọi điện
-  // xác minh lại + cấp mật khẩu mới qua chức năng "Cấp lại mật khẩu" sẵn có
-  // ở trang Khách hàng. Không tiết lộ CCCD/SĐT nào sai để tránh dò thông tin. =====
   if (body.type === 'forgot-password') {
     const cccd = String(body.cccd || '').trim();
     const phone = body.phone ? String(body.phone).replace(/\s/g, '') : '';
@@ -1379,7 +1100,6 @@ Deno.serve(async (req) => {
       return json({ ok: false, reason: notMatchMsg });
     }
 
-    // Tránh ghi trùng nếu khách bấm nhiều lần: đã có yêu cầu "Mới" trong 24h gần nhất thì thôi, không tạo thêm.
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: recent } = await admin.from('requests').select('id')
       .eq('customer_id', row.id).eq('type', 'quen_mat_khau').eq('status', 'moi').gte('created_at', since).limit(1);
@@ -1394,9 +1114,6 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // ===== type: 'verify-own-password' / 'set-own-password' — tự đổi mật khẩu
-  // CHÍNH MÌNH, cần JWT hợp lệ (khách hàng HOẶC admin/nhân viên đều được,
-  // không cần role='super') =====
   if (body.type === 'verify-own-password' || body.type === 'set-own-password') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1422,10 +1139,6 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // ===== type: 'save-push-subscription' / 'delete-push-subscription' — tự
-  // đăng ký/hủy nhận thông báo đẩy (Web Push) CHO CHÍNH MÌNH, cần JWT hợp lệ
-  // (khách hàng hoặc admin/nhân viên đều được, KHÔNG cần role='super') — bảng
-  // push_subscriptions, xem docs/supabase-migration.md mục "Thông báo đẩy". =====
   if (body.type === 'save-push-subscription' || body.type === 'delete-push-subscription') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1437,7 +1150,7 @@ Deno.serve(async (req) => {
     if (body.type === 'delete-push-subscription') {
       const endpoint = String(body.endpoint || '').trim();
       if (!endpoint) return json({ ok: false, reason: 'Thiếu endpoint.' }, 400);
-      // Chỉ xóa đúng subscription của CHÍNH người gọi (khớp cả endpoint lẫn owner_id).
+
       await admin.from('push_subscriptions').delete().eq('endpoint', endpoint).eq('owner_id', selfClaims.row_id);
       return json({ ok: true });
     }
@@ -1454,12 +1167,6 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // ===== type: 'customer-logout' — khách hàng CHỦ ĐỘNG bấm "Đăng xuất" —
-  // tắt is_online NGAY để chấm "đã đăng nhập" ở trang admin chuyển sang
-  // "chưa đăng nhập" ngay lập tức (xem hasCustomerLoggedIn() trong
-  // js/state.js). Gọi bằng JWT SẮP hết hiệu lực (đang đăng xuất) nên vẫn
-  // chấp nhận claims hết hạn 1 chút cũng được — không sao, đây không phải
-  // hành động nhạy cảm, chỉ để cập nhật đúng trạng thái hiển thị. =====
   if (body.type === 'customer-logout') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1471,23 +1178,6 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // ===== type: 'log-admin-action' — ghi 1 dòng vào Nhật ký sử dụng cho các
-  // thao tác KHÔNG đi qua Edge Function này (ghi thẳng qua Row Level
-  // Security — chat_messages/requests — hoặc chỉ ĐỌC dữ liệu đã có sẵn ở
-  // trình duyệt — xem chi tiết khách hàng/hợp đồng, đổi bộ lọc) nên
-  // logActivity() bình thường (gọi từ TRONG các "type" khác ở Edge Function
-  // này) không có chỗ nào để tự chạy. Chỉ nhận 1 tập "action" CỐ ĐỊNH bên
-  // dưới — với action gắn với 1 bản ghi thật (khách hàng/hợp đồng/yêu cầu),
-  // server LUÔN tự tra cứu dữ liệu thật để tự soạn mô tả (KHÔNG tin mô tả
-  // tự do từ client), tránh 1 quản trị viên tự ghi bậy nội dung sai sự thật
-  // về 1 bản ghi/người khác vào nhật ký. Riêng 2 action 'filter-customers'
-  // và 'nav-page' (chỉ là chọn bộ lọc/chuyển trang trên màn hình, không gắn
-  // với bản ghi cụ thể nào để tra cứu, cũng không có gì nhạy cảm nếu mô tả
-  // không khớp 100%) CHO PHÉP client tự mô tả ngắn, có giới hạn độ dài (chặn
-  // spam) — xem 2 case đó bên dưới. admin_id/admin_name LUÔN lấy từ JWT của
-  // người gọi (KHÔNG bao giờ
-  // tin client tự khai), nên không ai giả mạo được thành người khác dù ở
-  // action nào. =====
   if (body.type === 'log-admin-action') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1535,12 +1225,7 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === 'filter-customers') {
-      // 1 trong 2 ngoại lệ trong 'log-admin-action' cho phép mô tả từ client
-      // (cùng với 'nav-page' bên dưới, xem ghi chú đầu block) — chỉ vì
-      // Thôn/Xóm/kiểu sắp xếp là tên/nhãn THẬT hiện đang chọn trên màn hình,
-      // không có danh sách cố định để server tự tra & soạn câu như các
-      // action khác. Cắt ngắn còn tối đa 200 ký tự — chặn spam/ghi rác dài
-      // vô hạn vào nhật ký, không phải để lọc nội dung (không nhạy cảm).
+
       const filterDesc = String(body.filterDesc || '').trim().slice(0, 200);
       if (!filterDesc) return json({ ok: false, reason: 'Thiếu mô tả bộ lọc.' }, 400);
       await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'filter-customers', `Lọc danh sách khách hàng — ${filterDesc}`);
@@ -1548,11 +1233,7 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === 'nav-page') {
-      // Ngoại lệ THỨ 2 cho phép mô tả từ client (xem ghi chú 'filter-customers'
-      // ở trên) — nhãn trang lấy thẳng từ đúng tên đang hiện trên menu
-      // (NAV_LABEL_MAP ở js/app.js), không có gì nhạy cảm nếu không khớp
-      // 100% (chỉ là tên trang, không gắn với dữ liệu của ai). Cắt ngắn còn
-      // tối đa 100 ký tự — chặn spam.
+
       const pageLabel = String(body.pageLabel || '').trim().slice(0, 100);
       if (!pageLabel) return json({ ok: false, reason: 'Thiếu tên trang.' }, 400);
       await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'nav-page', `Vào trang "**${pageLabel}**"`);
@@ -1560,13 +1241,13 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === 'call-customer') {
-      // Bấm "Gọi" cho 1 khách (ở danh sách hoặc trong hồ sơ) — server tự tra tên + số điện thoại THẬT của khách, không tin mô tả từ client.
+
       const customerId = String(body.customerId || '').trim();
       if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
       let { data: cust, error: custErr } = await admin.from('customers').select('name, phone, co_people').eq('id', customerId).maybeSingle();
-      if (custErr) ({ data: cust } = await admin.from('customers').select('name, phone').eq('id', customerId).maybeSingle()); // chưa chạy SQL sổ người cùng vay
+      if (custErr) ({ data: cust } = await admin.from('customers').select('name, phone').eq('id', customerId).maybeSingle());
       if (body.callee === 'co') {
-        // Người cùng vay: tên do màn hình gửi lên, số điện thoại tra trong sổ người cùng vay của khách (không tin số từ client).
+
         const coName = String(body.coName || '').replace(/\s+/g, ' ').trim().slice(0, 200);
         const coPhone = coName ? coPhoneOfPeople((cust as any)?.co_people, coName) : '';
         await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'call-customer', `Bấm gọi người cùng vay "**${coName || 'người cùng vay'}**" của khách hàng "**${cust?.name || customerId}**"${coPhone ? ` (số **${coPhone}**)` : ''}`);
@@ -1577,9 +1258,7 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === 'ui-action') {
-      // Ngoại lệ THỨ 3 cho phép mô tả từ client (cùng 'filter-customers' và 'nav-page' ở trên): các thao tác trên màn hình không gắn với 1 bản ghi để
-      // server tự tra cứu (tính lãi vay, in/xuất file, nhắn SMS, mã QR, sửa cài đặt, đổi mật khẩu, đăng xuất...). `kind` chỉ gồm chữ thường/số/gạch ngang
-      // (ghi vào cột action dạng "ui-<kind>"), mô tả bỏ ký tự điều khiển và cắt tối đa 200 ký tự — chặn spam/ghi rác dài. Người thao tác LUÔN lấy từ JWT.
+
       const kind = String(body.kind || '').trim().toLowerCase();
       if (!/^[a-z0-9-]{1,40}$/.test(kind)) return json({ ok: false, reason: 'Sai loại thao tác.' }, 400);
       const label = String(body.label || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -1591,13 +1270,6 @@ Deno.serve(async (req) => {
     return json({ ok: false, reason: 'Thiếu hoặc sai "action".' }, 400);
   }
 
-  // ===== type: 'send-manual-notification' — BẤT KỲ admin/nhân viên nào đã
-  // đăng nhập (KHÔNG cần role='super') tự soạn + gửi ngay 1 thông báo đẩy
-  // cho 1 khách hàng. Nhân viên (role='staff') CHỈ gửi được cho khách trong
-  // đúng phạm vi Thôn/Xóm được gán — y hệt điều kiện RLS bảng customers (xem
-  // docs/supabase-migration.md mục 5b) — tránh gửi ra ngoài phạm vi dù biết
-  // trước customerId (client-side chỉ ẩn UI, không phải hàng rào bảo mật
-  // thật). Quản trị viên toàn quyền (role='super') không bị giới hạn gì. =====
   if (body.type === 'send-manual-notification') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1653,10 +1325,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, sentCount });
   }
 
-  // ===== type: 'save-contract-oa' — đổi cấu hình gửi Zalo OA của 1 HỢP ĐỒNG (docs mục 10.83). Body: { contractId, enabled?, toMain?, toCo? }.
-  // enabled = công tắc bật/tắt cả hợp đồng (tắt: không gửi tự động, không gửi tay, ẩn khỏi lịch sử gửi); toMain = gửi người vay; toCo = gửi người cùng vay
-  // GHI TRÊN HỢP ĐỒNG NÀY (bắt buộc người đó đã có số trong sổ người cùng vay của khách). Hợp đồng đang bật phải còn ít nhất 1 người nhận.
-  // Quyền: toàn quyền hoặc có cờ Quản lý OA; nhân viên chỉ làm được với khách trong Thôn/Xóm được gán. =====
   if (body.type === 'save-contract-oa') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1692,7 +1360,7 @@ Deno.serve(async (req) => {
       if (samePhone(coPhone, customer.phone)) return json({ ok: false, reason: 'Số người cùng vay trùng số người vay.' });
     }
     if (!coName) toCo = false;
-    // Người vay chưa có số điện thoại: người cùng vay có số TỰ ĐỘNG nhận (tick sẵn, xem contractRecipients) nên vẫn còn người nhận và không bỏ tick được.
+
     const coPhoneNow = coName ? coPhoneOfPeople(customer.co_people, coName) : '';
     const autoCo = !String(customer.phone ?? '').trim() && !!coName && !!coPhoneNow;
     if (enabled && autoCo && body.toCo === false) return json({ ok: false, reason: 'Người vay chưa có số điện thoại nên phải giữ gửi cho người cùng vay — hoặc tắt hợp đồng này bằng công tắc bên trái.' });
@@ -1706,9 +1374,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, contract: { id: contractId, oaEnabled: enabled, oaToMain: toMain, oaToCo: toCo, oaCoKey: patch.oa_co_key } });
   }
 
-  // ===== type: 'save-co-phone' — lưu (hoặc xóa, khi để trống) số điện thoại của 1 NGƯỜI CÙNG VAY trong sổ người cùng vay của khách (docs mục 10.83).
-  // Body: { customerId, name, phone }. Người đó phải đang có tên trên 1 hợp đồng còn dư nợ của khách. Quyền: toàn quyền, hoặc có cờ Quản lý User, hoặc có cờ Quản lý OA;
-  // nhân viên chỉ làm được với khách trong Thôn/Xóm được gán. Xóa số thì tick gửi OA của người đó ở mọi hợp đồng tự bỏ (hợp đồng về gửi người vay). =====
   if (body.type === 'save-co-phone') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1763,9 +1428,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, people, contracts: changed });
   }
 
-  // ===== type: 'save-main-phone' — nhập số điện thoại cho NGƯỜI VAY chưa có số (docs mục 10.83): khi bấm tick gửi Zalo OA cho người vay chưa có số thì phải nhập số.
-  // Body: { customerId, phone }. CHỈ khi khách chưa có số (khách đã có số thì sửa ở hồ sơ khách / file Excel, không sửa ở đây). Số: ĐÚNG 10 chữ số, bắt đầu bằng 0,
-  // không trùng số người cùng vay nào. Quyền: toàn quyền, hoặc cờ Quản lý User, hoặc cờ Quản lý OA; nhân viên chỉ làm với khách trong Thôn/Xóm được gán. =====
   if (body.type === 'save-main-phone') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1799,10 +1461,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, phone: clean });
   }
 
-  // ===== type: 'import-co-phones' — nhập SỐ ĐIỆN THOẠI NGƯỜI CÙNG VAY từ file Excel (docs mục 10.85). Body: { items: [{ row, code, phone }], overwrite?, preview? }.
-  // Mỗi dòng khớp theo SỐ HĐTD (code) → hợp đồng còn dư nợ → khách + TÊN người cùng vay ghi trên hợp đồng đó (heir_name); số được lưu vào sổ người cùng vay của khách
-  // (customers.co_people) giống nút "Nhập số điện thoại" ở chi tiết khách. Chỉ THÊM số (số đã lưu khác số trong file thì giữ nguyên, trừ khi overwrite = true); không xóa gì, không tick gửi OA.
-  // preview = true: chỉ tính và trả kết quả, KHÔNG ghi. Quyền: toàn quyền, hoặc cờ Quản lý User, hoặc cờ Quản lý OA; nhân viên chỉ làm với khách trong Thôn/Xóm được gán. =====
   if (body.type === 'import-co-phones') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1817,7 +1475,7 @@ Deno.serve(async (req) => {
     if (items.length > 5000) return json({ ok: false, reason: 'File quá nhiều dòng (tối đa 5000 dòng một lần).' }, 400);
     const previewOnly = body.preview === true;
     const overwrite = body.overwrite === true;
-    // Hợp đồng theo Số HĐTD (ưu tiên hợp đồng còn dư nợ) + khách của các hợp đồng đó.
+
     const codes = [...new Set(items.map((it) => String(it?.code ?? '').trim()).filter(Boolean))];
     const ctByCode = new Map<string, any>();
     for (const part of chunkArray(codes, 150)) {
@@ -1839,7 +1497,7 @@ Deno.serve(async (req) => {
     const allowedThon: string[] = caller.allowed_thon || [];
     const allowedXom: string[] = caller.allowed_xom || [];
     const inScope = (cust: any) => isSuperCaller || allowedThon.includes(cust.thon) || allowedXom.includes(`${cust.thon}||${cust.xom}`);
-    const working = new Map<string, CoEntry[]>(); // sổ người cùng vay đang làm việc của từng khách (cập nhật dần theo từng dòng)
+    const working = new Map<string, CoEntry[]>();
     const touched = new Set<string>();
     const counts: Record<string, number> = {};
     const rows: any[] = [];
@@ -1884,11 +1542,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, preview: previewOnly, overwrite, total: rows.length, customers: touched.size, counts, rows: rows.filter((r) => r.status !== 'same' && r.status !== 'nophone').slice(0, 400), updated: previewOnly ? [] : updated });
   }
 
-  // Tổng quan "ai đã thêm khách/hợp đồng nào vào gửi tự động" của MỌI người —
-  // cho trang Quản lý OA hiện đúng nhãn "Báo lãi tự động" cho mọi khách đã có
-  // người thêm, đếm tổng, và không cho thêm trùng khách đang do người khác
-  // phụ trách. Chỉ trả khách + hợp đồng + mục + người thêm, KHÔNG trả ngày gửi
-  // hay định kỳ riêng. Cần quyền quản lý OA (hoặc super), như các thao tác OA khác.
   if (body.type === 'list-zalo-auto-overview') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1919,8 +1572,6 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Chỉ trả về trạng thái và chu kỳ để mọi nhân viên xem được trong chi tiết
-  // hợp đồng. Không trả người đăng ký hay ngày gửi riêng tư của người khác.
   if (body.type === 'get-zalo-auto-send-status') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1953,12 +1604,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, enabled: !!selection, intervalMonths: selection?.interval_months || null });
   }
 
-  // ===== type: 'add-zalo-auto-send' / 'remove-zalo-auto-send' / 'send-zalo-manual'
-  // — quản lý danh sách gửi Zalo OA tự động + gửi tay ngay 1 khách. Cần quyền
-  // canManageZaloOA (cờ RIÊNG, KHÔNG dùng chung canManageUsers) HOẶC
-  // role='super'. Nhân viên staff chỉ thao tác được với hợp đồng của khách
-  // trong đúng phạm vi Thôn/Xóm được gán — y hệt kiểu kiểm tra ở
-  // 'send-manual-notification' phía trên. =====
   if (body.type === 'add-zalo-auto-send' || body.type === 'remove-zalo-auto-send' || body.type === 'send-zalo-manual'
     || body.type === 'add-zalo-customer' || body.type === 'remove-zalo-customer' || body.type === 'update-zalo-auto-send-settings') {
     const authHeader = req.headers.get('Authorization') || '';
@@ -1967,7 +1612,7 @@ Deno.serve(async (req) => {
     if (!selfClaims || selfClaims.app_role !== 'admin') {
       return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
     }
-    // "add-zalo-auto-send" cần cả người gọi lẫn hợp đồng (+ khách của hợp đồng) — lấy CÙNG LÚC cho nhanh (trước đây 3 truy vấn nối đuôi nhau).
+
     const prefetchContractId = body.type === 'add-zalo-auto-send' ? String(body.contractId || '').trim() : '';
     const [{ data: caller, error: callerErr }, prefetched] = await Promise.all([
       admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle(),
@@ -1978,7 +1623,6 @@ Deno.serve(async (req) => {
       return json({ ok: false, reason: 'Bạn không có quyền quản lý gửi tin Zalo OA — liên hệ quản trị viên toàn quyền để được cấp quyền.' }, 403);
     }
 
-    /** Kiểm tra hợp đồng có tồn tại + có nằm trong phạm vi Thôn/Xóm của người gọi không (super thì luôn true). */
     async function checkContractInScope(contractId: string): Promise<{ ok: boolean; contract?: any; customer?: any }> {
       const loaded = prefetched && contractId === prefetchContractId ? prefetched : await loadContractWithCustomer(contractId);
       if (!loaded) return { ok: false };
@@ -1991,7 +1635,7 @@ Deno.serve(async (req) => {
       }
       return { ok: true, contract, customer };
     }
-    /** Y HỆT checkContractInScope() nhưng đi thẳng từ customerId (dùng cho add-zalo-customer, không cần qua hợp đồng cụ thể). */
+
     async function checkCustomerInScope(customerId: string): Promise<{ ok: boolean; customer?: any }> {
       const { data: customer } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
       if (!customer) return { ok: false };
@@ -2003,10 +1647,10 @@ Deno.serve(async (req) => {
       }
       return { ok: true, customer };
     }
-    /** Đảm bảo khách đã có trong Tầng 1 (zalo_customers) — tự thêm nếu chưa có, không báo lỗi nếu đã có sẵn. */
+
     async function ensureZaloCustomer(customerId: string) {
       await admin.from('zalo_customers').insert({ customer_id: customerId, added_by: caller.id }).select().maybeSingle();
-      // Bỏ qua lỗi trùng (đã có sẵn) — chỉ cần đảm bảo tồn tại, không cần biết vừa tạo mới hay đã có.
+
       await clearCoPrevName(customerId);
     }
 
@@ -2017,7 +1661,7 @@ Deno.serve(async (req) => {
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy khách hàng hoặc bạn không có quyền với khách hàng này.' }, 403);
       const { data: existing } = await admin.from('zalo_customers').select('customer_id').eq('customer_id', customerId).maybeSingle();
       if (existing) return json({ ok: false, reason: 'Khách hàng này đã có trong danh sách OA rồi.' });
-      // Người vay lẫn người cùng vay đều chưa có số điện thoại → không có ai để gửi, không cho thêm.
+
       if (!String(scope.customer?.phone ?? '').trim()) {
         const { data: ctRows } = await admin.from('contracts').select('heir_name').eq('customer_id', customerId).gt('balance', 0);
         if (!customerHasOaPhone(ctRows || [], scope.customer)) {
@@ -2037,9 +1681,7 @@ Deno.serve(async (req) => {
       if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
       const scope = await checkCustomerInScope(customerId);
       if (!scope.ok) return json({ ok: false, reason: 'Bạn không có quyền với khách hàng này.' }, 403);
-      // Xóa khỏi Tầng 1 tự động XÓA THEO mọi lựa chọn gửi tự động (Tầng 2) của khách này, kể cả của
-      // NGƯỜI KHÁC đã chọn — do khóa ngoại on delete cascade (xem docs mục 10.5). Chấp nhận đánh đổi
-      // này vì đã bỏ hẳn khỏi danh sách OA thì không còn lý do gì để còn gửi tự động cho khách đó nữa.
+
       const { error } = await admin.from('zalo_customers').delete().eq('customer_id', customerId);
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       await logActivity(caller.id, caller.name || caller.username, caller.username, 'remove-zalo-customer', `Bỏ khách hàng "**${scope.customer?.name || customerId}**" khỏi Danh sách OA`);
@@ -2048,29 +1690,20 @@ Deno.serve(async (req) => {
 
     if (body.type === 'add-zalo-auto-send') {
       const contractId = String(body.contractId || '').trim();
-      // "đến hạn" không còn là lựa chọn ở Tầng 2 nữa (tự động theo Tầng 1,
-      // xem type 'send-due-reminders' phía server) — Tầng 2 giờ chỉ còn 2
-      // mục báo lãi, loại trừ nhau (1 hợp đồng chỉ ở 1 trong 2, xem mục 10.6).
+
       const kind = body.kind === 'lai_hang_thang_custom_day' ? 'lai_hang_thang_custom_day' : 'lai_hang_thang_auto';
       const customDay = kind === 'lai_hang_thang_custom_day' ? Number(body.customDay) || null : null;
-      // Định kỳ báo — mặc định 1 (hàng tháng, hành vi cũ), cho chọn 2/3/4
-      // tháng báo 1 lần thay vì tháng nào cũng báo. Áp dụng cho CẢ 2 mục.
+
       const intervalMonths = [1, 2, 3, 4].includes(Number(body.intervalMonths)) ? Number(body.intervalMonths) : 1;
       if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
-      // Ngày gửi phải 1-30 (không có tháng nào ít hơn) — thiếu chặn này thì
-      // ngày nhập lố (VD 31-35) sẽ KHÔNG BAO GIỜ khớp Date().getDate() nên
-      // không tháng nào gửi được, âm thầm hỏng mà không báo lỗi gì cả.
+
       if (kind === 'lai_hang_thang_custom_day' && (!customDay || customDay < 1 || customDay > 30)) {
         return json({ ok: false, reason: 'Ngày gửi không hợp lệ (1-30).' }, 400);
       }
       const scope = await checkContractInScope(contractId);
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       if (scope.contract.oa_enabled === false) return json({ ok: false, reason: 'Hợp đồng này đang tắt gửi OA — bật lại ở chi tiết khách hàng (mục Gửi Zalo OA theo từng hợp đồng) rồi mới thêm vào gửi tự động.' });
-      // MỖI KHÁCH HÀNG chỉ MỘT người được thêm vào gửi tự động (kể cả quản trị
-      // toàn quyền): đã có người khác thêm bất kỳ hợp đồng nào của khách này
-      // thì chặn, kèm tên người đã thêm. Cùng một người thì được thêm tiếp các
-      // hợp đồng khác của khách đó. Kiểm tra TRƯỚC khi tự thêm vào Tầng 1 để bị
-      // chặn thì không để lại thay đổi nào.
+
       let customerAlreadyInOA = false;
       {
         const [{ data: sameCustomerRows, error: sameCustomerErr }, { data: zaloCustomerRow }] = await Promise.all([
@@ -2088,8 +1721,7 @@ Deno.serve(async (req) => {
           return json({ ok: false, reason: `Khách hàng này đã được ${ownerName ? `"${ownerName}"` : 'người khác'} thêm vào gửi tự động rồi — mỗi khách hàng chỉ một người được thêm.` });
         }
       }
-      // Tự thêm vào Tầng 1 (danh sách OA) nếu khách chưa có sẵn — Tầng 2 (gửi
-      // tự động) LUÔN đi kèm Tầng 1, đỡ bắt người dùng làm 2 bước riêng.
+
       if (!customerAlreadyInOA) await ensureZaloCustomer(scope.contract.customer_id);
       const { error } = await admin.from('zalo_auto_send_list').insert({
         id: genId('zas'), contract_id: contractId, customer_id: scope.contract.customer_id, kind, custom_day: customDay,
@@ -2097,7 +1729,7 @@ Deno.serve(async (req) => {
       });
       if (error) {
         if (String(error.message || '').toLowerCase().includes('duplicate')) {
-          // Tra xem AI đã chọn trước + chọn mục nào (không lộ gì nhạy cảm, chỉ tên) để báo đúng như yêu cầu.
+
           const { data: existingRow } = await admin.from('zalo_auto_send_list').select('created_by, kind').eq('contract_id', contractId).maybeSingle();
           const { data: existingAdmin } = existingRow?.created_by
             ? await admin.from('admins').select('name').eq('id', existingRow.created_by).maybeSingle()
@@ -2110,7 +1742,7 @@ Deno.serve(async (req) => {
       }
       const logPromise = logActivity(caller.id, caller.name || caller.username, caller.username, 'add-zalo-auto-send',
         `Thêm hợp đồng **${scope.contract?.code || contractId}** vào gửi tự động (**${kind === 'lai_hang_thang_custom_day' ? 'Gửi theo ngày cụ thể' : 'Báo lãi tự động hàng tháng'}**)`);
-      // Trả kết quả ngay, việc ghi nhật ký chạy nền (EdgeRuntime.waitUntil giữ máy chủ sống đến khi ghi xong); không có thì chờ như cũ.
+
       const edgeRuntime = (globalThis as any).EdgeRuntime;
       if (edgeRuntime && typeof edgeRuntime.waitUntil === 'function') edgeRuntime.waitUntil(logPromise); else await logPromise;
       return json({ ok: true });
@@ -2120,10 +1752,8 @@ Deno.serve(async (req) => {
       const id = String(body.id || '').trim();
       if (!id) return json({ ok: false, reason: 'Thiếu mã.' }, 400);
       const { data: row } = await admin.from('zalo_auto_send_list').select('*').eq('id', id).maybeSingle();
-      if (!row) return json({ ok: true }); // đã không còn -> coi như xong, khỏi báo lỗi
-      // Chỉ chính người đã chọn (hoặc super) mới bỏ được — KHÔNG dùng
-      // checkContractInScope ở đây, vì lựa chọn Tầng 2 giờ riêng tư theo
-      // từng người, không phải cứ cùng phạm vi Thôn/Xóm là bỏ được của nhau.
+      if (!row) return json({ ok: true });
+
       if (caller.role !== 'super' && row.created_by !== caller.id) {
         return json({ ok: false, reason: 'Bạn không có quyền bỏ lựa chọn của người khác.' }, 403);
       }
@@ -2134,8 +1764,6 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    // Sửa ngày gửi (chỉ mục "Gửi theo ngày cụ thể") và/hoặc định kỳ báo (1-4
-    // tháng, cả 2 mục) của 1 lựa chọn Tầng 2 đã có sẵn.
     if (body.type === 'update-zalo-auto-send-settings') {
       const id = String(body.id || '').trim();
       if (!id) return json({ ok: false, reason: 'Thiếu mã.' }, 400);
@@ -2169,14 +1797,6 @@ Deno.serve(async (req) => {
       if (!contractId) return json({ ok: false, reason: 'Thiếu thông tin.' }, 400);
       const now = new Date();
 
-      // Trước đây các bước tra cứu này CHẠY LẦN LƯỢT (mỗi bước 1 lượt
-      // round-trip riêng, cộng dồn lại là nguyên nhân chính khiến "Gửi tin
-      // Zalo OA ngay" thấy lâu) — dồn lại còn 2 "đợt" song song thay vì nối
-      // tiếp nhau (đợt sau chỉ chờ đúng những gì THẬT SỰ cần từ đợt trước):
-      //
-      // Đợt 1 — chỉ cần contractId đã có sẵn từ đầu, không phụ thuộc gì
-      // khác: tra hợp đồng, tra lần gửi thành công gần nhất (tính hạn chờ 5
-      // ngày), tra cấu hình mẫu Zalo, và lấy Access Token.
       const [contractRes, lastLogRes, orgRowRes, accessToken] = await Promise.all([
         admin.from('contracts').select('*').eq('id', contractId).maybeSingle(),
         admin.from('zalo_send_log').select('sent_at')
@@ -2189,11 +1809,6 @@ Deno.serve(async (req) => {
       if (!contract) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       if (!accessToken) return json({ ok: false, reason: 'Chưa cấu hình kết nối Zalo OA trên server (thiếu Secret/Refresh Token) — liên hệ để cấu hình trước.' }, 500);
 
-      // Đợt 2 — CẦN biết contract.customer_id trước (chỉ có sau đợt 1) nên
-      // phải đợi đợt 1 xong, nhưng bản thân 2 việc trong đợt này lại KHÔNG
-      // phụ thuộc nhau (tra khách hàng để kiểm tra quyền Thôn/Xóm + lấy SĐT,
-      // và tra đã có trong Tầng 1 "Danh sách OA" chưa) nên vẫn gộp song
-      // song được với nhau.
       const [customerRes, zaloCustRes] = await Promise.all([
         admin.from('customers').select('*').eq('id', contract.customer_id).maybeSingle(),
         admin.from('zalo_customers').select('customer_id').eq('customer_id', contract.customer_id).maybeSingle(),
@@ -2206,22 +1821,14 @@ Deno.serve(async (req) => {
         const inScope = allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`);
         if (!inScope) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       }
-      // Người nhận theo cấu hình CỦA HỢP ĐỒNG NÀY (docs mục 10.83), xem manualRecipients(): mặc định người vay; có cài đặt tùy chỉnh thì đúng như cài đặt;
-      // người cùng vay của hợp đồng khác không bao giờ nhận tin hợp đồng này.
+
       const recipients = manualRecipients(contract, customer);
       if (!recipients.length) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
 
-      // PHẢI đã có sẵn trong Tầng 1 "Danh sách OA" mới gửi tay được — KHÔNG
-      // còn tự thêm ngầm lúc gửi như trước nữa (đổi theo yêu cầu: admin phải
-      // chủ động xác minh đúng chủ SĐT rồi thêm vào OA trước, xem nút "Thêm
-      // vào OA" ở chi tiết khách hàng).
       if (!zaloCustRes.data) {
         return json({ ok: false, reason: 'Khách hàng chưa có trong Danh sách OA — vào chi tiết khách hàng (mục Khách hàng & Hợp đồng) để thêm vào OA trước khi gửi.' });
       }
 
-      // Giới hạn gửi tay: 5 ngày mới gửi lại được cho CÙNG 1 hợp đồng (tránh
-      // gửi trùng/spam khách) — tính theo lần gửi Zalo THÀNH CÔNG gần nhất
-      // của hợp đồng này (bất kể tự động hay gửi tay), báo rõ đã gửi ngày nào.
       const lastLog = lastLogRes.data;
       if (lastLog?.sent_at) {
         const daysSinceLast = daysBetweenZalo(new Date(lastLog.sent_at), now);
@@ -2230,9 +1837,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Tự chọn mẫu theo tình huống hợp đồng — KHÔNG cần người gọi tự chọn
-      // nữa: gần/đã đến hạn (<=15 ngày) dùng mẫu "Đến hạn", còn xa hạn dùng
-      // mẫu "Báo lãi" (chỉ báo lãi, gốc chưa thật sự phải trả).
       const orgRow = orgRowRes.data;
       const usesDueTemplate = isNearOrPastDueZalo(contract, now, orgRow?.zalo_near_due_days || DEFAULT_NEAR_DUE_DAYS_ZALO);
       const templateId = usesDueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id;
@@ -2242,13 +1846,9 @@ Deno.serve(async (req) => {
       }
 
       const interest = accruedInterestZalo(contract, now);
-      // Gốc phải trả + ngày đáo hạn = ĐÚNG số tiền/ngày của "Kỳ tới" (nếu
-      // hợp đồng có phân kỳ trả nợ đang cần chú ý) — không phải toàn bộ dư
-      // nợ/ngày đáo hạn hợp đồng gốc (SO_DU vẫn luôn là dư nợ thật, không
-      // đổi) — theo đúng yêu cầu "tất cả ngày đáo hạn đều lấy theo ngày của
-      // kỳ trả nợ".
+
       const instForGoc = usesDueTemplate ? nextInstallmentInfoZalo(contract, now) : null;
-      const goc = usesDueTemplate ? (instForGoc ? instForGoc.next.dueAmount : Number(contract.balance)) : 0; // chưa đến hạn thì gốc chưa thật sự phải trả, chỉ báo lãi
+      const goc = usesDueTemplate ? (instForGoc ? instForGoc.next.dueAmount : Number(contract.balance)) : 0;
       const total = goc + interest;
       const dueDateForZalo = instForGoc ? instForGoc.next.dueDate : contract.due_date;
       const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
@@ -2262,7 +1862,7 @@ Deno.serve(async (req) => {
         SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
         NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`TRA ${usesDueTemplate ? '' : 'LAI '}HDTD ${contract.code} ${nameNoDiacritics}`),
         NGAY_DAO_HAN: formatDateVNZalo(dueDateForZalo),
-        // Ngày gửi tin (hôm nay) — KHÁC với NGAY_DAO_HAN (ngày đến hạn thật của hợp đồng/kỳ).
+
         NGAY_KE_HOACH: formatDateVNZalo(now.toISOString()),
       };
       const results = await Promise.all(recipients.map((r) => sendZaloTemplateLogged({
@@ -2273,24 +1873,14 @@ Deno.serve(async (req) => {
       })));
       const sentCount = results.filter((r) => r.ok).length;
       const failedRecipients = recipients.map((r, i) => ({ who: r.who, res: results[i] })).filter((x) => !x.res.ok);
-      // Người nào báo "chưa đăng ký Zalo" thì tự bỏ tick gửi OA của người đó (xem applyNoZaloResults).
+
       const { unticked, removed } = await applyNoZaloResults(customer.id, contractId, failedRecipients.filter((x) => x.res.noAccount).map((x) => x.who));
       const untickNote = removed ? ' Không còn số nào có Zalo — đã tự bỏ khách khỏi danh sách OA.'
         : unticked.length ? ` Đã tự bỏ tích gửi OA cho ${unticked.map((w) => (w === 'co' ? 'người cùng vay' : 'người vay')).join(' và ')}.` : '';
       const result: { ok: boolean; reason?: string } = sentCount
         ? { ok: true }
         : { ok: false, reason: [...new Set(failedRecipients.map((x) => `${recipients.length > 1 ? (x.who === 'co' ? 'Người cùng vay: ' : 'Người vay: ') : (x.who === 'co' ? 'Người cùng vay: ' : '')}${x.res.reason || 'Gửi thất bại.'}`))].join(' · ') + untickNote };
-      // Đã có log riêng "Quản lý gửi tin" (bảng zalo_send_log, GHI ĐỦ + CÓ ĐỢI
-      // cho MỌI lượt gửi kể cả lỗi — xem sendZaloTemplateLogged() ở trên) —
-      // ghi thêm 1 dòng NGẮN vào Nhật ký sử dụng chung khi THÀNH CÔNG, để
-      // trang "Nhật ký" cũng thấy đủ, không cần vào riêng "Quản lý gửi tin"
-      // mới biết. CỐ Ý KHÔNG ĐỢI (khác mọi chỗ gọi logActivity() còn lại) —
-      // đây là đường gửi tay đã tốn nhiều công tối ưu tốc độ (mục 10.30-32),
-      // thêm 1 lượt round-trip nữa vào ĐÚNG lúc chuẩn bị trả kết quả sẽ làm
-      // chậm lại đúng thứ vừa tối ưu. Chấp nhận rủi ro nhỏ dòng này thỉnh
-      // thoảng không kịp ghi (nếu Edge Function tắt tiến trình ngay sau khi
-      // trả response) — không sao vì zalo_send_log (nguồn THẬT của lượt gửi
-      // này) vẫn luôn ghi đủ, không phụ thuộc dòng này.
+
       if (result.ok) {
         const sentWho = recipients.filter((_, i) => results[i].ok).map((r) => (r.who === 'co' ? 'người cùng vay' : 'người vay'));
         logActivity(caller.id, caller.name || caller.username, caller.username, 'send-zalo-manual',
@@ -2305,9 +1895,6 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ===== Mọi type khác: bắt buộc JWT của 1 admin đã đăng nhập (super HOẶC
-  // staff) — phân quyền chi tiết theo từng "type" ngay bên dưới, không còn
-  // chặn cứng "chỉ super" ở 1 chỗ như trước nữa. =====
   const authHeader = req.headers.get('Authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   const claims = token ? await verifyJwt(token) : null;
@@ -2319,13 +1906,9 @@ Deno.serve(async (req) => {
     return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
   }
   const isSuper = callerAdmin.role === 'super';
-  // Nhân viên "chỉ xem" được cấp thêm cờ can_manage_users -> coi như "toàn
-  // quyền thu nhỏ" CHỈ trong phạm vi Use KHÁCH HÀNG (tạo/cấp lại mật khẩu/
-  // khóa/xóa) — KHÔNG được đụng vào bất kỳ tài khoản QUẢN TRỊ VIÊN nào khác
-  // (kể cả 1 nhân viên chỉ xem khác), xem SUPER_ONLY_TYPES ngay dưới đây.
+
   const canManageUsers = isSuper || callerAdmin.can_manage_users === true;
-  // Chỉ trả về hai số tổng hợp toàn quỹ cho người được xem Quản trị. Không
-  // trả danh sách hợp đồng vì RLS vẫn giới hạn nhân viên theo Thôn/Xóm.
+
   if (body.type === 'get-management-provision') {
     if (!isSuper && callerAdmin.can_view_balance_sheet !== true) {
       return json({ ok: false, reason: 'Không có quyền xem số liệu Quản trị.' }, 403);
@@ -2354,8 +1937,7 @@ Deno.serve(async (req) => {
         return json({ ok: true, generalProvision: generalBase * PROVISION_GENERAL_RATE, specificProvision });
       }
     }
-    // Chưa có bản chốt đủ dữ liệu: đối chiếu số hiện tại của toàn quỹ như
-    // tài khoản admin toàn quyền, không tính từ mảng hợp đồng đã bị RLS lọc.
+
     let generalBase = 0;
     let specificProvision = 0;
     const now = new Date();
@@ -2376,31 +1958,23 @@ Deno.serve(async (req) => {
     }
     return json({ ok: true, generalProvision: generalBase * PROVISION_GENERAL_RATE, specificProvision });
   }
-  // Các "type" sau LUÔN bắt buộc đúng quản trị viên toàn quyền, không có
-  // ngoại lệ cho canManageUsers — gồm CẢ sửa cấu hình quỹ/nhập hàng loạt LẪN
-  // mọi thao tác đụng tới tài khoản Quản trị viên/nhân viên khác (tạo/xóa/
-  // đổi vai trò/đổi quyền/cấp lại mật khẩu) — nhân viên có canManageUsers
-  // chỉ được quản lý Use khách hàng, không được quản lý Use Quản trị viên.
+
   const SUPER_ONLY_TYPES = [
     'update-customer-profile', 'delete-contract', 'import', 'import-supplement', 'update-staff-role',
     'import-preview', 'import-supplement-preview', 'import-history', 'import-history-detail', 'import-rollback',
     'staff', 'reset-staff-password', 'update-staff-permissions', 'delete-staff', 'force-logout-staff',
     'update-staff-name',
-    // Xóa/vô hiệu hóa tài khoản khách hàng (nút "Xóa Use" ở Quản lý User): CHỈ toàn quyền — nhân viên có cờ canManageUsers
-    // vẫn cấp lại mật khẩu/đăng xuất/gửi thông báo được nhưng KHÔNG xóa được Use.
+
     'deactivate-customer', 'delete-customer',
-    // Dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu toàn quỹ, mục 10.46
-    // docs) — số liệu tài chính TOÀN QUỸ, chỉ super mới chốt/xem được, y hệt
-    // trang "Nhật ký" (activity_log) đã CHỈ dành riêng cho super từ trước.
+
     'capture-monthly-snapshot', 'sync-historical-collateral',
-    // "Nạp dữ liệu cũ" (mục 10.51 docs) — ghi số liệu TÀI CHÍNH TOÀN QUỸ của
-    // 1 tháng ĐÃ QUA vào monthly_snapshots, y hệt lý do capture-monthly-snapshot ở trên.
+
     'import-historical-snapshot',
   ];
   if (SUPER_ONLY_TYPES.includes(body.type) && !isSuper) {
     return json({ ok: false, reason: 'Chỉ quản trị viên toàn quyền mới được thực hiện thao tác này.' }, 403);
   }
-  // Các "type" còn lại (quản lý Use khách hàng) cần ít nhất canManageUsers.
+
   if (!canManageUsers) {
     return json({ ok: false, reason: 'Bạn không có quyền thực hiện thao tác này — liên hệ quản trị viên toàn quyền để được cấp quyền "Quản lý User".' }, 403);
   }
@@ -2412,9 +1986,6 @@ Deno.serve(async (req) => {
       : json({ ok: true, updated: result.updated });
   }
 
-  // ===== type: 'update-staff-role' — CHỈ super — đổi vai trò Toàn quyền <->
-  // Chỉ xem cho 1 tài khoản đã có sẵn. Hạ 1 tài khoản 'super' xuống 'staff'
-  // thì phải còn lại ít nhất 1 'super' khác, giữ đúng bất biến như delete-staff. =====
   if (body.type === 'update-staff-role') {
     const staffId = String(body.staffId || '').trim();
     const newRole = body.role === 'super' ? 'super' : 'staff';
@@ -2432,13 +2003,6 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // ===== type: 'capture-monthly-snapshot' — CHỈ super (đã chặn ở
-  // SUPER_ONLY_TYPES) — chốt NGAY số liệu dashboard "Tổng quan" (dư nợ/lãi
-  // phải thu/nợ xấu) cho THÁNG HIỆN TẠI, không cần đợi tới đúng ngày cuối
-  // tháng (lịch tự động chốt đúng ngày cuối tháng — xem cuối
-  // send-due-reminders/index.ts). Tính TOÀN BỘ hợp đồng (org-wide, không lọc
-  // Thôn/Xóm) — upsert theo year_month nên bấm lại nhiều lần trong cùng 1
-  // tháng chỉ cập nhật đúng 1 dòng, không tạo trùng. Xem mục 10.46 docs. =====
   if (body.type === 'capture-monthly-snapshot') {
     const now = new Date();
     async function readAllForSnapshot(table: 'contracts' | 'customers', columns: string) {
@@ -2454,14 +2018,12 @@ Deno.serve(async (req) => {
       readAllForSnapshot('contracts', '*'), readAllForSnapshot('customers', 'id, name, thon, xom, tinh, address'),
     ]);
     if (ctErr || customersError) return json({ ok: false, reason: 'Không đọc đủ dữ liệu để chốt tháng; chưa lưu số liệu.' }, 500);
-    // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — Y HỆT
-    // captureMonthlySnapshot() trong send-due-reminders/index.ts.
+
     const custMap = new Map<string, any>((customers || []).map((c: any) => [c.id, c]));
     const groupBalances: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
     let totalBalance = 0;
     let interestReceivable = 0;
-    // Dự phòng chung/cụ thể (mục 10.52 docs) — Y HỆT provisionSummary() trong
-    // js/state.js VÀ captureMonthlySnapshot() trong send-due-reminders/index.ts.
+
     let generalBase = 0;
     let specificProvision = 0;
     const contractsDetail: any[] = [];
@@ -2471,9 +2033,7 @@ Deno.serve(async (req) => {
       const balance = Number(ct.balance) || 0;
       groupBalances[String(g)] += balance;
       totalBalance += balance;
-      // Lãi phải thu CHỈ tính Nhóm 1 — Y HỆT captureMonthlySnapshot() trong
-      // send-due-reminders/index.ts và debtGroupSummary() trong js/state.js
-      // (mục 10.49 docs).
+
       if (g === 1) interestReceivable += accruedInterestZalo(ct, now);
       if (g <= 4) generalBase += balance;
       const rate = PROVISION_SPECIFIC_RATE[g];
@@ -2490,7 +2050,7 @@ Deno.serve(async (req) => {
         balance,
         group: g,
         daysOverdue: daysOverdueZalo(ct, now),
-        // Mục "Cần chú ý" của Tổng quan khi xem lại tháng này (quá hạn / gần đến hạn tại ngày chốt).
+
         attention: attention.level,
         attentionDays: attention.days,
         attentionAmount: attention.dueAmount,
@@ -2522,16 +2082,6 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // ===== type: 'import-historical-snapshot' — CHỈ super (đã chặn ở
-  // SUPER_ONLY_TYPES) — "Nạp dữ liệu cũ" (mục 10.51 docs): lưu 1 dòng
-  // monthly_snapshots cho 1 THÁNG ĐÃ QUA, số liệu do TRÌNH DUYỆT tự tính sẵn
-  // (readExcelFirstSheet + debtGroupSummary() trong js/state.js, từ file
-  // Excel "Sao kê hợp đồng tín dụng" người dùng tự tải lên, ĐỌC TẠI TRÌNH
-  // DUYỆT — không đụng gì tới bảng contracts, không có "danh sách hợp đồng
-  // lúc đó" nào để server tự tính lại được) — server ở đây CHỈ kiểm tra kiểu
-  // dữ liệu hợp lệ rồi ghi thẳng, KHÔNG tính toán lại (không có nguồn nào
-  // khác để đối chiếu). Upsert theo year_month — nạp lại đúng tháng đã có sẽ
-  // GHI ĐÈ (đúng ý để sửa nếu nạp nhầm), không tạo trùng. =====
   if (body.type === 'import-historical-snapshot') {
     const yearMonth = String(body.yearMonth || '');
     const snapshotDate = String(body.snapshotDate || '');
@@ -2551,17 +2101,10 @@ Deno.serve(async (req) => {
     if (![totalBalance, interestReceivable, badDebtBalance, badDebtRatio].every((n) => Number.isFinite(n) && n >= 0)) {
       return json({ ok: false, reason: 'Số liệu không hợp lệ.' }, 400);
     }
-    // Dự phòng chung/cụ thể (mục 10.54 docs) — trình duyệt đã tự tính (coi
-    // như CHƯA có TSBĐ vì mẫu Excel này không có cột đó — giả định AN TOÀN,
-    // trích ĐỦ không trích THIẾU) — CHO PHÉP thiếu/không hợp lệ (undefined
-    // với các lượt nạp từ bản cũ hơn chưa gửi field này) thì để NULL, KHÁC
-    // 0 (0 nghĩa là ĐÃ tính ra đúng 0), xem mục 10.52.
+
     const generalProvision = Number.isFinite(Number(body.generalProvision)) && Number(body.generalProvision) >= 0 ? Number(body.generalProvision) : null;
     const specificProvision = Number.isFinite(Number(body.specificProvision)) && Number(body.specificProvision) >= 0 ? Number(body.specificProvision) : null;
-    // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — Y HỆT
-    // captureMonthlySnapshot() trong send-due-reminders/index.ts, nhưng
-    // trình duyệt tự tính từ file Excel (không có nguồn nào khác để đối
-    // chiếu ở server, xem ghi chú đầu khối này) — chỉ kiểm tra ĐÚNG là mảng.
+
     const contractsDetail = Array.isArray(body.contractsDetail) ? body.contractsDetail : [];
     const { error } = await admin.from('monthly_snapshots').upsert({
       year_month: yearMonth,
@@ -2581,11 +2124,6 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // Sửa tên hiển thị của 1 tài khoản quản trị viên/nhân viên — KỂ CẢ chính
-  // tài khoản đang gọi (VD: tài khoản khởi tạo ban đầu còn để tên chung
-  // chung "Quản trị viên", cần sửa lại thành tên thật để Nhật ký sử dụng
-  // hiển thị đúng người — xem mục 10.35 docs). CHỈ super (đã chặn ở
-  // SUPER_ONLY_TYPES phía trên).
   if (body.type === 'update-staff-name') {
     const staffId = String(body.staffId || '').trim();
     const name = String(body.name || '').trim();
@@ -2629,12 +2167,7 @@ Deno.serve(async (req) => {
       });
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     }
-    // Trả thẳng dòng khách hàng vừa tạo (đọc bằng service role, KHÔNG qua RLS
-    // của người gọi) — vì người gọi có thể là nhân viên "chỉ xem" đã được cấp
-    // canManageUsers, mà khách mới tạo (chưa có địa chỉ/Thôn/Xóm) không nằm
-    // trong phạm vi Thôn/Xóm được gán cho họ, nên nếu để client tự SELECT lại
-    // bằng token của người gọi thì RLS sẽ trả về rỗng — tài khoản coi như
-    // "biến mất" khỏi trang Quản lý User dù đã tạo thành công thật trong CSDL.
+
     const { data: newRow } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'customer',
       `${existing ? 'Cấp lại mật khẩu (qua màn tạo tài khoản)' : 'Tạo tài khoản mới'} cho khách hàng "**${newRow?.name || cccd}**" (CCCD **${cccd}**)`);
@@ -2644,14 +2177,10 @@ Deno.serve(async (req) => {
   if (body.type === 'staff') {
     const username = String(body.username || '').trim();
     if (!username) return json({ ok: false, reason: 'Cần nhập tên đăng nhập.' }, 400);
-    // Kiểm tra trùng KHÔNG phân biệt hoa/thường (khớp với ilike() lúc đăng
-    // nhập) — không cho tạo "Admin1" nếu đã có "admin1", tránh 2 tài khoản
-    // tưởng khác nhau nhưng đăng nhập lại lẫn vào nhau.
+
     const { data: existing } = await admin.from('admins').select('id').ilike('username', escapeLike(username)).maybeSingle();
     if (existing) return json({ ok: false, reason: 'Tên đăng nhập đã tồn tại.' }, 409);
 
-    // Nhân viên chỉ có canManageUsers (không phải super) KHÔNG được tự tạo
-    // tài khoản 'super' — ép về 'staff' bất kể client gửi gì lên.
     const finalRole = (isSuper && body.role === 'super') ? 'super' : 'staff';
     const finalPassword = body.password && String(body.password).trim() ? String(body.password).trim() : genTempPassword();
     const cred = await makeCredential(finalPassword);
@@ -2690,9 +2219,7 @@ Deno.serve(async (req) => {
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
     const finalPassword = body.password && String(body.password).trim() ? String(body.password).trim() : genTempPassword();
     const cred = await makeCredential(finalPassword);
-    // .select('name') NGAY TRÊN CÙNG lệnh update() — đọc luôn tên khách hàng
-    // vừa cập nhật để ghi nhật ký cho dễ đọc, KHÔNG cần thêm 1 lượt truy vấn
-    // riêng.
+
     const { data: updated, error } = await admin.from('customers')
       .update({ ...cred, must_change_password: true, failed_attempts: 0, locked_until: null })
       .eq('id', customerId).select('name').maybeSingle();
@@ -2701,15 +2228,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, tempPassword: finalPassword });
   }
 
-  // Đăng xuất use ngay (KHÔNG cấp lại mật khẩu) — chỉ ghi lại thời điểm bấm
-  // vào cột force_logout_at, dùng cơ chế TỰ PHÁT HIỆN có sẵn của
-  // "Cấp lại mật khẩu" (xem refreshSessionData() trong js/state.js): phiên
-  // đang mở của use đó tự nhận ra force_logout_at vừa đổi (khác lần trước đã
-  // biết) ở lần tự làm mới dữ liệu kế tiếp (quay lại tab/chuyển trang) rồi tự
-  // đăng xuất, không cần tải lại trang. KHÔNG bắt đặt mật khẩu mới (khác hẳn
-  // "Cấp lại mật khẩu") — dùng khi chỉ cần buộc thoát ra, VD: nghi ngờ có
-  // người khác đang dùng chung tài khoản, hoặc muốn họ đăng nhập lại để nhận
-  // đúng quyền/dữ liệu mới nhất.
   if (body.type === 'force-logout-customer') {
     const customerId = String(body.customerId || '').trim();
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
@@ -2746,8 +2264,6 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // Đăng xuất quản trị viên/nhân viên ngay (KHÔNG cấp lại mật khẩu) — cùng cơ
-  // chế với force-logout-customer ở trên (xem ghi chú tại đó).
   if (body.type === 'force-logout-staff') {
     const staffId = String(body.staffId || '').trim();
     if (!staffId) return json({ ok: false, reason: 'Thiếu mã tài khoản.' }, 400);
@@ -2802,14 +2318,13 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  // ===== Lịch sử các lần nhập file + quay lại bản trước (CHỈ super — xem SUPER_ONLY_TYPES) =====
   if (body.type === 'import-history') {
     const { data, error } = await admin.from('import_history')
       .select('id, created_at, admin_name, kind, file_name, full_sync, summary, rolled_back_at, rolled_back_by')
       .order('created_at', { ascending: false }).limit(IMPORT_HISTORY_KEEP);
     if (error) return json({ ok: false, reason: 'Chưa tạo bảng lịch sử nhập (import_history) trên Supabase — chạy SQL tạo bảng trước.' }, 500);
     const items = data || [];
-    // Chỉ lần nhập MỚI NHẤT chưa quay lại mới được quay lại (quay theo đúng thứ tự ngược).
+
     const latestActive = items.find((it: any) => !it.rolled_back_at);
     return json({ ok: true, items, latestActiveId: latestActive ? latestActive.id : null });
   }
@@ -2842,7 +2357,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, counts });
   }
 
-  // File số 2 chỉ bổ sung mã khế ước và phân kỳ, không đồng bộ/xóa hợp đồng.
   if (body.type === 'import-supplement' || body.type === 'import-supplement-preview') {
     const isPreview = body.type === 'import-supplement-preview';
     const fileName = String(body.fileName || '').trim().slice(0, 200) || null;
@@ -2868,13 +2382,12 @@ Deno.serve(async (req) => {
         }
         if (value > 0) installments[year] = value;
       }
-      // Lịch {} trong file số 2 là cập nhật thành "không còn phân kỳ"; khác
-      // với tháng không tải file số 2, khi đó RPC hoàn toàn không được gọi.
+
       rows.push({ code, agreementCode, installmentSchedule: installments });
     }
-    // Đọc trước các hợp đồng khớp Số HĐTD để cho thấy CỤ THỂ sẽ đổi gì (và để quay lại bản trước được).
+
     const contractsByCode = new Map<string, any[]>();
-    // Các lô 150 mã đọc song song (tối đa 6 lô cùng lúc) thay vì chờ lần lượt từng lô.
+
     const foundParts = await mapLimit(chunkArray(rows.map((r) => r.code), 150), 6, (part) => admin.from('contracts').select('*').in('code', part));
     if (foundParts.some((p: any) => p.error)) return json({ ok: false, reason: 'Không đọc được hợp đồng hiện có; chưa thay đổi dữ liệu.' }, 500);
     for (const { data: found } of foundParts as any[]) {
@@ -2898,9 +2411,9 @@ Deno.serve(async (req) => {
         suppDetails.unmatched.push({ code: row.code, reason: sameCode.length ? 'Hợp đồng đã tất toán (dư nợ 0)' : 'Không có hợp đồng này trong hệ thống' });
         continue;
       }
-      // Kỳ đã trả đủ nên file ghi 0 (không có trong file mới) vẫn được GIỮ LẠI, không bị xóa khỏi lịch đã lưu — xem mergeInstallmentSchedule().
+
       if (Object.keys(row.installmentSchedule).length) row.installmentSchedule = mergeInstallmentSchedule(ct.installment_schedule, row.installmentSchedule) || row.installmentSchedule;
-      // Đúng cách apply_contract_supplement() tính: khế ước trống giữ giá trị cũ; phân kỳ {} nghĩa là xóa lịch cũ.
+
       const after = {
         ...ct,
         agreement_code: row.agreementCode || ct.agreement_code || ct.code,
@@ -2919,7 +2432,7 @@ Deno.serve(async (req) => {
     if (isPreview) return json({ ok: true, preview: true, summary: suppSummary, details: suppDetails });
     const historyNotReady = await importHistoryReady();
     if (historyNotReady) return json({ ok: false, reason: historyNotReady }, 500);
-    // Một RPC giao dịch duy nhất chỉ UPDATE hai cột bổ sung trên hợp đồng còn dư nợ.
+
     const { data, error } = await admin.rpc('apply_contract_supplement', { p_rows: rows });
     if (error) return json({ ok: false, reason: `Không lưu được file bổ sung: ${error.message}` }, 500);
     const updated = Number(data?.updated) || 0;
@@ -2940,7 +2453,7 @@ Deno.serve(async (req) => {
   }
 
   if (body.type === 'import' || body.type === 'import-preview') {
-    // 'import-preview' chạy y hệt 'import' nhưng DỪNG trước mọi lệnh ghi — chỉ trả danh sách cụ thể sẽ làm gì.
+
     const isPreview = body.type === 'import-preview';
     const fileName = String(body.fileName || '').trim().slice(0, 200) || null;
     const rows = Array.isArray(body.rows)
@@ -2950,8 +2463,7 @@ Deno.serve(async (req) => {
     if (rows.some((row: any) => row.balance == null || !Number.isFinite(Number(row.balance)) || Number(row.balance) < 0)) {
       return json({ ok: false, reason: 'File có dư nợ trống, âm hoặc không hợp lệ; chưa thay đổi dữ liệu.' }, 400);
     }
-    // Dòng dư nợ 0 là khoản đã tất toán: không tạo lại hợp đồng. Với file số 1,
-    // danh sách còn dư nợ là nguồn sự thật để xóa cả hợp đồng cũ vừa tất toán.
+
     const activeRows = rows.filter((row: any) => (Number(row.balance) || 0) > 0);
     if (fullSync && !activeRows.length) return json({ ok: false, reason: 'File không có hợp đồng còn dư nợ; chưa đồng bộ để tránh xóa nhầm toàn bộ dữ liệu.' }, 400);
     if (fullSync) {
@@ -2972,8 +2484,6 @@ Deno.serve(async (req) => {
       errors: [] as string[],
     };
 
-    // PostgREST giới hạn số dòng mỗi lượt đọc; phải phân trang trước fullSync
-    // để không bỏ sót hợp đồng đang có khi quỹ vượt mốc 1.000 hợp đồng.
     async function readAll(table: 'customers' | 'contracts') {
       const all: any[] = [];
       for (let from = 0; ; from += 1000) {
@@ -2983,14 +2493,13 @@ Deno.serve(async (req) => {
         if ((data || []).length < 1000) return { data: all, error: null };
       }
     }
-    // Kiểm tra cấu trúc bảng, bảng lịch sử nhập và đọc dữ liệu hiện có chạy CÙNG LÚC (trước đây chờ lần lượt từng lệnh). Chưa lệnh nào ghi gì;
-    // nếu cấu trúc/bảng lịch sử chưa sẵn sàng thì báo lỗi và dừng trước mọi thao tác ghi, y như trước.
+
     const [schemaCheck, historyNotReady, [{ data: allCustomers, error: customersError }, { data: allContracts, error: contractsError }]] = await Promise.all([
       admin.from('contracts').select('id, collateral_type, loan_term, loan_purpose, heir_name').limit(1),
       isPreview ? Promise.resolve(null) : importHistoryReady(),
       Promise.all([readAll('customers'), readAll('contracts')]),
     ]);
-    // Chặn trước mọi thao tác ghi nếu migration chưa được chạy trên Supabase.
+
     if (schemaCheck.error) return json({ ok: false, reason: 'Chưa cập nhật cấu trúc bảng contracts trên Supabase; chưa thay đổi dữ liệu.' }, 500);
     if (historyNotReady) return json({ ok: false, reason: historyNotReady }, 500);
     if (customersError || contractsError) return json({ ok: false, reason: 'Không đọc được dữ liệu hiện có; chưa thay đổi dữ liệu.' }, 500);
@@ -3008,16 +2517,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Tách riêng 2 mảng cho khách MỚI và khách ĐÃ CÓ SẴN — không gộp chung 1
-    // upsert() duy nhất, vì khi ghi hàng loạt, PostgREST tự động lấy HỢP các
-    // cột xuất hiện trong TOÀN BỘ mảng làm danh sách cột chung; dòng nào
-    // thiếu 1 cột nào đó (vd: dòng "khách đã có sẵn" không đổi cccd nên
-    // không đưa cccd vào patch) sẽ tự bị điền NULL cho đúng cột đó — cccd
-    // not null nên báo lỗi ngay, nhưng các cột cho phép null khác (địa chỉ,
-    // sđt...) sẽ ÂM THẦM bị xóa mất mà không báo lỗi gì. Tách riêng 2 lệnh,
-    // mỗi lệnh nội bộ luôn có bộ cột đồng nhất (khách mới: object đủ mọi
-    // cột; khách cũ: luôn là object đầy đủ `cust` sau khi merge patch, chứ
-    // không phải chỉ mỗi phần thay đổi) để tránh hoàn toàn tình huống này.
     const newCustomerUpserts: Record<string, unknown>[] = [];
     const existingCustomerUpserts: Record<string, unknown>[] = [];
     const contractUpserts: Record<string, unknown>[] = [];
@@ -3026,13 +2525,7 @@ Deno.serve(async (req) => {
     const usedCodes = new Set<string>();
     const skippedRows: { code: string; name: string; cccd: string; reason: string }[] = [];
     const zeroBalanceCodes = new Set<string>();
-    // 1 khách hàng có thể xuất hiện ở NHIỀU dòng (mỗi dòng 1 hợp đồng) — GHI
-    // hồ sơ khách hàng CHỈ SAU KHI xử lý xong hết các dòng (dùng touchedCccds
-    // + originalCccds bên dưới để biết khách nào mới/cũ, 1 khách chỉ đẩy vào
-    // mảng upsert ĐÚNG 1 LẦN dù có bao nhiêu hợp đồng). Trước đây đẩy ngay
-    // trong vòng lặp — khách có ≥2 hợp đồng bị đẩy vào existingCustomerUpserts
-    // nhiều lần, khiến 1 lệnh upsert() chứa 2 dòng cùng "id" -> Postgres báo
-    // lỗi "ON CONFLICT DO UPDATE command cannot affect row a second time".
+
     const originalCccds = new Set(customerByCccd.keys());
     const touchedCccds = new Set<string>();
     const newTempPasswords = new Map<string, string>();
@@ -3046,8 +2539,7 @@ Deno.serve(async (req) => {
       }
       if ((Number(row.balance) || 0) <= 0) {
         if (row.code) zeroBalanceCodes.add(String(row.code));
-        // Dán tay một dòng dư nợ 0 cũng xóa đúng hợp đồng đã có, nhưng chỉ
-        // khi CCCD của dòng đó trùng với chủ sở hữu để tránh xóa nhầm.
+
         const existing = row.code ? contractByCode.get(row.code) : null;
         const owner = customerByCccd.get(cccd);
         if (existing && owner?.id === existing.customer_id) settledContractIds.add(existing.id);
@@ -3096,12 +2588,11 @@ Deno.serve(async (req) => {
       const hasCollateralType = Object.prototype.hasOwnProperty.call(row, 'collateralType');
       const collateralType = hasCollateralType ? String(row.collateralType || '').trim().toUpperCase() || null : (ct?.collateral_type || null);
       const hasCollateral = hasCollateralType ? ['01', '02', '04', '06'].includes(collateralType || '') : !!ct?.has_collateral;
-      // Giữ nguyên giá trị cột T để đối chiếu, kể cả mã tài sản giữ tạm 08/11
-      // được xếp vào "Không có TSBĐ" và không được khấu trừ khi tính dự phòng.
+
       const collateralValue = hasCollateralType ? Math.max(0, Number(row.collateralValue) || 0) : (Number(ct?.collateral_value) || 0);
       const loanTerm = Object.prototype.hasOwnProperty.call(row, 'loanTerm') ? (row.loanTerm || null) : (ct?.loan_term || null);
       const loanPurpose = Object.prototype.hasOwnProperty.call(row, 'loanPurpose') ? (row.loanPurpose || null) : (ct?.loan_purpose || null);
-      // Người thừa kế/đồng vay (cột D file số 1) — chỉ file số 1 mới gửi lên; mẫu khác không gửi thì giữ nguyên giá trị đã có.
+
       const heirName = Object.prototype.hasOwnProperty.call(row, 'heirName') ? (String(row.heirName || '').trim().slice(0, 200) || null) : (ct?.heir_name || null);
       const contractRow = {
         id: contractId, customer_id: cust.id, code,
@@ -3111,9 +2602,7 @@ Deno.serve(async (req) => {
         interest_rate: row.interestRate != null && row.interestRate !== '' ? Number(row.interestRate) || 0 : (ct ? ct.interest_rate : 0),
         balance: bal,
         interest_paid_until: row.interestPaidUntil || disbursed,
-        // File chính là nguồn số liệu dư nợ/TSBĐ/phân loại. File bổ sung chỉ
-        // điền khế ước và phân kỳ; hai trường đó được giữ qua các lần nhập
-        // file chính cho tới khi dư nợ về 0 hoặc hợp đồng rời danh sách.
+
         has_collateral: hasCollateral,
         collateral_value: collateralValue,
         collateral_type: collateralType,
@@ -3131,9 +2620,6 @@ Deno.serve(async (req) => {
       result.contracts++;
     }
 
-    // Đẩy MỖI khách hàng đúng 1 lần (dữ liệu cuối cùng sau khi đã gộp patch từ
-    // hết các dòng của khách đó) vào đúng 1 trong 2 mảng — xem ghi chú ở khai
-    // báo touchedCccds phía trên.
     for (const cccd of touchedCccds) {
       const cust = customerByCccd.get(cccd)!;
       if (originalCccds.has(cccd)) {
@@ -3146,11 +2632,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // An toàn thêm lần nữa (phòng khi có nguồn trùng "id" khác chưa lường
-    // hết, VD: 2 dòng Excel trùng y hệt Số HĐTD) — 1 lệnh upsert() KHÔNG được
-    // chứa 2 dòng cùng khóa xung đột, Postgres báo lỗi "ON CONFLICT DO UPDATE
-    // command cannot affect row a second time" nếu vi phạm. Giữ dòng CUỐI
-    // cùng cho mỗi id (dữ liệu mới nhất).
     function dedupeById(rows: Record<string, unknown>[]): Record<string, unknown>[] {
       const map = new Map<unknown, Record<string, unknown>>();
       for (const r of rows) map.set((r as any).id, r);
@@ -3158,7 +2639,6 @@ Deno.serve(async (req) => {
     }
     const contractUpsertsDeduped = dedupeById(contractUpserts);
 
-    // ---- Kế hoạch: so dữ liệu mới với dữ liệu đang có — cho bản xem trước + lịch sử nhập ----
     const toDeleteIds = fullSync
       ? (allContracts || []).filter((c: any) => !touchedContractIds.has(c.id)).map((c: any) => c.id)
       : [...settledContractIds];
@@ -3176,8 +2656,7 @@ Deno.serve(async (req) => {
       kind: 'import', createdContractIds: [], createdCustomerIds: [], updatedContracts: [], updatedCustomers: [],
       deletedContracts: [], deletedCustomers: [], zaloCustomers: [], zaloAutoSend: [], logLinks: { notification_log: [], zalo_send_log: [] },
     };
-    // Chỉ GHI những hợp đồng mới hoặc có thay đổi (các hợp đồng y nguyên không cần ghi lại — file thật thường có hàng nghìn dòng
-    // nhưng chỉ vài chục dòng đổi). collateralChanged: lần nhập này có tạo/đổi TSBĐ của hợp đồng nào không.
+
     const contractWrites: any[] = [];
     let collateralChanged = false;
     const COLLATERAL_FIELDS = new Set(['has_collateral', 'collateral_value', 'collateral_type']);
@@ -3220,7 +2699,7 @@ Deno.serve(async (req) => {
       importDetails.changedCustomers.push({ name: cust.name || '', cccd, changes });
       importSnapshot.updatedCustomers.push({ id: cust.id, ...pickCols(originalCustomerByCccd.get(cccd), CUSTOMER_PROFILE_COLS) });
     }
-    // Dự đoán những hồ sơ khách sẽ bị dọn (hết hợp đồng, chưa có tài khoản) — đúng điều kiện dọn thật ở bước cuối.
+
     const predictedPrune: any[] = [];
     if (fullSync || toDeleteIds.length) {
       const finalContracts = new Map<string, any>(allContractById);
@@ -3246,8 +2725,6 @@ Deno.serve(async (req) => {
     });
     if (isPreview) return json({ ok: true, preview: true, fullSync, summary: buildImportSummary(), details: importDetails });
 
-    // Ghi lại lựa chọn gửi Zalo OA của từng người cùng vay vào sổ của khách TRƯỚC khi ghi/xóa bất cứ thứ gì (hợp đồng cũ có thể bị xóa ngay trong lần nhập này) — xem coPrefUpdates.
-    // Cập nhật luôn bản trong bộ nhớ để lệnh ghi hồ sơ khách bên dưới không ghi đè lại sổ cũ. Chưa chạy SQL (thiếu cột co_people) hoặc lỗi gì thì bỏ qua.
     try {
       const prefUpdates = coPrefUpdates(allCustomers || [], allContracts || []);
       for (const u of prefUpdates) {
@@ -3262,7 +2739,6 @@ Deno.serve(async (req) => {
       });
     } catch (e) { console.error('Lỗi ghi lựa chọn gửi của người cùng vay:', e); }
 
-    // Khách đã có sẵn: chỉ ghi lại khi hồ sơ (tên, SĐT, địa chỉ và các cột tách từ địa chỉ) thật sự đổi.
     const existingCustomerWrites = existingCustomerUpserts.filter((cust: any) => {
       const orig = originalCustomerByCccd.get(cust.cccd);
       return !orig || CUSTOMER_PROFILE_COLS.some((col) => String(orig[col] ?? '') !== String(cust[col] ?? ''));
@@ -3281,35 +2757,21 @@ Deno.serve(async (req) => {
       if (error) return json({ ok: false, reason: 'Lỗi ghi hợp đồng; chưa xóa hợp đồng nào: ' + error.message }, 500);
     }
 
-    // Ghi TSBĐ mới vào lịch sử trước khi dọn hợp đồng đã tất toán. Những kỳ
-    // không có chi tiết đầy đủ được giữ nguyên để tránh tính sai dự phòng.
-    // Việc này đọc TOÀN BỘ số liệu chốt các tháng (rất nặng) nên chỉ chạy khi lần nhập này tạo/đổi TSBĐ của hợp đồng nào đó;
-    // không đổi TSBĐ thì các tháng đã chốt vẫn đang khớp, khỏi đọc lại.
     const historySync: { updated: number; error?: string } = collateralChanged ? await syncHistoricalCollateral(admin) : { updated: 0 };
     if (historySync.error) result.errors.push('Chưa đồng bộ TSBĐ lịch sử: ' + historySync.error);
 
     if (toDeleteIds.length) {
-        // Trước khi xóa hợp đồng không còn dư nợ, tự CHUYỂN lựa chọn
-        // Tầng 2 "Gửi tin tự động" (nếu có) đang gắn với hợp đồng đó sang
-        // hợp đồng CÒN LẠI của CÙNG khách hàng, khi khách vẫn còn vay (VD:
-        // tất toán hợp đồng cũ, mở hợp đồng mới khác số — vẫn là 1 khoản
-        // vay đang tiếp diễn, không nên tự mất lựa chọn gửi tự động chỉ vì
-        // đổi số hợp đồng). CHỈ chuyển khi RÕ RÀNG không mơ hồ: đúng 1 hợp
-        // đồng cũ có Tầng 2 sắp bị xóa khớp với ĐÚNG 1 hợp đồng còn lại của
-        // khách đó (còn dư nợ, chưa có sẵn trong Tầng 2). Nếu khách hàng có
-        // nhiều khả năng cùng lúc, hoặc không còn hợp đồng nào khác (tất
-        // toán thật) thì để hành vi cũ (xóa theo cascade FK, không đoán mò).
+
         const orphanEntries: any[] = [];
         for (const part of chunkArray(toDeleteIds, 150)) {
           const { data } = await admin.from('zalo_auto_send_list').select('*').in('contract_id', part);
           orphanEntries.push(...(data || []));
         }
-        importSnapshot.zaloAutoSend = orphanEntries.map((e: any) => ({ ...e })); // bản gốc, trước khi chuyển sang hợp đồng khác
+        importSnapshot.zaloAutoSend = orphanEntries.map((e: any) => ({ ...e }));
         if (orphanEntries && orphanEntries.length) {
           const { data: existingAutoRows } = await admin.from('zalo_auto_send_list').select('contract_id');
           const alreadyInAuto = new Set((existingAutoRows || []).map((r: any) => r.contract_id));
-          // Trạng thái CUỐI CÙNG sau lượt nhập. Dán tay chỉ thay một phần
-          // danh sách nên vẫn tính cả các hợp đồng cũ chưa được cập nhật.
+
           const remainingContracts = new Map<string, any>();
           if (!fullSync) for (const ct of allContracts || []) {
             if (!toDeleteIds.includes(ct.id)) remainingContracts.set(ct.id, ct);
@@ -3318,8 +2780,8 @@ Deno.serve(async (req) => {
           const remainingByCustomer = new Map<string, string[]>();
           for (const cr of remainingContracts.values()) {
             const cid = (cr as any).id as string;
-            if (alreadyInAuto.has(cid)) continue; // đã có Tầng 2 riêng, không ghi đè lên
-            if ((Number((cr as any).balance) || 0) <= 0) continue; // còn lại nhưng đã tất toán -> không phải nơi để chuyển vào
+            if (alreadyInAuto.has(cid)) continue;
+            if ((Number((cr as any).balance) || 0) <= 0) continue;
             const custId = (cr as any).customer_id as string;
             const arr = remainingByCustomer.get(custId) || [];
             arr.push(cid);
@@ -3327,15 +2789,14 @@ Deno.serve(async (req) => {
           }
           for (const entry of orphanEntries) {
             const candidates = (remainingByCustomer.get((entry as any).customer_id) || []).filter((cid) => !alreadyInAuto.has(cid));
-            if (candidates.length !== 1) continue; // mơ hồ hoặc hết hợp đồng khác -> bỏ qua, xóa theo cascade như cũ
+            if (candidates.length !== 1) continue;
             const { error: migErr } = await admin.from('zalo_auto_send_list').update({ contract_id: candidates[0] }).eq('id', (entry as any).id);
             if (!migErr) { alreadyInAuto.add(candidates[0]); result.zaloAutoSendMigrated++; }
           }
         }
-        // Nhật ký đã gửi là lịch sử, không được mất theo ON DELETE CASCADE
-        // của contracts. Hai cột contract_id đều cho phép NULL.
+
         for (const table of ['notification_log', 'zalo_send_log'] as const) {
-          // Ghi nhớ nhật ký nào thuộc hợp đồng nào để quay lại bản trước nối lại được.
+
           const links: [string, string][] = [];
           for (const part of chunkArray(toDeleteIds, 150)) {
             const { data } = await admin.from(table).select('id, contract_id').in('contract_id', part);
@@ -3354,8 +2815,7 @@ Deno.serve(async (req) => {
         result.deletedContracts = toDeleteIds.length;
     }
     if (fullSync || toDeleteIds.length) {
-      // Danh sách hồ sơ cần dọn đã được tính ở bước lập kế hoạch (đúng điều kiện: hết dư nợ và chưa có tài khoản) và đã hiện trong bản xem trước,
-      // nên không đọc lại toàn bộ 2 bảng nữa; chỉ kiểm tra lại đúng các hồ sơ ứng viên xem có ai vừa có thêm hợp đồng còn dư nợ không.
+
       let pruneRows = predictedPrune;
       if (pruneRows.length) {
         const stillOwning = new Set<string>();
@@ -3373,7 +2833,7 @@ Deno.serve(async (req) => {
         const deletedIds = new Set<string>();
         for (const part of chunkArray(pruneRows.map((c: any) => c.id as string), 150)) {
           const { data: zaloRows } = await admin.from('zalo_customers').select('*').in('customer_id', part);
-          await archiveCoPeopleBeforePrune(part); // cất sổ người cùng vay (tên + số) theo CCCD để lần vay sau dùng lại
+          await archiveCoPeopleBeforePrune(part);
           const { error } = await admin.from('customers').delete().in('id', part);
           if (error) break;
           part.forEach((id) => deletedIds.add(id));
@@ -3385,11 +2845,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Đối chiếu người cùng vay (cột D) của các khách vừa nhập — chạy SAU khi mọi bước ghi/dọn đã xong, không bao giờ làm hỏng lần nhập.
     const coReconcile = await reconcileCoBorrowersAfterImport([...touchedCccds].map((cccd) => (customerByCccd.get(cccd) as any)?.id as string).filter(Boolean), importSnapshot.createdContractIds as string[]);
     if (coReconcile.changes.length) (importDetails as any).coBorrowerChanges = coReconcile.changes;
     const importSummary = { ...buildImportSummary(), coBorrowerChanged: coReconcile.changes.length };
-    // Ghi nhật ký sử dụng và lưu lịch sử nhập CÙNG LÚC (2 việc độc lập nhau).
+
     const [, savedHistory] = await Promise.all([
       logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'import',
         `Nhập dữ liệu Excel${fullSync ? ' (đồng bộ toàn bộ)' : ''}: **${result.contracts} hợp đồng, ${result.newAccounts.length} tài khoản mới**` +
@@ -3403,7 +2862,7 @@ Deno.serve(async (req) => {
       }),
     ]);
     if (savedHistory.error) result.errors.push('Đã nhập xong nhưng chưa lưu được lịch sử nhập: ' + savedHistory.error);
-    // snapshotsChanged: số liệu chốt các tháng có bị sửa không — app chỉ tải lại số liệu chốt (nặng) khi true.
+
     return json({ ok: true, ...result, summary: importSummary, details: importDetails, historyId: savedHistory.id, snapshotsChanged: historySync.updated > 0, coBorrowerChanges: coReconcile.changes });
   }
 

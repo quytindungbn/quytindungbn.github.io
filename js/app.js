@@ -3,7 +3,7 @@ import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, rende
 import { closeAllModals } from './components/modal.js';
 import { toast } from './components/toast.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
-import './lib/installPwa.js'; // đăng ký lắng nghe beforeinstallprompt càng sớm càng tốt (xem file đó)
+import './lib/installPwa.js';
 import { initAutoInstallPrompt } from './components/installBtn.js';
 import { renderLogin } from './views/login.js';
 import { renderChangePassword } from './views/changePassword.js';
@@ -33,57 +33,36 @@ const customerRoutes = [
 const adminRoutes = [
   { re: /^#\/admin$/, view: AdminOverview },
   { re: /^#\/admin\/khach-hang$/, view: AdminCustomers },
-  // "Hỗ trợ" GỘP "Yêu cầu tư vấn" + chat thành 1 trang (2 tab bên trong, xem
-  // js/views/admin/support.js) — luôn mở được cho MỌI quản trị viên (không
-  // riêng canManageUsers, giữ đúng phạm vi cũ của "Yêu cầu tư vấn"); tab con
-  // "Hỗ trợ" (chat) bên trong trang tự ẩn/hiện theo quyền, không cần chặn ở
-  // cấp route.
+
   { re: /^#\/admin\/ho-tro$/, view: AdminSupport },
   { re: /^#\/admin\/cai-dat$/, view: AdminSettings, superOnly: true },
-  // "Nhật ký" — CHỈ quản trị viên toàn quyền (role='super') mở được, xem
-  // js/views/admin/logs.js. superOnly:true chặn ở route (khớp RLS thật ở
-  // tầng database — mục 10.33 docs).
+
   { re: /^#\/admin\/nhat-ky$/, view: AdminLogs, superOnly: true },
   { re: /^#\/admin\/zalo-oa$/, view: AdminZaloOA, requiresManageZaloOA: true },
   { re: /^#\/admin\/nhan-vien$/, view: AdminStaff, requiresManageUsers: true },
   { re: /^#\/admin\/can-doi-ke-toan$/, view: AdminBalanceSheet, requiresViewBalanceSheet: true },
-  // "Tính lãi vay" (menu Công cụ) — tiện ích tính nhanh, mọi quản trị viên/nhân viên đều mở được.
+
   { re: /^#\/admin\/tinh-lai$/, view: AdminLoanCalc },
   { re: /^#\/doi-mat-khau$/, view: ChangePasswordSelf },
 ];
 
-// Nhãn hiển thị đúng theo path — dùng để ghi Nhật ký sử dụng mỗi lần chuyển
-// trang thật sự (xem renderApp() bên dưới), khỏi phải ghi cứng lại 1 danh
-// sách riêng — lấy thẳng từ đúng label đang hiện trên menu.
 const NAV_LABEL_MAP = Object.fromEntries(
   [...ADMIN_NAV, ...ADMIN_NAV_BALANCE_SHEET, ...ADMIN_NAV_MANAGE_ZALO_OA, ...ADMIN_NAV_SUPPORT, ...ADMIN_NAV_TOOLS, ...ADMIN_NAV_MANAGE_USERS, ...ADMIN_NAV_SUPER_ONLY].map((item) => [item.path, item.label])
 );
-NAV_LABEL_MAP['#/doi-mat-khau'] = 'Đổi mật khẩu'; // có route nhưng không nằm trong menu chính (link riêng ở sidebar)
+NAV_LABEL_MAP['#/doi-mat-khau'] = 'Đổi mật khẩu';
 
 let root;
 let shellKey = null;
-// Đường dẫn (hash) đã render() ĐẦY ĐỦ gần nhất — dùng để phân biệt "vừa mới
-// vào trang này" (cần render() đầy đủ, có reset bộ lọc) với "vẫn đang đứng ở
-// trang này nhưng có dữ liệu mới" (chỉ nên vẽ lại danh sách, giữ nguyên mọi
-// bộ lọc/ô đang gõ — xem renderApp() và refresh() của từng view bên dưới).
+
 let lastRoutePath = null;
 const balanceSheetPath = '#/admin/can-doi-ke-toan';
 let balanceSheetScrollY = 0;
-// "Chữ ký" của người đang đăng nhập lần render() gần nhất (role:id, hoặc
-// null nếu chưa đăng nhập) — dùng để phát hiện đúng lúc ĐỔI NGƯỜI (đăng
-// xuất, đăng nhập tài khoản khác, hết phiên) để reset bộ lọc/tìm kiếm của
-// các trang có lưu bộ lọc kiểu "giữ nguyên khi quay lại" (module-level, sống
-// suốt vòng đời trang web, KHÔNG tự mất khi đổi người dùng — xem
-// resetFilters() ở customers.js/zaloOA.js/requests.js). undefined = chưa
-// render() lần nào, để phân biệt với null (đã render() 1 lần lúc chưa đăng
-// nhập) — cả 2 đều coi là "trạng thái ban đầu", không cần reset gì thêm.
+
 let lastSessionKey = undefined;
 function sessionKey(session) {
   return session ? `${session.role}:${session.id}` : null;
 }
 
-// Tải sẵn ngầm danh sách Tư vấn + bảng cân đối (nếu người này xem được) SAU KHI dữ liệu chính đã tải xong — lúc bấm vào các mục đó thì đã có sẵn, không phải chờ
-// máy chủ. Đợi một chút rồi mới chạy để không giành mạng với lượt tải dữ liệu chính; các hàm prefetch tự bỏ qua nếu người dùng không có quyền xem.
 let warmUpTimer = null;
 function scheduleWarmUp() {
   clearTimeout(warmUpTimer);
@@ -119,10 +98,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
 
   const curSessionKey = sessionKey(session);
   if (curSessionKey !== lastSessionKey) {
-    // Vừa đổi người đang đăng nhập — reset bộ lọc/tìm kiếm còn lưu ở các
-    // trang, rồi ép render() ĐẦY ĐỦ (bỏ qua nhánh dataOnly giữ nguyên bộ
-    // lọc) dù đang đứng đúng route cũ, để người mới vào không thấy sót lại
-    // bộ lọc/kết quả tìm kiếm của người trước.
+
     AdminCustomers.resetFilters?.();
     AdminZaloOA.resetFilters?.();
     AdminSupport.resetFilters?.();
@@ -130,14 +106,14 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
     AdminOverview.resetSelection?.();
     balanceSheetScrollY = 0;
     if (lastRoutePath === balanceSheetPath) lastRoutePath = null;
-    if (session && lastSessionKey !== undefined) scheduleWarmUp(); // vừa đăng nhập (lần mở app đầu tiên thì chờ làm mới xong, xem DOMContentLoaded)
+    if (session && lastSessionKey !== undefined) scheduleWarmUp();
     lastSessionKey = curSessionKey;
     dataOnly = false;
   }
 
   if (!session) {
     shellKey = null;
-    renderChatFab(null); // dọn nút chat nổi nếu vừa đăng xuất (còn sót lại từ phiên khách hàng trước)
+    renderChatFab(null);
     renderLogin(root, () => renderApp());
     return;
   }
@@ -172,7 +148,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   const defaultPath = session.role === 'admin' ? '#/admin' : '#/';
   let match = matchRoute(path, routes);
   if (!match || (match.superOnly && !isSuper) || (match.requiresManageUsers && !canManageUsers) || (match.requiresManageZaloOA && !canManageZaloOA) || (match.requiresViewBalanceSheet && !canViewBalanceSheet)) {
-    // Trang không hợp lệ / không đủ quyền với vai trò hiện tại -> về trang mặc định
+
     if (location.hash !== defaultPath) { location.hash = defaultPath; return; }
     match = matchRoute(defaultPath, routes);
   }
@@ -190,16 +166,10 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   const filterEl = document.getElementById('filter-slot');
   const contentEl = document.getElementById('app-content');
 
-  // Có dữ liệu mới nhưng vẫn đang đứng nguyên ở trang này: nếu trang có khai
-  // báo refresh() riêng thì chỉ gọi nó (vẽ lại danh sách bằng dữ liệu mới,
-  // giữ nguyên mọi bộ lọc/tìm kiếm đang chọn) — KHÔNG gọi lại render() đầy đủ,
-  // vì render() luôn reset bộ lọc về mặc định (chỉ nên xảy ra lúc mới vào
-  // trang). Trang chưa có refresh() thì vẫn render() lại như cũ (không có gì
-  // để giữ).
   if (dataOnly && lastRoutePath === path && typeof match.view.refresh === 'function') {
     match.view.refresh(contentEl, filterEl, match.params, query);
     updateActiveNav(path);
-    renderChatFab(session); // nút đã có sẵn từ lần render() đầy đủ trước đó — chỉ cập nhật lại số tin chưa đọc
+    renderChatFab(session);
     return;
   }
 
@@ -213,87 +183,48 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   if (returningToBalanceSheet) requestAnimationFrame(() => {
     if (splitHash().path === balanceSheetPath) window.scrollTo(0, balanceSheetScrollY);
   });
-  // Ghi Nhật ký sử dụng mỗi lần THẬT SỰ chuyển sang 1 trang khác (so path
-  // với lastRoutePath — path không đổi thì không ghi lại, tránh spam lúc
-  // renderApp() gọi lại nhiều lần trên CÙNG 1 trang vì có dữ liệu mới/đổi
-  // quyền, xem ghi chú dataOnly ở trên). logAdminAction() tự bỏ qua nếu
-  // không phải phiên quản trị viên. RIÊNG trang "Nhật ký" (#/admin/nhat-ky)
-  // KHÔNG tự ghi log vào chính nó — mỗi lần vào xem nhật ký lại tự thêm 1
-  // dòng "Vào trang Nhật ký" đứng đầu danh sách, che mất đúng thao tác vừa
-  // làm trước đó mà người dùng đang muốn kiểm tra.
+
   if (path !== lastRoutePath && path !== '#/admin/nhat-ky') {
     S.logAdminAction('nav-page', { pageLabel: NAV_LABEL_MAP[path] || path });
   }
   lastRoutePath = path;
   updateActiveNav(path);
-  renderChatFab(session); // clearFabs() ở trên vừa dọn nút cũ (nếu có) — tạo lại (hoặc bỏ qua nếu không phải khách hàng)
+  renderChatFab(session);
 }
 
 window.addEventListener('hashchange', () => {
   closeAllModals();
   renderApp();
-  // Mỗi lần chuyển trang cũng tranh thủ tải lại dữ liệu quyền/phạm vi Thôn-Xóm
-  // của CHÍNH người đang đăng nhập — để khi admin khác vừa đổi quyền cho họ
-  // (VD: cấp thêm Thôn/Xóm được xem, bật/tắt quyền Quản lý User) thì họ thấy
-  // đúng ngay ở lần bấm menu kế tiếp, KHÔNG cần đăng xuất/đăng nhập lại. Chạy
-  // ngầm (không await) — refreshSessionData() tự gọi notify() khi xong, kích
-  // hoạt vẽ lại (xem S.subscribe bên dưới); trang không còn đủ quyền (VD: bị
-  // rút quyền khi đang đứng ở đó) sẽ tự bị renderApp() điều hướng về mặc định.
-  // Bỏ qua nếu vừa tải đủ dưới 15 giây trước (bấm menu liên tục không tải lại toàn bộ dữ liệu mỗi lần); đang có lượt tải thì dùng luôn lượt đó.
+
   S.refreshSessionData({ minAgeMs: 15000 });
 });
-// Làm mới dữ liệu thử lại nhiều lần vẫn không được (mất mạng/máy chủ chậm): màn hình đang hiện dữ liệu lần trước — báo để người dùng biết.
+
 window.addEventListener('qtd:refresh-failed', () => toast('Chưa tải được dữ liệu mới — đang hiện dữ liệu lần trước. Kiểm tra mạng rồi tải lại trang.', 'error'));
 window.addEventListener('qtd:logout', () => { closeAllModals(); S.logout(); location.hash = '#/'; renderApp(); });
 
 window.addEventListener('DOMContentLoaded', async () => {
   root = document.getElementById('root');
-  registerServiceWorker(); // Đăng ký nhận thông báo đẩy — không đợi xong, không chặn tải app.
-  await S.init(); // KHÔNG còn chờ mạng nữa (xem ghi chú trong state.js) — trả về gần như ngay lập tức.
-  renderApp(); // Vẽ màn hình đầu tiên NGAY bằng dữ liệu đã có sẵn (demo hoặc cache lần trước), không đợi Supabase.
-  S.refreshSessionData().finally(scheduleWarmUp); // Mở lại/tải lại trang: làm mới dữ liệu ngầm ngay (không cần bấm menu mới cập nhật) — danh sách hiện sẵn từ lần trước, có dữ liệu mới thì tự cập nhật. Xong thì tải sẵn Tư vấn/bảng cân đối.
-  S.refreshOrgPublic(); // Tải tên quỹ/banner THẬT ngầm phía sau — không await, xong tự cập nhật lại đúng chỗ (S.subscribe bên dưới).
+  registerServiceWorker();
+  await S.init();
+  renderApp();
+  S.refreshSessionData().finally(scheduleWarmUp);
+  S.refreshOrgPublic();
   startAutoRefresh();
-  // Phiên đăng nhập cũ còn lưu sẵn (mở lại app không cần đăng nhập lại) cũng
-  // tự xin quyền thông báo luôn — không đợi xong, không chặn tải app.
+
   const existingSession = S.getSession();
   if (existingSession) autoSubscribeIfPossible(existingSession.sbToken);
-  // Tự động mời cài đặt app ngay khi vào (máy chưa cài) — gọi đúng 1 LẦN ở
-  // đây, không lặp lại ở từng trang, xem installBtn.js.
+
   initAutoInstallPrompt();
 });
 
-// Mọi thay đổi dữ liệu (xóa/tạo/sửa...) đều gọi notify() và kích hoạt render
-// lại ở đây — nhưng đây KHÔNG phải là chuyển trang, nên không cuộn lên đầu,
-// để thao tác xong người dùng vẫn đang đứng đúng chỗ vừa thao tác.
 S.subscribe(() => {
   if (root) renderApp({ scrollTop: false, dataOnly: true });
 });
 
-// Tự động tải lại dữ liệu mới — để khách/nhân viên KHÔNG cần thoát ra vào lại
-// mới thấy dữ liệu mới (VD: admin vừa sửa hợp đồng/đổi quyền ở máy khác). CHỈ
-// làm mới khi có tín hiệu thật là người dùng có thể cần thấy dữ liệu mới
-// (quay lại tab/app, hoặc chuyển trang — xem thêm listener 'hashchange' ở
-// trên) — KHÔNG dùng bộ đếm thời gian (setInterval) TẢI LẠI TOÀN BỘ DỮ LIỆU
-// nữa, vì cứ vài chục giây lại tự tải lại 1 lần sẽ làm mất bộ lọc đang chọn
-// (Thôn/Xóm/sắp xếp...) và dữ liệu đang gõ dở, dù đã có cơ chế né ô đang gõ
-// — vẫn gây khó chịu. (Có 1 bộ đếm giờ RIÊNG, RẤT NHẸ, chỉ kiểm tra đúng 2
-// cột — xem setInterval(S.checkForceLogout...) ngay bên dưới — đó là ngoại
-// lệ DUY NHẤT, KHÔNG áp dụng nguyên tắc này vì nó không bao giờ đụng tới màn
-// hình đang xem trừ khi thật sự cần đăng xuất ngay.)
 function startAutoRefresh() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') S.refreshSessionData();
   });
 }
 
-// Đăng xuất ngay khi bị cấp lại mật khẩu/bấm "Đăng xuất" (xem
-// S.checkForceLogout()) CẦN xảy ra tức thì, không thể đợi người dùng tự quay
-// lại tab/chuyển trang mới phát hiện ra (đó là đúng nhược điểm của cơ chế
-// startAutoRefresh() ở trên — CHỦ Ý chỉ chạy theo tín hiệu, không phải theo
-// thời gian). checkForceLogout() được thiết kế RIÊNG để an toàn khi chạy định
-// kỳ (chỉ đọc 2 cột của CHÍNH mình, không bao giờ vẽ lại màn hình trừ khi
-// thật sự cần đăng xuất — xem ghi chú đầy đủ trong js/state.js) nên đặt hẳn 1
-// bộ đếm giờ riêng cho việc NÀY, tách biệt hoàn toàn với cơ chế tải lại dữ
-// liệu chung ở trên.
 setInterval(() => S.checkForceLogout(), 5000);

@@ -51,7 +51,7 @@ test('nợ xấu giảm mạnh hoặc về 0 dốc hơn giảm nhẹ và luôn n
       { yearMonth: '2026-08', balance: 44_000_000_000, badDebt: 500_000_000 },
       { yearMonth: '2026-09', balance: 44_000_000_000, badDebt: lastBadDebt },
     ] });
-    // Mỗi khung có đường dư nợ trước, sau đó là đường nợ xấu.
+
     return [...html.matchAll(/<polyline[^>]*points="([^"]+)"/g)]
       .filter((_, i) => i % 2 === 1)
       .map((line) => line[1].split(' ').map((point) => Number(point.split(',')[1])));

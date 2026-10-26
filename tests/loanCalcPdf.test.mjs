@@ -57,7 +57,7 @@ test('buildPdf: tệp PDF hợp lệ — đầu/cuối tệp, bảng xref trỏ 
     const off = Number(line.slice(0, 10));
     assert.equal(latin.slice(off, off + `${k + 1} 0 obj`.length), `${k + 1} 0 obj`, `đối tượng ${k + 1}`);
   });
-  // Độ dài luồng ảnh khai báo khớp byte thật, nội dung JPEG nguyên vẹn
+
   const m = /\/Length (\d+) >>\nstream\n/.exec(latin.slice(latin.indexOf('/Subtype /Image')));
   assert.equal(Number(m[1]), pages[0].jpeg.length);
   const at = latin.indexOf('stream\n', latin.indexOf('/Subtype /Image')) + 7;

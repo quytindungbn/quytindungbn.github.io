@@ -1,9 +1,6 @@
-/** Mức khấu trừ TSBĐ theo mã trên file số 1; mã khác không phải TSBĐ hợp lệ. */
 export const SPECIFIC_PROVISION_RATE = Object.freeze({ 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 });
 export const GENERAL_PROVISION_RATE = 0.0075;
 
-/** TSBĐ hợp lệ mới nhất của cùng số HĐTD áp dụng cho kỳ cũ. Không suy diễn
- * từ khách hàng và không xóa thông tin kỳ cũ khi hợp đồng hiện tại thiếu TSBĐ. */
 export function inheritCurrentCollateral(historical, current) {
   if (!current?.hasCollateral || !['01', '02', '04', '06'].includes(current.collateralType)) return historical;
   return {
@@ -36,7 +33,6 @@ export function specificProvisionForLoan(contract, rate) {
   return specificProvisionCalculation(contract, rate).amount;
 }
 
-/** Khôi phục số phải trích từ chi tiết đã chốt khi bản ghi cũ thiếu hai cột tổng. */
 export function provisionFromSnapshot(snapshot) {
   if (!snapshot) return null;
   if (Number.isFinite(snapshot.generalProvision) && Number.isFinite(snapshot.specificProvision)) {

@@ -3,12 +3,6 @@ import { openModal } from './modal.js';
 import { debounce, formatVND, formatDate } from '../utils.js';
 import * as S from '../state.js';
 
-/**
- * Ô tìm kiếm chuẩn (icon kính lúp + input + nút "x" xóa nhanh ở cuối ô) —
- * nút "x" chỉ hiện khi đang có chữ trong ô, bấm vào xóa sạch ngay lập tức
- * (không cần tự xóa từng chữ). Dùng chung `bindSearchBox()` bên dưới để gắn
- * sự kiện (debounce gõ chữ + xử lý nút "x").
- */
 export function searchBoxHtml(id, placeholder, value = '') {
   return `
     <div class="search-box mb-8">
@@ -17,7 +11,7 @@ export function searchBoxHtml(id, placeholder, value = '') {
       <button type="button" class="search-clear-btn" id="${id}-clear" style="display:${value ? 'flex' : 'none'}" title="Xóa">${icon('x', 'icon-sm')}</button>
     </div>`;
 }
-/** Gắn sự kiện cho ô tìm kiếm dựng bằng searchBoxHtml() — `onChange(text)` gọi mỗi khi giá trị đổi (có debounce lúc gõ, tức thì khi bấm nút "x"). */
+
 export function bindSearchBox(root, id, onChange, { debounceMs = 200 } = {}) {
   const input = root.querySelector('#' + id);
   const clearBtn = root.querySelector('#' + id + '-clear');
@@ -44,15 +38,6 @@ export function emptyState({ iconName = 'box', title, message }) {
     </div>`;
 }
 
-/**
- * 2 chấm trạng thái của 1 Use — chấm trái = đã đăng nhập hay chưa, chấm phải
- * = đã bật thông báo hay chưa. Xanh = đã có (tốt), đỏ = chưa. Chú thích gộp
- * chung 1 dòng, gắn trên cả CỤM (không gắn riêng từng chấm) — di chuột vào
- * (hoặc chạm giữ trên điện thoại) bất kỳ đâu trong vùng 2 chấm đều hiện đủ cả
- * 2 ý cùng lúc, không cần rê trúng chính xác từng chấm 9px nhỏ xíu. Dùng ở
- * trang "Khách hàng & Hợp đồng" (ngang hàng tên khách, lề phải) và "Quản lý
- * User".
- */
 export function statusDotsHtml(loggedIn, pushOn) {
   const dot = (on) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${on ? 'var(--success)' : 'var(--danger)'};flex:none"></span>`;
   const tooltip = `${loggedIn ? 'Đã đăng nhập' : 'Chưa đăng nhập'} · ${pushOn ? 'Đã bật thông báo' : 'Chưa bật thông báo'}`;
@@ -62,7 +47,7 @@ export function statusDotsHtml(loggedIn, pushOn) {
 export function statusBadge(statusObj) {
   return `<span class="badge ${statusObj.badge}">${statusObj.label}</span>`;
 }
-// Bí danh cho các view dùng tên cũ
+
 export const orderStatusBadge = statusBadge;
 
 export function openPicker({ title, options, selected, multiSelect = false, onSelect }) {
@@ -85,7 +70,6 @@ export function openPicker({ title, options, selected, multiSelect = false, onSe
     return close;
   }
 
-  // Chế độ chọn nhiều — tích chọn nhiều mục cùng lúc, bấm "Xong" mới áp dụng.
   const chosen = new Set(selected || []);
   const close = openModal({
     title,
@@ -131,13 +115,6 @@ export function openPicker({ title, options, selected, multiSelect = false, onSe
   return close;
 }
 
-/**
- * Pill lọc (Thôn/Xóm/Sắp xếp...) — bấm vào pill mở picker để CHỌN, nhưng
- * bỏ lọc thì bấm thẳng dấu "x" nhỏ ở góc pill (khi đang có lọc) cho nhanh,
- * không cần mở picker rồi "Bỏ chọn tất cả" rồi "Xong". `active` = đang có
- * lọc áp dụng (khác mặc định) thì mới hiện dấu "x"; `data-pill-clear` gắn
- * đúng id pill để nơi gọi tự biết cần xóa bộ lọc nào.
- */
 export function pillSelectHtml(id, label, active = false) {
   return `
     <span style="position:relative;display:inline-flex">
@@ -146,7 +123,6 @@ export function pillSelectHtml(id, label, active = false) {
     </span>`;
 }
 
-/** Modal nhỏ để "Cấp lại mật khẩu" — admin có thể tự gõ mật khẩu cụ thể, để trống thì hệ thống tự sinh ngẫu nhiên. Dùng chung cho cả Use lẫn Quản trị viên/nhân viên. */
 export function openResetPasswordModal({ title = 'Cấp lại mật khẩu', onConfirm }) {
   return openModal({
     title,
@@ -167,50 +143,22 @@ export function openResetPasswordModal({ title = 'Cấp lại mật khẩu', onC
   });
 }
 
-/**
- * Dòng nhỏ "Kỳ N: số tiền" (nếu hợp đồng đang có
- * 1 kỳ là NGUỒN cảnh báo — S.contractAttentionInfo(ct).source === 'installment')
- * — chữ nhãn bình thường (field-hint), CHỈ riêng số tiền in đậm + tô màu
- * theo đúng mức cảnh báo (đỏ = trễ hạn, vàng = gần đến hạn) để dễ nhìn ra
- * ngay. LUÔN hiện khi kỳ là nguồn cảnh báo — KỂ CẢ khi còn NGOÀI đúng
- * NEAR_DUE_DAYS (15 ngày, tức đang ở khoảng xem trước RỘNG 16-45 ngày, badge
- * chữ nhỏ KHÔNG in đậm) — để biết TRƯỚC kỳ nào/bao nhiêu tiền, không đợi
- * gấp mới thấy, đỡ khó nhìn/khó phân biệt. Dùng CHUNG cho dòng hợp đồng gọn
- * (contractRowCompact() — khách nhiều hợp đồng), khách chỉ có 1 hợp đồng, VÀ
- * popup "Hợp đồng quá hạn"/"Gần đến hạn" ở Tổng quan (admin/overview.js) —
- * cùng 1 định dạng ở cả 3 nơi. Trả về chuỗi rỗng nếu hợp đồng không có kỳ
- * nào đang là nguồn cảnh báo (VD: không có phân kỳ, hoặc cảnh báo đến từ
- * ngày đáo hạn hợp đồng gốc — source:'contract' — không phải từ 1 kỳ).
- */
 export function installmentHintHtml(ct) {
   const info = S.contractAttentionInfo(ct);
-  if (info.source !== 'installment') return ''; // cảnh báo không đến từ 1 kỳ cụ thể -> không có gì để báo ở đây
+  if (info.source !== 'installment') return '';
   const inst = S.nextInstallmentInfo(ct);
   if (!inst) return '';
   const color = info.level === 'qua_han' ? 'var(--danger)' : 'var(--warning)';
-  // Chỉ ghi "Kỳ N: số tiền" cho gọn (một dòng trên điện thoại); mức cảnh báo đã có ở huy hiệu và màu của số tiền (đỏ = trễ hạn, vàng = gần đến hạn).
+
   return `<div class="field-hint" style="margin-top:3px">Kỳ ${inst.idx + 1}: <b style="color:${color}">${formatVND(info.dueAmount)}</b></div>`;
 }
 
-/**
- * Ô tóm tắt "Kỳ tới" (Kỳ N — Ngày — Số tiền trả nợ gốc), bấm vào mở popup xem chi tiết
- * đầy đủ từng kỳ (xem bindInstallmentNextBox() + openInstallmentPlanModal()
- * bên dưới). Trả về chuỗi rỗng nếu hợp đồng không có (hoặc đã trả đủ hết)
- * phân kỳ — nơi gọi chèn thẳng vào bodyHtml, không cần tự kiểm tra trước.
- * "Kỳ tới" tính bằng S.nextInstallmentInfo() — dùng CHUNG với bộ lọc "Gần
- * đến hạn"/"Quá hạn" ở trang Khách hàng (admin/customers.js), để mọi nơi
- * tính nhất quán, không lặp code.
- */
 export function installmentNextBoxHtml(contract, elId = 'installment-next-box') {
   const info = S.nextInstallmentInfo(contract);
   if (!info) return '';
   const { idx, next, urgency } = info;
   const cls = urgency === 'qua_han' ? 'is-overdue' : urgency === 'gan_den_han' ? 'is-near-due' : '';
-  // Đây là dòng cảnh báo DUY NHẤT cho "Kỳ tới" — chữ to hơn field-hint mặc
-  // định (13px, đậm) để dễ chú ý hơn. contractStatusInfo()/dòng cảnh báo
-  // cuối khung ở contractDetail.js/admin/customers.js đã tự BỎ QUA, không
-  // hiện lại y hệt dòng này nữa khi nguồn cảnh báo là 1 KỲ (source ===
-  // 'installment') — tránh lặp 2 dòng cùng nội dung.
+
   const warnLine = urgency === 'qua_han'
     ? `<div class="text-danger fw-700" style="margin-top:4px;font-size:13px">${icon('alert', 'icon-sm')} Kỳ này đã quá hạn ${Math.abs(next.daysLeft)} ngày</div>`
     : urgency === 'gan_den_han'
@@ -227,13 +175,11 @@ export function installmentNextBoxHtml(contract, elId = 'installment-next-box') 
   `;
 }
 
-/** Gắn sự kiện bấm cho installmentNextBoxHtml() — mở popup bảng đầy đủ từng kỳ. Gọi trong onMount() sau khi đã chèn bodyHtml vào DOM. */
 export function bindInstallmentNextBox(root, contract, elId = 'installment-next-box') {
   const btn = root.querySelector('#' + elId);
   if (btn) btn.addEventListener('click', () => openInstallmentPlanModal(contract));
 }
 
-/** Popup "Kế hoạch trả nợ" — bảng đầy đủ TỪNG kỳ (Kỳ hạn trả nợ | Ngày | Số tiền trả nợ gốc), mở từ installmentNextBoxHtml(). */
 export function openInstallmentPlanModal(contract) {
   const plan = S.computeInstallmentPlan(contract);
   if (!plan) return;
@@ -245,10 +191,7 @@ export function openInstallmentPlanModal(contract) {
         <thead><tr><th>Kỳ hạn trả nợ</th><th>Ngày</th><th>Số tiền trả nợ gốc</th></tr></thead>
         <tbody>
           ${plan.map((p, i) => {
-            // Kỳ đã trả đủ (dueAmount = 0) -> vẫn giữ nguyên kỳ trong danh sách, số tiền
-            // ghi trong kỳ hiện MỜ và GẠCH NGANG, không tô màu cảnh báo. Kỳ còn thiếu tiền
-            // (dueAmount > 0) -> LUÔN hiện đúng dueAmount (số thực còn phải trả), tô màu
-            // theo đúng mức cảnh báo y hệt hạn hợp đồng gốc (NEAR_DUE_DAYS).
+
             const amountToShow = p.dueAmount > 0 ? p.dueAmount : p.amount;
             const urgency = p.dueAmount > 0 ? (p.daysLeft < 0 ? 'qua_han' : p.daysLeft <= S.NEAR_DUE_DAYS ? 'gan_den_han' : null) : null;
             const color = urgency === 'qua_han' ? 'var(--danger)' : urgency === 'gan_den_han' ? 'var(--warning)' : 'var(--text)';
@@ -275,12 +218,6 @@ export function openInstallmentPlanModal(contract) {
   });
 }
 
-/**
- * Nút nhỏ "về đầu trang" (mũi tên lên) nổi ở góc dưới bên phải — chỉ hiện khi
- * đã kéo xuống đủ xa (> 500px), bấm vào cuộn mượt về đầu trang. Nút gắn vào
- * `hostEl` (vùng bộ lọc của trang, bị xóa sạch khi chuyển trang) nên tự biến
- * mất theo trang; listener cuộn tự gỡ khi nút không còn trong màn hình.
- */
 export function mountScrollTopButton(hostEl) {
   if (!hostEl) return;
   hostEl.querySelector('.scroll-top-btn')?.remove();
@@ -300,11 +237,6 @@ export function mountScrollTopButton(hostEl) {
   onScroll();
 }
 
-/**
- * Hai nút nhỏ xếp dọc đặt ngay sau ô "Kỳ báo cáo" (chỉ hiện trên máy tính — CSS .period-step): mũi tên lên = tháng sau
- * (tăng), mũi tên xuống = tháng trước (giảm). Bấm để chuyển nhanh thay vì mở danh sách chọn tháng.
- * Nơi dùng tự gắn click vào `.period-step-btn` (data-step = +1 / -1) và gọi syncPeriodStepper() khi kỳ đổi.
- */
 export function periodStepperHtml({ canPrev, canNext }) {
   return `<span class="period-step" role="group" aria-label="Chuyển nhanh kỳ báo cáo">
     <button type="button" class="period-step-btn" data-step="1" title="Tháng sau" aria-label="Chuyển sang tháng sau" ${canNext ? '' : 'disabled'}>${icon('chevronDown')}</button>
@@ -312,7 +244,6 @@ export function periodStepperHtml({ canPrev, canNext }) {
   </span>`;
 }
 
-/** Bật/tắt hai nút theo vị trí kỳ đang chọn (index) trong danh sách `count` kỳ xếp từ cũ đến mới. */
 export function syncPeriodStepper(root, index, count) {
   const next = root.querySelector('.period-step-btn[data-step="1"]');
   const prev = root.querySelector('.period-step-btn[data-step="-1"]');

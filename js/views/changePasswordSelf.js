@@ -4,7 +4,6 @@ import { pageHeader } from '../components/shell.js';
 import { toast } from '../components/toast.js';
 import { isPushSupported, isSubscribedOnThisDevice, subscribeToPush, unsubscribeFromPush } from '../lib/push.js';
 
-/** Màn tự đổi mật khẩu (tự chọn, dùng bất cứ lúc nào) — áp dụng cho mọi loại User: khách hàng và quản trị viên/nhân viên. */
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Đổi mật khẩu' });
 }
@@ -42,7 +41,7 @@ export function render(contentEl) {
   `;
 
   const pushBtn = contentEl.querySelector('#btn-push-toggle');
-  /** Vẽ lại đúng trạng thái nút theo thiết bị này đã bật/tắt thông báo hay chưa. */
+
   async function refreshPushUi() {
     if (!isPushSupported()) {
       pushBtn.textContent = 'Trình duyệt/thiết bị này không hỗ trợ thông báo đẩy';

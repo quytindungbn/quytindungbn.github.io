@@ -1,53 +1,23 @@
-// Biểu đồ tự vẽ bằng SVG thuần (không dùng thư viện ngoài — tránh thêm 1
-// lượt tải mạng nữa, đúng tinh thần "không phụ thuộc gì thêm" của cả app,
-// xem mục 10.45 docs/supabase-migration.md vừa sửa app mở chậm). Dùng cho
-// dashboard "Tổng quan" (chỉ quản trị viên toàn quyền xem — overview.js).
-//
-// CẢ 2 biểu đồ bên dưới đều dùng viewBox có ĐƠN VỊ THỐNG NHẤT (không trộn
-// px với %) và scale ĐỀU theo tỷ lệ gốc (KHÔNG dùng preserveAspectRatio=
-// "none") — tránh chữ/chấm tròn bị kéo méo ngang/dọc khi khung chứa co giãn
-// (lỗi rất dễ gặp nếu trộn "%" với viewBox hoặc ép co giãn không đều).
-//
-// width:100% trên <svg> co giãn theo ĐÚNG bề ngang khung chứa thật — trên
-// điện thoại khung chứa vốn đã hẹp (~360-430px) nên vừa mắt, nhưng trên máy
-// tính (khung chứa rộng hơn nhiều) sẽ phóng cột to quá khổ nếu không chặn —
-// nên LUÔN kèm max-width (khớp cỡ 1 màn hình điện thoại) ở mọi chỗ dùng
-// width:100%, để trên máy tính chỉ đứng yên ở đúng cỡ đã vừa mắt trên điện
-// thoại, không phóng to thêm theo khung chứa.
 import { formatVND, formatCompact, formatNumber } from '../utils.js';
 
-const VB_W = 400; // "px logic" chiều ngang — chỉ là đơn vị nội bộ của viewBox, KHÔNG phải px thật (SVG tự co giãn đều theo khung chứa thật).
+const VB_W = 400;
 
-/** Quy đổi ra tỷ đồng, CHỈ số (không kèm chữ đơn vị) — dùng khi đơn vị đã ghi sẵn 1 lần ở đầu biểu đồ, ghi lặp lại "tỷ" sau từng số sẽ rối mắt. */
 export function formatTyDong(n) {
   return (Math.round((n || 0) / 1e7) / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',');
 }
 
-/** Số triệu đồng làm tròn đến triệu gần nhất, dùng cho các chuỗi giá trị nhỏ. */
 export function formatTrieuDong(n) {
   return `${formatNumber(Math.round((Number(n) || 0) / 1e6))}tr`;
 }
 
-/**
- * Biểu đồ cột đứng (dư nợ theo TỪNG NHÓM NỢ) — mỗi cột 1 màu riêng (đã truyền
- * sẵn từ nơi gọi, theo đúng "màu trạng thái": xanh (tốt) -> vàng (cần chú ý)
- * -> các sắc đỏ đậm dần (nợ xấu, càng đậm càng nghiêm trọng) — LUÔN có CHỮ
- * (nhãn nhóm + số tiền) đi kèm màu, không chỉ dựa vào màu để phân biệt. Mỗi
- * cột có thể bấm vào (nếu items có `id`) — nơi gọi tự bind click theo
- * `data-id` để mở danh sách hợp đồng đúng nhóm đó. Nhãn dưới mỗi cột dùng
- * `shortLabel` nếu có (gọn hơn `label` — `label` đầy đủ vẫn dùng cho tooltip
- * chạm/hover), cho khoảng cách các cột đều và dễ nhìn hơn trên màn hình nhỏ.
- */
 export function barChartSvg({ items, aspect = 2.1 }) {
   const vbH = Math.round(VB_W / aspect);
-  const chartH = vbH - 34; // chừa chỗ cho nhãn số tiền phía trên mỗi cột
+  const chartH = vbH - 34;
   const max = Math.max(1, ...items.map((it) => it.value));
   const barW = VB_W / items.length;
   const gap = barW * 0.14;
   const barsHtml = items.map((it, i) => {
-    // Chừa TRẦN 15% phía trên cột cao nhất — nếu không, cột giá trị lớn
-    // nhất cao kín hết chartH (chạm y=0) thì nhãn số tiền của NÓ bị đẩy vào
-    // NẰM ĐÈ lên chính cột đó, cùng màu nên chữ biến mất (không đọc được).
+
     const h = Math.max(3, (it.value / max) * chartH * 0.85);
     const x = i * barW + gap / 2;
     const w = barW - gap;
@@ -71,7 +41,6 @@ export function barChartSvg({ items, aspect = 2.1 }) {
     </div>`;
 }
 
-/** Tỷ trọng theo dư nợ hoặc số món vay của đúng tháng đang xem. */
 export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'balance', countComplete = true, tab = 'purpose' }) {
   if (!(total > 0)) {
     return '<p class="text-sm text-muted" style="padding:12px 0">Chưa có dư nợ để tính tỷ trọng.</p>';
@@ -88,8 +57,7 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     const p = base > 0 ? value / base * 100 : 0;
     return p > 0 && p < 0.05 ? '<0,1%' : `${p.toFixed(1).replace('.', ',')}%`;
   };
-  // Chỉ đưa nhãn ra ngoài khi độ dài cung không đủ cho chính chuỗi phần trăm.
-  // Chữ số, dấu phẩy và dấu % có bề rộng khác nhau ở cỡ chữ 10px hiện tại.
+
   const labelWidth = (label) => [...label].reduce((width, char) =>
     width + (char === ',' ? 3 : char === '%' ? 8 : char === '<' ? 6 : 5.6), 0);
   const outsideLabels = [];
@@ -168,60 +136,22 @@ export function compositionDonutHtml({ items, total, totalCount = 0, metric = 'b
     </div>`;
 }
 
-/**
- * Biểu đồ cột theo tháng — MỖI tháng 1 cột Dư nợ, bắt đầu từ mép TRÁI của ô
- * tháng đó (không căn giữa), LỒNG sẵn 1 đoạn màu cam Ở ĐÁY ĐÈ LÊN (không phải
- * đỉnh), thể hiện đúng phần Nợ xấu trong đó (số tiền + tỷ lệ % ghi NGAY BÊN
- * TRONG cột, ở đầu đoạn cam) — đoạn cam co theo ĐÚNG tỷ lệ % so với chính cột
- * Dư nợ của tháng đó, NHƯNG được "khuếch đại" thêm hệ số BOOST + chiều cao
- * tối thiểu để luôn nhìn rõ trên màn hình nhỏ — tỷ lệ % CHÍNH XÁC vẫn ghi rõ
- * bằng số ngay trong nhãn nên không gây hiểu nhầm dù đoạn được phóng to hơn
- * thực tế. KHÔNG còn cột Lãi phải thu riêng ở đây nữa (đã có đủ ở bảng "Tổng
- * hợp tăng giảm"/modal "Xem chi tiết" bên dưới, kèm % — trùng lặp lên biểu đồ
- * này chỉ làm rối, chật cột).
- * Đơn vị TIỀN của cả biểu đồ là TỶ ĐỒNG, ghi 1 lần duy nhất ở đầu (không lặp
- * lại chữ "tỷ" sau từng số). Quá 7 tháng thì bề rộng mỗi ô tháng GIỮ NGUYÊN
- * (không co thêm) và cả khối biểu đồ cho VUỐT/CUỘN NGANG để xem tiếp tháng cũ
- * hơn, tránh cột co lại nhỏ xíu khó xem khi lịch sử dài dần theo thời gian.
- * Khối cuộn gắn class "trend-scroll" — nơi gọi (overview.js) tự cuộn SÁT MÉP
- * PHẢI ngay sau khi vẽ, để LUÔN thấy đúng tháng MỚI NHẤT trước tiên (không
- * phải kéo từ tháng đầu tiên bên trái mới tới được tháng mới nhất).
- * Số liệu tự động lấy từ dữ liệu hợp đồng/số đã chốt hiện có, luôn cập nhật
- * lại mỗi lần trang vẽ lại. Tháng hiện tại (chưa chốt chính thức, tự tính
- * theo ngày) tô nhạt hơn + nét đứt để phân biệt trực quan với các tháng đã
- * chốt.
- *
- * Mỗi cột gắn `data-month` (giá trị year_month) — nơi gọi tự bind click để
- * chọn xem tháng đó (cập nhật "Dư nợ theo nhóm nợ"/"Tổng hợp tăng giảm" mà
- * KHÔNG thu gọn biểu đồ này lại, vẫn luôn vẽ TOÀN BỘ lịch sử). Truyền
- * `selectedYm` (year_month đang chọn) để tô khung mờ + đậm nhãn tháng đó,
- * phân biệt với việc tô đậm nhãn THÁNG SỐNG (isLive) — 1 tháng có thể vừa là
- * tháng sống vừa là tháng đang chọn cùng lúc.
- */
 export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var(--color-primary)', badDebtColor = 'var(--warning)', selectedYm = null }) {
   if (!months.length) {
     return `<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu.</div>`;
   }
   const vbH = Math.round(VB_W / aspect);
-  const padTop = 16; // nhãn số tiền dư nợ phía trên cột (nhãn nợ xấu nằm LỒNG trong cột, không cần chừa riêng)
-  const padBottom = 20; // nhãn tháng
+  const padTop = 16;
+  const padBottom = 20;
   const chartH = vbH - padTop - padBottom;
   const baseY = padTop + chartH;
 
   const n = months.length;
-  // Mỗi ô tháng cần tối thiểu ~54 đơn vị ngang mới đủ chỗ vẽ rõ cặp cột +
-  // nhãn — dồn QUÁ NHIỀU tháng vào bề ngang cố định (VB_W) sẽ ép cột co lại
-  // nhỏ xíu, khó xem. Quá 7 tháng (ước lượng vừa đúng 1 màn hình điện thoại ở
-  // bề rộng chuẩn) thì GIỮ NGUYÊN bề rộng mỗi ô — không co thêm nữa — và cho
-  // CUỘN NGANG để xem tiếp các tháng cũ hơn (bọc trong div overflow-x:auto ở
-  // nơi gọi), thay vì ép co hết vào 1 màn hình.
+
   const SLOT_PX = 54;
   const scroll = n > 7;
   const chartW = scroll ? n * SLOT_PX : VB_W;
-  // Còn ÍT tháng (1, 2...) thì KHÔNG chia đều hết bề ngang cho từng đó ô (ra
-  // cột khổng lồ) — luôn chia CHO ÍT NHẤT 8 ô như thể đã có 8 tháng, cột giữ
-  // nguyên nhỏ gọn, phần dư bên phải để trống — tới khi đủ 8 tháng trở lên
-  // mới thật sự chia đều hết bề ngang.
+
   const slotW = scroll ? SLOT_PX : chartW / Math.max(n, 8);
   const slotGap = slotW * 0.12;
   const innerW = slotW - slotGap;
@@ -238,19 +168,12 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
 
     const balH = Math.max(3, (m.balance / balMax) * chartH);
     const balY = baseY - balH;
-    // Nợ xấu co theo ĐÚNG tỷ lệ % của CHÍNH cột dư nợ tháng đó (KHÔNG dùng
-    // thang riêng theo lịch sử) — nhưng khuếch đại thêm hệ số BOOST + chiều
-    // cao tối thiểu để luôn nhìn rõ trên điện thoại (tỷ lệ % thật thường rất
-    // nhỏ, co đúng tỷ lệ sẽ gần như biến mất) — tỷ lệ % chính xác vẫn ghi rõ
-    // bằng số ngay trong nhãn nên không gây hiểu nhầm.
+
     const BOOST = 7.5;
     const badRatio = m.balance > 0 ? Math.min(1, m.badDebt / m.balance) : 0;
     const badH = badRatio > 0 ? Math.min(balH * 0.7, Math.max(24, badRatio * balH * BOOST)) : 0;
-    const badY = baseY - badH; // ĐÁY cột (không phải đỉnh) — đè lên phần dưới của cột dư nợ.
-    // Tháng "sống" (chưa chốt) vẫn tô ĐẬM gần như màu thật (0.85, không phải
-    // nửa trong suốt) — chỉ dựa vào NÉT ĐỨT để phân biệt, không làm nhạt màu
-    // đến mức trông như bị phủ 1 lớp trắng mờ (đặc biệt rõ với cột Dư nợ khi
-    // đây luôn là cột duy nhất có dữ liệu lúc quỹ mới bắt đầu dùng tính năng).
+    const badY = baseY - badH;
+
     const liveOpacity = isLive ? 0.85 : 1;
 
     return `
@@ -281,7 +204,6 @@ export function monthlyComboChartSvg({ months, aspect = 1.5, balanceColor = 'var
     ${scroll ? `<div class="trend-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch">${svgHtml}</div>` : svgHtml}`;
 }
 
-/** Hai trục riêng giữ đường nợ xấu đọc được khi dư nợ lớn hơn nhiều lần. */
 export const BALANCE_TREND_COLOR = '#087d6a';
 export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceColor = BALANCE_TREND_COLOR, badDebtColor = '#c04343' }) {
   if (!months.length) return '<div class="text-sm text-muted" style="text-align:center;padding:24px 0">Chưa có số liệu.</div>';
@@ -289,7 +211,7 @@ export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceCol
     const viewport = mobile ? 330 : 1080;
     const visible = mobile ? 6 : 12;
     const left = mobile ? 25 : 45;
-    // Máy tính: ít tháng thì dàn đều ra hết bề ngang thay vì dồn về bên trái (từ 12 tháng trở lên thì cuộn ngang như cũ).
+
     const slots = mobile ? visible : Math.min(visible, Math.max(months.length, 2));
     const step = (viewport - left - 32) / (slots - 1);
     const width = Math.max(viewport, left + step * (months.length - 1) + 32);
@@ -297,10 +219,10 @@ export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceCol
     const x = (i) => left + i * step;
     const balances = months.map((m) => Math.max(0, Number(m.balance) || 0));
     const badDebts = months.map((m) => Math.max(0, Number(m.badDebt) || 0));
-    // Mỗi trục riêng nằm trong một vùng dọc để hai đường không che nhau.
+
     const balanceBottom = mobile ? 99 : 113;
     const badTop = mobile ? 125 : 147;
-    // Dư nợ có trục rút gọn để đọc được biến động nhỏ.
+
     const scaledY = (values, laneTop, laneBottom) => {
       const min = Math.min(...values), max = Math.max(...values);
       const padding = Math.max((max - min) * .25, max * .02, 1);
@@ -308,8 +230,7 @@ export function monthlyTrendLineChartSvg({ months, selectedYm = null, balanceCol
       return (value) => laneBottom - (value - floor) / span * (laneBottom - laneTop);
     };
     const balanceY = scaledY(balances, top, balanceBottom);
-    // Nợ xấu luôn lấy 0 làm mốc; tự co theo đỉnh dữ liệu và chừa chỗ cho nhãn.
-    // Nhờ vậy 500 → 429 triệu thấp hơn rõ rệt so với 500 → 100 hoặc 0 triệu.
+
     const badCeiling = Math.max(1, ...badDebts) * 1.12;
     const badY = (value) => bottom - value / badCeiling * (bottom - badTop);
     const grid = [balanceBottom, (balanceBottom + badTop) / 2, bottom]

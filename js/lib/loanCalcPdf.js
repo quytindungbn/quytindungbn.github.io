@@ -1,19 +1,14 @@
-// File PDF "Bảng tính lãi vay" để gửi cho người khác (nút Chia sẻ). Trình duyệt không có sẵn công cụ tạo PDF, nên mỗi trang A4 ngang được vẽ
-// bằng canvas — cùng bố cục, màu và kiểu chữ của app (Inter, Source Serif 4) như bản in ở js/lib/loanCalcExport.js — rồi ghép các trang ảnh
-// vào một tệp PDF tối giản. Phần thuần (chia trang, ghi PDF) kiểm thử bằng node: tests/loanCalcPdf.test.mjs.
 import { printModel, loanCalcFileName, SANS_STACK, SERIF_STACK } from './loanCalcExport.js';
 import { downloadBlob } from './xlsxWrite.js';
 
-// ---- Kích thước (mm) — khớp với bản in HTML ----
 const DPI = 180;
-const S = DPI / 25.4;               // điểm ảnh trên mm
-const PT = 25.4 / 72;               // mm trên 1 pt
+const S = DPI / 25.4;
+const PT = 25.4 / 72;
 export const PAGE = { w: 297, h: 210 };
 const X0 = 14, X1 = 283, TOP = 12, BOTTOM = 196;
 export const COLS_MM = [22, 30, 22, 40, 38, 38, 40, 39];
 export const GEO = { headH: 8, rowH: 6, totalH: 7.5, noteGap: 3.4, noteH: 4, firstTableTop: 97, paramH: 6.6 };
 
-/** Chia các dòng bảng vào các trang: trang 1 có phần đầu (điều kiện + ô tổng), dòng Cộng và ghi chú nằm cuối trang cuối. */
 export function planPages(rowCount) {
   const cap = (top) => Math.max(1, Math.floor((BOTTOM - (top + GEO.headH)) / GEO.rowH));
   const capFirst = cap(GEO.firstTableTop), capNext = cap(TOP);
@@ -21,23 +16,21 @@ export function planPages(rowCount) {
   let left = rowCount;
   counts.push(Math.min(left, capFirst)); left -= counts[0];
   while (left > 0) { const n = Math.min(left, capNext); counts.push(n); left -= n; }
-  // Cuối bảng phải còn chỗ cho dòng Cộng + ghi chú; thiếu thì chuyển vài dòng cuối sang một trang mới để dòng Cộng không đứng một mình.
+
   const tail = GEO.totalH + GEO.noteGap + GEO.noteH;
   const lastTop = counts.length === 1 ? GEO.firstTableTop : TOP;
   const used = lastTop + GEO.headH + counts[counts.length - 1] * GEO.rowH;
   if (used + tail > BOTTOM) {
     const last = counts.length - 1;
-    const move = Math.min(3, counts[last] - 1); // luôn giữ lại ít nhất 1 dòng ở trang trước
+    const move = Math.min(3, counts[last] - 1);
     counts[last] -= move; counts.push(move);
   }
   let start = 0;
   return counts.map((n, i) => { const p = { index: i, from: start, to: start + n, first: i === 0, last: i === counts.length - 1 }; start += n; return p; });
 }
 
-// ---- Ghi PDF tối giản: mỗi trang là một ảnh JPEG phủ kín khổ A4 ngang ----
 const hexUtf16 = (s) => `<FEFF${[...String(s)].map((c) => c.codePointAt(0).toString(16).padStart(4, '0')).join('')}>`;
 
-/** pages = [{ jpeg: Uint8Array, width, height }] (điểm ảnh). Trả về Uint8Array của tệp PDF. */
 export function buildPdf(pages, { title = '' } = {}) {
   const enc = new TextEncoder();
   const chunks = [], offsets = [];
@@ -67,12 +60,10 @@ export function buildPdf(pages, { title = '' } = {}) {
   return out;
 }
 
-// ---- Vẽ từng trang bằng canvas ----
 const C = { ink: '#12231e', em: '#0c4a3f', gold: '#b08d3c', goldDark: '#8a6a22', muted: '#6a7a73', cream: '#f7f1df', hi: '#e9f3ee', zebra: '#f8faf8', rowLine: '#a3b8ae', paramLine: '#c9d6cf', secLine: '#c9d6cf', total: '#f1e7c6', white: '#ffffff' };
 const px = (mm) => mm * S;
 const fontStr = (weight, sizePt, family, italic = false) => `${italic ? 'italic ' : ''}${weight} ${(sizePt * PT * S).toFixed(2)}px ${family}`;
 
-// Độ rộng chữ số rộng nhất của từng kiểu chữ — đo một lần rồi nhớ lại (mỗi dòng bảng có hàng chục lần cần tới).
 const digitCache = new Map();
 const digitWidth = (ctx) => {
   let w = digitCache.get(ctx.font);
@@ -80,7 +71,6 @@ const digitWidth = (ctx) => {
   return w;
 };
 
-/** Độ rộng chữ; tracking = khoảng cách thêm giữa các chữ (mm), tnum = số rộng đều nhau để cột số thẳng hàng. */
 function measure(ctx, text, o) {
   if (!o.track && !o.tnum) return ctx.measureText(text).width / S;
   let w = 0;
@@ -88,7 +78,7 @@ function measure(ctx, text, o) {
   for (const ch of text) w += (o.tnum && ch >= '0' && ch <= '9' ? digit : ctx.measureText(ch).width) / S + (o.track || 0);
   return w - (o.track || 0);
 }
-/** Vẽ chữ tại (x, y) mm, y là đường chân chữ. align: left | center | right. */
+
 function text(ctx, str, x, y, { weight = 500, size = 9.5, family = SANS_STACK, color = C.ink, align = 'left', track = 0, tnum = false, italic = false, maxW = 0 } = {}) {
   let sz = size;
   ctx.font = fontStr(weight, sz, family, italic);
@@ -103,7 +93,7 @@ function text(ctx, str, x, y, { weight = 500, size = 9.5, family = SANS_STACK, c
   const digit = o.tnum ? digitWidth(ctx) : 0;
   for (const ch of str) {
     const cw = o.tnum && ch >= '0' && ch <= '9' ? digit : ctx.measureText(ch).width;
-    // Số rộng đều: căn giữa từng chữ số trong ô cố định để nhìn đều như tabular-nums.
+
     const dx = o.tnum && ch >= '0' && ch <= '9' ? (digit - ctx.measureText(ch).width) / 2 : 0;
     ctx.fillText(ch, px(cx) + dx, px(y));
     cx += cw / S + o.track;
@@ -140,18 +130,18 @@ function drawFirstPageHead(ctx, m) {
   hline(ctx, X0, X1, 19.265, 0.45, C.gold);
   text(ctx, m.title, X0, 31.35, { weight: 700, size: 26, family: SERIF_STACK, color: C.em });
   text(ctx, m.subtitle, X0, 38.24, { weight: 500, size: 9.5, color: C.muted });
-  // Điều kiện vay (trái)
+
   const top = 43.37;
   text(ctx, 'ĐIỀU KIỆN VAY', X0, top + 2.81, { weight: 700, size: 7.5, color: C.goldDark, track: 0.12 });
   hline(ctx, X0, X0 + 142, top + 5.4 + 0.1, 0.2, C.secLine);
-  const pitch = m.params.length > 5 ? GEO.paramH : 7.64; // 6 dòng thì sát hơn để vẫn vừa cạnh bốn ô tổng
+  const pitch = m.params.length > 5 ? GEO.paramH : 7.64;
   m.params.forEach(([label, value], i) => {
     const t = top + 5.5 + 0.2 + i * pitch;
     text(ctx, label, X0, t + pitch / 2 + 1.15, { weight: 500, size: 9, color: C.goldDark });
     text(ctx, value, X0 + 44, t + pitch / 2 + 1.15, { weight: 600, size: 9.5, color: C.ink, maxW: 142 - 44 });
     hline(ctx, X0, X0 + 142, t + pitch - 0.1, 0.2, C.paramLine);
   });
-  // Bốn ô tổng (phải)
+
   const tw = 57.5, tx0 = X0 + 142 + 8;
   m.tiles.forEach((t, i) => {
     const x = tx0 + (i % 2) * (tw + 4), y = top + Math.floor(i / 2) * 26;
@@ -163,7 +153,6 @@ function drawFirstPageHead(ctx, m) {
   });
 }
 
-/** Vẽ trang `plan.index` của bảng vào canvas (đã đặt kích thước theo DPI). */
 export function drawPage(ctx, m, plan, pageCount) {
   ctx.fillStyle = C.white;
   ctx.fillRect(0, 0, px(PAGE.w), px(PAGE.h));
@@ -191,13 +180,11 @@ async function canvasToJpeg(canvas) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-/** Chờ kiểu chữ của app sẵn sàng trước khi vẽ (canvas không tự chờ như trang HTML). */
 async function ensureFonts() {
   if (!document.fonts || !document.fonts.load) return;
   await Promise.all(['500 20px Inter', '600 20px Inter', '700 20px Inter', 'italic 500 20px Inter', '700 20px "Source Serif 4"'].map((f) => document.fonts.load(f, 'Aàâăđêôơư 0123456789').catch(() => null)));
 }
 
-/** Tạo file PDF (Uint8Array) từ dữ liệu giống bản in. */
 export async function buildLoanCalcPdf(data) {
   await ensureFonts();
   const m = printModel(data);
@@ -215,11 +202,6 @@ export async function buildLoanCalcPdf(data) {
 
 export const PDF_MIME = 'application/pdf';
 
-/**
- * Gửi tệp qua bảng chia sẻ của điện thoại/máy tính (Zalo, Messenger, thư...). Trả về:
- * 'shared' đã gửi · 'cancelled' người dùng đóng bảng chia sẻ · 'download' máy không hỗ trợ chia sẻ tệp nên đã tải về ·
- * 'need-tap' trình duyệt đòi bấm lại (quá lâu sau lần bấm nút) — tệp đã sẵn sàng, bấm Chia sẻ lần nữa là gửi ngay.
- */
 export async function shareOrDownload(bytes, fileName, title) {
   const file = new File([bytes], fileName, { type: PDF_MIME });
   if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { buildLoanSummaryText, loanStatusText, customerDisplay, textWidth, labelWidth, alignRows } from '../js/lib/loanSummary.js';
 import { boldDigits } from '../js/utils.js';
 
-// Bỏ phần đệm khoảng trắng canh cột để kiểm tra nội dung chữ.
 const flat = (t) => t.replace(/[ \u00a0\u2000-\u200a]+/g, ' ');
 
 const contract = { code: '457/26', principal: 320e6, balance: 200e6, interestRate: 10.95, disbursedDate: '2025-12-25', dueDate: '2026-12-20', interestPaidUntil: '2026-05-11' };

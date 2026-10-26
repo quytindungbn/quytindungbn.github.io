@@ -1,7 +1,3 @@
-// Đọc file Excel "Số điện thoại người cùng vay" (docs mục 10.85): mỗi dòng có Số HĐTD và SĐT người cùng vay của hợp đồng đó.
-// Hàm thuần — màn hình Nhập từ Excel dùng để lấy danh sách { row, code, phone } gửi lên máy chủ (máy chủ tự khớp hợp đồng + tên người cùng vay trên hợp đồng).
-
-/** Chuẩn hóa tiêu đề cột để so khớp: bỏ dấu, chữ thường, ký tự lạ → khoảng trắng. */
 export function normHeader(s) {
   return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -9,11 +5,6 @@ export function normHeader(s) {
 const isCodeHeader = (h) => /(^| )hdtd( |$)/.test(h) || /^so (hd|hop dong|khe uoc)( |$)/.test(h) || h === 'ma hop dong';
 const isPhoneHeader = (h) => /(sdt|so dien thoai|dien thoai|so di dong)/.test(h) && /(cung vay|thua ke)/.test(h);
 
-/**
- * rows: các dòng của trang tính đầu tiên (mảng các mảng chuỗi). Tìm dòng tiêu đề (trong 15 dòng đầu) có cả cột "Số HĐTD" và cột "SĐT người cùng vay"
- * (hoặc "SĐT người thừa kế"), rồi lấy các dòng bên dưới có Số HĐTD. Trả { ok, items: [{ row, code, phone }], total } hoặc { ok: false, reason }.
- * row = số dòng trong file (bắt đầu từ 1). Ô SĐT để trống vẫn đưa lên (máy chủ đếm là "không có SĐT").
- */
 export function parseCoPhoneRows(rows) {
   const list = Array.isArray(rows) ? rows : [];
   for (let i = 0; i < Math.min(list.length, 15); i++) {
@@ -32,7 +23,6 @@ export function parseCoPhoneRows(rows) {
   return { ok: false, reason: 'Không thấy cột "Số HĐTD" và cột "SĐT người cùng vay" ở đầu file. Dùng đúng file danh sách đã gửi (dòng đầu là tiêu đề cột).' };
 }
 
-/** Nhãn tiếng Việt cho từng trạng thái máy chủ trả về cho mỗi dòng (import-co-phones). */
 export const CO_PHONE_STATUS = {
   added: { label: 'Sẽ thêm số mới', tone: 'ok' },
   replaced: { label: 'Sẽ ghi đè số cũ', tone: 'ok' },

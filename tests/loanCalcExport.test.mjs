@@ -14,7 +14,7 @@ const payRes = scheduleByPayment({ principal: 200e6, ratePercent: 10.34, payment
 
 test('điều kiện đã nhập: tab thời hạn và tab trả hàng tháng ghi đúng các dòng', () => {
   const a = Object.fromEntries(inputLines(term, termRes));
-  assert.equal(a['Thời hạn vay'], undefined); // không ghi số tháng: ngày đáo hạn có thể sửa tay nên số tháng thật có thể khác
+  assert.equal(a['Thời hạn vay'], undefined);
   assert.equal(a['Ngày đáo hạn'], '22/10/2027');
   assert.match(a['Cách trả'], /Gốc trả đều/);
   assert.match(a['Lãi suất'], /10,34%\/năm/);
@@ -112,7 +112,7 @@ test('file Excel: A4 ngang, vừa chiều ngang, có bảng đủ kỳ, ngày th
   assert.ok(condRows.length >= 3 && condRows.every((m) => (m[2].match(/<c r="[A-H]\d+" s="\d+"/g) || []).length === 8), 'mọi dòng điều kiện vay đủ 8 ô có kẻ, kể cả ô trống bên phải');
   const term2 = unzipEntries(buildLoanCalcXlsx({ org, inputs: term, result: termRes, printedOn: start }))['xl/worksheets/sheet1.xml'];
   assert.ok(term2.includes('Gốc trả đều mỗi tháng') && term2.includes('Ngày đáo hạn') && !term2.includes('Thời hạn vay'));
-  // Cột trái: Số tiền vay, Ngày vay, Ngày đáo hạn (hai ngày ở hai hàng liền nhau); cột phải: Lãi suất, rồi Cách trả (hoặc Số tiền trả mỗi tháng, Số tiền này là)
+
   for (const [x, right] of [[term2, ['Lãi suất', 'Cách trả', null]], [files['xl/worksheets/sheet1.xml'], ['Lãi suất', 'Số tiền trả mỗi tháng', 'Số tiền này là']]]) {
     const rows = [...x.matchAll(/<row r="(\d+)"[^>]*>(.*?)<\/row>/g)].map((m) => [Number(m[1]), m[2]]);
     const rowOf = (label) => rows.find((r) => r[1].includes(label));
@@ -140,7 +140,7 @@ test('cả hai cách tính đều có dòng Ngày đáo hạn (ngày trả kỳ 
     assert.deepEqual(lines.slice(0, 4).map((l) => l[0]), ['Số tiền vay', 'Lãi suất', 'Ngày vay', 'Ngày đáo hạn']);
     assert.equal(lines[3][1], formatDate(res.rows[res.rows.length - 1].to));
   }
-  assert.equal(Object.fromEntries(inputLines(term, termRes))['Ngày đáo hạn'], '22/10/2027'); // vay 22/10/2026 + 12 tháng
+  assert.equal(Object.fromEntries(inputLines(term, termRes))['Ngày đáo hạn'], '22/10/2027');
   assert.equal(Object.fromEntries(inputLines(pay, payRes))['Số tiền này là'], 'Gồm cả gốc và lãi');
 });
 

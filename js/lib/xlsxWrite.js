@@ -1,6 +1,3 @@
-// Ghi file Excel (.xlsx) tối thiểu, không cần thư viện ngoài: gói ZIP kiểu "lưu không nén" + vài tệp XML.
-// Chỉ đủ cho bảng đơn giản: một trang tính, chữ/số/ngày, kiểu ô có tên (xem STYLE_DEFS), gộp ô, in ngang. Kiểm thử: tests/xlsxWrite.test.mjs.
-
 const enc = new TextEncoder();
 
 const CRC_TABLE = (() => {
@@ -19,7 +16,6 @@ export function crc32(bytes) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-/** Gói các tệp vào một ZIP (lưu không nén). files = [{ name, data: string | Uint8Array }]. */
 export function zipStore(files) {
   const parts = [];
   const central = [];
@@ -30,7 +26,7 @@ export function zipStore(files) {
     const name = enc.encode(f.name);
     const data = typeof f.data === 'string' ? enc.encode(f.data) : f.data;
     const crc = crc32(data);
-    // Bit 11 = tên tệp dạng UTF-8; giờ/ngày DOS để 0 (1980-01-00) vì không ai xem.
+
     const local = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)]);
     parts.push(local, name, data);
     central.push(new Uint8Array([0x50, 0x4b, 0x01, 0x02, ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), name);
@@ -47,21 +43,16 @@ export function zipStore(files) {
 
 const xml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
 
-/** Ngày → số ngày kiểu Excel (1900), theo ngày/tháng/năm địa phương nên không lệch múi giờ. */
 export function excelSerial(date) {
   return Math.round((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(1899, 11, 30)) / 86400000);
 }
 
-// ------------------------------------------------------------
-// Kiểu ô có tên. Mỗi kiểu mô tả: font, fill (màu nền), border ({ top|bottom: [kiểu, màu] }), align, numFmt (số dựng sẵn hoặc chuỗi mã).
-// Thêm hậu tố ":alt" vào tên để cùng kiểu nhưng nền xen kẽ (dòng chẵn của bảng). styles.xml chỉ ghi các kiểu thật sự dùng, kiểu 0 luôn là "normal".
-// ------------------------------------------------------------
 const COLOR = { em: 'FF0C4A3F', gold: 'FFB08D3C', goldDark: 'FF8A6A22', ink: 'FF12231E', muted: 'FF6A7A73', cream: 'FFF7F1DF', cream2: 'FFFBF8EF', alt: 'FFF5F8F6', line: 'FFDBE6E0', white: 'FFFFFFFF' };
 const SANS = 'Calibri', SERIF = 'Cambria';
 const f = (extra) => ({ name: SANS, sz: 11, color: COLOR.ink, ...extra });
 const hair = ['thin', COLOR.line];
-const softLine = ['thin', 'FFC9D6CF']; // kẻ nhẹ dưới từng dòng "Điều kiện vay"
-const rowLine = ['thin', 'FF98AEA3']; // kẻ từng dòng của bảng — đậm hơn để dễ rà theo hàng
+const softLine = ['thin', 'FFC9D6CF'];
+const rowLine = ['thin', 'FF98AEA3'];
 const STYLE_DEFS = {
   normal: { font: { name: SANS, sz: 11 } },
   bold: { font: f({ b: 1 }) },
@@ -142,14 +133,6 @@ function colName(index) {
   return s;
 }
 
-/**
- * Dựng tệp .xlsx (Uint8Array).
- * @param {object} opt
- *   rows: mỗi ô là chữ/số, hoặc { v, style } (style là tên trong STYLE_DEFS, thêm ":alt" cho nền xen kẽ), hoặc { d: Date, style } cho ngày; null/'' = ô trống.
- *   widths: độ rộng cột (ký tự). rowHeights: { số dòng (từ 1): chiều cao điểm }. merges: ['A1:E1', ...].
- *   landscape / fitWidth: in khổ A4 ngang, vừa đúng chiều ngang một trang. printTitleRows: [từ, đến] dòng lặp lại ở đầu mỗi trang in.
- *   footer: { left, center, right } chữ chân trang (center mặc định "Trang x / y"). centerH: căn giữa trang khi in.
- */
 export function buildXlsx({ sheetName = 'Sheet1', widths = [], rows, rowHeights = {}, merges = [], landscape = false, fitWidth = false, printTitleRows = null, footer = null, centerH = false }) {
   const styles = makeStyleRegistry();
   const sheetRows = rows.map((row, r) => {
@@ -168,7 +151,7 @@ export function buildXlsx({ sheetName = 'Sheet1', widths = [], rows, rowHeights 
   }).join('');
   const cols = widths.length ? `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
   const mergeXml = merges.length ? `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : '';
-  // Chữ chân trang: ký tự & là mã đặc biệt của Excel nên phải viết &&.
+
   const fx = (t) => xml(String(t ?? '').replace(/&/g, '&&'));
   const footerXml = footer ? `<headerFooter><oddFooter>&amp;L&amp;8${fx(footer.left)}&amp;C&amp;8${footer.center === undefined ? 'Trang &amp;P / &amp;N' : fx(footer.center)}&amp;R&amp;8${fx(footer.right)}</oddFooter></headerFooter>` : '';
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -189,7 +172,6 @@ export function buildXlsx({ sheetName = 'Sheet1', widths = [], rows, rowHeights 
   ]);
 }
 
-/** Tải một tệp về máy (trình duyệt). */
 export function downloadBlob(bytes, fileName, mime) {
   const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
   const a = document.createElement('a');

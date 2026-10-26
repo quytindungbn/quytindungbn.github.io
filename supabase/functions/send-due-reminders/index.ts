@@ -1,87 +1,22 @@
-// Edge Function CHẠY ĐỊNH KỲ MỖI NGÀY (đặt lịch qua Supabase Cron — xem
-// docs/supabase-migration.md mục "Thông báo đẩy") — quét toàn bộ hợp đồng
-// còn dư nợ, gửi thông báo đẩy (Web Push) cho ĐÚNG khách hàng đã bật thông
-// báo trên thiết bị của họ (bảng push_subscriptions). Lịch nhắc:
-//   1. Lãi (nợ trong hạn): đúng 2 LẦN mỗi tháng — lần 1 vào ĐÚNG NGÀY (trong
-//      tháng) của "Đã trả lãi đến ngày", THÁNG SAU (VD: trả lãi đến ngày
-//      13/08 thì 13/09 nhắc lần 1); lần 2 đúng 2 NGÀY sau đó (15/09), rồi
-//      NGƯNG hẳn cho tới đợt tháng sau nữa (13/10 nhắc lần 1, 15/10 nhắc lần
-//      2) — cứ thế lặp lại mỗi tháng, KHÔNG phải nhắc liên tục nhiều ngày
-//      liền, cho tới khi khách đóng lãi (interest_paid_until đổi ngày mới
-//      thì tự tính lại chu kỳ từ ngày mới, đợt nhắc dở dang trước đó tự dừng
-//      luôn vì mốc đã đổi). Trường hợp mới giải ngân — hệ thống tự set
-//      interest_paid_until = disbursed_date + 1 ngày (quy ước tính lãi, xem
-//      interestDaysAccrued() trong js/state.js) — thì lấy NGÀY GIẢI NGÂN làm
-//      mốc (không lấy interest_paid_until, vì lúc đó nó bị lệch 1 ngày do quy
-//      ước tính, không phải ngày khách thật sự đã đóng lãi).
-//   2. Gần đến hạn/quá hạn: bắt đầu từ ĐÚNG 10 ngày trước ngày đến hạn, nhắc
-//      lại mỗi 3 NGÀY 1 lần (10, 7, 4, 1 ngày trước hạn, rồi tiếp tục mỗi 3
-//      ngày sau khi quá hạn) cho tới khi tất toán — KHÔNG dừng lại. Trước
-//      ngày đến hạn: nhắc số tiền GỐC sắp đến hạn + hạn chót thanh toán. Từ
-//      đúng ngày đến hạn trở đi: nhắc cả GỐC lẫn LÃI, lời lẽ mạnh hơn (khách
-//      đã trễ hạn thật).
-// Chống gửi trùng bằng bảng notification_log (ghi lại lần gửi gần nhất theo
-// từng hợp đồng + loại nhắc).
-//
-// Riêng Zalo OA (ZBS Template Message, xem phần dưới): KHÔNG gửi tràn lan
-// như thông báo đẩy — vì Zalo tốn phí thật + không có cách xác minh trước
-// SĐT có đúng chủ hay không. Function này CHỈ tự động gửi 2 mục Tầng 2 (phải
-// CHỌN RIÊNG từng hợp đồng vào bảng zalo_auto_send_list, loại trừ nhau — 1
-// hợp đồng chỉ ở 1 trong 2 mục):
-//   - "Báo lãi tự động hàng tháng": đúng lịch nhắc lãi hàng tháng (mục #1
-//     trên), gửi ĐÚNG 1 lần/tháng.
-//   - "Gửi theo ngày cụ thể": đúng 1 lần/tháng vào ngày admin tự chọn, CHỈ
-//     gửi nếu đã tính lãi > 20 ngày kể từ lần đóng gần nhất (mới đóng gần
-//     đây thì bỏ qua, dồn qua tháng sau).
-// CẢ 2 mục trên TỰ CHUYỂN sang mẫu "Đến hạn/Quá hạn" thay vì tiếp tục báo
-// lãi ngay khi hợp đồng đã GẦN/ĐÃ đến hạn (đúng NEAR_DUE_DAYS_ZALO = 15
-// ngày ở function này — KHỚP ĐÚNG ngưỡng 15 ngày của nút gửi tay ở
-// create-account, theo yêu cầu đổi cho đồng nhất, trước đây từng cố tình để
-// 10 ngày riêng) — không còn báo lãi suông lúc sắp phải trả cả gốc lẫn lãi
-// nữa. Riêng việc gửi tay VẪN
-// không đổi: khách phải có sẵn trong Tầng 1 "Danh sách OA", giới hạn 5
-// ngày/lần cho mỗi hợp đồng.
-//
-// KHÔNG dùng chung Edge Function với create-account (function đó phục vụ
-// request TRỰC TIẾP từ trình duyệt qua anon key; function này CHỈ được gọi
-// bởi Supabase Cron/pg_cron nội bộ, kèm secret riêng CRON_SECRET để không ai
-// gọi tràn lan từ bên ngoài gửi thông báo giả). Admin tự gửi thông báo TAY
-// cho 1 khách bất kỳ thì dùng type "send-manual-notification" ở
-// create-account (xem file đó) — không đi qua function này.
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-// @ts-ignore — thư viện Node "web-push" chạy được trên Deno qua npm: specifier (Supabase Edge Runtime hỗ trợ sẵn).
+// @ts-ignore
 import webpush from 'npm:web-push@3.6.7';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')!;
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')!;
-// "Chủ sở hữu" khóa VAPID theo chuẩn Web Push — chỉ cần 1 email/URL liên hệ
-// thật, các dịch vụ push (Google/Mozilla...) dùng để liên hệ nếu key bị lỗi,
-// KHÔNG hiện ra cho người dùng cuối thấy.
+
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
-const CRON_SECRET = Deno.env.get('CRON_SECRET'); // tùy chọn nhưng khuyến nghị đặt — xem docs
-// Zalo OA (ZBS Template Message) — gửi tin qua số điện thoại khi hợp đồng
-// ĐẾN HẠN/QUÁ HẠN, song song với thông báo đẩy. App ID + Secret Key là bí
-// mật KHÔNG đổi, đặt cố định qua Secrets (xem docs mục 10). Refresh Token thì
-// NGƯỢC LẠI — Zalo tự đổi (rotate) mỗi lần làm mới, nên phải lưu trong bảng
-// zalo_oa_tokens (chỉ Edge Function này đọc/ghi được, không lộ ra ngoài) chứ
-// không đặt cố định trong Secrets như 2 cái trên được.
+const CRON_SECRET = Deno.env.get('CRON_SECRET');
+
 const ZALO_APP_ID = Deno.env.get('ZALO_APP_ID');
 const ZALO_SECRET_KEY = Deno.env.get('ZALO_SECRET_KEY');
 
-const NEAR_DUE_START_DAYS = 10; // Bắt đầu nhắc "gần đến hạn/quá hạn" từ đúng X ngày trước hạn
-const NEAR_DUE_REPEAT_DAYS = 3; // ...rồi lặp lại mỗi X ngày, cả trước lẫn sau ngày đến hạn, tới khi tất toán
-const MONTHLY_REMINDER_OFFSETS = [0, 2]; // Lãi (nợ trong hạn): mỗi tháng nhắc đúng 2 LẦN — ngay ngày mốc (offset 0) và 2 ngày sau đó (offset 2), KHÔNG liên tục — nếu chưa đóng
-// Ngưỡng để 2 mục Tầng 2 (báo lãi hàng tháng/theo ngày) tự CHUYỂN sang mẫu
-// "Đến hạn/Quá hạn" thay vì tiếp tục báo lãi — GIỐNG HỆT NEAR_DUE_DAYS_ZALO
-// trong create-account/index.ts (ngưỡng của nút gửi tay tự chọn mẫu), theo
-// yêu cầu đổi cho đồng nhất giữa gửi tay và gửi tự động. Giờ admin tự nhập
-// số ngày này trong "Quản lý OA" > "Cấu hình" (cột orgs.zalo_near_due_days)
-// — hằng số dưới đây chỉ còn là giá trị MẶC ĐỊNH khi admin chưa từng lưu gì
-// (cột null). Truyền qua tham số `nearDueDays` cho các hàm cần dùng, KHÔNG
-// đọc biến module-level nữa để tránh lẫn lộn giữa các lượt chạy.
+const NEAR_DUE_START_DAYS = 10;
+const NEAR_DUE_REPEAT_DAYS = 3;
+const MONTHLY_REMINDER_OFFSETS = [0, 2];
+
 const DEFAULT_NEAR_DUE_DAYS_ZALO = 15;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -93,14 +28,12 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round((sb.getTime() - sa.getTime()) / 86400000);
 }
 
-/** Y HỆT effectiveContractStatus() trong js/state.js. */
 function effectiveStatus(contract: any, asOf: Date): 'da_tat_toan' | 'qua_han' | 'dang_vay' {
   if ((contract.balance || 0) <= 0) return 'da_tat_toan';
   if (daysBetween(new Date(contract.due_date), asOf) > 0) return 'qua_han';
   return 'dang_vay';
 }
 
-/** Y HỆT interestDaysAccrued() trong js/state.js (đã sửa đúng thứ tự +1 ngày đặc biệt rồi mới chặn về 0). */
 function interestDaysAccrued(contract: any, asOf: Date): number {
   const paidUntil = contract.interest_paid_until || contract.disbursed_date;
   let days = daysBetween(new Date(paidUntil), asOf);
@@ -108,9 +41,6 @@ function interestDaysAccrued(contract: any, asOf: Date): number {
   return Math.max(0, days);
 }
 
-/** Y HỆT accruedInterest() trong js/state.js. */
-// Tinh lai bang phan so nguyen de khong sai nguong 500 do so thuc.
-// Chi lam tron MOT LAN den nghin dong, khong lam tron truoc den dong.
 function interestRoundedToThousand(balance: number | string, days: number, annualRate: number | string): number {
   if (![balance, days, annualRate].every(v => Number.isFinite(Number(v)))) {
     throw new Error('Du lieu tinh lai khong hop le');
@@ -145,7 +75,6 @@ function accruedInterest(contract: any, asOf: Date): number {
   return interestRoundedToThousand(contract.balance, days, contract.interest_rate);
 }
 
-/** Y HỆT withYear() trong js/state.js. */
 function withYear(date: Date, year: number): Date {
   const month = date.getMonth();
   const day = date.getDate();
@@ -154,15 +83,6 @@ function withYear(date: Date, year: number): Date {
   return d;
 }
 
-/**
- * Y HỆT toLocalISODate() trong js/state.js. TUYỆT ĐỐI KHÔNG dùng
- * date.toISOString().slice(0,10) ở đây — toISOString() luôn quy đổi ra GIỜ
- * UTC trước, ở múi giờ Việt Nam (UTC+7) sẽ làm ngày bị lùi lại 1 ngày (VD:
- * 23/08/2026 hiện thành 22/08/2026). Deno Deploy chạy theo giờ UTC (khác múi
- * giờ trình duyệt khách/admin) nên lỗi này CÀNG DỄ xảy ra ở đây nếu dùng
- * toISOString() — phải luôn dùng getFullYear()/getMonth()/getDate() (giờ mà
- * Date đã được DỰNG theo, không phải giờ UTC).
- */
 function toLocalISODate(date: Date): string {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -170,10 +90,6 @@ function toLocalISODate(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/**
- * Y HỆT restoreLeadingInstallment() trong js/lib/installmentPlan.js (xem ghi chú đầy đủ ở đó) — dựng lại kỳ ĐẦU đã trả đủ
- * mà file nhập ghi 0 nên không còn được lưu, để tiền đã trả không bị tính nhầm vào kỳ kế và "Kỳ tới" không bị nhảy qua kỳ còn phải trả.
- */
 function restoreLeadingInstallment(
   entries: { year: number; amount: number; restored?: boolean }[],
   info: { principal: number; balance: number; disbursedYear: number },
@@ -189,12 +105,6 @@ function restoreLeadingInstallment(
 
 type InstallmentEntry = { year: number; dueDate: string; amount: number; dueAmount: number; daysLeft: number; shouldWarn: boolean };
 
-/**
- * Y HỆT computeInstallmentPlan() trong js/state.js (xem ghi chú đầy đủ ở đó)
- * — dùng để tính đúng số tiền GỐC của "Kỳ tới" cho thông báo đẩy + Zalo OA
- * (mục 10.44+ docs). `contract.installment_schedule` là cột jsonb (map năm
- * -> số tiền) đọc thẳng từ Supabase, không cần parse JSON tay.
- */
 function computeInstallmentPlan(contract: any, asOf: Date): InstallmentEntry[] | null {
   const schedule = contract.installment_schedule;
   if (!schedule) return null;
@@ -237,7 +147,6 @@ function computeInstallmentPlan(contract: any, asOf: Date): InstallmentEntry[] |
   });
 }
 
-/** Y HỆT nextInstallmentInfo() trong js/state.js — kỳ ĐẦU TIÊN còn thiếu tiền (có thể đã quá hạn hoặc còn ở tương lai). null nếu không có phân kỳ, hoặc đã trả đủ hết mọi kỳ. */
 function nextInstallmentInfo(contract: any, asOf: Date): { idx: number; next: InstallmentEntry } | null {
   const plan = computeInstallmentPlan(contract, asOf);
   if (!plan) return null;
@@ -246,7 +155,6 @@ function nextInstallmentInfo(contract: any, asOf: Date): { idx: number; next: In
   return { idx, next: plan[idx] };
 }
 
-/** Y HỆT daysOverdue() trong js/state.js — số ngày quá hạn thật (xét cả ngày đáo hạn hợp đồng gốc lẫn Kỳ tới), null nếu đã tất toán. Dùng để xếp nhóm nợ (debtGroup) cho dashboard "Tổng quan" (mục 10.46 docs). */
 function daysOverdue(contract: any, asOf: Date): number | null {
   if ((Number(contract.balance) || 0) <= 0) return null;
   const mainOverdue = daysBetween(new Date(contract.due_date), asOf);
@@ -255,13 +163,8 @@ function daysOverdue(contract: any, asOf: Date): number | null {
   return Math.max(0, mainOverdue, instOverdue);
 }
 
-/** Ngưỡng "gần đến hạn" RỘNG cho cột "Cần chú ý" — Y HỆT WIDE_NEAR_DUE_DAYS trong js/state.js. */
 const WIDE_NEAR_DUE_DAYS_ATTENTION = 45;
-/**
- * Y HỆT contractAttentionInfo() trong js/state.js — mức cần chú ý CAO NHẤT của 1 hợp đồng tại ngày `asOf`
- * (quá hạn lấy NHIỀU ngày nhất, gần đến hạn lấy ÍT ngày nhất; xét cả ngày đáo hạn hợp đồng gốc lẫn "Kỳ tới" của phân kỳ).
- * Lưu vào bản chốt tháng để mục "Cần chú ý" của Tổng quan xem lại đúng số của tháng đó.
- */
+
 function contractAttention(contract: any, asOf: Date): { level: 'qua_han' | 'gan_den_han' | null; days: number; dueAmount: number } {
   const balance = Number(contract.balance) || 0;
   if (balance <= 0) return { level: null, days: 0, dueAmount: 0 };
@@ -287,22 +190,20 @@ function contractAttention(contract: any, asOf: Date): { level: 'qua_han' | 'gan
   return { level: null, days: 0, dueAmount: balance };
 }
 
-/** Y HỆT debtGroup() trong js/state.js — Nhóm nợ 1-5 theo Thông tư 02/2013 NHNN. null nếu đã tất toán. */
 function debtGroup(contract: any, asOf: Date): number | null {
   const d = daysOverdue(contract, asOf);
   if (d === null) return null;
-  if (d < 10) return 1; // Nhóm 1 = quá hạn DƯỚI 10 ngày; từ đúng 10 ngày là Nhóm 2 — khớp debtGroup() trong js/state.js
+  if (d < 10) return 1;
   if (d <= 90) return 2;
   if (d <= 180) return 3;
   if (d <= 360) return 4;
   return 5;
 }
 
-/** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 (Nhóm 1 = 0%, không trích) — Y HỆT SPECIFIC_PROVISION_RATE trong js/lib/collateral.js. */
 const SPECIFIC_PROVISION_RATE: Record<number, number> = { 2: 0.05, 3: 0.2, 4: 0.5, 5: 1 };
-/** Tỷ lệ dự phòng CHUNG, áp dụng trên tổng dư nợ Nhóm 1-4 — Y HỆT GENERAL_PROVISION_RATE trong js/state.js. */
+
 const GENERAL_PROVISION_RATE = 0.0075;
-/** Khấu trừ TSBĐ theo mã; mã khác và thiếu mã không được khấu trừ. */
+
 function collateralDeductionRate(ct: any): number {
   if (!ct.has_collateral) return 0;
   const type = String(ct.collateral_type || '').trim().toUpperCase();
@@ -312,7 +213,6 @@ function collateralDeductionRate(ct: any): number {
   return 0;
 }
 
-/** Ngày cuối tháng trước theo giờ Việt Nam, độc lập múi giờ của Edge Function. */
 function previousMonthEndInVietnam(now: Date): Date | null {
   const vietnamNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
   if (vietnamNow.getUTCDate() !== 1) return null;
@@ -320,27 +220,8 @@ function previousMonthEndInVietnam(now: Date): Date | null {
   return new Date(startOfMonthUTC - 1);
 }
 
-/**
- * Chốt số liệu THÁNG NÀY (dashboard "Tổng quan", mục 10.46 docs) — tính
- * TOÀN BỘ hợp đồng (org-wide, không lọc theo Thôn/Xóm), upsert theo
- * year_month (gọi lại nhiều lần trong cùng 1 tháng chỉ ghi đè đúng 1 dòng,
- * không tạo trùng) — dùng CHUNG code này cho cả lịch tự động (đúng ngày
- * cuối tháng, xem cuối Deno.serve() bên dưới) LẪN nút "Chốt số liệu tháng
- * này" (gọi qua create-account, type 'capture-monthly-snapshot').
- *
- * Dự phòng chung/cụ thể (mục 10.52 docs) — chốt CÙNG lúc, dùng ĐÚNG công
- * thức provisionSummary() trong js/state.js (dựa trên has_collateral/
- * collateral_value hiện có ngay lúc chốt) — giữ lại số liệu này cho đúng
- * tháng thay vì luôn tính SỐNG như trước, để xem lại lịch sử vẫn đúng dù
- * TSBĐ/dư nợ sau này có đổi tiếp.
- */
 async function captureMonthlySnapshot(adminClient: any, asOf: Date): Promise<void> {
-  // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — chốt kèm luôn,
-  // KHÔNG chỉ tổng theo nhóm, để xem lại lịch sử vẫn tra được đúng danh sách
-  // của đúng tháng đó (trước đây chỉ có tổng, xem lại tháng cũ chỉ hiện
-  // được danh sách HIỆN TẠI, dễ hiểu nhầm là khớp đúng tháng đang xem).
-  // `contracts` không có sẵn tên/địa chỉ khách hàng (ở bảng `customers`
-  // riêng) — tự dò thêm 1 lượt.
+
   async function readAll(table: 'contracts' | 'customers', columns: string): Promise<any[]> {
     const rows: any[] = [];
     for (let from = 0; ; from += 1000) {
@@ -350,8 +231,7 @@ async function captureMonthlySnapshot(adminClient: any, asOf: Date): Promise<voi
       if ((data || []).length < 1000) return rows;
     }
   }
-  // Lượt quét gửi tin hàng ngày có thể bị giới hạn 1.000 dòng; chốt tháng
-  // phải tự đọc đủ toàn bộ hợp đồng/khách hàng để biểu đồ và dự phòng khớp.
+
   const [snapshotContracts, customers] = await Promise.all([
     readAll('contracts', '*'), readAll('customers', 'id, name, thon, xom, tinh, address'),
   ]);
@@ -385,7 +265,7 @@ async function captureMonthlySnapshot(adminClient: any, asOf: Date): Promise<voi
       balance,
       group: g,
       daysOverdue: daysOverdue(ct, asOf),
-      // Mục "Cần chú ý" của Tổng quan khi xem lại tháng này (quá hạn / gần đến hạn tại ngày chốt).
+
       attention: attention.level,
       attentionDays: attention.days,
       attentionAmount: attention.dueAmount,
@@ -422,13 +302,6 @@ function formatDateVN(iso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-// Thông báo đẩy hệ thống (Notification API) KHÔNG hỗ trợ chữ đậm/HTML thật —
-// mọi trình duyệt/điện thoại chỉ hiện được chữ thường trong nội dung thông
-// báo, không có cách nào bật bold/markdown ở đó (giới hạn của chuẩn Web
-// Push/Notification, không phải giới hạn riêng của app). Cách gần đúng nhất
-// để số tiền/ngày "nổi bật" hơn hẳn phần chữ xung quanh: đổi CHỮ SỐ thường
-// sang bộ ký tự Unicode "Mathematical Bold" — nhìn đậm hẳn trên hầu hết máy
-// hiện đại dù về bản chất vẫn là text thường, không phải định dạng.
 const BOLD_DIGITS = ['𝟎', '𝟏', '𝟐', '𝟑', '𝟒', '𝟓', '𝟔', '𝟕', '𝟖', '𝟗'];
 function boldDigits(s: string): string {
   return s.replace(/[0-9]/g, (d) => BOLD_DIGITS[Number(d)]);
@@ -436,11 +309,6 @@ function boldDigits(s: string): string {
 function formatVNDBold(n: number): string { return boldDigits(formatVND(n)); }
 function formatDateVNBold(iso: string): string { return boldDigits(formatDateVN(iso)); }
 
-// Y HỆT DEFAULT_PUSH_TEMPLATES/renderNotificationTemplate() trong js/state.js
-// — admin tự soạn lại 4 ô này ở "Cài đặt" > "Nội dung thông báo qua ứng
-// dụng" (cột orgs.push_templates, jsonb, null = dùng đúng mẫu mặc định dưới
-// đây). Đổi chữ ở đó có hiệu lực NGAY cho cả gửi tay lẫn gửi tự động, không
-// cần sửa code/deploy lại function này.
 const DEFAULT_PUSH_TEMPLATES = {
   title: '<Ten_quy> thông báo:',
   interest: 'Số tiền lãi hợp đồng <Ma_HD> của quý khách đến hôm nay là: <So_tien_lai>. Quý khách vui lòng thanh toán đúng hạn.',
@@ -451,12 +319,6 @@ function renderNotificationTemplate(str: string, tokens: Record<string, string>)
   return String(str || '').replace(/<([A-Za-z0-9_]+)>/g, (m, key) => (key in tokens ? String(tokens[key]) : m));
 }
 
-/**
- * Mốc "ngày trong tháng" để nhắc lãi hàng tháng — xem ghi chú lịch nhắc #1
- * ở đầu file. Bình thường lấy ngày của interest_paid_until; riêng trường hợp
- * mới giải ngân (paidUntil = disbursed + đúng 1 ngày, theo quy ước tính lãi)
- * thì lấy ngày giải ngân làm mốc thay vì ngày bị lệch +1 đó.
- */
 function interestAnchorDate(contract: any): Date {
   const disbursed = new Date(contract.disbursed_date);
   const paidUntil = new Date(contract.interest_paid_until || contract.disbursed_date);
@@ -464,34 +326,21 @@ function interestAnchorDate(contract: any): Date {
   return paidUntil;
 }
 
-/**
- * Ngày mốc nhắc lãi hàng tháng của ĐỢT GẦN NHẤT đã tới (<= today), tính từ
- * anchorDate — tự xử lý tháng thiếu ngày (VD: mốc ngày 31 thì tháng chỉ có 30
- * ngày sẽ tính là ngày cuối tháng đó, kiểu quy ước ngày thu phí định kỳ thông
- * thường). Trả về null nếu chưa qua tới đợt tháng sau đầu tiên.
- */
 function latestMonthlyOccurrence(anchorDate: Date, today: Date): Date | null {
   const ay = anchorDate.getFullYear(), am = anchorDate.getMonth(), ad = anchorDate.getDate();
   const ty = today.getFullYear(), tm = today.getMonth();
   const occDayThisMonth = Math.min(ad, new Date(ty, tm + 1, 0).getDate());
   let occ = new Date(ty, tm, occDayThisMonth);
   if (occ > today) {
-    // Chưa tới ngày mốc của tháng này -> đợt gần nhất là tháng TRƯỚC.
+
     const py = tm === 0 ? ty - 1 : ty, pm = tm === 0 ? 11 : tm - 1;
     occ = new Date(py, pm, Math.min(ad, new Date(py, pm + 1, 0).getDate()));
   }
   const monthDiff = (occ.getFullYear() - ay) * 12 + (occ.getMonth() - am);
-  if (monthDiff < 1) return null; // chưa qua tới đợt tháng sau đầu tiên
+  if (monthDiff < 1) return null;
   return occ;
 }
 
-/**
- * true nếu "today" ĐÚNG là 1 trong 2 ngày nhắc lãi của tháng gần nhất (ngày
- * mốc, hoặc đúng 2 ngày sau ngày mốc — xem MONTHLY_REMINDER_OFFSETS) — VD:
- * mốc ngày 13 -> đúng 13 và 15 mỗi tháng là true, còn lại trong tháng
- * (14, 16, 17...) là false, KHÔNG nhắc liên tục nhiều ngày liền. Xem ghi chú
- * lịch nhắc #1 ở đầu file.
- */
 function isMonthlyReminderDay(anchorDate: Date, today: Date): boolean {
   const occ = latestMonthlyOccurrence(anchorDate, today);
   if (!occ) return false;
@@ -499,15 +348,6 @@ function isMonthlyReminderDay(anchorDate: Date, today: Date): boolean {
   return MONTHLY_REMINDER_OFFSETS.includes(d);
 }
 
-/**
- * Y HỆT isMonthlyReminderDay() nhưng CHỈ đúng 1 LẦN/tháng — đúng ngày mốc
- * (offset 0), KHÔNG lặp lại 2 ngày sau như thông báo đẩy — dùng riêng cho
- * Zalo OA mục "Báo lãi tự động hàng tháng" (điều kiện gửi giống hệt thông
- * báo đẩy trong hạn — "đúng ngày này tháng sau" — chỉ khác đúng ở việc
- * không nhắc lặp lại lần 2). intervalMonths là số tháng lãi CHƯA TRẢ tối
- * thiểu: đủ N tháng thì bắt đầu báo và tiếp tục mỗi tháng trên cùng ngày
- * mốc, cho tới khi khách trả lãi và mốc interest_paid_until được cập nhật.
- */
 function isMonthlyReminderDayOnce(anchorDate: Date, today: Date, intervalMonths = 1): boolean {
   const occ = latestMonthlyOccurrence(anchorDate, today);
   if (!occ) return false;
@@ -516,12 +356,6 @@ function isMonthlyReminderDayOnce(anchorDate: Date, today: Date, intervalMonths 
   return monthDiff >= intervalMonths;
 }
 
-/**
- * Dùng cho Zalo OA mục "Gửi theo ngày cụ thể" — đúng ngày admin tự chọn
- * (customDay) trong tháng, khi lãi chưa trả đã đủ intervalMonths tháng.
- * Sau lần đầu vẫn xét mỗi tháng; nếu khách trả lãi thì tính lại từ mốc mới.
- * Ngày kỷ niệm được chặn ở ngày cuối tháng cho mốc 29/30/31.
- */
 function isCustomDayDue(customDay: number, anchorDate: Date, today: Date, intervalMonths = 1): boolean {
   if (today.getDate() !== customDay) return false;
   const targetMonth = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + intervalMonths, 1);
@@ -538,7 +372,7 @@ async function sendPush(sub: { endpoint: string; p256dh: string; auth: string },
     );
     return true;
   } catch (e: any) {
-    // 404/410 = subscription đã hết hạn/bị trình duyệt thu hồi -> dọn khỏi DB luôn, khỏi thử lại vô ích.
+
     if (e && (e.statusCode === 404 || e.statusCode === 410)) {
       await admin.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
     } else {
@@ -559,23 +393,17 @@ async function pushToCustomer(customerId: string, title: string, body: string, t
   return anyOk;
 }
 
-// ------------------------------------------------------------
-// Zalo OA (ZBS Template Message) — xem ghi chú ở khai báo ZALO_APP_ID phía trên.
-// ------------------------------------------------------------
-
-/** Y HỆT stripDiacritics() trong js/utils.js — bỏ dấu tiếng Việt, in hoa, bỏ ký tự lạ, dùng cho nội dung chuyển khoản. */
 function stripDiacriticsUpper(str: string): string {
   return str
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/đ/g, 'd').replace(/Đ/g, 'D')
-    .replace(/\s*₫/g, 'd') // ký hiệu tiền "₫" là 1 ký tự riêng (U+20AB), NFD không đụng tới — xem utils.js
+    .replace(/\s*₫/g, 'd')
     .toUpperCase()
     .replace(/[^A-Z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** Chuẩn hóa SĐT sang định dạng Zalo yêu cầu: mã quốc gia 84, không số 0 đầu, không dấu cách/gạch. */
 function normalizeZaloPhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.startsWith('84')) return digits;
@@ -583,25 +411,6 @@ function normalizeZaloPhone(phone: string): string {
   return digits;
 }
 
-/**
- * Lấy Access Token OA hiện hành — tự làm mới bằng Refresh Token đang lưu
- * trong bảng zalo_oa_tokens (Access Token chỉ sống ~1 tiếng nên không cache
- * dài hạn — nhưng DÙNG LẠI được trong đúng cửa sổ đó, xem ngay dưới). Refresh
- * Token Zalo trả về CÓ THỂ khác Refresh Token cũ (tự xoay vòng) — ghi đè lại
- * vào bảng luôn để lần chạy sau vẫn dùng được. Trả về null nếu chưa cấu hình
- * đủ (ZALO_APP_ID/SECRET_KEY chưa đặt Secret, hoặc bảng zalo_oa_tokens chưa
- * có dòng nào) — các nơi gọi hàm này phải tự bỏ qua việc gửi Zalo khi null,
- * KHÔNG được chặn cả hàm nhắc lịch (thông báo đẩy vẫn phải chạy bình thường
- * dù chưa cấu hình Zalo).
- *
- * DÙNG LẠI access_token đã lưu nếu còn mới (< 50 phút, an toàn hơn hạn thật
- * ~60 phút) thay vì gọi API làm mới MỖI LẦN hàm này chạy — hàm cron chạy mỗi
- * ngày gửi cho NHIỀU hợp đồng liên tiếp trong 1 lượt, trước đây mỗi hợp đồng
- * đều làm mới token 1 lần dù chưa hết hạn, giờ chỉ làm mới đúng lần đầu tiên
- * của cả lượt chạy. AN TOÀN với việc Refresh Token tự xoay vòng: xoay vòng
- * chỉ xảy ra ĐÚNG lúc gọi API làm mới, không liên quan gì tới việc tái sử
- * dụng access_token đã có để GỬI TIN.
- */
 async function getZaloAccessToken(): Promise<string | null> {
   if (!ZALO_APP_ID || !ZALO_SECRET_KEY) return null;
   const { data: tokenRow } = await admin.from('zalo_oa_tokens').select('*').eq('id', 'default').maybeSingle();
@@ -630,11 +439,6 @@ async function getZaloAccessToken(): Promise<string | null> {
   }
 }
 
-// Zalo báo SĐT KHÔNG có tài khoản Zalo ("Zalo account not existed", mã -118 =
-// tài khoản Zalo không tồn tại/đã bị vô hiệu hóa): báo lại bằng tiếng Việt,
-// và TỰ BỎ khách đó khỏi Danh sách OA (Tầng 1) lẫn mọi lựa chọn gửi tự động
-// (Tầng 2) — SĐT này gửi Zalo không bao giờ tới được. Muốn gửi lại sau này
-// (VD khách đổi sang SĐT có Zalo) thì cập nhật SĐT rồi thêm lại vào OA.
 const ZALO_NO_ACCOUNT_MESSAGE = 'Số điện thoại này chưa đăng ký Zalo';
 function isZaloNoAccountError(resp: any): boolean {
   if (!resp) return false;
@@ -650,21 +454,14 @@ async function removeCustomerFromZaloLists(customerId: string): Promise<void> {
   }
 }
 
-// Khách vừa bị phát hiện KHÔNG có Zalo trong lượt chạy này — bỏ qua các hợp đồng còn lại của họ, khỏi gửi/ghi lỗi lặp lại.
 const noZaloCustomerIds = new Set<string>();
 
-/**
- * Gửi 1 tin nhắn mẫu (ZBS Template Message) qua số điện thoại, TỰ GHI LOG vào
- * bảng zalo_send_log (cả thành công lẫn lỗi, kèm nội dung lỗi) — để trang
- * "Quản lý OA" > "Quản lý gửi tin" xem được. Trả về true nếu Zalo báo gửi
- * thành công.
- */
 async function sendZaloTemplate(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string;
-  /** Người nhận của số này ('main' = người vay, 'co' = người cùng vay) + tên — ghi vào nhật ký để lịch sử luôn đúng dù sau này số điện thoại được sửa (xem docs mục 10.89). */
+
   who?: 'main' | 'co'; whoName?: string;
-  /** true khi đang gửi cho 2 số cùng lúc: chưa tự bỏ khách khỏi OA khi 1 số báo "chưa đăng ký Zalo" — để sendZaloToCustomer() quyết định theo kết quả của cả 2 số. */
+
   deferNoAccount?: boolean;
 }): Promise<{ ok: boolean; noAccount: boolean }> {
   let status: 'success' | 'error' = 'error';
@@ -697,14 +494,13 @@ async function sendZaloTemplate(opts: {
   if (opts.who) { logRow.recipient_who = opts.who; logRow.recipient_name = opts.whoName || null; }
   const { error: logErr } = await admin.from('zalo_send_log').insert(logRow);
   if (logErr && opts.who && /recipient_(who|name)/i.test(String(logErr.message || ''))) {
-    // Chưa chạy SQL thêm cột người nhận (docs mục 10.89): ghi như trước để vẫn có nhật ký, không làm hỏng việc gửi.
+
     delete logRow.recipient_who; delete logRow.recipient_name;
     await admin.from('zalo_send_log').insert(logRow);
   }
   return { ok: status === 'success', noAccount };
 }
 
-// ---------- Người nhận Zalo OA THEO TỪNG HỢP ĐỒNG (xem docs mục 10.83; cùng logic với create-account) ----------
 type ZaloCustomer = { name: string; phone: string; co_people?: unknown };
 type ZaloRecipient = { who: 'main' | 'co'; phone: string };
 function normPersonName(name: unknown): string {
@@ -718,21 +514,17 @@ function samePhone(a: unknown, b: unknown): boolean {
   const n = (v: unknown) => String(v ?? '').replace(/[^\d]/g, '').replace(/^84/, '0');
   return !!n(a) && n(a) === n(b);
 }
-/** Họ tên người cùng vay ghi trên 1 hợp đồng ('' nếu không ghi, hoặc ghi trùng chính người vay). */
+
 function heirOfRow(ct: any, customerName: unknown): string {
   const n = String(ct?.heir_name ?? '').replace(/\s+/g, ' ').trim();
   return !n || samePerson(n, customerName) ? '' : n;
 }
-/** Số điện thoại đã lưu của 1 người trong sổ người cùng vay (customers.co_people = [{ name, phone }]); không phân biệt hoa/thường; chưa có thì ''. */
+
 function coPhoneOfPeople(people: unknown, name: unknown): string {
   const p = (Array.isArray(people) ? people : []).find((x: any) => samePerson(x?.name, name));
   return p ? String((p as any).phone ?? '').trim() : '';
 }
-/**
- * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG: hợp đồng tắt gửi OA (oa_enabled = false) → không ai; người vay mặc định có (luôn còn ít nhất 1 người nhận);
- * người cùng vay CHỈ khi có tên TRÊN HỢP ĐỒNG NÀY, đã có số, số không trùng số người vay, và đã tick đúng người đó (oa_co_key khớp) HOẶC người vay chưa có số điện thoại
- * (khi đó người cùng vay có số TỰ ĐỘNG nhận — tick sẵn).
- */
+
 function contractRecipients(ct: any, customer: ZaloCustomer | undefined): ZaloRecipient[] {
   if (ct?.oa_enabled === false) return [];
   const main = String(customer?.phone ?? '').trim();
@@ -746,7 +538,7 @@ function contractRecipients(ct: any, customer: ZaloCustomer | undefined): ZaloRe
   if (toCo) out.push({ who: 'co', phone: coPhone });
   return out;
 }
-/** Kế hoạch tự bỏ tick khi người nhận báo "chưa đăng ký Zalo" — bản sao của planNoZaloUntick ở create-account (xem giải thích ở đó). */
+
 function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWho: Array<'main' | 'co'>): { patches: Map<string, Record<string, unknown>>; hasLeft: boolean } {
   const coPerson = heirOfRow(cts.find((c) => c.id === contractId), cust?.name);
   const patches = new Map<string, Record<string, unknown>>();
@@ -756,7 +548,7 @@ function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWh
     if (noAccountWho.includes('co') && coPerson && samePerson(heirOfRow(ct, cust?.name), coPerson)) { p.oa_to_co = false; p.oa_co_key = null; }
     if (Object.keys(p).length) patches.set(ct.id, p);
   }
-  // Người cùng vay báo "chưa đăng ký Zalo" thì không còn được tự động nhận nữa (kể cả khi người vay chưa có số điện thoại).
+
   const coDead = noAccountWho.includes('co') ? coPerson : '';
   const main = String(cust?.phone ?? '').trim();
   const hasLeft = cts.some((ct) => {
@@ -771,12 +563,7 @@ function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWh
   });
   return { patches, hasLeft };
 }
-/**
- * Gửi tin mẫu cho tất cả người nhận của 1 HỢP ĐỒNG (1 hoặc 2 số), mỗi số ghi 1 dòng log. Trả về true nếu ÍT NHẤT 1 số gửi được.
- * Người nào báo "chưa đăng ký Zalo" (-118) thì TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA); khi không còn hợp đồng nào của
- * khách có người nhận được Zalo thì tự bỏ khách khỏi OA. `contractsOfCustomer` là các hợp đồng đã tải của khách (cập nhật luôn trong bộ nhớ để
- * các hợp đồng sau của cùng khách trong lượt chạy này không gửi lại vào số vừa bị bỏ tick).
- */
+
 async function sendZaloToCustomer(opts: {
   accessToken: string; customer: ZaloCustomer; contract: any; contractsOfCustomer: any[]; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string;
@@ -794,7 +581,7 @@ async function sendZaloToCustomer(opts: {
       const cts = opts.contractsOfCustomer.filter((c) => Number(c.balance) > 0);
       const { patches, hasLeft } = planNoZaloUntick(opts.customer, cts, opts.contractId, noWho);
       if (!hasLeft) {
-        // Không còn hợp đồng nào có người nhận được Zalo → bỏ khách khỏi Danh sách OA + gửi tự động, đặt lại mặc định gửi người vay.
+
         noZaloCustomerIds.add(opts.customerId);
         await removeCustomerFromZaloLists(opts.customerId);
         const reset = { oa_to_main: true, oa_to_co: false, oa_co_key: null };
@@ -814,25 +601,10 @@ async function sendZaloToCustomer(opts: {
   return results.some((r) => r.ok);
 }
 
-/**
- * Định dạng số tiền cho MỌI tham số tiền trong mẫu Zalo OA — CHỈ chuỗi chữ
- * số thuần, không dấu chấm ngăn hàng nghìn, không chữ "đ". Đã thử thêm "đ"
- * (báo lỗi định dạng ở SO_TIEN_CHUYEN_KHOAN), rồi thử thêm dấu chấm (báo lỗi
- * tiếp ở LAI_PHAI_TRA) — Zalo validate các tham số tiền này rất nghiêm ngặt,
- * chỉ chấp nhận đúng số thuần. Quay lại định dạng CHUẨN ban đầu cho TẤT CẢ.
- */
 function formatVNDZaloTemplate(n: number): string {
   return String(Math.round(n));
 }
 
-/**
- * Cùng DẠNG và CÙNG NGƯỠNG với isNearOrPastDueZalo() trong create-account/index.ts
- * (15 ngày, xem NEAR_DUE_DAYS_ZALO ở trên) — true khi hợp đồng đã gần/tới/qua
- * hạn. Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
- * có, xem nextInstallmentInfo()) — hợp đồng có 1 kỳ giữa chừng (chưa tới
- * ngày đáo hạn cuối) gần/quá hạn cũng tự chuyển sang mẫu "Đến hạn" y hệt
- * ngày đáo hạn hợp đồng gốc (theo đúng yêu cầu mở rộng).
- */
 function isNearOrPastDueZalo(contract: any, asOf: Date, nearDueDays: number): boolean {
   const d = daysBetween(asOf, new Date(contract.due_date));
   if (d <= nearDueDays) return true;
@@ -840,12 +612,6 @@ function isNearOrPastDueZalo(contract: any, asOf: Date, nearDueDays: number): bo
   return inst != null && inst.next.daysLeft <= nearDueDays;
 }
 
-/**
- * Chọn mẫu Zalo cho 1 lần gửi Tầng 2 (báo lãi hàng tháng/theo ngày) — GẦN/ĐÃ
- * đến hạn thì tự CHUYỂN sang mẫu "Đến hạn/Quá hạn" thay vì tiếp tục báo lãi
- * (y hệt cách gửi tay tự chọn mẫu). Trả về null nếu mẫu tương ứng chưa cấu
- * hình Template ID — nơi gọi phải tự bỏ qua lần gửi đó, không báo lỗi.
- */
 function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: string | null; zalo_template_interest_id?: string | null; zalo_near_due_days?: number | null } | null): { templateId: string; dueTemplate: boolean } | null {
   const nearDueDays = orgRow?.zalo_near_due_days || DEFAULT_NEAR_DUE_DAYS_ZALO;
   const dueTemplate = isNearOrPastDueZalo(ct, now, nearDueDays);
@@ -854,21 +620,6 @@ function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: s
   return { templateId, dueTemplate };
 }
 
-/**
- * Dựng template_data dùng chung cho cả 2 mẫu Zalo — "Đến hạn" (dueTemplate
- * = true, có đủ Gốc lẫn Lãi) và "Báo lãi" (dueTemplate = false, Gốc = 0 vì
- * chưa thật sự phải trả). Tên tham số y hệt mẫu 519351 (xem docs mục 10).
- * NGAY_KE_HOACH = ngày gửi tin (hôm nay), KHÔNG phải ngày đến hạn thật của
- * hợp đồng (đã có NGAY_DAO_HAN riêng) — theo đúng yêu cầu.
- *
- * GOC_PHAI_TRA + NGAY_DAO_HAN (khi dueTemplate = true): nếu hợp đồng có "Kỳ
- * tới" đang cần chú ý (nextInstallmentInfo()) thì lấy ĐÚNG số tiền VÀ ngày
- * đến hạn của KỲ đó, KHÔNG phải toàn bộ dư nợ/ngày đáo hạn hợp đồng gốc
- * (SO_DU vẫn luôn là dư nợ thật, không đổi) — theo đúng yêu cầu "Gốc phải
- * trả là số tiền phải trả trong kỳ" + "tất cả ngày đáo hạn đều lấy theo
- * ngày của kỳ trả nợ". Hợp đồng không có phân kỳ (hoặc đã trả đủ hết mọi
- * kỳ) thì vẫn dùng dư nợ/ngày đáo hạn hợp đồng như trước giờ.
- */
 function buildZaloTemplateData(ct: any, customer: { name: string; phone: string }, now: Date, dueTemplate: boolean): Record<string, string> {
   const interest = accruedInterest(ct, now);
   const inst = dueTemplate ? nextInstallmentInfo(ct, now) : null;
@@ -896,25 +647,12 @@ Deno.serve(async (req) => {
     if (provided !== CRON_SECRET) return new Response('Unauthorized', { status: 401 });
   }
 
-  // 2 "mục đích" gọi function này, PHÂN BIỆT qua query string `?purpose=...`
-  // (2 Cron Job riêng, xem mục 9.3 docs):
-  // - 'daily-reminders' (mặc định, không cần truyền) — lịch cũ, chạy 8h sáng
-  //   giờ VN mỗi ngày, quét + gửi nhắc lãi/gần-quá hạn như trước giờ.
-  // - 'monthly-close' — lịch RIÊNG chạy 00h (nửa đêm) giờ VN mỗi ngày, CHỈ để
-  //   tự chốt số liệu dashboard "Tổng quan" ĐÚNG lúc vừa sang ngày 01 đầu
-  //   tháng (đã trọn vẹn hết ngày cuối tháng trước, không lỡ giao dịch phát
-  //   sinh cuối ngày như khi chốt lúc 8h sáng) — KHÔNG gửi nhắc lãi/Zalo gì
-  //   cả trong lượt gọi này, xem đoạn "Tự chốt số liệu" phía cuối.
   const purpose = new URL(req.url).searchParams.get('purpose') || 'daily-reminders';
-  noZaloCustomerIds.clear();
+  noZaloCustomerIds.clear();
 
   const now = new Date();
   const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0 };
 
-  // Tiêu đề thông báo LUÔN đồng nhất "<tên quỹ> thông báo:" cho mọi loại nhắc
-  // (không còn tiêu đề riêng theo từng loại như trước) — khớp với tiêu đề
-  // mặc định ở popup admin tự gửi tay (xem buildContractNotificationPreset()
-  // trong js/views/admin/customers.js).
   const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_interest_id, zalo_template_due_id, zalo_near_due_days, push_templates').limit(1).maybeSingle();
   const pushTpl = (orgRow?.push_templates as typeof DEFAULT_PUSH_TEMPLATES | null) || DEFAULT_PUSH_TEMPLATES;
   const shortName = orgRow?.short_name || 'Quỹ tín dụng';
@@ -923,35 +661,23 @@ Deno.serve(async (req) => {
   const { data: contracts, error: ctErr } = await admin.from('contracts').select('*');
   if (ctErr) return new Response(JSON.stringify({ ok: false, reason: ctErr.message }), { status: 500 });
 
-  // Cần thêm tên + SĐT khách hàng để gửi Zalo (bảng contracts không có sẵn 2 cột này).
-  // Lấy cả sổ người cùng vay (số điện thoại theo tên); chưa chạy SQL (thiếu cột) thì tự lùi về chỉ tên + SĐT như cũ.
   let customersRes = await admin.from('customers').select('id, name, phone, co_people');
   if (customersRes.error) customersRes = await admin.from('customers').select('id, name, phone');
   const customersData = customersRes.data;
   const customerMap = new Map<string, ZaloCustomer>(
     (customersData || []).map((c: any) => [c.id, { name: c.name, phone: c.phone, co_people: c.co_people ?? null }])
   );
-  // Các hợp đồng của từng khách (để cập nhật cấu hình gửi OA ngay trong bộ nhớ khi có người báo chưa đăng ký Zalo).
+
   const contractsByCustomer = new Map<string, any[]>();
   for (const c of contracts || []) contractsByCustomer.set((c as any).customer_id, [...(contractsByCustomer.get((c as any).customer_id) || []), c]);
 
-  // Chỉ tốn 1 lần làm mới token/lượt chạy (không phải mỗi hợp đồng 1 lần) —
-  // và CHỈ làm khi đã cấu hình ÍT NHẤT 1 trong 2 mẫu (mục Quản lý OA > Cấu
-  // hình), tránh gọi API Zalo vô ích lúc chưa cấu hình gì.
   const zaloAccessToken = (purpose !== 'monthly-close' && (orgRow?.zalo_template_interest_id || orgRow?.zalo_template_due_id)) ? await getZaloAccessToken() : null;
 
-  // Tầng 2 "Gửi tin tự động" — CHỈ còn 2 mục báo lãi (loại trừ nhau, 1 hợp
-  // đồng chỉ ở 1 trong 2): 'lai_hang_thang_auto' theo đúng lịch nhắc lãi
-  // hàng tháng sẵn có (isMonthlyReminderDay), 'lai_hang_thang_custom_day'
-  // gửi vào ngày admin tự chọn (custom_day). intervalMonths (1-4, mặc định
-  // 1) là ngưỡng số tháng lãi chưa trả, sau đó xét gửi mỗi tháng — áp dụng cho
-  // cả 2 mục, xem isMonthlyReminderDayOnce()/isCustomDayDue().
   const { data: autoSendRows } = await admin.from('zalo_auto_send_list').select('contract_id, kind, custom_day, interval_months');
   const autoSendMap = new Map<string, { kind: string; customDay: number | null; intervalMonths: number }>(
     (autoSendRows || []).map((r: any) => [r.contract_id, { kind: r.kind, customDay: r.custom_day, intervalMonths: r.interval_months || 1 }])
   );
 
-  /** Có nên gửi thông báo "kind" cho 1 hợp đồng cụ thể hôm nay không — chặn gửi lại trong cùng 1 ngày. */
   async function shouldSend(contractId: string, kind: string): Promise<boolean> {
     const { data } = await admin.from('notification_log').select('sent_at')
       .eq('contract_id', contractId).eq('kind', kind)
@@ -959,7 +685,7 @@ Deno.serve(async (req) => {
     if (!data || !data.length) return true;
     return daysBetween(new Date(data[0].sent_at), now) >= 1;
   }
-  /** Gửi tay thành công chưa đủ 5 ngày: bỏ kỳ OA tự động này, chờ đúng kỳ tháng sau. */
+
   async function shouldSendAutoZalo(contractId: string, kind: string): Promise<boolean> {
     if (!await shouldSend(contractId, kind)) return false;
     const { data, error } = await admin.from('zalo_send_log').select('sent_at')
@@ -967,7 +693,7 @@ Deno.serve(async (req) => {
       .order('sent_at', { ascending: false }).limit(1).maybeSingle();
     if (error) {
       console.error('Không kiểm tra được lịch sử gửi tay Zalo OA:', error);
-      return false; // Không gửi OA nếu không xác minh được thời hạn chờ.
+      return false;
     }
     return !data?.sent_at || now.getTime() - new Date(data.sent_at).getTime() >= 5 * 24 * 60 * 60 * 1000;
   }
@@ -975,14 +701,10 @@ Deno.serve(async (req) => {
     await admin.from('notification_log').insert({ owner_id: customerId, contract_id: contractId, kind, sent_at: now.toISOString() });
   }
 
-  // Lượt gọi 'monthly-close' (00h giờ VN) KHÔNG gửi nhắc lãi/Zalo gì cả — chỉ
-  // dùng để chốt số liệu tháng ở đoạn cuối function này.
   for (const ct of (purpose === 'monthly-close' ? [] : contracts || [])) {
     const status = effectiveStatus(ct, now);
     if (status === 'da_tat_toan') continue;
 
-    // 1) Lãi — mỗi tháng nhắc đúng 2 lần (ngày mốc + 2 ngày sau đó), nếu
-    // chưa đóng thì lặp lại y hệt vào đợt tháng sau, không nhắc liên tục.
     if (isMonthlyReminderDay(interestAnchorDate(ct), now)) {
       if (await shouldSend(ct.id, 'lai_hang_thang')) {
         const custName = customerMap.get(ct.customer_id)?.name || '';
@@ -1003,14 +725,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Zalo OA — mục "Báo lãi tự động hàng tháng" (Tầng 2): điều kiện gửi
-    // GIỐNG HỆT thông báo đẩy trong hạn ở trên ("đúng ngày này tháng sau",
-    // dùng chung interestAnchorDate) nhưng CHỈ gửi ĐÚNG 1 LẦN/đợt (không lặp
-    // lại lần 2 như push) — xem isMonthlyReminderDayOnce(). Chỉ bắt đầu khi
-    // lãi chưa trả đủ số tháng admin chọn; từ đó báo mỗi tháng nếu vẫn chưa
-    // trả đủ để mốc lãi giảm xuống dưới ngưỡng. CHỈ gửi cho hợp đồng ở ĐÚNG mục
-    // này (autoSendMap). Gần/đã đến hạn thì tự chuyển sang mẫu "Đến hạn/Quá
-    // hạn" (xem pickZaloTemplate).
     {
       const autoEntry = autoSendMap.get(ct.id);
       if (autoEntry?.kind === 'lai_hang_thang_auto' && zaloAccessToken
@@ -1030,14 +744,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Zalo OA — mục "Gửi theo ngày cụ thể" (Tầng 2): gửi vào ngày admin tự
-    // chọn (custom_day), không phụ thuộc lịch nhắc lãi hàng tháng thông
-    // thường ở trên — chờ đủ số tháng lãi chưa trả rồi xét mỗi tháng tiếp
-    // theo trên đúng ngày admin chọn (xem isCustomDayDue()). CHỈ gửi
-    // nếu số ngày đã tính lãi (kể từ lần đóng lãi gần nhất) đã QUÁ 20 ngày —
-    // mới đóng lãi gần đây (<=20 ngày) thì bỏ qua đợt này, để dồn qua đợt kế
-    // tiếp (không có gì phải nhắc ngay lúc khách vừa đóng). Gần/đã đến hạn
-    // thì tự chuyển sang mẫu "Đến hạn/Quá hạn" (xem pickZaloTemplate).
     {
       const autoEntry = autoSendMap.get(ct.id);
       if (autoEntry?.kind === 'lai_hang_thang_custom_day' && autoEntry.customDay
@@ -1058,17 +764,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 2) Gần đến hạn/quá hạn — mỗi 3 ngày kể từ 10 ngày trước hạn, liên tục
-    // tới khi tất toán. Nội dung + giọng điệu đổi khác nhau tùy còn trước
-    // hạn hay đã tới/qua hạn. Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới"
-    // của phân kỳ trả nợ (nếu có) — hợp đồng có 1 kỳ giữa chừng (chưa tới
-    // ngày đáo hạn cuối) gần/quá hạn cũng tự kích hoạt lịch nhắc này SỚM
-    // HƠN, y hệt cảnh báo đã hiện trên web/app (S.contractStatusInfo()) —
-    // theo đúng yêu cầu mở rộng lịch gửi. LUÔN lấy mốc ĐÁNG CHÚ Ý NHẤT
-    // (Math.min — số ngày âm/nhỏ hơn = gấp hơn) trong 2 nguồn để quyết định
-    // có gửi hôm nay không VÀ để lấy đúng số tiền gốc/ngày hạn hiện trong
-    // nội dung tin — cơ chế gửi (mỗi 3 ngày kể từ 10 ngày trước, chống gửi
-    // trùng...) hoàn toàn KHÔNG đổi.
     const inst = nextInstallmentInfo(ct, now);
     const mainDaysToDue = daysBetween(now, new Date(ct.due_date));
     const useInstallment = inst != null && inst.next.daysLeft < mainDaysToDue;
@@ -1089,21 +784,11 @@ Deno.serve(async (req) => {
         const body = renderNotificationTemplate(daysToDue > 0 ? pushTpl.nearDue : pushTpl.overdue, tokens);
         const ok = await pushToCustomer(ct.customer_id, NOTI_TITLE, body, 'gan-den-han');
         if (ok) { await logSent(ct.customer_id, ct.id, 'gan_den_han'); result.ganDenHanQuaHan++; }
-        // Zalo OA KHÔNG còn tự động gửi cho "gần đến hạn/đến hạn" nữa (theo
-        // yêu cầu) — mẫu "Đến hạn" giờ CHỈ gửi được qua nút gửi tay ở chi
-        // tiết hợp đồng (type 'send-zalo-manual' trong create-account), tự
-        // chọn mẫu theo tình huống. Thông báo đẩy (push) ở trên vẫn giữ
-        // nguyên lịch tự động như cũ, không đổi.
+
       }
     }
   }
 
-  // Tự dọn Nhật ký sử dụng (bảng activity_log, xem docs mục 10.33) — chỉ giữ
-  // lại 60 ngày gần nhất, xóa hẳn dòng cũ hơn để không phình to mãi theo thời
-  // gian. Tận dụng LUÔN lịch chạy hàng ngày có sẵn của function này (đỡ phải
-  // tạo thêm 1 Scheduled Trigger riêng chỉ để dọn log) — không ảnh hưởng gì
-  // tới việc nhắc nợ/gửi Zalo ở trên, chạy SAU CÙNG, lỗi (nếu có) chỉ ghi log
-  // console chứ không làm hỏng kết quả nhắc nợ đã xong.
   try {
     const cutoff = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
     await admin.from('activity_log').delete().lt('created_at', cutoff);
@@ -1111,15 +796,6 @@ Deno.serve(async (req) => {
     console.error('Lỗi dọn activity_log cũ:', e);
   }
 
-  // Tự chốt số liệu dashboard "Tổng quan" (dư nợ/lãi phải thu/nợ xấu, mục
-  // 10.46 docs) — CHỈ chạy ở lượt gọi 'monthly-close' (Cron riêng 00h giờ VN
-  // mỗi ngày, xem mục 10.55 docs). Xác định ngày 01 theo giờ Việt Nam một
-  // cách tường minh, không phụ thuộc múi giờ của môi trường chạy. Chốt tại
-  // thời điểm cuối cùng của tháng trước; các ngày khác không làm gì.
-  // Admin cũng tự chốt NGAY được bất cứ lúc nào qua nút "Chốt
-  // số liệu tháng này" (create-account, type 'capture-monthly-snapshot') —
-  // upsert theo year_month nên không sợ chốt trùng dù cả 2 đường đều chạy
-  // trong cùng 1 tháng.
   if (purpose === 'monthly-close') {
     try {
       const monthEnd = previousMonthEndInVietnam(now);
@@ -1135,13 +811,6 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Chốt bù DUY NHẤT 1 LẦN cho tháng 08/2026 (mục 10.50 docs) — tháng đầu
-  // tiên bị lỡ vì tính năng chốt tự động ở trên mới ra đời ĐÚNG ngày 31/08
-  // (lượt cron sáng hôm đó rất có thể đã chạy trước khi kịp deploy). KHÔNG
-  // phải cơ chế tổng quát dò các tháng thiếu — chỉ đúng 1 tháng này, các
-  // tháng lịch sử khác (trước 08/2026) sẽ nhập tay qua tính năng nạp Excel
-  // riêng sau này. Tự kiểm tra đã có dòng tháng 08 chưa trước khi chốt nên
-  // vô hại nếu chạy lại nhiều lần — có thể xoá hẳn đoạn này sau khi đã chốt xong.
   try {
     const { data: aug2026 } = await admin.from('monthly_snapshots').select('year_month').eq('year_month', '2026-08').maybeSingle();
     if (!aug2026) await captureMonthlySnapshot(admin, new Date(2026, 7, 31));

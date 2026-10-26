@@ -1,14 +1,10 @@
-// Xem trước + lịch sử + quay lại bản trước cho việc nhập file Excel — CHỈ tài
-// khoản toàn quyền (nút nhập chỉ hiện cho họ, máy chủ cũng chặn các type
-// 'import-*' với người khác). Dữ liệu danh sách do Edge Function create-account
-// tính sẵn (xem 'import-preview'/'import-history'), file này chỉ hiển thị.
 import { icon } from '../../icons.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import * as S from '../../state.js';
 import { formatVND, formatDate, formatDateTime, escapeHtml } from '../../utils.js';
 
-const PAGE = 50; // mỗi mục chỉ hiện 50 dòng đầu, bấm "Hiện thêm" để xem tiếp
+const PAGE = 50;
 
 function formatValue(kind, v) {
   if (v === null || v === undefined || v === '') return '—';
@@ -29,7 +25,6 @@ const who = (item) => `<b>${escapeHtml(item.name || 'Chưa có tên')}</b>${item
 const changesHtml = (changes) => `<div class="imp-changes">${changes.map((c) =>
   `<div><span class="imp-muted">${escapeHtml(c.label)}:</span> <s>${escapeHtml(formatValue(c.kind, c.from))}</s> → <b>${escapeHtml(formatValue(c.kind, c.to))}</b></div>`).join('')}</div>`;
 
-// Mỗi mục: tiêu đề + cách vẽ 1 dòng. tone: danger (đỏ) / warn / ok / info.
 const SECTIONS = {
   deletedContracts: { tone: 'danger', title: (n) => `Xóa ${n} hợp đồng`, open: true,
     row: (it) => `<div>Hợp đồng <b>${escapeHtml(it.code)}</b> — ${who(it)}</div><div class="imp-muted">Dư nợ cũ ${formatVND(it.balance)} · ${escapeHtml(it.reason || '')}</div>` },
@@ -45,7 +40,7 @@ const SECTIONS = {
     row: (it) => `<div>${who(it)}</div>` },
   skipped: { tone: 'warn', title: (n) => `Dòng bị bỏ qua: ${n}`,
     row: (it) => `<div>${it.code ? `Hợp đồng <b>${escapeHtml(it.code)}</b> — ` : ''}${who(it)}</div><div class="imp-muted">${escapeHtml(it.reason || '')}</div>` },
-  // file số 2
+
   matched: { tone: 'warn', title: (n) => `Hợp đồng được bổ sung: ${n}`,
     row: (it) => `<div>Hợp đồng <b>${escapeHtml(it.code)}</b> — ${who(it)}</div>${changesHtml(it.changes)}` },
   unmatched: { tone: 'warn', title: (n) => `Không cập nhật được: ${n}`,
@@ -54,7 +49,6 @@ const SECTIONS = {
 const ORDER_IMPORT = ['deletedContracts', 'newContracts', 'changedContracts', 'newCustomers', 'changedCustomers', 'deletedCustomers', 'skipped'];
 const ORDER_SUPPLEMENT = ['matched', 'unmatched'];
 
-/** Các mục chi tiết (gập/mở được) cho cả bản xem trước, kết quả vừa nhập lẫn xem lại lịch sử. */
 export function importDetailsHtml(details, kind = 'import') {
   if (!details) return '';
   const unchanged = kind === 'supplement' ? details.unchangedContracts : details.unchangedContracts;
@@ -70,7 +64,6 @@ export function importDetailsHtml(details, kind = 'import') {
   return `<div class="imp-details">${blocks || '<div class="imp-muted">Không có thay đổi nào.</div>'}${note}</div>`;
 }
 
-/** Gắn nút "Hiện thêm" cho các mục vừa vẽ. */
 export function bindImportDetails(root) {
   root.querySelectorAll('[data-more]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -83,7 +76,6 @@ export function bindImportDetails(root) {
   });
 }
 
-/** Dải số liệu tóm tắt. */
 export function importSummaryHtml(summary, kind = 'import') {
   if (!summary) return '';
   const chip = (n, label, tone) => (n ? `<span class="imp-chip imp-chip-${tone}"><b>${n}</b> ${label}</span>` : '');
@@ -95,10 +87,6 @@ export function importSummaryHtml(summary, kind = 'import') {
   return `<div class="imp-chips">${chips.join('') || '<span class="imp-muted">Không có thay đổi nào.</span>'}</div>`;
 }
 
-/**
- * Cửa sổ xem trước trước khi nhập thật. onConfirm() chạy việc nhập thật; nếu
- * ném lỗi thì cửa sổ vẫn mở để người dùng thấy thông báo và thử lại/hủy.
- */
 export function openImportPreview({ title, kind = 'import', summary, details, fullSync, notes = [], confirmLabel = 'Xác nhận nhập', onConfirm }) {
   const deleting = (summary?.deletedContracts || 0) + (summary?.deletedCustomers || 0);
   openModal({
@@ -168,7 +156,6 @@ function openImportDetail(id) {
   });
 }
 
-/** Lịch sử các lần nhập + nút quay lại bản trước (chỉ lần mới nhất chưa quay lại). onChanged() gọi sau khi quay lại thành công. */
 export function openImportHistory({ onChanged } = {}) {
   openModal({
     title: 'Lịch sử nhập file',

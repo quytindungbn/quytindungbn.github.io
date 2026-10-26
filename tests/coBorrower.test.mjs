@@ -60,7 +60,7 @@ test('contractOa: tick người cùng vay (đúng tên, có số) → gửi cả
 test('contractOa: tick người cùng vay nhưng hợp đồng nay ghi người khác → tick mất hiệu lực, KHÔNG gửi cho người cũ', () => {
   const s = contractOa(ct({ heirName: 'LÊ VĂN KHÁNH', oaToCo: true, oaCoKey: 'trần thị bích', oaToMain: false }), CUST);
   assert.equal(s.toCo, false);
-  assert.deepEqual(s.recipients.map((r) => r.who), ['main']); // luôn còn ít nhất 1 người nhận
+  assert.deepEqual(s.recipients.map((r) => r.who), ['main']);
 });
 
 test('contractOa: người cùng vay chưa có số → bị khóa, không nhận tin dù có tick', () => {
@@ -80,16 +80,16 @@ test('contractOa: hợp đồng không ghi người cùng vay thì không có ng
 });
 
 test('contractOa: người vay chưa có số bị khóa; số người cùng vay trùng số người vay thì không gửi 2 lần', () => {
-  // người vay chưa có số + hợp đồng ghi Bích (có số) → Bích TỰ ĐỘNG nhận (tick sẵn)
+
   const noPhone = contractOa(ct(), { ...CUST, phone: '' });
   assert.deepEqual([noPhone.mainLocked, noPhone.toMain, noPhone.toCo, noPhone.coAuto, noPhone.recipients.map((r) => r.who)], [true, false, true, true, ['co']]);
-  // người cùng vay chưa có số / hợp đồng không ghi người cùng vay / số trùng số người vay → không ai nhận
+
   assert.deepEqual(contractOa(ct({ heirName: 'LÊ VĂN KHÁNH' }), { ...CUST, phone: '' }).recipients, []);
   assert.deepEqual(contractOa(ct({ heirName: null }), { ...CUST, phone: '' }).recipients, []);
   assert.deepEqual(contractOa(ct(), { name: 'A', phone: '', coPeople: [{ name: 'TRẦN THỊ BÍCH', phone: '' }] }).recipients, []);
-  // hợp đồng tắt thì không gửi gì dù người vay chưa có số
+
   assert.deepEqual(contractOa(ct({ oaEnabled: false }), { ...CUST, phone: '' }).recipients, []);
-  // người vay CÓ số thì vẫn như cũ: mặc định chỉ người vay, tick mới gửi người cùng vay (coAuto = false)
+
   const hasPhone = contractOa(ct(), CUST);
   assert.deepEqual([hasPhone.coAuto, hasPhone.toCo, hasPhone.recipients.map((r) => r.who)], [false, false, ['main']]);
   const dup = contractOa(ct({ oaToCo: true, oaCoKey: 'trần thị bích' }), { ...CUST, phone: '0988777666' });
@@ -107,9 +107,9 @@ test('customerOaSummary: mặc định không cần dòng "Gửi tới"; có ng�
   assert.deepEqual([allOff.mode, allOff.custom], ['none', true]);
   const coOnly = customerOaSummary([ct({ oaToCo: true, oaCoKey: 'trần thị bích', oaToMain: false })], CUST);
   assert.equal(coOnly.mode, 'co');
-  const noPhone = customerOaSummary([ct({ heirName: null })], { ...CUST, phone: '' }); // người vay chưa có số, không có người cùng vay → báo chưa có số để gửi
+  const noPhone = customerOaSummary([ct({ heirName: null })], { ...CUST, phone: '' });
   assert.deepEqual([noPhone.mode, noPhone.noRecipient, noPhone.custom], ['none', true, true]);
-  const autoCo = customerOaSummary([ct(), ct({ id: 'y' })], { ...CUST, phone: '' }); // người vay chưa có số, người cùng vay có số → tự gửi người cùng vay (cả 2 hợp đồng)
+  const autoCo = customerOaSummary([ct(), ct({ id: 'y' })], { ...CUST, phone: '' });
   assert.deepEqual([autoCo.mode, autoCo.noRecipient, autoCo.custom, autoCo.uniform], ['co', false, true, true]);
 });
 
@@ -123,11 +123,11 @@ test('checkCoPhone: đúng 10 số và có số 0 đứng đầu', () => {
   assert.deepEqual(checkCoPhone('0988777666'), { ok: true, empty: false, phone: '0988777666' });
   assert.deepEqual(checkCoPhone('0988 777 666'), { ok: true, empty: false, phone: '0988777666' });
   assert.deepEqual(checkCoPhone('0988.777.666'), { ok: true, empty: false, phone: '0988777666' });
-  assert.equal(checkCoPhone('098877766').ok, false); // thiếu 1 số
-  assert.equal(checkCoPhone('09887776666').ok, false); // thừa 1 số
-  assert.equal(checkCoPhone('988777666').ok, false); // 9 số, thiếu số 0
-  assert.equal(checkCoPhone('9887776660').reason, 'Số điện thoại phải bắt đầu bằng số 0.'); // đủ 10 số nhưng không có 0 đầu
-  assert.equal(checkCoPhone('+84988777666').ok, false); // không nhận dạng +84
+  assert.equal(checkCoPhone('098877766').ok, false);
+  assert.equal(checkCoPhone('09887776666').ok, false);
+  assert.equal(checkCoPhone('988777666').ok, false);
+  assert.equal(checkCoPhone('9887776660').reason, 'Số điện thoại phải bắt đầu bằng số 0.');
+  assert.equal(checkCoPhone('+84988777666').ok, false);
   assert.equal(checkCoPhone('0988abc666').ok, false);
 });
 
@@ -146,16 +146,16 @@ test('sanitizeCoPhoneInput: chỉ giữ chữ số, tối đa 10 số, đổi +8
 
 test('hasOaPhone: chỉ cần người vay hoặc 1 người cùng vay (ghi trên hợp đồng) có số là thêm được vào OA', () => {
   const cts = [{ heirName: 'TRẦN THỊ BÍCH' }, { heirName: 'LÊ VĂN KHÁNH' }];
-  // người vay có số
+
   assert.ok(hasOaPhone(cts, { name: 'A', phone: '0912345678', coPeople: [] }));
-  // người vay không số, không người cùng vay
+
   assert.ok(!hasOaPhone([{}], { name: 'A', phone: '', coPeople: [] }));
   assert.ok(!hasOaPhone([], { name: 'A', phone: '  ', coPeople: [] }));
-  // cả 2 không số
+
   assert.ok(!hasOaPhone(cts, { name: 'A', phone: '', coPeople: [{ name: 'TRẦN THỊ BÍCH', phone: '' }] }));
-  // người vay không số nhưng người cùng vay có số (không phân biệt hoa/thường)
+
   assert.ok(hasOaPhone(cts, { name: 'A', phone: '', coPeople: [{ name: 'Trần Thị Bích', phone: '0988777666' }] }));
-  // số của người không còn ghi trên hợp đồng nào thì không tính
+
   assert.ok(!hasOaPhone(cts, { name: 'A', phone: '', coPeople: [{ name: 'NGUYỄN VĂN CŨ', phone: '0988777666' }] }));
 });
 
@@ -175,27 +175,27 @@ test('logRecipient: lần gửi đã gửi cho ai — người vay / người c�
   assert.deepEqual(logRecipient('0910 000 000', customer, contract), { who: 'main', name: 'LÂM VĂN THU', phone: '0910 000 000' });
   assert.deepEqual(logRecipient('+84910000000', customer, contract).who, 'main');
   assert.deepEqual(logRecipient('0988777666', customer, contract), { who: 'co', name: 'trần thị bích', phone: '0988777666' });
-  // hợp đồng nay ghi người khác: vẫn tra ra người cùng vay cũ theo sổ người cùng vay của khách
+
   assert.deepEqual(logRecipient('0905222333', customer, contract), { who: 'co', name: 'Lê Văn Khánh', phone: '0905222333' });
-  // số không còn trong hồ sơ; không có số; không còn khách
+
   assert.deepEqual(logRecipient('0933444555', customer, contract), { who: 'other', name: '', phone: '0933444555' });
   assert.equal(logRecipient('', customer, contract).who, 'other');
   assert.equal(logRecipient(null, customer, contract).phone, '');
   assert.deepEqual(logRecipient('0910000000', null, null), { who: 'other', name: '', phone: '0910000000' });
-  // không có hợp đồng (log cũ): vẫn nhận ra người vay và người trong sổ
+
   assert.equal(logRecipient('0910000000', customer, null).who, 'main');
   assert.equal(logRecipient('0988777666', customer, null).who, 'co');
 });
 
 test('logRecipient: log đã ghi sẵn người nhận thì dùng đúng như đã ghi, dù số điện thoại sau đó bị sửa', () => {
-  const customer = { name: 'LÂM VĂN THU', phone: '0910000000', coPeople: [{ name: 'LÊ VĂN KHÁNH', phone: '0905999888' }] }; // Khánh đã sửa số sau lần gửi
-  // lúc gửi, số của Khánh là 0905222333 (không còn khớp sổ) — nhưng log ghi sẵn recipient_who = 'co'
+  const customer = { name: 'LÂM VĂN THU', phone: '0910000000', coPeople: [{ name: 'LÊ VĂN KHÁNH', phone: '0905999888' }] };
+
   assert.deepEqual(logRecipient('0905222333', customer, null, { who: 'co', name: 'LÊ VĂN KHÁNH' }), { who: 'co', name: 'LÊ VĂN KHÁNH', phone: '0905222333' });
-  // không ghi sẵn → như trước: số cũ không còn khớp ai
+
   assert.equal(logRecipient('0905222333', customer, null).who, 'other');
   assert.equal(logRecipient('0905222333', customer, null, { who: null, name: '' }).who, 'other');
-  // người vay ghi sẵn: tên lấy theo log hoặc theo khách
+
   assert.deepEqual(logRecipient('0911111111', customer, null, { who: 'main', name: '' }), { who: 'main', name: 'LÂM VĂN THU', phone: '0911111111' });
-  // khách đã bị xóa nhưng log có ghi sẵn
+
   assert.equal(logRecipient('0905222333', null, null, { who: 'co', name: 'Khánh' }).who, 'co');
 });

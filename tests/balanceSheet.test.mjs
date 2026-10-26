@@ -56,7 +56,7 @@ test('nhận báo cáo hằng ngày, chặn kỳ sai tháng và tài khoản tr�
 
 test('tài khoản dự phòng không phát sinh được coi là 0, tài khoản cho vay mới được tính', () => {
   const rows = sample();
-  rows[18] = []; // tháng này không có 2191
+  rows[18] = [];
   rows[17][3] = rows[17][7] = 15;
   rows[14][3] = rows[14][7] = 15;
   rows[23][3] = rows[23][7] = 85;
@@ -100,7 +100,7 @@ test('tách vốn điều lệ và các quỹ, giữ phần vốn chủ sở h�
     developmentReserve: 20, financialReserve: 5, otherEquity: 5,
   });
   assert.equal(parseBalanceSheetRows(sample()).end.equityParts, null);
-  rows[27] = []; // một quỹ không phát sinh, vẫn giữ các khoản mục còn lại
+  rows[27] = [];
   assert.equal(parseBalanceSheetRows(rows).end.equityParts.supplementaryReserve, 0);
 });
 

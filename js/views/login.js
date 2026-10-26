@@ -46,8 +46,7 @@ export function renderLogin(root, onLoggedIn) {
     root.querySelector('#label-primary').textContent = isAdmin ? 'Tên đăng nhập' : 'Số CCCD hoặc SĐT';
     root.querySelector('#input-primary').placeholder = isAdmin ? 'Nhập tên đăng nhập quản trị' : 'Nhập số CCCD hoặc SĐT của bạn';
     root.querySelector('#input-primary').inputMode = isAdmin ? 'text' : 'numeric';
-    // Chỉ khách hàng mới có "Quên mật khẩu" — quản trị viên/nhân viên liên hệ
-    // super admin khác cấp lại trực tiếp trong trang Quản lý User.
+
     root.querySelector('#btn-forgot').style.display = isAdmin ? 'none' : 'block';
   }
   updateMode();
@@ -71,10 +70,6 @@ export function renderLogin(root, onLoggedIn) {
     const submitBtn = e.target.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
 
-    // Đăng nhập khách hàng sai mật khẩu sẽ gọi notify() (để lưu số lần nhập sai) —
-    // notify() kích hoạt render lại toàn bộ màn hình đăng nhập, xóa mất các phần tử
-    // DOM đã lấy ở trên. Vì vậy sau khi await xong phải lấy lại #login-error/nút bấm
-    // MỚI từ `root` (chỉ `root` là còn nguyên) thay vì dùng lại tham chiếu cũ.
     try {
       if (mode === 'admin') {
         const res = await S.loginAdmin(primary, password);
@@ -85,7 +80,7 @@ export function renderLogin(root, onLoggedIn) {
         }
         S.setSession({ role: 'admin', id: res.adminId, sbToken: res.sbToken });
         toast('Đăng nhập thành công', 'success');
-        autoSubscribeIfPossible(res.sbToken); // không đợi xong, không chặn chuyển trang — xin quyền thông báo ngay, khỏi cần vào Đổi mật khẩu bật riêng
+        autoSubscribeIfPossible(res.sbToken);
         onLoggedIn();
       } else {
         const res = await S.loginCustomer(primary, password);
@@ -96,7 +91,7 @@ export function renderLogin(root, onLoggedIn) {
         }
         S.setSession({ role: 'customer', id: res.customerId, mustChangePassword: res.mustChangePassword, sbToken: res.sbToken });
         toast('Đăng nhập thành công', 'success');
-        autoSubscribeIfPossible(res.sbToken); // không đợi xong, không chặn chuyển trang — xin quyền thông báo ngay, khỏi cần vào Đổi mật khẩu bật riêng
+        autoSubscribeIfPossible(res.sbToken);
         onLoggedIn();
       }
     } finally {
@@ -106,13 +101,6 @@ export function renderLogin(root, onLoggedIn) {
   });
 }
 
-/**
- * "Quên mật khẩu" — khách nhập CCCD + SĐT để tự xác minh danh tính (chưa có
- * OTP thật nên chỉ dừng ở mức khớp 2 thông tin này), khớp đúng thì ghi 1
- * yêu cầu vào hệ thống (hiện trong "Yêu cầu tư vấn" ở trang quản trị) — admin
- * xem yêu cầu (có tên/SĐT khách) rồi tự gọi điện xác minh lại + cấp mật khẩu
- * mới qua SĐT, KHÔNG tự động cấp/gửi mật khẩu ngay (chưa có kênh SMS thật).
- */
 function openForgotPasswordModal() {
   const close = openModal({
     title: 'Quên mật khẩu',

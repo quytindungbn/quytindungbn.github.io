@@ -17,9 +17,9 @@ let selectedMonth = null;
 let loadedFor = null;
 let hasLoaded = false;
 let requestId = 0;
-let loadingPromise = null; // lượt tải bảng cân đối đang chạy (nếu có) — dùng chung, không bắt đầu lượt mới khi trang vẽ lại
+let loadingPromise = null;
 let latestContentEl = null;
-let skipCache = false; // true: lượt tải kế tiếp bỏ qua đệm trên máy, tải đầy đủ từ máy chủ (nút Làm mới, vừa nạp file)
+let skipCache = false;
 const remoteProvisions = new Map();
 const pendingProvisions = new Set();
 
@@ -91,7 +91,7 @@ function ratiosSection(end) {
       : '';
   const profitWarning = Number(end.profit) < 0 ? 'Lợi nhuận lũy kế âm; cần rà soát doanh thu và chi phí.'
     : '';
-  // calc = true: dòng công thức chỉ hiện trên máy tính (để 4 ô cùng có tên - số - công thức; điện thoại giữ như cũ)
+
   const tile = (label, value, detail, advice, alert = false, calc = false) => `<article class="bs-ratio-card ${alert ? 'bs-ratio-alert' : ''}">
     <div class="bs-ratio-head"><h4>${label}</h4><strong>${value}</strong></div>
     ${detail ? `<p class="bs-ratio-detail${calc ? ' bs-ratio-detail--calc' : ''}">${detail}</p>` : ''}${advice ? `<p class="bs-ratio-advice">${advice}</p>` : ''}</article>`;
@@ -119,7 +119,7 @@ function resetIfChangedUser() {
   selectedMonth = null;
   loadedFor = session?.id;
   hasLoaded = false;
-  requestId++; // bỏ kết quả của lượt tải đang chạy dở cho người dùng trước
+  requestId++;
   loadingPromise = null;
   remoteProvisions.clear();
   pendingProvisions.clear();
@@ -145,12 +145,6 @@ const onThisPage = () => location.hash.split('?')[0] === '#/admin/can-doi-ke-toa
 const SELECT_FULL = 'year_month, period_end, source_name, figures, imported_at';
 const cacheKey = (uid) => `balance:${uid}`;
 
-/**
- * Tải bảng cân đối. Bảng này nặng (mỗi tháng là cả bảng số liệu), nên:
- *  - Có bản đã lưu trên máy (IndexedDB, theo từng người dùng) -> hiện NGAY bản đó, rồi chỉ hỏi máy chủ danh sách nhẹ (tháng + giờ nạp) và chỉ tải
- *    lại đúng những tháng mới/đổi — mở lại trang hoặc tải lại trang không phải chờ tải cả bảng nữa.
- *  - Chưa có bản lưu (lần đầu trên máy này, hoặc bấm Làm mới) -> tải đầy đủ như trước, xong lưu lại.
- */
 async function fetchReports(uid, cached) {
   const client = makeClient();
   if (!cached.length) {
@@ -187,13 +181,13 @@ function startLoad() {
     let cached = [];
     if (useCache) {
       const saved = await kvGet(cacheKey(uid));
-      if (id !== requestId) return; // đã đổi người dùng giữa chừng
+      if (id !== requestId) return;
       if (saved && Array.isArray(saved.reports) && saved.reports.length) {
         cached = saved.reports;
         reports = cached;
         hasLoaded = true;
         if (!reports.some((r) => r.year_month === selectedMonth)) selectedMonth = reports.at(-1)?.year_month || null;
-        if (latestContentEl && onThisPage()) draw(latestContentEl); // hiện ngay bản đã lưu, phần đối chiếu với máy chủ chạy ngầm bên dưới
+        if (latestContentEl && onThisPage()) draw(latestContentEl);
       }
     }
     let result;
@@ -202,7 +196,7 @@ function startLoad() {
     if (id !== requestId) return;
     const el = latestContentEl;
     if (result.error) {
-      // Đã hiện được bản lưu sẵn thì giữ nguyên, không thay bằng thông báo lỗi
+
       if (!cached.length && el && onThisPage()) el.innerHTML = `<div class="card card-pad text-danger">Không tải được số liệu. Kiểm tra kết nối hoặc cấu trúc Supabase: ${escapeHtml(result.error.message)}</div>`;
       return;
     }
@@ -224,13 +218,11 @@ export async function render(contentEl) {
   latestContentEl = contentEl;
   if (hasLoaded) { remoteProvisions.delete(selectedMonth); draw(contentEl); return; }
   contentEl.innerHTML = '<div class="card card-pad text-muted">Đang tải bảng cân đối kế toán...</div>';
-  // Đang có lượt tải chạy rồi (VD: dữ liệu phiên vừa làm mới xong nên trang được vẽ lại, hoặc app đã tải sẵn ngầm) thì CHỜ lượt đó, không bắt đầu lượt mới —
-  // trước đây mỗi lần vẽ lại lại bỏ lượt đang tải dở để tải lại từ đầu nên vào trang này rất lâu.
+
   if (loadingPromise) return loadingPromise;
   return startLoad();
 }
 
-/** Tải sẵn ngầm sau khi mở app (app.js) — lúc bấm vào Quản trị thì đã có sẵn số liệu. Chỉ làm khi người này được xem bảng cân đối; lỗi thì bỏ qua. */
 export function prefetch() {
   const session = S.getSession();
   if (!session || session.role !== 'admin' || !S.canViewBalanceSheet(session.id)) return;
@@ -239,23 +231,20 @@ export function prefetch() {
   startLoad().catch(() => {});
 }
 
-/** Tải lại đầy đủ từ máy chủ, bỏ qua bản lưu trên máy (nút Làm mới, vừa nạp file mới). */
 function reloadFromServer(contentEl) {
   hasLoaded = false;
   skipCache = true;
-  requestId++; // bỏ kết quả của lượt tải đang chạy dở (nếu có)
+  requestId++;
   loadingPromise = null;
   remoteProvisions.clear();
   return render(contentEl);
 }
 
-/** Có dữ liệu phiên mới nhưng vẫn đứng ở trang này: chỉ vẽ lại bằng số liệu đã tải (không tải lại bảng cân đối, không tính lại dự phòng) — xem app.js. */
 export function refresh(contentEl) {
   latestContentEl = contentEl;
-  if (hasLoaded) draw(contentEl); // chưa tải xong thì lượt tải đang chạy tự vẽ khi xong
+  if (hasLoaded) draw(contentEl);
 }
 
-/** Số lớn gọn ở đầu trang: "95,61 tỷ đ", "429 triệu đ" (tròn thì bỏ ",00"); số đầy đủ không còn hiện thêm ở dòng dưới. */
 function compactMoney(value) { return compactParts(value); }
 
 function stat(label, value, startValue, color, clickable = false) {
@@ -279,8 +268,8 @@ function trendMonthDetail(report) {
 function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
   const viewport = mobile ? 320 : 1120;
   const visible = mobile ? 5 : 12;
-  const height = mobile ? 255 : 372; // cao hơn để nhãn số (đã to hơn) có chỗ tách nhau
-  const edge = mobile ? 28 : 44; // chừa chỗ cho nhãn số của tháng đầu/cuối; không còn số ở hai đầu trục
+  const height = mobile ? 255 : 372;
+  const edge = mobile ? 28 : 44;
   const left = edge;
   const step = (viewport - left - edge) / (visible - 1);
   const width = Math.max(viewport, left + step * (shown.length - 1) + edge);
@@ -343,7 +332,7 @@ function trendChart(list) {
   const base = Math.max(0, min - (max - min || max * 0.05) * 0.35);
   const span = Math.max(1, max - base);
   const profits = shown.map((r) => Number(r.figures.end.profit) || 0);
-  // Giữ mốc 0 và nới trục lợi nhuận để dao động nhỏ không bị phóng đại.
+
   const profitBase = Math.min(0, ...profits) * 2;
   const profitTop = Math.max(0, ...profits) * 2 || 1;
   const profitSpan = Math.max(1, profitTop - profitBase);
@@ -353,9 +342,8 @@ function trendChart(list) {
     <div class="bs-trend-detail" id="bs-trend-detail" aria-live="polite">${trendMonthDetail(selected)}</div>`;
 }
 
-let trendScrollLeft = null; // vị trí cuộn ngang của biểu đồ trước khi vẽ lại (để giữ nguyên sau khi chọn tháng)
+let trendScrollLeft = null;
 
-/** Bấm (hoặc Enter/Space khi đang chọn bằng bàn phím) vào một điểm tháng thì cả trang chuyển sang số liệu tháng đó; di chuột qua chỉ để xem, không đổi gì. */
 function bindTrendPoints(root, onSelect) {
   const chart = root.querySelector('.bs-chart-scroll');
   if (!chart) return;
@@ -461,7 +449,7 @@ function provisionComparison(report) {
   const snap = S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month);
   const end = report.figures.end;
   const snapshotProvision = S.provisionFromSnapshot(snap);
-  // Cùng nguồn với Tổng quan: bản chốt của tháng được ưu tiên.
+
   const today = new Date();
   const live = !snapshotProvision && S.isSuperAdmin(S.getSession()?.id)
     ? S.provisionSummary(S.getState().contracts, today) : null;
@@ -469,7 +457,7 @@ function provisionComparison(report) {
   const app = snapshotProvision || live || (remote?.error ? null : remote);
   const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const isUnclosedMonth = report.year_month >= currentMonth;
-  // Chỉ yêu cầu bút toán sau khi tháng đã kết thúc và có bản chốt của đúng tháng.
+
   const canRecommendAdjustment = report.year_month < currentMonth && !!snapshotProvision;
   const deadline = nextProvisionDeadline(report.year_month);
   const provisions = [
@@ -536,14 +524,14 @@ function draw(contentEl) {
     { label: 'Lợi nhuận lũy kế', key: 'profit', options: { noYear: true, profitDetail: true } },
   ] : [];
   const dateText = report ? reportDate(report.period_end) : '';
-  // Thanh cố định (dính dưới tiêu đề khi cuộn): số liệu đến ngày + kỳ báo cáo + nút làm mới/nạp cân đối.
+
   const periodIndex = reports.findIndex((r) => r.year_month === selectedMonth);
   const barHtml = `<div class="bs-bar">
     ${report ? `<div class="bs-bar-date"><small><span class="bs-wide-only">Số liệu </span>đến ngày</small><b>${dateText}</b></div>` : ''}
     ${reports.length ? `<label class="bs-bar-period"><small>Kỳ báo cáo</small><span class="bs-period-row"><select id="bs-month">${[...reports].reverse().map((r) => `<option value="${r.year_month}" ${r.year_month === selectedMonth ? 'selected' : ''}>${r.year_month.slice(5, 7)}/${r.year_month.slice(0, 4)}</option>`).join('')}</select>${periodStepperHtml({ canPrev: periodIndex > 0, canNext: periodIndex < reports.length - 1 })}</span></label>` : ''}
     <div class="bs-bar-tools"><button type="button" class="bs-ibtn" id="bs-refresh" title="Làm mới" aria-label="Làm mới">${icon('refresh')}</button>${superAdmin ? `<button type="button" class="bs-ibtn" id="bs-import" title="Nạp cân đối" aria-label="Nạp cân đối">${icon('upload')}</button><input type="file" id="bs-file" accept=".xls,.xlsx" multiple hidden>` : ''}</div></div>`;
   const ratiosHtml = report ? ratiosSection(end) : '';
-  // Thứ tự trang: khối tổng hợp -> biến động -> cơ cấu -> cân đối rút gọn -> dự phòng -> chỉ số quản trị (đặt cuối).
+
   contentEl.innerHTML = `<div class="bs-lux">
     <div class="bs-sticky">${barHtml}</div>
     <div class="bs-doc">
@@ -567,7 +555,7 @@ function draw(contentEl) {
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
     ${provisionComparison(report)}
     ${ratiosHtml}`}</div></div>`;
-  // Nút tăng/giảm cạnh ô Kỳ báo cáo (máy tính): chuyển sang tháng sau/trước, giữ nguyên vị trí cuộn.
+
   contentEl.querySelectorAll('.bs-bar .period-step-btn').forEach((button) => button.addEventListener('click', () => {
     const target = reports[reports.findIndex((r) => r.year_month === selectedMonth) + Number(button.dataset.step)];
     if (!target) return;

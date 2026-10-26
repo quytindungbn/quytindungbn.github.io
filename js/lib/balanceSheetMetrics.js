@@ -14,7 +14,6 @@ export function previousDecemberReport(reports, yearMonth) {
   return reports.find((report) => report.year_month === `${Number(yearMonth.slice(0, 4)) - 1}-12`) || null;
 }
 
-/** Các tài khoản từng có số dư trong năm, kể cả khi file tháng đang xem đã bỏ tài khoản đó. */
 export function historicAccountLines(reports, yearMonth, key) {
   if (!/^\d{4}-\d{2}$/.test(yearMonth || '')) return [];
   const lines = new Map();
@@ -31,7 +30,6 @@ export function historicAccountLines(reports, yearMonth, key) {
   return [...lines.values()];
 }
 
-/** Ghép các tài khoản của ba mốc để tài khoản vừa về 0 vẫn hiện mức giảm. */
 export function accountDetailChanges(endLines, startLines, yearLines, historyLines = []) {
   if (!Array.isArray(endLines)) return null;
   const sources = [endLines, startLines, yearLines, historyLines];
@@ -56,7 +54,6 @@ export function accountDetailChanges(endLines, startLines, yearLines, historyLin
   }));
 }
 
-/** Trong một lượt nạp, chỉ file có ngày số liệu mới nhất của mỗi tháng được lưu. */
 export function selectLatestBalanceImports(imports) {
   const byMonth = new Map();
   const skipped = [];
@@ -85,7 +82,6 @@ export function nextProvisionDeadline(yearMonth) {
   return `07/${String(nextMonth).padStart(2, '0')}/${month === 12 ? year + 1 : year}`;
 }
 
-/** Tỷ số lũy kế theo số dư cuối kỳ; lợi nhuận đã được cộng vào vốn chủ sở hữu. */
 export function managementRatios(end) {
   if (!end) return null;
   const profit = Number(end.profit);

@@ -1,16 +1,10 @@
-// Nội dung "Thông tin khoản vay" để quản trị bấm SAO CHÉP rồi dán gửi khách (Zalo OA...) — văn bản thuần, đọc gọn trên điện thoại.
-// Hàm thuần (không đụng mạng/DOM) nên kiểm thử được bằng node, xem tests/loanSummary.test.mjs.
 import { formatVND, formatDate, boldDigits } from '../utils.js';
 
-// Ngắn vừa phải để không bị xuống dòng trong khung tin nhắn trên điện thoại.
 const LINE = '──────────────';
-// Tiêu đề mục viết HOA. Không dùng chữ đậm Unicode cho chữ tiếng Việt vì dấu bị lệch/mất trên Zalo.
+
 const HEAD_LOAN = 'I. KHOẢN VAY';
 const HEAD_INTEREST = 'II. TIỀN LÃI';
 
-// Zalo dán vào là chữ thường, phông tỉ lệ (mỗi chữ một độ rộng) nên không canh cột bằng dấu cách thường được.
-// Cách làm: ước lượng độ rộng chữ (1/1000 em, trung bình các phông không chân kiểu Android/Windows: Arial, Helvetica, Noto Sans)
-// rồi đệm khoảng trắng có độ rộng CỐ ĐỊNH theo em (1/2, 1/3, 1/4, 1/6 em) cho phần sau dấu ":" bắt đầu cùng một cột.
 const GLYPH_WIDTH = {
   il: 240, j: 250, ' .': 260, ':,': 270, 't/': 280, fI: 300, 'r-()': 330, '•': 370, s: 460, J: 470, cz: 480, xy: 490, kv: 500,
   ae: 510, '₫': 520, hnou: 530, 'bdgpqđ': 540, L: 580, F: 590, Z: 610, T: 620, PS: 630, E: 640, B: 670, VX: 680, AKY: 690,
@@ -18,30 +12,26 @@ const GLYPH_WIDTH = {
 };
 const WIDTH_OF = {};
 for (const [chars, w] of Object.entries(GLYPH_WIDTH)) for (const ch of chars) WIDTH_OF[ch] = w;
-const PAD_SPACES = [['\u2002', 500], ['\u2004', 333], ['\u2005', 250], ['\u2006', 167]]; // en, 1/3, 1/4, 1/6 em
+const PAD_SPACES = [['\u2002', 500], ['\u2004', 333], ['\u2005', 250], ['\u2006', 167]];
 for (const [ch, w] of PAD_SPACES) WIDTH_OF[ch] = w;
-const COLUMN_GAP_MIN = 330; // khoảng cách tối thiểu từ nhãn dài nhất tới giá trị
-// Hiệu chỉnh độ rộng từng nhãn (1/1000 em) theo ảnh chụp thực tế trên Zalo Android: phông máy có kerning nên một số nhãn
-// ("Ngày vay", "Số tiền vay"...) hẹp hơn bảng ước lượng, một số ("Dư nợ hiện tại", "Lãi suất") rộng hơn.
+const COLUMN_GAP_MIN = 330;
+
 const LABEL_FIX = {
   'Khách hàng': -69, 'Hợp đồng số': 54, 'Tình trạng': 16,
   'Số tiền vay': -59, 'Gốc đã trả': 5, 'Dư nợ hiện tại': 71, 'Lãi suất': 52, 'Ngày vay': -120, 'Ngày đến hạn': 11,
   'Đã trả lãi đến': 14, 'Số ngày tính lãi': 16, 'Tiền lãi phải trả': 11,
 };
 
-/** Độ rộng ước lượng (1/1000 em); chữ có dấu tính bằng chữ gốc. */
 export function textWidth(text) {
   let w = 0;
   for (const ch of String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')) w += WIDTH_OF[ch] ?? 560;
   return w;
 }
 
-/** Độ rộng ước lượng của "<tiền tố><nhãn>:" kèm hiệu chỉnh theo nhãn. */
 export function labelWidth(label, prefix = '') {
   return textWidth(`${prefix}${label}:`) + (LABEL_FIX[label] ?? 0);
 }
 
-/** Khoảng trắng có độ rộng gần `width` nhất (sai số nhỏ nhất, rồi ít ký tự nhất) → { text, width }. */
 function padding(width) {
   let best = null;
   for (let a = 0; a <= 12; a++) for (let b = 0; b <= 2; b++) for (let c = 0; c <= 3; c++) for (let d = 0; d <= 3; d++) {
@@ -52,10 +42,6 @@ function padding(width) {
   return { text: '\u2002'.repeat(best.a) + '\u2004'.repeat(best.b) + '\u2005'.repeat(best.c) + '\u2006'.repeat(best.d), width: best.w };
 }
 
-/**
- * Canh phần giá trị (sau dấu ":") của các dòng thẳng một cột. rows = [[nhãn, giá trị], ...]
- * Khoảng cách cột được chọn (trong 1/12 em) sao cho sai số làm tròn khoảng trắng của các dòng là nhỏ nhất.
- */
 export function alignRows(rows, prefix = '') {
   const widths = rows.map(([label]) => labelWidth(label, prefix));
   let best = null;
@@ -67,12 +53,10 @@ export function alignRows(rows, prefix = '') {
   return rows.map(([label, value], i) => `${prefix}${label}:${padding(best.column - widths[i]).text}${value}`);
 }
 
-/** Tên khách IN HOA — chỉ lấy tên MỘT người (khách hàng), không ghi thêm người đồng vay. */
 export function customerDisplay(customerName) {
   return String(customerName || '').trim().toUpperCase();
 }
 
-/** "Trong hạn" / "Quá hạn N ngày" / "Còn N ngày đến hạn" / "Đã tất toán" — cách nói dành cho khách. */
 export function loanStatusText(info) {
   if (!info) return '';
   if (info.status === 'da_tat_toan') return 'Đã tất toán';
@@ -81,18 +65,6 @@ export function loanStatusText(info) {
   return 'Trong hạn';
 }
 
-/**
- * @param {object} p
- * @param {string} p.orgName      tên quỹ (VD "Quỹ Tín Dụng Nhân Dân Bình Nguyên")
- * @param {string} [p.hotline]
- * @param {string} p.customerName tên khách hàng
- * @param {object} p.contract     { code, principal, balance, interestRate, disbursedDate, dueDate, interestPaidUntil }
- * @param {object} [p.info]       kết quả contractStatusInfo()
- * @param {Date}   p.asOf         "tính đến ngày" đang hiện trên màn hình
- * @param {number} p.days         số ngày tính lãi tương ứng
- * @param {number} p.accrued      tiền lãi tương ứng
- * @param {{date:(Date|string), amount:number}|null} [p.nextInstallment] kỳ trả gốc tới (hợp đồng có phân kỳ)
- */
 export function buildLoanSummaryText({ orgName, hotline, customerName, contract, info, asOf, days, accrued, nextInstallment }) {
   const balance = Number(contract.balance) || 0;
   const principal = Number(contract.principal) || 0;
@@ -100,7 +72,7 @@ export function buildLoanSummaryText({ orgName, hotline, customerName, contract,
   const paidUntil = contract.interestPaidUntil || contract.disbursedDate;
   const settled = balance <= 0;
   const L = [];
-  // Tên quỹ viết HOA làm tiêu đề. Zalo chỉ nhận chữ thường khi dán nên chỉ chữ SỐ tiền có kiểu đậm riêng (boldDigits).
+
   L.push(String(orgName || '').toUpperCase());
   L.push('THÔNG TIN KHOẢN VAY');
   L.push(`(tính đến ${formatDate(asOf)})`);
@@ -112,7 +84,7 @@ export function buildLoanSummaryText({ orgName, hotline, customerName, contract,
     ...(status ? [['Tình trạng', status]] : []),
   ]));
   L.push('');
-  // Hai mục dưới dùng chung một cột để giá trị thẳng hàng từ trên xuống.
+
   const loanRows = [];
   if (principal > 0) {
     loanRows.push(['Số tiền vay', formatVND(principal)]);

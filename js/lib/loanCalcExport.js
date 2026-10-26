@@ -1,6 +1,3 @@
-// Xuất / in kết quả "Tính lãi vay": dựng nội dung cho file Excel (.xlsx) và trang in A4 NGANG — phần thuần, kiểm thử bằng node
-// (tests/loanCalcExport.test.mjs). Dữ liệu vào là `inputs` (xem js/views/admin/loanCalc.js) và kết quả của js/lib/loanCalc.js.
-// `printModel()` gom mọi chữ/số cần hiện một lần để bản in HTML và file PDF chia sẻ (js/lib/loanCalcPdf.js) giống hệt nhau.
 import { formatDate, formatVND, escapeHtml } from '../utils.js';
 import { buildXlsx } from './xlsxWrite.js';
 
@@ -18,19 +15,17 @@ const nf = (n) => Math.round(n).toLocaleString('vi-VN');
 const pct = (n) => String(n).replace('.', ',');
 export const NOTE_TEXT = 'Lãi = dư nợ × lãi suất × số ngày thực tế của kỳ ÷ 365, mỗi kỳ làm tròn đến nghìn đồng. Kết quả chỉ để tham khảo, không phải cam kết.';
 
-/** Các dòng "nhãn: giá trị" mô tả điều kiện đã nhập (dùng cho cả Excel và bản in). */
 export function inputLines(inputs, result) {
   const lines = [
     ['Số tiền vay', formatVND(inputs.principal)],
     ['Lãi suất', `${pct(inputs.ratePercent)}%/năm (365 ngày/năm)`],
     ['Ngày vay', formatDate(inputs.startDate)],
   ];
-  // Ngày đáo hạn = ngày trả của kỳ cuối trong bảng (tự tính theo thời hạn / số tiền trả mỗi tháng, hoặc ngày đã nhập tay), luôn có ở cả hai cách tính và nằm ngay sau Ngày vay.
-  // Không ghi "Thời hạn vay": ngày đáo hạn có thể được sửa tay nên số tháng có thể khác số đã nhập (số tháng thật nằm ở ô tổng "Thời hạn").
+
   const rows = result && result.rows;
   if (rows && rows.length) lines.push(['Ngày đáo hạn', formatDate(rows[rows.length - 1].to)]);
   if (inputs.tab === 'term') {
-    // Số gốc / tiền trả mỗi tháng tự nhập được gộp vào dòng "Cách trả".
+
     lines.push(['Cách trả', (METHOD_LABELS[inputs.method] || '') + (inputs.fixedAmount > 0 ? `, ${formatVND(inputs.fixedAmount)}/tháng` : '')]);
   } else {
     lines.push(['Số tiền trả mỗi tháng', formatVND(inputs.payment)], ['Số tiền này là', KIND_LABELS[inputs.kind] || '']);
@@ -38,7 +33,6 @@ export function inputLines(inputs, result) {
   return lines;
 }
 
-/** Bốn ô tổng giống màn hình: [{ label, value }]. */
 export function summaryItems(inputs, result) {
   const T = result.totals, last = result.rows[result.rows.length - 1];
   const items = [
@@ -50,7 +44,6 @@ export function summaryItems(inputs, result) {
   return items;
 }
 
-/** Bốn ô tổng đúng thứ tự và chữ như trên màn hình: [{ label, value, sub, hi }] (hi = ô nổi bật). */
 export function summaryTiles(inputs, result) {
   const T = result.totals, last = result.rows[result.rows.length - 1];
   const principal = { label: 'Tổng gốc', value: formatVND(T.principal), sub: 'Số tiền vay' };
@@ -69,7 +62,6 @@ export function loanCalcFileName(date = new Date(), ext = 'xlsx') {
   return `Tinh-lai-vay_${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}.${ext}`;
 }
 
-/** Mọi chữ/số của bản in, đã định dạng sẵn — bản in HTML và file PDF cùng dùng. */
 export function printModel({ org, inputs, result, printedOn = new Date() }) {
   const T = result.totals;
   return {
@@ -89,14 +81,10 @@ export function printModel({ org, inputs, result, printedOn = new Date() }) {
   };
 }
 
-// ------------------------------------------------------------
-// Excel: A4 ngang, vừa chiều ngang một trang, tiêu đề bảng lặp ở mỗi trang, số trang ở chân trang.
-// ------------------------------------------------------------
 const XL_WIDTHS = [10, 14, 10, 19, 18, 17, 18, 19];
 const colLetter = (i) => String.fromCharCode(65 + i);
 const mergedWidth = (c1, c2) => XL_WIDTHS.slice(c1, c2 + 1).reduce((s, w) => s + w, 0);
 
-/** Tệp Excel: tiêu đề, điều kiện đã nhập, bốn ô tổng, rồi bảng từng kỳ có dòng cộng. */
 export function buildLoanCalcXlsx({ org, inputs, result, printedOn = new Date() }) {
   const m = printModel({ org, inputs, result, printedOn });
   const W = XL_WIDTHS.length;
@@ -108,7 +96,7 @@ export function buildLoanCalcXlsx({ org, inputs, result, printedOn = new Date() 
     if (ht) heights[rows.length] = ht;
     return rows.length;
   };
-  // Ô gộp từ cột c1 đến c2: ô đầu giữ nội dung, các ô còn lại mang cùng kiểu để nền/viền liền mạch.
+
   const span = (row, c1, c2, cell) => {
     const style = cell && cell.style;
     row[c1] = cell;
@@ -124,7 +112,6 @@ export function buildLoanCalcXlsx({ org, inputs, result, printedOn = new Date() 
   push([], 6);
   r = push(span([], 0, 7, { v: 'ĐIỀU KIỆN VAY', style: 'section' }), 18); mergeRow(r, 0, 7);
 
-  // Cột trái: Số tiền vay, Ngày vay, Ngày đáo hạn (hai ngày liền nhau); cột phải: các điều kiện còn lại (Lãi suất, Cách trả hoặc Số tiền trả mỗi tháng / Số tiền này là).
   const LEFT_COL = ['Số tiền vay', 'Ngày vay', 'Ngày đáo hạn'];
   const left = LEFT_COL.map((l) => m.params.find((p) => p[0] === l)).filter(Boolean), right = m.params.filter((p) => !LEFT_COL.includes(p[0]));
   for (let i = 0; i < left.length; i++) {
@@ -137,7 +124,7 @@ export function buildLoanCalcXlsx({ org, inputs, result, printedOn = new Date() 
       span(row, 6, 7, { v: right[i][1], style: 'pval' });
       lines = Math.max(lines, Math.ceil(String(right[i][1]).length / (mergedWidth(6, 7) * 1.05)));
     }
-    if (!right[i]) { span(row, 4, 5, { v: '', style: 'plabel' }); span(row, 6, 7, { v: '', style: 'pval' }); } // ô trống vẫn có kẻ để đường kẻ liền mạch
+    if (!right[i]) { span(row, 4, 5, { v: '', style: 'plabel' }); span(row, 6, 7, { v: '', style: 'pval' }); }
     r = push(row, Math.max(19, 17 * lines + 2));
     mergeRow(r, 0, 1); mergeRow(r, 2, 3); mergeRow(r, 4, 5); mergeRow(r, 6, 7);
   }
@@ -176,19 +163,15 @@ export function buildLoanCalcXlsx({ org, inputs, result, printedOn = new Date() 
   });
 }
 
-// ------------------------------------------------------------
-// Bản in HTML: A4 ngang, dùng đúng kiểu chữ của app (Inter cho chữ và số, Source Serif 4 cho tiêu đề).
-// ------------------------------------------------------------
 export const FONTS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&display=swap';
 export const SANS_STACK = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 export const SERIF_STACK = "'Source Serif 4', 'Noto Serif', Cambria, 'Times New Roman', serif";
 
 const h = (v) => escapeHtml(String(v ?? ''));
-/** Chuỗi trong CSS (content: "..."): thoát dấu \ và ", đổi xuống dòng thành dấu cách, và "<" thành \3c để tên quỹ không thể đóng thẻ <style> sớm. */
+
 const cssStr = (v) => `"${String(v ?? '').replace(/[\\"]/g, '\\$&').replace(/\n/g, ' ').replace(/</g, '\\3c ')}"`;
 const COLS_MM = [22, 30, 22, 40, 38, 38, 40, 39];
 
-/** Trang HTML in A4 ngang (mở trong cửa sổ mới rồi gọi in). */
 export function buildLoanCalcPrintHtml({ org, inputs, result, printedOn = new Date() }) {
   const m = printModel({ org, inputs, result, printedOn });
   const params = m.params.map(([l, v]) => `<div class="prow"><span>${h(l)}</span><b>${h(v)}</b></div>`).join('');
@@ -243,7 +226,6 @@ thead{display:table-header-group}tfoot{display:table-row-group}tr{break-inside:a
 <p class="note">${h(m.note)}</p></article></body></html>`;
 }
 
-/** Chờ kiểu chữ của app tải xong (tối đa 3 giây) rồi mới in, để bản in không bị đổi sang kiểu chữ dự phòng. */
 function whenFontsReady(page) {
   const doc = page.document;
   const link = doc.querySelector('link[data-fonts]');
@@ -254,7 +236,6 @@ function whenFontsReady(page) {
   return Promise.race([loaded, new Promise((res) => setTimeout(res, 3000))]);
 }
 
-/** Mở cửa sổ mới và in; trả false nếu trình duyệt chặn cửa sổ bật lên. */
 export function printLoanCalc(data) {
   const page = window.open('', '_blank', 'width=1100,height=820');
   if (!page) return false;
@@ -262,6 +243,6 @@ export function printLoanCalc(data) {
   page.document.write(buildLoanCalcPrintHtml(data));
   page.document.close();
   page.focus();
-  whenFontsReady(page).then(() => { try { page.print(); } catch { /* cửa sổ đã đóng */ } });
+  whenFontsReady(page).then(() => { try { page.print(); } catch {  } });
   return true;
 }

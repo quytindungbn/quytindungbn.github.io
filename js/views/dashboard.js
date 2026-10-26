@@ -14,12 +14,7 @@ export function render(contentEl) {
   const org = S.getOrg();
   const total = S.customerOutstandingTotal(customer.id);
   const active = S.listContractsByCustomer(customer.id).filter((c) => S.effectiveContractStatus(c) !== 'da_tat_toan');
-  // Hợp đồng QUÁ HẠN/GẦN ĐẾN HẠN (xét cả "Kỳ tới" của phân kỳ trả nợ, không
-  // chỉ ngày đáo hạn hợp đồng gốc — xem S.contractStatusInfo()) lên ĐẦU danh
-  // sách, cho dễ chú ý ngay — thứ tự ưu tiên: Quá hạn > Gần đến hạn > Trong
-  // hạn > Đã tất toán; trong cùng 1 mức thì càng ít ngày càng lên trước
-  // (đáng chú ý nhất), y hệt cách sắp xếp đang dùng ở trang Khách hàng bên
-  // quản trị.
+
   const RANK = { qua_han: 0, gan_den_han: 1, dang_vay: 2, da_tat_toan: 3 };
   const contracts = S.listContractsByCustomer(customer.id)
     .map((c) => ({ c, info: S.contractStatusInfo(c) }))

@@ -1,5 +1,3 @@
-// Máy chủ tĩnh tối giản, không phụ thuộc gói ngoài — dùng để chạy ứng dụng cục bộ.
-// Sử dụng: node server.js [port]
 const http = require('http');
 const fs = require('fs');
 const path = require('path');

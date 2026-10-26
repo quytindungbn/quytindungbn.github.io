@@ -22,7 +22,6 @@ function readTriplet(value, hasHigherGroup) {
   return words.join(' ');
 }
 
-/** Đọc số đồng nguyên, dùng cho giấy báo in; không làm tròn lại số tiền. */
 export function amountInWords(amount) {
   const number = Number(amount);
   if (!Number.isSafeInteger(number) || number < 0) return '';
@@ -52,7 +51,6 @@ function localCalendarDate(value) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-/** Ngày hẹn theo thứ trong tuần in: T2/T3/T7/CN → T6, T4 → T2, T5 → T3, T6 → T4. */
 export function nextNoticePaymentDate(from) {
   const date = localCalendarDate(from);
   const daysUntilDeadline = [5, 4, 3, 5, 5, 5, 6][date.getDay()];
@@ -64,7 +62,6 @@ function writtenDate(date) {
   return `ngày ${date.getDate()} tháng ${date.getMonth() + 1} năm ${date.getFullYear()}`;
 }
 
-/** Giấy báo chưa quá hạn lấy đúng mốc hợp đồng, kể cả khi rơi vào cuối tuần. */
 export function noticeDeadlineDate(type, dueDate, asOf) {
   const printedOn = localCalendarDate(asOf);
   const maturity = localCalendarDate(dueDate);
@@ -78,7 +75,6 @@ const FONTS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Inter:wght@500;6
 const SERIF = "'Source Serif 4','Noto Serif',Cambria,'Times New Roman',serif";
 const SANS = "'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
-/** Giấy báo A4 một trang: thư đầu trang có logo quỹ, khung viền kép, ô số tiền nổi bật. Mọi chữ/số lấy từ hợp đồng đang chọn như trước. */
 export function buildNoticeHtml({ type, contract, customer, org, interest, asOf = new Date(), logoUrl = '' }) {
   if (!['interest', 'due'].includes(type) || !contract || !customer) throw new Error('Thiếu dữ liệu giấy báo');
   const name = h(customer.name || '');
@@ -159,10 +155,6 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
     </article></body></html>`;
 }
 
-/**
- * Logo quỹ dạng data: URI, nạp sẵn từ lúc mở app. Nhúng thẳng vào giấy báo thì cửa sổ in hiện logo ngay,
- * không phải gọi mạng lại (trước đây cửa sổ mới tải logo từ máy chủ → logo hiện chậm hẳn so với chữ).
- */
 let logoDataUrl = '';
 let logoLoading = false;
 function preloadNoticeLogo() {
@@ -181,7 +173,6 @@ function preloadNoticeLogo() {
 }
 preloadNoticeLogo();
 
-/** Chờ kiểu chữ (Inter, Source Serif 4) và logo tải xong — tối đa 3 giây — rồi mới in, để bản in không bị đổi sang chữ dự phòng hay thiếu logo. */
 function whenFontsReady(page) {
   const doc = page.document;
   const link = doc.querySelector('link[data-fonts]');
@@ -199,13 +190,13 @@ export function printNotice(data) {
   if (!page) return false;
   let logoUrl = logoDataUrl;
   if (!logoUrl) {
-    preloadNoticeLogo(); // chưa nạp kịp (lần đầu) → dùng địa chỉ thường, các lần sau đã có sẵn
-    try { logoUrl = new URL('icons/logo-pcf.png', document.baseURI).href; } catch { /* không có logo thì bỏ qua */ }
+    preloadNoticeLogo();
+    try { logoUrl = new URL('icons/logo-pcf.png', document.baseURI).href; } catch {  }
   }
   page.document.open();
   page.document.write(buildNoticeHtml({ ...data, logoUrl }));
   page.document.close();
   page.focus();
-  whenFontsReady(page).then(() => { try { page.print(); } catch { /* cửa sổ đã đóng */ } });
+  whenFontsReady(page).then(() => { try { page.print(); } catch {  } });
   return true;
 }

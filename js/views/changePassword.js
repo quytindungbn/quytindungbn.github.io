@@ -2,7 +2,6 @@ import * as S from '../state.js';
 import { icon } from '../icons.js';
 import { toast } from '../components/toast.js';
 
-/** opts.role: 'customer' (mặc định) | 'admin' — quyết định gọi setCustomerPassword() hay setStaffPassword(). */
 export function renderChangePassword(root, userId, onDone, opts = {}) {
   const role = opts.role || 'customer';
   root.innerHTML = `

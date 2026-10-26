@@ -1,9 +1,3 @@
-// Tạo mã QR ngay trên máy (không cần mạng, không gọi dịch vụ ngoài) — chỉ chế độ "byte" (UTF-8), mức sửa lỗi L hoặc M,
-// phiên bản 1-10 (tối đa 213 byte ở mức M) — đủ cho nội dung chuyển khoản VietQR. Dùng để làm ảnh QR dự phòng khi không
-// tải được ảnh từ img.vietqr.io (xem js/lib/vietQrLocal.js).
-// Cách làm theo chuẩn ISO/IEC 18004 (bố cục, mã sửa lỗi Reed-Solomon, mặt nạ, thông tin định dạng/phiên bản).
-
-// Mức sửa lỗi: bits = 2 bit ghi trong thông tin định dạng; perBlock = số byte sửa lỗi mỗi khối; blocks = số khối, theo từng phiên bản (chỉ số 0 bỏ trống).
 const ECC = {
   L: { bits: 1, perBlock: [-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18], blocks: [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4] },
   M: { bits: 0, perBlock: [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26], blocks: [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5] },
@@ -26,7 +20,6 @@ function dataCodewords(ver, ecl) {
   return Math.floor(rawDataModules(ver) / 8) - ECC[ecl].perBlock[ver] * ECC[ecl].blocks[ver];
 }
 
-// ---- Reed-Solomon trên GF(256), đa thức 0x11D ----
 function gfMul(x, y) {
   let z = 0;
   for (let i = 7; i >= 0; i--) {
@@ -64,10 +57,10 @@ function buildCodewords(bytes, ver, ecl) {
   const capacityBits = dataCodewords(ver, ecl) * 8;
   const bits = [];
   const push = (value, len) => { for (let i = len - 1; i >= 0; i--) bits.push((value >>> i) & 1); };
-  push(0b0100, 4); // chế độ byte
+  push(0b0100, 4);
   push(bytes.length, ver <= 9 ? 8 : 16);
   bytes.forEach((b) => push(b, 8));
-  push(0, Math.min(4, capacityBits - bits.length)); // dấu kết thúc
+  push(0, Math.min(4, capacityBits - bits.length));
   while (bits.length % 8) bits.push(0);
   const data = [];
   for (let i = 0; i < bits.length; i += 8) data.push(parseInt(bits.slice(i, i + 8).join(''), 2));
@@ -136,11 +129,6 @@ function penalty(m, size) {
   return score;
 }
 
-/**
- * Tạo ma trận mã QR cho chuỗi `text` (UTF-8).
- * @returns {{ size: number, modules: boolean[][], version: number, mask: number, ecl: string }}
- * Ném lỗi nếu nội dung quá dài (hơn 213 byte ở mức M, 274 byte ở mức L).
- */
 export function encodeQr(text, ecl = 'M') {
   const bytes = utf8Bytes(text);
   let ver = 1;
@@ -219,11 +207,10 @@ export function encodeQr(text, ecl = 'M') {
     applyMask(mask); drawFormat(mask);
     const score = penalty(modules, size);
     if (score < bestScore) { best = mask; bestScore = score; }
-    applyMask(mask); // bỏ mặt nạ để thử mặt nạ khác
+    applyMask(mask);
   }
   applyMask(best); drawFormat(best);
   return { size, modules, version: ver, mask: best, ecl };
 }
 
-// Chỉ để kiểm thử.
 export const __test = { rsDivisor, rsRemainder, formatBits, versionBits, dataCodewords, rawDataModules, buildCodewords, utf8Bytes };

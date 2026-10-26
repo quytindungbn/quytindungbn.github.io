@@ -10,14 +10,6 @@ import { downloadBlob, XLSX_MIME } from '../../lib/xlsxWrite.js';
 import { buildLoanCalcPdf, shareOrDownload, PDF_MIME } from '../../lib/loanCalcPdf.js';
 import { describeLoanCalc } from '../../lib/activityLabels.js';
 
-// ------------------------------------------------------------
-// Trang "Tính lãi vay" (menu Công cụ) — tính nhanh lãi và số gốc + lãi phải trả từng tháng cho một khoản vay, không lưu vào hợp đồng.
-// Hai cách: theo THỜI HẠN vay (chọn cách trả) hoặc theo SỐ TIỀN TRẢ HÀNG THÁNG (ra số tháng). Lãi tính 365 ngày/năm theo số ngày thực tế
-// từng tháng, làm tròn nghìn đồng (xem js/lib/loanCalc.js). Có nút xuất Excel và in. Ô nhập để trống (không có số liệu mẫu); kết quả CHỈ hiện
-// khi bấm "Tính lãi" (hoặc Enter); sửa ô nhập thì kết quả cũ được xóa để không hiện số lệch với ô nhập, còn đổi cách trả thì giữ số liệu và tính lại ngay. Mọi ô nhập giữ nguyên khi có
-// dữ liệu mới (refresh() không làm gì) và khi đổi tab.
-// ------------------------------------------------------------
-
 const DEFAULTS = () => ({
   tab: 'term',
   principal: '',
@@ -27,16 +19,16 @@ const DEFAULTS = () => ({
   method: 'equalPrincipal',
   payment: '',
   kind: 'gocLai',
-  // Ngày đáo hạn: bình thường tự tính = Ngày vay + Thời hạn vay (dueManual = false). Nhập thẳng ngày đáo hạn (dueManual = true) thì số kỳ tự tính theo ngày đó, không còn phụ thuộc Thời hạn vay.
+
   due: '',
   dueManual: false,
-  // Cách trả có ô "tự nhập số tiền trả mỗi tháng" (nút xả xuống ở thẻ): open_* = đang mở ô, fixed_* = số đã nhập. Chỉ tính theo số này khi ô ĐANG MỞ và có số.
+
   open_equalPrincipal: false, fixed_equalPrincipal: '',
   open_annuity: false, fixed_annuity: '',
 });
 let st = DEFAULTS();
-let lastCalc = null; // { inputs, result } của lần tính gần nhất hợp lệ — để xuất/in đúng số đang hiện
-let pdfJob = null; // { calc, ready, promise }: file PDF đang/đã tạo cho đúng kết quả đang hiện — tạo sẵn ở nền ngay sau khi tính để bấm Chia sẻ là gửi liền
+let lastCalc = null;
+let pdfJob = null;
 let warmTimer = null;
 
 const METHODS = [
@@ -44,7 +36,7 @@ const METHODS = [
   ['annuity', 'Gốc + lãi trả đều mỗi tháng', 'Tổng phải trả mỗi tháng gần bằng nhau'],
   ['bullet', 'Lãi hàng tháng, gốc cuối kỳ', 'Mỗi tháng chỉ trả lãi, gốc trả một lần khi đến hạn'],
 ];
-// Hai cách trả cho phép tự nhập số tiền trả mỗi tháng; phần dư nợ còn lại trả ở kỳ cuối.
+
 const CUSTOM = {
   equalPrincipal: { label: 'Gốc trả mỗi tháng', note: 'Từ kỳ 1 đến kỳ áp chót trả đúng số này (lãi cộng thêm), phần gốc còn lại trả hết ở kỳ cuối. Để trống thì chia đều như bình thường.' },
   annuity: { label: 'Gốc + lãi trả mỗi tháng', note: 'Từ kỳ 1 đến kỳ áp chót trả đúng số này (gồm cả gốc và lãi), phần còn lại trả hết ở kỳ cuối. Để trống thì tính như bình thường.' },
@@ -68,7 +60,6 @@ const rateText = (s) => {
 const numFromMoney = (s) => Number(digits(s)) || 0;
 const numFromRate = (s) => { const n = parseFloat(String(s).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
 
-/** Đọc ô nhập thành số; trả { inputs } hoặc { error } nói rõ thiếu/sai ở đâu. */
 function readInputs() {
   const principal = numFromMoney(st.principal);
   const ratePercent = numFromRate(st.rate);
@@ -76,7 +67,7 @@ function readInputs() {
   if (!(principal > 0)) return { error: 'Nhập số tiền vay.' };
   if (!(ratePercent > 0) || ratePercent > 100) return { error: 'Nhập lãi suất (%/năm), từ trên 0 đến 100.' };
   if (!startDate) return { error: 'Nhập ngày vay đúng dạng ngày/tháng/năm, ví dụ 22/10/2026.' };
-  // Ngày đáo hạn nhập tay (cả hai cách tính); tự tính thì không dùng — kết quả đã nằm trong Thời hạn vay / số tiền trả mỗi tháng.
+
   const dueText = st.dueManual ? String(st.due || '').trim() : '';
   let endDate = null;
   if (dueText) {
@@ -111,7 +102,7 @@ function calculate() {
     ? scheduleByTerm({ principal: inputs.principal, ratePercent: inputs.ratePercent, months: inputs.months, startDate: inputs.startDate, method: inputs.method, fixedAmount: inputs.fixedAmount, endDate: inputs.endDate })
     : scheduleByPayment({ principal: inputs.principal, ratePercent: inputs.ratePercent, payment: inputs.payment, startDate: inputs.startDate, kind: inputs.kind, endDate: inputs.endDate });
   if (!result) return { error: 'Số liệu chưa hợp lệ, hãy kiểm tra lại.' };
-  if (inputs.endDate && result.rows) inputs.months = result.rows.length; // có ngày đáo hạn: số kỳ do ngày đáo hạn quyết định
+  if (inputs.endDate && result.rows) inputs.months = result.rows.length;
   if (result.error === 'khong_du_tra_lai') return { error: `Số tiền trả mỗi tháng chưa đủ trả lãi tháng đầu (${formatVND(result.firstInterest)}). Hãy nhập số tiền lớn hơn.`, firstInterest: result.firstInterest };
   if (result.error === 'tra_het_truoc_han') {
     return { error: inputs.method === 'annuity'
@@ -144,7 +135,6 @@ function tableHtml(result) {
     <tfoot><tr><td>Cộng</td><td class="dk"></td><td class="dk">${T.days}</td><td class="dk"></td><td>${nf(T.principal)}</td><td>${nf(T.interest)}</td><td>${nf(T.payment)}</td><td class="dk"></td></tr></tfoot></table>`;
 }
 
-/** Dòng giải thích khi có tự nhập số tiền trả mỗi tháng: số trả từ kỳ 1 đến kỳ áp chót và số trả nốt ở kỳ cuối. */
 function fixedNoteHtml(inputs, result) {
   if (!(inputs.fixedAmount > 0) || result.rows.length < 2) return '';
   const last = result.rows[result.rows.length - 1], n = result.rows.length;
@@ -154,7 +144,6 @@ function fixedNoteHtml(inputs, result) {
   return `<div class="lc-callout">${icon('info', 'icon-sm')}<span>${escapeHtml(text)}</span></div>`;
 }
 
-/** Tab "Theo số tiền trả hàng tháng" có nhập ngày đáo hạn: nói rõ kỳ cuối trả nốt phần còn lại, hoặc khoản vay đã trả hết sớm hơn ngày đáo hạn. */
 function payDueNoteHtml(inputs, result) {
   if (inputs.tab !== 'pay' || !inputs.endDate) return '';
   const n = result.rows.length, last = result.rows[n - 1], due = formatDate(inputs.endDate);
@@ -184,14 +173,13 @@ function optionsHtml(name, list, current) {
 
 const moreLabel = (m, open) => `${open ? 'Đóng' : 'Mở'} ô nhập số tiền trả mỗi tháng — ${METHODS.find((x) => x[0] === m)[1]}`;
 
-/** Ba thẻ "Cách trả": hai thẻ đầu có nút xả xuống (mũi tên) để tự nhập số tiền trả mỗi tháng, phần còn lại trả ở kỳ cuối. */
 function methodOptionsHtml() {
   return METHODS.map(([value, title, desc]) => {
     const opt = `<button type="button" role="radio" aria-checked="${value === st.method}" class="lc-opt${value === st.method ? ' on' : ''}" data-method="${value}"><i class="rd"></i><span class="tx"><b>${title}</b><span>${desc}</span></span></button>`;
     const custom = CUSTOM[value];
     if (!custom) return opt;
     const open = !!st[`open_${value}`];
-    // Khung luôn nằm trong trang, chỉ ẩn/hiện bằng lớp "open" để xả xuống và khép lại mượt (ô ẩn không focus được).
+
     const panel = `<div class="lc-panelw" id="lc-panel-${value}"><div class="lc-panelin"><div class="lc-panel"><div class="lc-f"><label for="lc-fixed-${value}">${custom.label}</label><div class="box"><input id="lc-fixed-${value}" value="${escapeHtml(st[`fixed_${value}`])}" autocomplete="off" inputmode="numeric" placeholder="Ví dụ: 5.000.000"><i>₫</i></div></div><p class="lc-panel-note">${custom.note}</p></div></div></div>`;
     return `<div class="lc-optw${open ? ' open' : ''}" data-m="${value}">${opt}<button type="button" class="lc-more" data-more="${value}" aria-expanded="${open}" aria-controls="lc-panel-${value}" aria-label="${moreLabel(value, open)}" title="Tự nhập số tiền trả mỗi tháng">${icon('chevronDown', 'icon-sm')}</button>${panel}</div>`;
   }).join('');
@@ -229,12 +217,10 @@ export function renderHeader(headerEl) {
   if (avatar) avatar.innerHTML = icon('calculator', 'icon-sm');
 }
 
-// Ô nhập được giữ nguyên khi có dữ liệu mới từ máy chủ (xem renderApp() trong app.js) — không vẽ lại gì cả.
 export function refresh() {}
 
 let closeExportMenu = null;
 
-/** Tải file Excel của kết quả đang hiện. */
 function downloadExcel() {
   const data = exportData(); if (!data) return;
   downloadBlob(buildLoanCalcXlsx(data), loanCalcFileName(new Date(), 'xlsx'), XLSX_MIME);
@@ -242,7 +228,6 @@ function downloadExcel() {
   toast('Đã tải file Excel', 'success');
 }
 
-/** Tải file PDF của kết quả đang hiện (dùng file đã tạo sẵn ở nền; chưa xong thì chờ). */
 async function downloadPdf() {
   if (!lastCalc) return;
   const job = pdfFor(lastCalc);
@@ -257,7 +242,6 @@ async function downloadPdf() {
   }
 }
 
-/** Menu nhỏ dưới nút "Xuất file": chọn tải Excel hoặc PDF. */
 function openExportMenu(btn) {
   closeExportMenu?.();
   const menu = document.createElement('div');
@@ -297,17 +281,15 @@ function openExportMenu(btn) {
   menu.querySelector('button')?.focus();
 }
 
-/** Việc tạo file PDF cho một kết quả (dùng lại nếu đã/đang tạo cho đúng kết quả đó). */
 function pdfFor(calc) {
   if (pdfJob && pdfJob.calc === calc) return pdfJob;
   const job = { calc, ready: false, promise: null };
   job.promise = buildLoanCalcPdf(exportData(calc)).then((bytes) => { job.ready = true; return bytes; });
-  job.promise.catch(() => { if (pdfJob === job) pdfJob = null; }); // lỗi thì lần bấm sau tạo lại
+  job.promise.catch(() => { if (pdfJob === job) pdfJob = null; });
   pdfJob = job;
   return job;
 }
 
-/** Mở bảng chia sẻ (Zalo, Messenger, thư...) với file PDF giống bản in; máy không hỗ trợ chia sẻ tệp thì tải file về. File thường đã được tạo sẵn nên gửi ngay. */
 async function sharePdf(btn) {
   if (!lastCalc || btn.disabled) return;
   const job = pdfFor(lastCalc);
@@ -326,9 +308,6 @@ async function sharePdf(btn) {
   }
 }
 
-/**
- * Thu nhỏ chữ trong ô nhập cho vừa ô (số tiền dài, ngày trên màn hình hẹp) — luôn thấy trọn nội dung, không bị che số cuối. Ô còn rộng thì giữ cỡ 16px.
- */
 function fitInput(el) {
   if (!el || !el.clientWidth) return;
   el.style.fontSize = '';
@@ -338,7 +317,6 @@ function fitInput(el) {
 const fitAll = (root = document) => root.querySelectorAll('.lc-f .box input:not([type="date"])').forEach(fitInput);
 let fitBound = false;
 
-/** Ngày đáo hạn tự tính (khi chưa nhập tay): theo thời hạn = Ngày vay + Thời hạn; theo số tiền trả hàng tháng = ngày trả kỳ cuối. '' khi chưa đủ số liệu. */
 function derivedDue() {
   const start = parseViDate(st.date);
   if (!start) return '';
@@ -352,16 +330,14 @@ function derivedDue() {
   return r && r.rows ? formatDate(r.rows[r.rows.length - 1].to) : '';
 }
 
-// Tham số thứ hai của app.js là phần tử bộ lọc (không dùng ở trang này); chỉ { recalc: true } do chính trang này gọi lại khi đổi tab mới có nghĩa.
 export function render(contentEl, opts) {
   const recalc = !!(opts && opts.recalc === true);
-  if (!st.dueManual) st.due = derivedDue(); // đổi tab: ô Ngày đáo hạn tự tính theo cách tính đang chọn
+  if (!st.dueManual) st.due = derivedDue();
   contentEl.innerHTML = pageHtml();
   const out = contentEl.querySelector('#lc-out');
   lastCalc = null;
-  let shown = false; // đang hiện kết quả (hoặc thông báo thiếu số liệu) sau khi bấm "Tính lãi"
+  let shown = false;
 
-  // Sửa ô nhập: xóa kết quả cũ, đợi bấm "Tính lãi" mới hiện lại. (Đổi cách trả thì giữ nguyên số liệu và tính lại ngay, xem redoIfShown.)
   const clearOut = () => {
     shown = false;
     lastCalc = null;
@@ -373,7 +349,6 @@ export function render(contentEl, opts) {
     if (hint) hint.textContent = '';
   };
 
-  // Người dùng chủ động bấm "Tính lãi" (nút hoặc Enter): tính + ghi vào Nhật ký sử dụng (tính lại tự động khi đổi cách trả thì không ghi).
   const pressCalc = () => { update(); S.logUiAction('loan-calc', describeLoanCalc(lastCalc ? lastCalc.inputs : null)); };
   const update = () => {
     shown = true;
@@ -381,7 +356,7 @@ export function render(contentEl, opts) {
     closeExportMenu?.();
     lastCalc = calc.error ? null : calc;
     out.innerHTML = outHtml(calc);
-    // Tạo sẵn file PDF ở nền ngay sau khi tính (chờ nửa giây cho ổn định) — bấm Chia sẻ là gửi liền, không phải đợi.
+
     clearTimeout(warmTimer);
     if (lastCalc) { const mine = lastCalc; warmTimer = setTimeout(() => { if (lastCalc === mine) pdfFor(mine).promise.catch(() => {}); }, 500); }
     const hint = contentEl.querySelector('#lc-hint');
@@ -398,7 +373,7 @@ export function render(contentEl, opts) {
     });
     if (sh) sh.addEventListener('click', () => sharePdf(sh));
   };
-  // Ngày đáo hạn đi cùng Thời hạn vay + Ngày vay: ô nào sửa sau cùng thì ô kia tự tính lại theo (23/10/2026 + 12 tháng = 23/10/2027; nhập ngày đáo hạn khác thì thời hạn = số kỳ đến ngày đó).
+
   const setVal = (id, v) => { const el = contentEl.querySelector(id); if (el) { el.value = v; fitInput(el); } };
   const markDue = () => { const f = contentEl.querySelector('#lc-due')?.closest('.lc-f'); if (f) f.classList.toggle('auto', !st.dueManual && !!st.due); };
   const syncMonthsFromDue = () => {
@@ -411,9 +386,9 @@ export function render(contentEl, opts) {
     else { st.due = derivedDue(); setVal('#lc-due', st.due); }
     markDue();
   };
-  const onMonths = () => { st.dueManual = false; refreshDue(); }; // sửa Thời hạn / số tiền trả mỗi tháng sau cùng thì ngày đáo hạn tự tính lại theo
+  const onMonths = () => { st.dueManual = false; refreshDue(); };
   const onDue = () => { st.dueManual = st.due.trim() !== ''; if (st.dueManual && st.tab === 'term') syncMonthsFromDue(); markDue(); };
-  // caretOf (tùy chọn): tính lại vị trí con trỏ sau khi định dạng lại ô; mặc định giữ nguyên khoảng cách tới cuối ô.
+
   const bindInput = (id, key, mask, after, caretOf) => {
     const el = contentEl.querySelector(id); if (!el) return;
     el.addEventListener('input', () => {
@@ -422,13 +397,13 @@ export function render(contentEl, opts) {
       if (next !== before) {
         el.value = next;
         const pos = caretOf ? caretOf(before, selStart, next) : Math.max(0, next.length - (before.length - selStart));
-        try { el.setSelectionRange(pos, pos); } catch { /* ô không hỗ trợ con trỏ */ }
+        try { el.setSelectionRange(pos, pos); } catch {  }
       }
       st[key] = el.value; after?.(); fitInput(el); clearOut();
     });
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); pressCalc(); el.blur(); } });
   };
-  // Ô ngày dd/mm/yyyy: sửa ngay trong ô — gõ số đè lên số đang có và tự nhảy qua dấu "/", gõ "/" sang phần kế tiếp, xóa sát dấu "/" xóa luôn số bên cạnh (xem js/lib/dateInput.js).
+
   const bindDateInput = (id, key, after) => {
     bindInput(id, key, maskViDate, after, (before, selStart, next) => caretAfterDigits(next, before.slice(0, selStart).replace(/\D/g, '').length));
     const el = contentEl.querySelector(id); if (!el) return;
@@ -443,7 +418,7 @@ export function render(contentEl, opts) {
       e.preventDefault();
       const changed = r.value !== el.value;
       el.value = r.value;
-      try { el.setSelectionRange(r.caret, r.caret); } catch { /* ô không hỗ trợ con trỏ */ }
+      try { el.setSelectionRange(r.caret, r.caret); } catch {  }
       if (changed) { st[key] = el.value; after?.(); fitInput(el); clearOut(); }
     });
   };
@@ -454,16 +429,15 @@ export function render(contentEl, opts) {
   for (const m of Object.keys(CUSTOM)) bindInput(`#lc-fixed-${m}`, `fixed_${m}`, moneyText);
   bindDateInput('#lc-date', 'date', refreshDue);
   bindDateInput('#lc-due', 'due', onDue);
-  // Xóa hết ô Ngày đáo hạn rồi rời ô: quay lại tự tính theo Thời hạn vay.
+
   contentEl.querySelector('#lc-due')?.addEventListener('change', () => { if (!st.due.trim()) { st.dueManual = false; refreshDue(); } });
 
-  // Ngày vay và Ngày đáo hạn: gõ dd/mm/yyyy hoặc chọn trên lịch; điện thoại (chạm) mở thẳng lịch thay vì bàn phím.
   const bindDatePicker = (dateEl, native, calBtn, key, after) => {
     if (!dateEl || !native || !calBtn) return;
     const openCalendar = () => {
       const d = parseViDate(dateEl.value) || new Date();
       native.value = toDateInputValue(d);
-      if (typeof native.showPicker === 'function') { try { native.showPicker(); return; } catch { /* dùng cách dự phòng */ } }
+      if (typeof native.showPicker === 'function') { try { native.showPicker(); return; } catch {  } }
       native.focus(); native.click();
     };
     native.addEventListener('change', () => { if (!native.value) return; const [y, m, d] = native.value.split('-'); dateEl.value = `${d}/${m}/${y}`; st[key] = dateEl.value; after?.(); fitInput(dateEl); clearOut(); });
@@ -473,11 +447,10 @@ export function render(contentEl, opts) {
   bindDatePicker(contentEl.querySelector('#lc-date'), contentEl.querySelector('#lc-date-native'), contentEl.querySelector('#lc-cal'), 'date', refreshDue);
   bindDatePicker(contentEl.querySelector('#lc-due'), contentEl.querySelector('#lc-due-native'), contentEl.querySelector('#lc-cal-due'), 'due', onDue);
 
-  // Đã bấm "Tính lãi" rồi mà đổi cách trả: giữ nguyên số liệu đã nhập, tính lại ngay theo cách mới. Chưa bấm thì chưa hiện gì.
   const redoIfShown = () => { if (shown) update(); };
-  // Đổi sang cách tính kia: số liệu dùng chung (số tiền vay, lãi suất, ngày vay) giữ nguyên; đã có kết quả thì tính lại ngay nếu đủ số liệu, thiếu thì để trống chờ nhập.
+
   contentEl.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { if (st.tab !== b.dataset.tab) { const had = shown; st.tab = b.dataset.tab; render(contentEl, { recalc: had }); } }));
-  // Khung xả xuống ở thẻ cách trả: mở/khép bằng lớp "open" (CSS làm hiệu ứng); chỉ khung của cách trả đang chọn được mở — chọn cách trả khác thì khung kia tự khép lại.
+
   const setOpen = (m, open) => {
     st[`open_${m}`] = open;
     const w = contentEl.querySelector(`.lc-optw[data-m="${m}"]`); if (!w) return;
@@ -487,7 +460,7 @@ export function render(contentEl, opts) {
   };
   const closeOthers = (keep) => { for (const m of Object.keys(CUSTOM)) if (m !== keep && st[`open_${m}`]) setOpen(m, false); };
   contentEl.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', () => { st.method = b.dataset.method; closeOthers(st.method); setChecked(contentEl, '[data-method]', 'method', st.method); redoIfShown(); }));
-  // Nút xả xuống ở thẻ: mở/đóng ô tự nhập số tiền trả mỗi tháng (mở thì chọn luôn cách trả đó). Đã có kết quả thì tính lại ngay theo trạng thái mới (không tính được thì xóa kết quả cũ).
+
   contentEl.querySelectorAll('[data-more]').forEach((b) => b.addEventListener('click', () => {
     const m = b.dataset.more, willOpen = !st[`open_${m}`];
     if (willOpen) { st.method = m; closeOthers(m); setChecked(contentEl, '[data-method]', 'method', m); }
@@ -509,4 +482,3 @@ export function render(contentEl, opts) {
 function setChecked(root, selector, key, value) {
   root.querySelectorAll(selector).forEach((b) => { const on = b.dataset[key] === value; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
 }
-

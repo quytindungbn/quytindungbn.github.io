@@ -1,14 +1,3 @@
-// ============================================================
-// Lớp dữ liệu & nghiệp vụ trung tâm (state) — ĐÃ KẾT NỐI SUPABASE THẬT
-// (xem docs/supabase-migration.md): đăng nhập, khách hàng/hợp đồng, tài
-// khoản, yêu cầu tư vấn, cài đặt tổ chức đều đọc/ghi qua Supabase (Edge
-// Function + Row Level Security), không còn chỉ chạy trên localStorage.
-// `state` object trong file này vẫn đóng vai trò CACHE trong bộ nhớ (để
-// giữ nguyên toàn bộ UI/view layer không cần sửa) — mọi hàm ghi đều gọi
-// Supabase trước, thành công mới cập nhật cache + notify() để vẽ lại màn
-// hình. localStorage/seedDemoData() chỉ còn dùng làm dữ liệu demo hiển
-// thị TẠM lúc app chưa kết nối được mạng, không phải nguồn sự thật nữa.
-// ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { describeOrgPatch } from './lib/activityLabels.js';
 import { heirNamesOf, heirOfContract, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone } from './lib/coBorrower.js';
@@ -44,21 +33,12 @@ const LOCK_AFTER_FAILS = 5;
 const LOCK_MINUTES = 15;
 export const NEAR_DUE_DAYS = 15;
 
-// Thông tin nhận thanh toán (QR) — NHÚNG CỨNG trong code, KHÔNG đọc/ghi qua
-// Supabase (bảng orgs) nữa và KHÔNG sửa được qua "Cài đặt" nữa, kể cả quản
-// trị viên toàn quyền (xem js/views/admin/settings.js). Lý do: điện thoại
-// đăng nhập sẵn tài khoản toàn quyền mà bị mất/bị kẻ gian chiếm được thì
-// trước đây vẫn đổi được số tài khoản ngay trong app — đổi vào đây thì phải
-// sửa code + deploy lại (qua Claude Code), kẻ gian có điện thoại tuyệt đối
-// không tự đổi được nữa. Muốn đổi ngân hàng/số tài khoản thật thì báo lại để
-// sửa các dòng dưới đây rồi deploy lại (KHÔNG cần chạy SQL gì, xem docs mục
-// 10.18).
 export const BANK_INFO = Object.freeze({
   bankName: 'Ngân hàng Hợp tác xã Việt Nam (Co-op Bank)',
   bankBin: '970446',
   bankAccountNo: '5200000000825012',
   bankAccountName: 'QUY TIN DUNG NHAN DAN BINH NGUYEN',
-  // Cùng tên chủ tài khoản nhưng CÓ DẤU — chỉ để HIỆN cho người xem (ảnh QR, popup thanh toán); mã QR vẫn dùng bản không dấu ở trên.
+
   bankAccountDisplayName: 'QUỸ TÍN DỤNG NHÂN DÂN BÌNH NGUYÊN',
 });
 
@@ -67,8 +47,7 @@ const listeners = new Set();
 function notify() { persist(); listeners.forEach((fn) => fn()); }
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 export function getState() { return state; }
-// Ghi toàn bộ state (có thể vài MB: khách + hợp đồng + số liệu chốt các tháng) vào localStorage là thao tác ĐỒNG BỘ, chặn giao diện ~100ms+ trên
-// điện thoại — nên gộp: nhiều notify() liên tiếp chỉ ghi 1 lần sau ~0,4 giây, và ghi ngay khi rời/ẩn trang (không mất dữ liệu khi tải lại/đóng app).
+
 let persistTimer = null;
 function persist() {
   if (persistTimer) return;
@@ -85,7 +64,6 @@ if (typeof window !== 'undefined') {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPersist(); });
 }
 
-/** Vá dữ liệu cũ đã lưu trong localStorage từ bản trước — thêm field mới còn thiếu để tránh lỗi (VD: allowedXom). */
 function migrateState() {
   if (!state) return;
   (state.admins || []).forEach((a) => {
@@ -109,24 +87,10 @@ export async function init() {
   } else {
     await seedDemoData();
   }
-  // KHÔNG await loadOrgPublic() ở đây nữa — trước đây làm vậy khiến màn hình
-  // ĐẦU TIÊN (đăng nhập) phải đợi xong 1 lượt gọi mạng tới Supabase mới chịu
-  // vẽ ra, dù đã có sẵn tên quỹ hợp lý để hiện ngay (dữ liệu demo ở lần đầu
-  // mở app — seedDemoData() ở trên, hoặc đúng tên quỹ THẬT lưu từ lần trước
-  // ở localStorage — trường hợp phổ biến nhất, "app hiện ra chậm" chủ yếu là
-  // do lần này). Giờ init() trả về NGAY (không cần mạng) để app.js vẽ màn
-  // hình đầu tiên tức khắc bằng dữ liệu đã có sẵn — refreshOrgPublic() gọi
-  // RIÊNG ngay sau đó (không đợi), cập nhật ngầm tên quỹ/banner thật khi tải
-  // xong (notify() tự kích hoạt vẽ lại đúng phần header, xem app.js).
-  persist(); // lưu lại dữ liệu mẫu vừa tạo (nếu lần đầu mở app) — không cần đợi mạng cho việc này
+
+  persist();
 }
 
-/**
- * Tải lại thông tin quỹ tín dụng (org) từ Supabase — tách RIÊNG khỏi init()
- * (xem ghi chú ở trên) để không chặn màn hình đầu tiên. Gọi ngay sau
- * renderApp() lần đầu ở app.js, KHÔNG await — chạy ngầm, notify() khi xong
- * để tự vẽ lại đúng tên quỹ/banner thật (S.subscribe ở app.js).
- */
 export async function refreshOrgPublic() {
   await loadOrgPublic();
   notify();
@@ -145,33 +109,19 @@ function mapOrgRow(row) {
   return {
     id: row.id, name: row.name, shortName: row.short_name, hotline: row.hotline, address: row.address,
     bannerEnabled: !!row.banner_enabled, bannerTitle: row.banner_title || '', bannerText: row.banner_text || '',
-    // 4 dòng ngân hàng KHÔNG còn lấy từ Supabase (row.bank_*) nữa — luôn dùng
-    // đúng hằng số BANK_INFO nhúng cứng trong code, xem giải thích ở đó.
+
     ...BANK_INFO,
-    // Mã mẫu tin Zalo OA (ZBS Template Message) dùng khi hợp đồng ĐẾN HẠN/QUÁ
-    // HẠN — xem trang "Quản lý OA" (js/views/admin/zaloOA.js). Chỉ lưu
-    // Template ID (không nhạy cảm) ở đây; App ID/Secret Key/Access Token thật
-    // KHÔNG lưu qua bảng orgs (bảng này ai cũng SELECT được, kể cả chưa đăng
-    // nhập — xem docs/supabase-migration.md mục 10), mà đặt riêng ở Supabase
-    // Secrets + bảng zalo_oa_tokens (chỉ Edge Function đọc được).
+
     zaloTemplateDueId: row.zalo_template_due_id || '',
-    // Mã mẫu tin "Báo lãi" — dùng khi hợp đồng CHƯA đến hạn (gửi tay/tự
-    // động 2 mục "Báo lãi tự động hàng tháng"/"Gửi theo ngày cụ thể").
+
     zaloTemplateInterestId: row.zalo_template_interest_id || '',
-    // Số ngày "gần đến hạn" để tự chuyển mẫu Zalo OA "Đến hạn" (gửi tay LẪN
-    // tự động đều dùng chung số này) — admin tự nhập ở "Quản lý OA" > "Cấu
-    // hình", để trống thì dùng mặc định 15 ngày như trước giờ.
+
     zaloNearDueDays: row.zalo_near_due_days || 15,
-    // Mẫu thông báo đẩy (App) admin tự soạn — xem DEFAULT_PUSH_TEMPLATES ở
-    // trên. null nếu admin chưa tự tùy chỉnh (dùng mẫu mặc định).
+
     pushTemplates: row.push_templates || null,
   };
 }
 
-// ------------------------------------------------------------
-// Mật khẩu — băm bằng Web Crypto API (SHA-256 + muối), không cần thư viện ngoài.
-// Lưu ý: đây vẫn là mô hình demo (không có backend thật đứng sau).
-// ------------------------------------------------------------
 async function sha256Hex(text) {
   const data = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest('SHA-256', data);
@@ -195,20 +145,6 @@ async function verifyCredential(plainPassword, salt, hash) {
   return (await sha256Hex(salt + ':' + plainPassword)) === hash;
 }
 
-// ------------------------------------------------------------
-// Mẫu THÔNG BÁO ĐẨY (App) tự soạn được — admin gõ tay tiêu đề/nội dung có
-// gắn TOKEN (VD: <Ma_HD>) trong "Quản lý OA" > tab "Cấu hình" (xem
-// js/views/admin/zaloOA.js), lưu ở org.pushTemplates (cột orgs.push_templates,
-// jsonb) — đổi chữ không cần sửa code/deploy lại gì. Dùng CHUNG cho cả gửi
-// tay (buildContractNotificationPreset() trong admin/customers.js) LẪN gửi
-// tự động (send-due-reminders/index.ts, port lại y hệt bằng TypeScript) —
-// đúng yêu cầu "gửi tay hay tự động đều đồng bộ".
-//
-// 3 mẫu (theo tình huống hợp đồng, y hệt phân loại contractStatusInfo()):
-// 'interest' (chưa đến hạn, chỉ báo lãi), 'nearDue' (gần đến hạn), 'overdue'
-// (đã trễ hạn) — mỗi mẫu chỉ có "body" (nội dung); "title" (tiêu đề) dùng
-// CHUNG 1 mẫu cho cả 3 (đúng như hành vi cũ — LUÔN đồng nhất "<tên quỹ>
-// thông báo:"), lưu riêng ở pushTemplates.title.
 export const DEFAULT_PUSH_TEMPLATES = {
   title: '<Ten_quy> thông báo:',
   interest: 'Số tiền lãi hợp đồng <Ma_HD> của quý khách đến hôm nay là: <So_tien_lai>. Quý khách vui lòng thanh toán đúng hạn.',
@@ -216,7 +152,6 @@ export const DEFAULT_PUSH_TEMPLATES = {
   overdue: 'Hợp đồng <Ma_HD> ĐÃ TRỄ HẠN. Số tiền gốc là <So_tien_goc>, lãi đến nay là: <So_tien_lai>. Yêu cầu quý khách thanh toán và thực hiện đúng như cam kết.',
 };
 
-/** Danh sách TOKEN dùng được trong mẫu thông báo đẩy — hiện làm chú thích ở màn "Cấu hình" (zaloOA.js) VÀ dùng để build đúng tên khóa cho renderNotificationTemplate(). */
 export const PUSH_TEMPLATE_TOKENS = [
   { token: '<Ten_KH>', desc: 'Tên khách hàng' },
   { token: '<Ma_HD>', desc: 'Mã hợp đồng' },
@@ -227,26 +162,12 @@ export const PUSH_TEMPLATE_TOKENS = [
   { token: '<Ten_quy>', desc: 'Tên viết tắt quỹ tín dụng' },
 ];
 
-/**
- * Thay TOKEN (VD: "<Ma_HD>") trong 1 chuỗi mẫu bằng giá trị thật — token nào
- * không có trong `tokens` thì GIỮ NGUYÊN chữ gốc (không xóa mất, để admin dễ
- * nhận ra gõ sai tên token). Dùng cho cả tiêu đề lẫn nội dung thông báo đẩy.
- */
 export function renderNotificationTemplate(str, tokens) {
   return String(str || '').replace(/<([A-Za-z0-9_]+)>/g, (m, key) => (key in tokens ? String(tokens[key]) : m));
 }
 
-// ------------------------------------------------------------
-// Tổ chức (thông tin quỹ tín dụng, banner) — admin chỉnh trực tiếp trong app
-// ------------------------------------------------------------
 export function getOrg() { return state.org; }
-/**
- * Sửa thông tin quỹ tín dụng (banner/mẫu Zalo...) — ĐÃ CHUYỂN SANG SUPABASE
- * THẬT, ghi thẳng qua RLS (chỉ admin role='super' được phép, xem policy
- * trong docs). CỐ Ý KHÔNG còn nhận patch 4 field ngân hàng (bankBin/
- * bankName/bankAccountNo/bankAccountName) nữa — map bên dưới không có 4 tên
- * này nên có patch cũng bị bỏ qua, im lặng không lỗi (xem BANK_INFO).
- */
+
 export async function updateOrg(patch) {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
@@ -265,23 +186,13 @@ export async function updateOrg(patch) {
   notify();
 }
 
-// ------------------------------------------------------------
-// Tách địa chỉ dạng "Xóm 01, thôn Bình Nguyên, xã Bình Sơn, tỉnh Quảng Ngãi"
-// thành từng phần theo từ khóa đầu câu — để admin lọc/phân quyền theo Thôn/Xóm
-// mà không cần người nhập liệu tự tách sẵn.
-// ------------------------------------------------------------
 export function parseAddress(raw) {
   const text = String(raw || '').trim();
-  const withoutNote = text.replace(/\([^)]*\)/g, ''); // bỏ ghi chú kiểu "(Trước đây là: ...)"
+  const withoutNote = text.replace(/\([^)]*\)/g, '');
   const parts = withoutNote.split(',').map((s) => s.trim()).filter(Boolean);
   const result = { xom: '', thon: '', xa: '', tinh: '' };
   const rest = [];
-  // Mỗi phần cách nhau bởi dấu phẩy KHÔNG nhất thiết là 1 trường riêng — VD
-  // "Xóm 5, Bắc Biên, thôn Bình Nguyên, ..." thì "Bắc Biên" vẫn thuộc về Xóm
-  // (chỉ là người nhập lỡ chấm phẩy giữa chừng), không phải Xã/Thôn. Quy tắc:
-  // 1 phần bắt đầu bằng từ khóa (Xóm/Thôn/Xã/Tỉnh...) thì MỞ trường mới; phần
-  // không có từ khóa thì nối tiếp vào trường đang mở dở — nên "Xóm" sẽ lấy
-  // TRỌN VẸN mọi thứ trước từ khóa "thôn" kế tiếp, dù có mấy dấu phẩy đi nữa.
+
   let currentField = null;
   for (const p of parts) {
     const low = p.toLowerCase();
@@ -295,7 +206,7 @@ export function parseAddress(raw) {
     else if (currentField) result[currentField] += ', ' + p;
     else rest.push(p);
   }
-  // Dự phòng theo vị trí nếu không nhận ra từ khóa (địa chỉ ghi tắt, không tiền tố)
+
   if (!result.tinh && parts.length) result.tinh = parts[parts.length - 1];
   if (!result.xa && rest.length) result.xa = rest.shift();
   if (!result.thon && parts.length >= 2) result.thon = parts[1];
@@ -303,9 +214,6 @@ export function parseAddress(raw) {
   return result;
 }
 
-// ------------------------------------------------------------
-// Khách hàng
-// ------------------------------------------------------------
 export function listCustomers(filters = {}) {
   let list = state.customers;
   const thonList = [].concat(filters.thon || []).filter(Boolean);
@@ -317,9 +225,7 @@ export function listCustomers(filters = {}) {
     if (admin && admin.role === 'staff') {
       const allowedThon = new Set(admin.allowedThon || []);
       const allowedXomKeys = new Set(admin.allowedXom || []);
-      // So khớp CẶP Thôn+Xóm (xem xomKey()) chứ KHÔNG chỉ mỗi tên Xóm — tên
-      // Xóm (VD: "Xóm 8") có thể trùng nhau giữa nhiều Thôn khác nhau, so
-      // khớp riêng lẻ tên Xóm sẽ cấp nhầm quyền xem Xóm cùng tên ở Thôn khác.
+
       list = list.filter((c) => allowedThon.has(c.thon) || allowedXomKeys.has(xomKey(c.thon, c.xom)));
     }
   }
@@ -327,7 +233,7 @@ export function listCustomers(filters = {}) {
 }
 export function getCustomer(id) { return state.customers.find((c) => c.id === id); }
 export function findCustomerByCccd(cccd) { return state.customers.find((c) => c.cccd === String(cccd).trim()); }
-/** Tìm khách hàng theo CCCD HOẶC số điện thoại — dùng cho đăng nhập, khách có thể dùng 1 trong 2 số. */
+
 export function findCustomerByIdentifier(value) {
   const v = String(value || '').trim();
   const vNoSpace = v.replace(/\s/g, '');
@@ -345,22 +251,12 @@ export function customerOutstandingTotal(customerId) {
     .reduce((s, c) => s + c.balance, 0);
 }
 
-/**
- * Trạng thái THỰC TẾ của hợp đồng — tính trực tiếp từ dư nợ + ngày đến hạn,
- * không phụ thuộc trường "status" lưu sẵn (file Excel thật không có cột
- * trạng thái nên trường đó luôn là 'dang_vay' lúc nhập, không tự cập nhật
- * theo thời gian). Coi là:
- * - "Đã tất toán" nếu dư nợ ≤ 0.
- * - "Quá hạn" nếu còn dư nợ và đã qua ngày đến hạn.
- * - "Trong hạn" (id nội bộ vẫn là 'dang_vay') các trường hợp còn lại.
- */
 export function effectiveContractStatus(contract, asOf = new Date()) {
   if ((contract.balance || 0) <= 0) return 'da_tat_toan';
   if (daysBetween(new Date(contract.dueDate), asOf) > 0) return 'qua_han';
   return 'dang_vay';
 }
 
-/** 'qua_han' | 'gan_den_han' | null — mức cần chú ý của 1 hợp đồng, dùng để gắn badge/lọc. */
 export function contractUrgency(contract, asOf = new Date()) {
   const status = effectiveContractStatus(contract, asOf);
   if (status === 'qua_han') return 'qua_han';
@@ -371,17 +267,10 @@ export function contractUrgency(contract, asOf = new Date()) {
   return null;
 }
 
-/** Số ngày tính lãi từ "Thu lãi đến ngày" tới `asOf` (mặc định hôm nay) — cách tính + quy ước ngày đặc biệt xem js/lib/interestDays.js. */
 export function interestDaysAccrued(contract, asOf = new Date()) {
   return interestDaysBetween(contract, asOf);
 }
-/**
- * Lãi phát sinh từ ngày đã trả lãi đến ngày hiện tại.
- * Công thức: Số dư × số ngày × lãi suất năm / 365, làm tròn đến HÀNG NGHÌN
- * gần nhất (VD: 81.500 -> 82.000; 81.350 -> 81.000).
- */
-// Tinh lai bang phan so nguyen de khong sai nguong 500 do so thuc.
-// Chi lam tron MOT LAN den nghin dong, khong lam tron truoc den dong.
+
 function interestRoundedToThousand(balance, days, annualRate) {
   if (![balance, days, annualRate].every(v => Number.isFinite(Number(v)))) {
     throw new Error('Du lieu tinh lai khong hop le');
@@ -416,7 +305,6 @@ export function accruedInterest(contract, asOf = new Date()) {
   return interestRoundedToThousand(contract.balance, days, contract.interestRate);
 }
 
-/** Đổi NĂM của 1 ngày, giữ nguyên tháng/ngày — dùng cho computeInstallmentPlan() bên dưới. Tự lùi về ngày cuối tháng trước nếu ngày gốc là 29/02 mà năm mới không phải năm nhuận (JS Date mặc định sẽ tự "tràn" sang 01/03, phải tự chặn lại). */
 function withYear(date, year) {
   const month = date.getMonth();
   const day = date.getDate();
@@ -425,16 +313,6 @@ function withYear(date, year) {
   return d;
 }
 
-/**
- * Đổi 1 Date (dựng bằng new Date(năm, tháng, ngày) — tức LUÔN theo giờ ĐỊA
- * PHƯƠNG của trình duyệt) thành chuỗi "YYYY-MM-DD" — dùng cho
- * computeInstallmentPlan() bên dưới. TUYỆT ĐỐI KHÔNG dùng
- * date.toISOString().slice(0,10) ở đây — toISOString() luôn quy đổi ra GIỜ
- * UTC trước, nên ở múi giờ Việt Nam (UTC+7, sớm hơn UTC) thì 00:00 giờ VN sẽ
- * lùi về 17:00 NGÀY HÔM TRƯỚC theo UTC, làm SAI LỆCH ngày hiển thị (VD:
- * 23/08/2026 bị hiện thành 22/08/2026) — dùng luôn getFullYear()/getMonth()/
- * getDate() (giờ địa phương) để không bị lệch múi giờ.
- */
 function toLocalISODate(date) {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -442,42 +320,6 @@ function toLocalISODate(date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/**
- * "Phân kỳ trả nợ" (xem lúc bấm vào chi tiết hợp đồng — hiện ở "Kỳ tới";
- * chưa gắn vào Tổng quan/nhắc nợ tự động/Zalo OA) — dựng từ
- * contract.installmentSchedule (map năm -> số tiền, đọc từ các cột "Phân kỳ
- * năm..." lúc nhập Excel mẫu báo cáo, xem mục 10.44 docs).
- *
- * QUY TẮC (theo đúng yêu cầu):
- * - Hợp đồng có DƯỚI 2 năm có số liệu > 0 -> KHÔNG coi là có phân kỳ trả nợ,
- *   trả về null — nơi gọi tự hiểu là tính/hiển thị Y HỆT hợp đồng thường
- *   (dùng thẳng dueDate/balance như mọi khi), KHÔNG đổi gì cả.
- * - Từ 2 năm trở lên -> mỗi năm là 1 "kỳ", ngày đến hạn của kỳ đó = ngày
- *   giải ngân (disbursedDate) nhưng đổi sang ĐÚNG NĂM của kỳ, giữ nguyên
- *   tháng/ngày — VD: giải ngân 03/08/2026, kỳ năm 2027 -> đến hạn 03/08/2027.
- * - MẶC ĐỊNH mỗi kỳ hiển thị ĐÚNG số tiền ghi trong kỳ đó theo Excel (VD:
- *   kỳ 20tr, kỳ sau 20tr, kỳ sau 160tr -> hiển thị đúng y vậy). KHÔNG phải
- *   kiểu cộng dồn tổng (SAI: kỳ đầu 20, kỳ sau 40, kỳ cuối 200 theo dư nợ).
- * - Kỳ (KHÔNG phải kỳ cuối cùng): số tiền đã trả lũy kế (= Số tiền vay ban
- *   đầu - Số dư hiện tại) được PHÂN BỔ THEO ĐÚNG THỨ TỰ từng kỳ một — kỳ
- *   trước "no" đủ mới tới lượt kỳ sau — ÁP DỤNG NGAY CHO MỌI KỲ, kể cả kỳ
- *   CHƯA tới hạn (trả dư ra thì kỳ sau phải giảm ngay, không đợi tới đúng
- *   ngày mới trừ). VD: phân kỳ 20tr/20tr/160tr (kỳ cuối), đã trả dư 30tr ->
- *   kỳ 1 dùng hết 20tr (còn dư 10tr) -> kỳ 2 chỉ còn thiếu 20-10=10tr, kỳ 1
- *   hiển thị 0đ. Trả dư 50tr -> kỳ 1 VÀ kỳ 2 đều = 0đ (dùng hết 40tr cho cả
- *   2 kỳ). Ngược lại nếu kỳ trước đã trả thiếu (VD kỳ cần 10tr mới trả 5tr)
- *   thì kỳ này chỉ báo thêm đúng phần còn thiếu (5tr) cho đủ.
- * - Riêng KỲ CUỐI CÙNG (trùng "Ngày đáo hạn" hợp đồng): mặc định vẫn hiển
- *   thị ĐÚNG số tiền ghi trong kỳ — CHỈ đổi thành SỐ DƯ NỢ HIỆN TẠI CÒN LẠI
- *   khi số tiền đã trả lũy kế (= Số tiền vay ban đầu - Số dư hiện tại) đã
- *   VƯỢT quá tổng tất cả các kỳ TRƯỚC kỳ cuối (nghĩa là các kỳ trước đã được
- *   trả dư ra rồi, số dư nợ còn lại lúc đó mới là số CHÍNH XÁC khách còn
- *   phải trả cho kỳ cuối, không phải con số cố định ghi sẵn trong Excel).
- *   VD thực tế: vay 280tr, dư nợ hiện tại 140tr (=> đã trả lũy kế 140tr).
- *   Phân kỳ 2027: 10tr, 2028: 10tr, 2029: 260tr (kỳ cuối). Tổng các kỳ TRƯỚC
- *   kỳ cuối = 10+10=20tr. Đã trả 140tr > 20tr -> kỳ cuối (2029) hiển thị
- *   đúng bằng SỐ DƯ NỢ CÒN LẠI (140tr), không phải 260tr ghi trong Excel.
- */
 export function computeInstallmentPlan(contract, asOf = new Date()) {
   const schedule = contract.installmentSchedule;
   if (!schedule) return null;
@@ -489,14 +331,13 @@ export function computeInstallmentPlan(contract, asOf = new Date()) {
 
   const disbursed = new Date(contract.disbursedDate);
   const balance = Number(contract.balance) || 0;
-  const amountPaid = (Number(contract.principal) || 0) - balance; // đã trả lũy kế tới hiện tại
-  // Kỳ đầu đã trả đủ (file ghi 0 nên không còn lưu) được dựng lại để vẫn hiện là "Kỳ 1" (số tiền gạch ngang) và
-  // "Kỳ tới" không bị nhảy qua kỳ còn phải trả — xem restoreLeadingInstallment().
+  const amountPaid = (Number(contract.principal) || 0) - balance;
+
   const entries = restoreLeadingInstallment(stored, { principal: contract.principal, balance, disbursedYear: Number(String(contract.disbursedDate || '').slice(0, 4)) });
-  const sumBeforeLast = entries.slice(0, -1).reduce((s, e) => s + e.amount, 0); // tổng các kỳ TRƯỚC kỳ cuối
+  const sumBeforeLast = entries.slice(0, -1).reduce((s, e) => s + e.amount, 0);
   let cumulativeRequired = 0;
   return entries.map((e, idx) => {
-    cumulativeRequired += e.amount; // tổng các kỳ tính đến kỳ này (cộng dồn)
+    cumulativeRequired += e.amount;
     const isLast = idx === entries.length - 1;
     const dueDate = withYear(disbursed, e.year);
     const daysLeft = daysBetween(asOf, dueDate);
@@ -504,23 +345,11 @@ export function computeInstallmentPlan(contract, asOf = new Date()) {
 
     let dueAmount;
     if (isLast) {
-      // Chỉ đổi thành số dư nợ còn lại khi đã trả lũy kế VƯỢT quá tổng các
-      // kỳ trước kỳ cuối — ngược lại vẫn hiển thị đúng số ghi trong kỳ.
+
       dueAmount = amountPaid > sumBeforeLast ? balance : e.amount;
     } else {
-      // Kỳ (không phải kỳ cuối) — PHÂN BỔ tiền đã trả lũy kế theo ĐÚNG THỨ
-      // TỰ từng kỳ một (kỳ trước no đủ mới tới kỳ sau), ÁP DỤNG CHO MỌI KỲ
-      // (kể cả kỳ CHƯA tới hạn, không chỉ kỳ đã đến/quá hạn — trả dư ra thì
-      // kỳ sau phải giảm ngay, không đợi tới đúng ngày mới trừ):
-      // - Phần đã trả CHO RIÊNG kỳ này = đã trả lũy kế - tổng các kỳ TRƯỚC
-      //   kỳ này (chặn dưới 0 nếu chưa trả đủ tới lượt kỳ này).
-      // - Số còn thiếu của kỳ này = số ghi trong kỳ - phần đã trả cho kỳ này
-      //   (chặn dưới 0 nếu đã trả dư/đủ).
-      // VD: phân kỳ 20tr/20tr/160tr, đã trả dư 30tr -> kỳ 1 dùng hết 20tr
-      // (còn dư 10tr) -> kỳ 2 chỉ còn thiếu 20-10=10tr. Trả dư 50tr -> kỳ 1
-      // VÀ kỳ 2 đều = 0 (dùng hết 40tr cho cả 2 kỳ, dư 10tr chuyển qua kỳ
-      // cuối nhưng kỳ cuối tính riêng ở nhánh isLast bên trên).
-      const requiredBeforeThis = cumulativeRequired - e.amount; // tổng các kỳ TRƯỚC kỳ này
+
+      const requiredBeforeThis = cumulativeRequired - e.amount;
       const coveredForThis = Math.max(0, amountPaid - requiredBeforeThis);
       dueAmount = Math.max(0, e.amount - coveredForThis);
     }
@@ -528,28 +357,16 @@ export function computeInstallmentPlan(contract, asOf = new Date()) {
     return {
       year: e.year,
       dueDate: toLocalISODate(dueDate),
-      amount: e.amount, // số tiền GHI TRONG kỳ theo file Excel (tham khảo)
-      dueAmount, // số tiền THỰC SỰ cần báo/hiển thị cho kỳ này (xem quy tắc ở trên)
-      paid: dueAmount <= 0, // kỳ đã trả đủ (giao diện gạch ngang số tiền)
-      restored: !!e.restored, // kỳ đã trả đủ được dựng lại vì file nhập không còn lưu (số tiền suy ra từ tổng)
+      amount: e.amount,
+      dueAmount,
+      paid: dueAmount <= 0,
+      restored: !!e.restored,
       daysLeft,
       shouldWarn: isPastOrToday && dueAmount > 0,
     };
   });
 }
 
-/**
- * "Kỳ tới" của 1 hợp đồng — kỳ ĐẦU TIÊN trong computeInstallmentPlan() còn
- * thiếu tiền (dueAmount > 0), tức là kỳ cần chú ý nhất lúc này (có thể đã
- * quá hạn hoặc còn ở tương lai). Dùng CHUNG cho cả ô tóm tắt "Kỳ tới"
- * (js/components/ui.js) LẪN bộ lọc "Gần đến hạn"/"Quá hạn" ở trang Khách
- * hàng (js/views/admin/customers.js) — để cả 2 nơi tính nhất quán, không
- * lặp code. Trả về null nếu hợp đồng không có phân kỳ, hoặc đã trả đủ hết
- * mọi kỳ theo lịch.
- *
- * `urgency` dùng ĐÚNG ngưỡng NEAR_DUE_DAYS (15 ngày) y hệt contractUrgency()
- * ở trên, áp cho NGÀY ĐẾN HẠN CỦA KỲ thay vì ngày đáo hạn hợp đồng gốc.
- */
 export function nextInstallmentInfo(contract, asOf = new Date()) {
   const plan = computeInstallmentPlan(contract, asOf);
   if (!plan) return null;
@@ -560,15 +377,6 @@ export function nextInstallmentInfo(contract, asOf = new Date()) {
   return { plan, idx, next, urgency };
 }
 
-/**
- * Số ngày quá hạn THỰC SỰ của 1 hợp đồng — xét CẢ ngày đáo hạn hợp đồng gốc
- * LẪN "Kỳ tới" của phân kỳ trả nợ (nếu có), lấy nguồn NÀO QUÁ HẠN NHIỀU HƠN
- * (y hệt cách contractStatusInfo() ưu tiên "quá hạn" ở dưới) — dùng để xếp
- * NHÓM NỢ theo đúng quy định phân loại nợ (Thông tư 02/2013 NHNN): Nhóm 1 =
- * quá hạn dưới 10 ngày, Nhóm 2 = 10-90, Nhóm 3 = 91-180, Nhóm 4 = 181-360, Nhóm
- * 5 = trên 360 ngày — xem debtGroup() ngay bên dưới. Trả về null nếu hợp
- * đồng đã tất toán (không xếp nhóm nợ cho hợp đồng đã trả hết).
- */
 export function daysOverdue(contract, asOf = new Date()) {
   if ((Number(contract.balance) || 0) <= 0) return null;
   const mainOverdue = daysBetween(new Date(contract.dueDate), asOf);
@@ -577,12 +385,6 @@ export function daysOverdue(contract, asOf = new Date()) {
   return Math.max(0, mainOverdue, instOverdue);
 }
 
-/**
- * Nhóm nợ 1-5 theo đúng quy định phân loại nợ NHNN (Thông tư 02/2013, Điều
- * 10) — dùng số ngày quá hạn từ daysOverdue() ở trên. null nếu đã tất toán
- * (không thuộc nhóm nào). Dùng cho dashboard "Tỷ lệ nợ xấu" ở Tổng quan
- * (xem debtGroupSummary() ngay bên dưới) — "nợ xấu" chính thức = Nhóm 3+4+5.
- */
 export function debtGroup(contract, asOf = new Date()) {
   const d = daysOverdue(contract, asOf);
   if (d === null) return null;
@@ -593,16 +395,6 @@ export function debtGroup(contract, asOf = new Date()) {
   return 5;
 }
 
-/**
- * Tổng hợp dư nợ theo từng nhóm nợ + lãi phải thu (CHỈ tính Nhóm 1 — nợ từ
- * Nhóm 2 trở lên coi như khó thu lãi đúng hạn, không tính vào lãi phải thu
- * nữa, theo đúng yêu cầu) + tỷ lệ nợ xấu (dư nợ Nhóm 3+4+5 / tổng dư nợ) —
- * dùng cho dashboard "Tổng quan" (xem overview.js) VÀ cho việc chốt số liệu
- * cuối tháng (xem mục 10.46 docs/supabase-migration.md).
- * `contracts` truyền vào nên là ĐÚNG phạm vi được phép xem của phiên đang
- * gọi (super = toàn quỹ, staff = trong Thôn/Xóm được gán — xem
- * visibleContracts() ở overview.js).
- */
 export function debtGroupSummary(contracts, asOf = new Date()) {
   const groupBalances = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let totalBalance = 0;
@@ -620,19 +412,6 @@ export function debtGroupSummary(contracts, asOf = new Date()) {
   return { groupBalances, totalBalance, interestReceivable, badDebtBalance, badDebtRatio };
 }
 
-/** Tỷ lệ trích dự phòng CỤ THỂ theo từng nhóm nợ 2-5 (Nhóm 1 = 0%, không trích) — Thông tư 02/2013 NHNN, đúng số quỹ đang áp dụng. */
-
-/**
- * Dự phòng rủi ro phải trích — dùng cho dashboard "Tổng quan" (mục "Dư nợ
- * theo nhóm nợ", xem overview.js nhomNoSectionHtml()), tính "SỐNG" ngay lúc
- * gọi (không có lịch sử theo tháng, giống debtGroupSummary() ở trên).
- *
- * - Dự phòng CHUNG = 0,75% × tổng dư nợ Nhóm 1-4 (không tính Nhóm 5).
- * - Dự phòng CỤ THỂ = với TỪNG hợp đồng ở Nhóm 2-5: tỷ lệ theo nhóm (2=5%,
- *   3=20%, 4=50%, 5=100%) × PHẦN DƯ NỢ CÒN LẠI sau khấu trừ TSBĐ:
- *   đất 01/02 = 50% giá trị; ô tô 04 = 30%; sổ tiết kiệm 06 = 100%.
- *   Các mã khác hoặc thiếu mã = không có TSBĐ được khấu trừ.
- */
 export function provisionSummary(contracts, asOf = new Date()) {
   let generalBase = 0;
   let specificProvision = 0;
@@ -648,25 +427,6 @@ export function provisionSummary(contracts, asOf = new Date()) {
   return { generalProvision: generalBase * GENERAL_PROVISION_RATE, specificProvision };
 }
 
-/**
- * Trạng thái HIỂN THỊ đầy đủ của 1 hợp đồng — xét CẢ ngày đáo hạn hợp đồng
- * gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nextInstallmentInfo(), nếu có), dùng
- * ĐÚNG ngưỡng NEAR_DUE_DAYS (15 ngày). Trả về sẵn {status, badge, label,
- * days, dueAmount, source} — dùng thẳng cho "Trạng thái" + dòng cảnh báo ở
- * CHI TIẾT hợp đồng (CẢ 2 bên quản trị/khách hàng) + trang chủ khách hàng.
- * `dueAmount` = SỐ TIỀN GỐC gắn với cảnh báo — nếu nguồn cảnh báo là 1 KỲ cụ
- * thể (source:'installment') thì lấy đúng số tiền đến hạn của KỲ đó (không
- * phải toàn bộ dư nợ); nếu nguồn là ngày đáo hạn hợp đồng gốc (source:
- * 'contract') thì lấy dư nợ hiện tại như trước giờ.
- *
- * CHỦ Ý: KHÔNG đụng vào contractUrgency()/effectiveContractStatus() —
- * 2 hàm gốc đó vẫn giữ NGUYÊN VẸN, đang dùng cho mẫu tin Zalo OA/nhắc nợ
- * (buildContractNotificationPreset trong admin/customers.js) — CHƯA gắn
- * phân kỳ vào Zalo OA theo đúng yêu cầu. Tổng quan (overview.js) đã gắn
- * phân kỳ vào rồi nhưng qua contractAttentionInfo() (NGƯỠNG RỘNG 45 ngày,
- * xem bên dưới), không phải qua hàm này (hàm này chỉ dùng ĐÚNG 15 ngày,
- * cho "Trạng thái" ở chi tiết hợp đồng).
- */
 export function contractStatusInfo(contract, asOf = new Date()) {
   if ((contract.balance || 0) <= 0) {
     return { status: 'da_tat_toan', badge: 'badge-green', label: 'Đã tất toán', days: 0, dueAmount: 0, source: null };
@@ -676,8 +436,6 @@ export function contractStatusInfo(contract, asOf = new Date()) {
   const inst = nextInstallmentInfo(contract, asOf);
   const instLevel = inst ? inst.urgency : null;
 
-  // Ưu tiên QUÁ HẠN trước (lấy nguồn quá hạn NHIỀU ngày nhất); không ai quá
-  // hạn mới xét GẦN ĐẾN HẠN (lấy nguồn gấp nhất — ÍT ngày nhất).
   const overdue = [];
   if (mainLevel === 'qua_han') overdue.push({ days: Math.abs(mainDays), source: 'contract', amount: contract.balance });
   if (instLevel === 'qua_han') overdue.push({ days: Math.abs(inst.next.daysLeft), source: 'installment', amount: inst.next.dueAmount });
@@ -695,27 +453,8 @@ export function contractStatusInfo(contract, asOf = new Date()) {
   return { status: 'dang_vay', badge: 'badge-blue', label: 'Trong hạn', days: mainDays, dueAmount: contract.balance, source: 'contract' };
 }
 
-// "Gần đến hạn" ở contractAttentionInfo() bên dưới RỘNG hơn hẳn NEAR_DUE_DAYS
-// (15 ngày, dùng cho contractStatusInfo()/nhắc nợ Zalo OA) — xem trước tới
-// tận 45 ngày, dùng cho trang "Khách hàng & Hợp đồng" + popup "Gần đến hạn"
-// ở Tổng quan (2 nơi CHUNG 1 ngưỡng này để nhất quán).
 export const WIDE_NEAR_DUE_DAYS = 45;
 
-/**
- * Mức cần chú ý CAO NHẤT của 1 hợp đồng — xét CẢ ngày đáo hạn hợp đồng gốc
- * LẪN "Kỳ tới" của phân kỳ trả nợ (nextInstallmentInfo()) nếu hợp đồng có
- * phân kỳ, dùng ngưỡng RỘNG WIDE_NEAR_DUE_DAYS (45 ngày, xem trước xa hơn
- * hẳn NEAR_DUE_DAYS chính thức) — để hợp đồng có kỳ đến hạn/quá hạn GIỮA
- * CHỪNG (chưa tới ngày đáo hạn cuối cùng của hợp đồng) vẫn lọt vào đúng bộ
- * lọc "Gần đến hạn"/"Nợ quá hạn" ở trang Khách hàng & popup "Gần đến hạn" ở
- * Tổng quan, y hệt cảnh báo ngày đáo hạn hợp đồng gốc. Trả về { level:
- * 'qua_han' | 'gan_den_han' | null, days, dueAmount, source }. `dueAmount` =
- * SỐ TIỀN GỐC gắn với cảnh báo — nếu nguồn là 1 KỲ cụ thể (source:
- * 'installment') thì lấy đúng số tiền đến hạn của KỲ đó (không phải toàn bộ
- * dư nợ); nếu nguồn là ngày đáo hạn hợp đồng gốc (source:'contract') thì lấy
- * dư nợ hiện tại như trước giờ — y hệt cách contractStatusInfo() ở trên tính
- * dueAmount, chỉ khác ngưỡng "gần đến hạn" (RỘNG 45 ngày thay vì 15 ngày).
- */
 export function contractAttentionInfo(contract, asOf = new Date()) {
   if ((Number(contract.balance) || 0) <= 0) {
     return { level: null, days: 0, dueAmount: 0, source: null };
@@ -730,7 +469,7 @@ export function contractAttentionInfo(contract, asOf = new Date()) {
   if (contractLevel === 'qua_han') overdue.push({ days: Math.abs(d), source: 'contract', amount: contract.balance });
   if (instLevel === 'qua_han') overdue.push({ days: Math.abs(instDays), source: 'installment', amount: inst.next.dueAmount });
   if (overdue.length) {
-    const worst = overdue.reduce((a, b) => (b.days > a.days ? b : a)); // quá hạn: lấy NHIỀU ngày nhất
+    const worst = overdue.reduce((a, b) => (b.days > a.days ? b : a));
     return { level: 'qua_han', days: worst.days, dueAmount: worst.amount, source: worst.source };
   }
 
@@ -738,28 +477,13 @@ export function contractAttentionInfo(contract, asOf = new Date()) {
   if (contractLevel === 'gan_den_han') nearDue.push({ days: d, source: 'contract', amount: contract.balance });
   if (instLevel === 'gan_den_han') nearDue.push({ days: instDays, source: 'installment', amount: inst.next.dueAmount });
   if (nearDue.length) {
-    const soonest = nearDue.reduce((a, b) => (b.days < a.days ? b : a)); // gần đến hạn: lấy ÍT ngày nhất (gấp nhất)
+    const soonest = nearDue.reduce((a, b) => (b.days < a.days ? b : a));
     return { level: 'gan_den_han', days: soonest.days, dueAmount: soonest.amount, source: soonest.source };
   }
 
   return { level: null, days: 0, dueAmount: contract.balance, source: null };
 }
 
-/**
- * Đăng nhập khách hàng bằng CCCD HOẶC số điện thoại + mật khẩu.
- * ĐÃ CHUYỂN SANG SUPABASE THẬT (xem docs/supabase-migration.md) — không còn
- * kiểm tra mật khẩu ở đây nữa, mà gọi Edge Function "login" (chạy phía
- * server, an toàn dù chưa có OTP). Đúng mật khẩu thì tải luôn hồ sơ + toàn
- * bộ hợp đồng của khách đó từ Supabase vào state (THAY HẲN dữ liệu demo cũ)
- * để các màn hình khác (dashboard, chi tiết hợp đồng...) dùng lại y nguyên,
- * không cần sửa gì thêm. Vé (JWT) trả về trong "sbToken" — nơi gọi hàm này
- * (login.js) cần lưu vào session để dùng cho các lần gọi Supabase sau.
- *
- * LƯU Ý (giai đoạn chuyển tiếp): mới migrate riêng phần đăng nhập + xem hợp
- * đồng của khách hàng. Đăng nhập quản trị viên/nhân viên, yêu cầu tư vấn,
- * và mọi thao tác ghi khác VẪN đang chạy trên dữ liệu demo cục bộ như cũ —
- * sẽ chuyển tiếp ở các bước sau.
- */
 export async function loginCustomer(identifier, password) {
   const res = await callLoginFunction({ role: 'customer', identifier, password });
   if (!res.ok) return { ok: false, reason: res.reason };
@@ -767,39 +491,22 @@ export async function loginCustomer(identifier, password) {
   return { ok: true, customerId: res.id, mustChangePassword: !!res.mustChangePassword, sbToken: res.token };
 }
 
-/**
- * Khách quên mật khẩu, gọi từ màn đăng nhập (CHƯA đăng nhập, không có JWT) —
- * xác minh đúng CCCD + SĐT khớp 1 khách hàng có thật rồi ghi 1 "yêu cầu cấp
- * lại mật khẩu" vào bảng requests (như 1 yêu cầu tư vấn thông thường, hiện
- * ngay trong danh sách "Yêu cầu tư vấn" ở trang quản trị) — KHÔNG tự đổi mật
- * khẩu, admin xem yêu cầu rồi tự gọi điện xác minh + cấp mật khẩu mới qua
- * SĐT (chức năng "Cấp lại mật khẩu" đã có sẵn ở trang Khách hàng), vì app
- * chưa có OTP thật để tự động hoàn toàn bước xác minh danh tính này.
- * Toàn bộ logic tra cứu + ghi request chạy Ở SERVER (Edge Function, cùng
- * cơ chế an toàn như "login") — trình duyệt không tự query được customers.
- */
 export async function requestPasswordReset(cccd, phone) {
   return callForgotPasswordFunction({ cccd, phone });
 }
 
-/** Tải hồ sơ + toàn bộ hợp đồng của 1 khách hàng từ Supabase, thay hoàn toàn state.customers/state.contracts. */
 async function loadCustomerSessionData(customerId, token) {
   const sb = getSupabaseClient(token);
   const [custRes, contractRes, requestRes, chatUnreadRes] = await Promise.all([
     sb.from('customers').select('*').eq('id', customerId).maybeSingle(),
     sb.from('contracts').select('*').eq('customer_id', customerId),
     sb.from('requests').select('*').eq('customer_id', customerId),
-    // Số tin nhắn hỗ trợ (chat) do quản trị viên/nhân viên gửi mà khách CHƯA
-    // đọc — dùng cho chấm đỏ ở nút chat nổi (xem js/components/shell.js
-    // renderChatFab). Bọc an toàn (giống push_subscriptions) phòng lúc chưa
-    // chạy SQL tạo bảng chat_messages (mục 10.24) — lỗi thì coi như 0, không
-    // chặn tải các dữ liệu khác.
+
     sb.from('chat_messages').select('id', { count: 'exact', head: true })
       .eq('customer_id', customerId).eq('sender_role', 'admin').is('read_at', null)
       .then((r) => r, () => ({ count: 0 })),
   ]);
-  // Hồ sơ/hợp đồng tải LỖI (hết thời gian, rớt mạng thoáng qua...) thì GIỮ NGUYÊN dữ liệu đang có và báo false để thử lại — trước đây
-  // coi như "không có gì" nên xóa sạch hợp đồng, thậm chí đăng xuất nhầm khách (không thấy hồ sơ của mình).
+
   if (custRes?.error || !queryOk(contractRes)) {
     console.warn('Tải dữ liệu khách hàng chưa trọn vẹn, giữ nguyên dữ liệu cũ.', custRes?.error || contractRes?.error);
     return false;
@@ -812,10 +519,8 @@ async function loadCustomerSessionData(customerId, token) {
   return true;
 }
 
-/** Truy vấn Supabase dùng được: không lỗi và có mảng dữ liệu. Truy vấn LỖI trả {data:null,error} chứ KHÔNG văng lỗi — nếu coi như "bảng trống" sẽ xóa sạch danh sách đang có rồi lưu luôn vào máy (tải lại vẫn trống). */
 const queryOk = (res) => !!res && !res.error && Array.isArray(res.data);
 
-/** Chạy load() (trả true khi tải đủ), không đủ thì chờ rồi thử lại tối đa `tries` lần — dùng lúc đăng nhập, khi mạng còn chập chờn. */
 async function loadWithRetry(load, tries = 3, waitMs = 1500) {
   let lastErr = null;
   for (let i = 0; i < tries; i++) {
@@ -827,7 +532,6 @@ async function loadWithRetry(load, tries = 3, waitMs = 1500) {
   return false;
 }
 
-/** snake_case (cột Postgres) -> camelCase (đúng field app đang dùng khắp nơi). */
 function mapCustomerRow(row) {
   return {
     id: row.id, cccd: row.cccd, name: row.name, phone: row.phone || '', address: row.address || '',
@@ -839,7 +543,7 @@ function mapCustomerRow(row) {
     lockedUntil: row.locked_until ? new Date(row.locked_until).getTime() : null,
     lastLoginAt: row.last_login_at || null,
     isOnline: !!row.is_online,
-    // Sổ người cùng vay của khách (số điện thoại theo tên — nhập 1 lần dùng cho mọi hợp đồng có tên người đó); coPrevName = tên người cũ khi vừa bị đổi.
+
     coPeople: Array.isArray(row.co_people) ? row.co_people.map((x) => ({ name: String(x?.name || ''), phone: String(x?.phone || '') })).filter((x) => x.name) : [],
     coPrevName: row.co_prev_name || '',
     createdAt: row.created_at,
@@ -852,25 +556,22 @@ function mapContractRow(row) {
     disbursedDate: row.disbursed_date, dueDate: row.due_date,
     interestRate: Number(row.interest_rate),
     interestPaidUntil: row.interest_paid_until,
-    // 2 cột MỚI (chỉ có khi nhập từ "mẫu báo cáo" — xem mục 10.44 docs) —
-    // agreementCode chỉ để hiển thị tham khảo; installmentSchedule dùng cho
-    // computeInstallmentPlan() (xem hàm đó bên dưới).
+
     agreementCode: row.agreement_code || null,
     installmentSchedule: row.installment_schedule || null,
-    // TSBĐ từ cột T/AB file số 1; chỉ mã 01/02/04/06 được xem là có TSBĐ.
+
     hasCollateral: !!row.has_collateral && ['01', '02', '04', '06'].includes(row.collateral_type),
     collateralValue: Number(row.collateral_value) || 0,
     collateralType: row.collateral_type || null,
     loanTerm: row.loan_term || null,
     loanPurpose: row.loan_purpose || null,
-    // Người thừa kế/đồng vay (cột D file số 1) — hiện cạnh tên khách ở chi tiết hợp đồng.
+
     heirName: row.heir_name || null,
-    // Gửi Zalo OA theo từng hợp đồng (docs mục 10.83): công tắc bật/tắt + tick người vay / người cùng vay; oaCoKey = tên người mà tick người cùng vay đang áp dụng.
+
     oaEnabled: row.oa_enabled !== false, oaToMain: row.oa_to_main !== false, oaToCo: !!row.oa_to_co, oaCoKey: row.oa_co_key || null,
   };
 }
 
-/** Kiểm tra mật khẩu hiện tại của khách hàng — ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function (chỉ tự xác minh chính mình). */
 export async function verifyCustomerPassword(customerId, password) {
   const session = getSession();
   if (!session || session.id !== customerId) return false;
@@ -878,7 +579,6 @@ export async function verifyCustomerPassword(customerId, password) {
   return !!(res.ok && res.valid);
 }
 
-/** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function (tự đổi mật khẩu chính mình, không cần quyền super). */
 export async function setCustomerPassword(customerId, newPassword, opts = {}) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, {
@@ -890,8 +590,6 @@ export async function setCustomerPassword(customerId, newPassword, opts = {}) {
   notify();
 }
 
-/** Admin cấp lại mật khẩu cho khách — có thể tự nhập mật khẩu cụ thể, để trống thì tự sinh ngẫu nhiên. */
-/** Admin cấp lại mật khẩu cho khách hàng — ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
 export async function adminResetCustomerPassword(customerId, customPassword) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'reset-customer-password', customerId, password: customPassword });
@@ -902,15 +600,10 @@ export async function adminResetCustomerPassword(customerId, customPassword) {
   return res.tempPassword;
 }
 
-// ------------------------------------------------------------
-// Người cùng vay & gửi Zalo OA THEO TỪNG HỢP ĐỒNG (docs mục 10.83). Tên người cùng vay lấy từ từng hợp đồng còn hiệu lực; số điện thoại lưu
-// trong sổ người cùng vay của khách; mỗi hợp đồng có công tắc bật/tắt + tick người vay / người cùng vay (CHỈ người có tên trên hợp đồng đó).
-// Quy tắc "ai nhận tin hợp đồng nào" nằm ở lib/coBorrower.js (contractOa) — máy chủ có bản sao giống hệt và tự kiểm tra lại khi gửi.
-// ------------------------------------------------------------
 function activeContractsOf(customerId) {
   return listContractsByCustomer(customerId).filter((ct) => effectiveContractStatus(ct) !== 'da_tat_toan');
 }
-/** Những người cùng vay của 1 khách: mỗi người 1 dòng — tên (như ghi trên hợp đồng), số đã lưu, và các hợp đồng còn hiệu lực có tên người đó. */
+
 export function listCoPeople(customerId) {
   const c = getCustomer(customerId);
   if (!c) return [];
@@ -920,10 +613,7 @@ export function listCoPeople(customerId) {
     contracts: cts.filter((ct) => samePerson(heirOfContract(ct, c.name), name)),
   }));
 }
-/**
- * Lý do KHÔNG cho thêm khách vào Danh sách OA ('' = thêm được): người vay lẫn người cùng vay đều chưa có số điện thoại thì không có ai để gửi.
- * Chỉ cần 1 trong 2 có số là thêm được (máy chủ add-zalo-customer kiểm tra lại y như vậy).
- */
+
 export function oaAddBlockReason(customerId) {
   const c = getCustomer(customerId);
   if (!c || String(c.phone || '').trim() || hasOaPhone(activeContractsOf(customerId), c)) return '';
@@ -931,40 +621,39 @@ export function oaAddBlockReason(customerId) {
     ? 'Người vay và người cùng vay đều chưa có số điện thoại nên chưa thêm được vào danh sách OA.'
     : 'Khách hàng chưa có số điện thoại nên chưa thêm được vào danh sách OA.';
 }
-/** Trạng thái gửi Zalo OA có hiệu lực của 1 hợp đồng (xem contractOa ở lib/coBorrower.js). */
+
 export function getContractOa(contractId) {
   const ct = getContract(contractId);
   const c = ct && getCustomer(ct.customerId);
   return ct && c ? contractOa(ct, c) : null;
 }
-/** Tóm tắt gửi Zalo OA của 1 khách qua các hợp đồng còn hiệu lực (xem customerOaSummary ở lib/coBorrower.js). */
+
 export function customerOaOverview(customerId) {
   const c = getCustomer(customerId);
   if (!c) return null;
   const sum = customerOaSummary(activeContractsOf(customerId), c);
   const people = listCoPeople(customerId);
-  // detail = Danh sách OA phải hiện theo TỪNG HỢP ĐỒNG (từ 2 người cùng vay khác nhau, có hợp đồng đang tắt, hoặc các hợp đồng gửi cho người khác nhau);
-  // ngược lại cả khách gửi giống nhau → nhãn gọn như trước.
+
   return { ...sum, people, detail: people.length >= 2 || sum.offCount > 0 || !sum.uniform };
 }
-/** Dòng log gửi Zalo có được hiện không: hợp đồng đã TẮT gửi OA thì không hiện lịch sử của nó. */
+
 export function isZaloLogVisible(log) {
   const ct = getContract(log?.contractId);
   return !(ct && ct.oaEnabled === false);
 }
-/** Khách vừa bị đổi người cùng vay (hợp đồng mới ghi người khác): tên cũ + các tên đang có trên hợp đồng, để cảnh báo trước khi thêm lại vào OA. */
+
 export function coChangeInfo(customerId) {
   const c = getCustomer(customerId);
   if (!c || !c.coPrevName) return null;
   return { prevName: c.coPrevName, names: heirNamesOf(activeContractsOf(customerId), c.name) };
 }
 
-const coSaveQueue = new Map(); // customerId → { tail, pending }: hàng đợi lưu cấu hình gửi OA / số người cùng vay theo từng khách
+const coSaveQueue = new Map();
 function coSaveError(res) {
   const reason = String(res.reason || '');
   return new Error(/Thiếu hoặc sai "type"/.test(reason) ? 'Máy chủ chưa cập nhật để lưu cấu hình gửi OA — cần deploy lại Edge Function create-account (docs mục 10.83).' : (reason || 'Không lưu được, thử lại sau.'));
 }
-/** Chạy `job` nối đuôi các lần lưu trước của cùng khách (đúng thứ tự bấm); trả { result, last } với last = không còn lần lưu nào chờ phía sau. */
+
 async function runCoSave(customerId, job) {
   const q = coSaveQueue.get(customerId) || { tail: Promise.resolve(), pending: 0 };
   coSaveQueue.set(customerId, q);
@@ -975,10 +664,6 @@ async function runCoSave(customerId, job) {
   finally { q.pending--; if (!q.pending) coSaveQueue.delete(customerId); }
 }
 
-/**
- * Đổi cấu hình gửi Zalo OA của 1 hợp đồng: { enabled?, toMain?, toCo? } (Edge Function create-account, type 'save-contract-oa';
- * cần quyền Quản lý OA). Mặc định cập nhật bộ nhớ NGAY (màn hình vẽ lại liền, không chờ máy chủ) rồi lưu ngầm; lỗi thì chỉ trả lại đúng phần mình đã đổi.
- */
 export async function setContractOa(contractId, patch, { optimistic = true } = {}) {
   const ct = getContract(contractId);
   if (!ct) throw new Error('Không tìm thấy hợp đồng.');
@@ -1012,10 +697,6 @@ export async function setContractOa(contractId, patch, { optimistic = true } = {
   }
 }
 
-/**
- * Lưu (hoặc xóa, khi để trống) số điện thoại của 1 người cùng vay trong sổ người cùng vay của khách (Edge Function create-account,
- * type 'save-co-phone'; cần quyền Quản lý OA hoặc Quản lý User). Xóa số thì tick gửi OA của người đó ở mọi hợp đồng tự bỏ.
- */
 export async function saveCoPhone(customerId, name, phone) {
   const c = getCustomer(customerId);
   const { result } = await runCoSave(customerId, async () => {
@@ -1030,10 +711,7 @@ export async function saveCoPhone(customerId, name, phone) {
   }
   notify();
 }
-/**
- * Nhập số điện thoại cho NGƯỜI VAY chưa có số (Edge Function create-account, type 'save-main-phone'; cần quyền Quản lý OA hoặc Quản lý User; chỉ khi khách chưa có số).
- * Dùng khi bấm tick gửi Zalo OA cho người vay chưa có số: nhập số xong mới tick được.
- */
+
 export async function saveMainPhone(customerId, phone) {
   const c = getCustomer(customerId);
   const { result } = await runCoSave(customerId, async () => {
@@ -1044,11 +722,7 @@ export async function saveMainPhone(customerId, phone) {
   if (c) c.phone = String(result.phone || phone).replace(/\s/g, '');
   notify();
 }
-/**
- * Nhập số điện thoại người cùng vay từ file Excel (Edge Function create-account, type 'import-co-phones'; cần quyền Quản lý OA hoặc Quản lý User).
- * items: [{ row, code, phone }] (Số HĐTD + SĐT người cùng vay); máy chủ khớp theo hợp đồng + tên người cùng vay ghi trên hợp đồng đó. Chỉ thêm số; số đã lưu khác file thì giữ nguyên
- * trừ khi overwrite = true. previewImportCoPhones chỉ tính (không ghi); importCoPhones ghi thật rồi cập nhật sổ người cùng vay trong bộ nhớ.
- */
+
 async function runImportCoPhones(items, { overwrite = false, preview = false } = {}) {
   const res = await callCreateAccountFunction(getSession()?.sbToken, { type: 'import-co-phones', items, overwrite: !!overwrite, preview: !!preview });
   if (!res.ok) throw coSaveError(res);
@@ -1064,19 +738,12 @@ export async function importCoPhones(items, opts = {}) {
   notify();
   return res;
 }
-/** Đã đọc cảnh báo "người cùng vay đã đổi" (máy chủ tự xóa dấu này khi khách được thêm lại vào OA) — xóa dấu trong bộ nhớ. */
+
 export function dismissCoBorrowerChange(customerId) {
   const c = getCustomer(customerId);
   if (c && c.coPrevName) { c.coPrevName = ''; notify(); }
 }
 
-/**
- * Đăng xuất NGAY 1 khách hàng đang có phiên đăng nhập ở đâu đó — KHÔNG cấp
- * lại mật khẩu (khác adminResetCustomerPassword ở trên). Dùng đúng cơ chế
- * tự phát hiện của "Cấp lại mật khẩu" (xem refreshSessionData() — so
- * forceLogoutAt trước/sau mỗi lần tự làm mới dữ liệu) nên tự bung ra y hệt,
- * không cần tải lại trang.
- */
 export async function forceLogoutCustomer(customerId) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'force-logout-customer', customerId });
@@ -1086,20 +753,6 @@ export async function forceLogoutCustomer(customerId) {
   notify();
 }
 
-/**
- * Tạo/cập nhật HỒ SƠ khách hàng (tên, SĐT, địa chỉ) — KHÔNG đụng đến tài
- * khoản đăng nhập. Dùng cho luồng nhập từ Excel: file chỉ cho biết ai đang
- * có khoản vay, không phải là nơi cấp tài khoản. Nếu khách chưa từng được
- * "Tạo User" thì hồ sơ này chưa đăng nhập được (salt/hash rỗng) — vẫn xem
- * là 1 khách hàng hợp lệ để gắn hợp đồng vào, admin có thể tạo tài khoản
- * cho họ sau bất cứ lúc nào qua nút "Tạo User" (không mất dữ liệu hợp đồng).
- */
-/**
- * Phần lõi của upsertCustomerProfile — KHÔNG gọi notify(). Dùng khi cần gộp
- * nhiều thay đổi lại rồi chỉ notify() 1 lần ở cuối (VD: nhập cả trăm dòng từ
- * Excel cùng lúc — gọi notify() riêng từng dòng sẽ rất chậm vì mỗi lần đều
- * lưu localStorage + vẽ lại toàn bộ trang).
- */
 function upsertCustomerProfileCore({ cccd, name, phone, address }, existing) {
   const parsed = address != null ? parseAddress(address) : null;
   const phoneClean = phone != null ? String(phone).replace(/\s/g, '') : phone;
@@ -1119,7 +772,7 @@ function upsertCustomerProfileCore({ cccd, name, phone, address }, existing) {
   state.customers.push(c);
   return { customer: c, isNew: true };
 }
-/** Admin sửa hồ sơ khách hàng (tên/SĐT/địa chỉ) — ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
+
 export async function upsertCustomerProfile({ cccd, name, phone, address }) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-customer-profile', cccd, name, phone, address });
@@ -1134,28 +787,11 @@ export async function upsertCustomerProfile({ cccd, name, phone, address }) {
   return { customer: c };
 }
 
-/**
- * "Tạo User" — cấp tài khoản đăng nhập (CCCD + mật khẩu) cho 1 khách hàng.
- * Nếu CCCD đã có hồ sơ sẵn (từ Excel) thì chỉ gắn thêm tài khoản vào đúng
- * hồ sơ đó (giữ nguyên tên/địa chỉ/hợp đồng đã có) — khách đăng nhập là tự
- * thấy ngay mọi hợp đồng khớp CCCD, không cần làm gì thêm. Nếu CCCD chưa có
- * hồ sơ nào thì tạo mới (chỉ cần CCCD, tên tùy chọn — không cần địa chỉ).
- */
-/**
- * Tạo tài khoản đăng nhập cho khách hàng — ĐÃ CHUYỂN SANG SUPABASE THẬT,
- * gọi Edge Function "create-account" (chỉ admin role='super' gọi được,
- * xác minh ngay tại server — xem docs/supabase-migration.md mục 5). Tạo
- * xong tải lại đúng dòng khách hàng đó từ Supabase để đồng bộ vào state.
- */
 export async function activateCustomerAccount({ cccd, name, phone, password }) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'customer', cccd, name, phone, password });
   if (!res.ok) throw new Error(res.reason || 'Không tạo được tài khoản.');
-  // Dùng thẳng dòng khách hàng mà server trả về (đọc bằng service role, xem
-  // create-account/index.ts) thay vì tự SELECT lại bằng token của người gọi:
-  // nhân viên "chỉ xem" được cấp canManageUsers có thể không có quyền RLS
-  // xem khách mới tạo (chưa có Thôn/Xóm) — tự SELECT lại sẽ ra rỗng và làm
-  // tài khoản mới tạo "biến mất" khỏi trang Quản lý User dù đã tạo thành công.
+
   const customer = res.customer ? mapCustomerRow(res.customer) : { id: res.id, cccd };
   const idx = state.customers.findIndex((c) => c.id === customer.id);
   if (idx >= 0) state.customers[idx] = customer; else state.customers.push(customer);
@@ -1163,13 +799,6 @@ export async function activateCustomerAccount({ cccd, name, phone, password }) {
   return { customer, tempPassword: res.tempPassword };
 }
 
-/**
- * "Xóa Use" — chỉ gỡ TÀI KHOẢN ĐĂNG NHẬP (mật khẩu/salt/hash), KHÔNG đụng gì
- * đến hồ sơ khách hàng hay hợp đồng — 2 thứ đó độc lập với tài khoản đăng
- * nhập. Khách trở lại trạng thái "chỉ có hồ sơ" như mới nhập từ Excel, admin
- * có thể "Tạo User" lại bất cứ lúc nào mà không mất dữ liệu hợp đồng.
- */
-/** "Xóa Use" — ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
 export async function deactivateCustomerAccount(customerId) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'deactivate-customer', customerId });
@@ -1179,13 +808,6 @@ export async function deactivateCustomerAccount(customerId) {
   notify();
 }
 
-/** Danh sách các Thôn / Xóm đang có trong dữ liệu khách hàng (dùng để lọc & gán quyền). */
-/**
- * So sánh tên Xóm kiểu "tự nhiên" theo số — Xóm thường đặt tên bằng số (có
- * khi kèm số phụ dạng "8/1", "8/2"): sắp đúng thứ tự 01, 02, 03, 08, 8/1,
- * 8/2, 09, 10... thay vì so chuỗi kiểu chữ cái (sẽ ra "01, 09, 10, 8/1..."
- * sai thứ tự vì "1" < "8" < "9" theo ký tự).
- */
 function naturalXomCompare(a, b) {
   const parse = (s) => {
     const m = String(s).match(/(\d+)(?:\s*\/\s*(\d+))?/);
@@ -1205,20 +827,17 @@ export function distinctXom(thon) {
   const list = thonList.length ? state.customers.filter((c) => thonList.includes(c.thon)) : state.customers;
   return [...new Set(list.map((c) => c.xom).filter(Boolean))].sort(naturalXomCompare);
 }
-/**
- * Địa bàn được cấp của 1 tài khoản — dùng cho các ô chọn/bộ lọc Thôn-Xóm để CHỈ hiện đúng phần được cấp (không hiện cả Thôn/Xóm ngoài phạm vi
- * gây rối): toàn quyền = không giới hạn; nhân viên = các Thôn được cấp trọn + từng Xóm được cấp riêng (khóa "Thôn||Xóm", xem xomKey()).
- */
+
 function territoryOf(adminId) {
   const a = getAdmin(adminId);
   return a && a.role === 'staff' ? { thon: new Set(a.allowedThon || []), xom: new Set(a.allowedXom || []) } : null;
 }
-/** Khách có thuộc địa bàn được cấp của tài khoản này không (toàn quyền: luôn có). */
+
 export function isCustomerInTerritory(customer, adminId) {
   const t = territoryOf(adminId);
   return !t || t.thon.has(customer.thon) || t.xom.has(xomKey(customer.thon, customer.xom));
 }
-/** Các Thôn được chọn trong bộ lọc: nhân viên = Thôn được cấp trọn + Thôn chứa từng Xóm được cấp (đã chọn Xóm thì Thôn đó mặc nhiên có). */
+
 export function territoryThonList(adminId) {
   const t = territoryOf(adminId);
   if (!t) return distinctThon();
@@ -1226,43 +845,34 @@ export function territoryThonList(adminId) {
   t.xom.forEach((k) => { const thon = parseXomKey(k).thon; if (thon) set.add(thon); });
   return [...set].sort((a, b) => a.localeCompare(b, 'vi'));
 }
-/** Các Xóm được chọn trong bộ lọc (theo Thôn đang chọn nếu có): nhân viên chỉ thấy Xóm thuộc địa bàn được cấp. */
+
 export function territoryXomList(adminId, thon) {
   const t = territoryOf(adminId);
   if (!t) return distinctXom(thon);
   const picked = [].concat(thon || []).filter(Boolean);
   const set = new Set();
   for (const th of (picked.length ? picked : territoryThonList(adminId))) {
-    if (t.thon.has(th)) distinctXom(th).forEach((x) => set.add(x)); // cấp trọn cả Thôn: mọi Xóm trong Thôn
-    t.xom.forEach((k) => { const p = parseXomKey(k); if (p.thon === th && p.xom) set.add(p.xom); }); // cấp riêng từng Xóm
+    if (t.thon.has(th)) distinctXom(th).forEach((x) => set.add(x));
+    t.xom.forEach((k) => { const p = parseXomKey(k); if (p.thon === th && p.xom) set.add(p.xom); });
   }
   return [...set].sort(naturalXomCompare);
 }
-/**
- * Khóa định danh 1 Xóm CỤ THỂ, gắn kèm Thôn chứa nó — tên Xóm (VD: "Xóm 8")
- * có thể trùng nhau giữa nhiều Thôn khác nhau nên KHÔNG được dùng riêng
- * mỗi tên Xóm để phân quyền/lọc, phải luôn đi kèm đúng Thôn của nó. Dùng
- * khi cấp quyền staff (allowedXom lưu dạng key này, xem updateStaffPermissions)
- * và khi lọc khách hàng theo quyền (xem listCustomers).
- */
+
 export function xomKey(thon, xom) { return `${thon}||${xom}`; }
 export function parseXomKey(key) {
   const i = String(key || '').indexOf('||');
   return i < 0 ? { thon: '', xom: key || '' } : { thon: key.slice(0, i), xom: key.slice(i + 2) };
 }
 
-/** Cây Thôn -> danh sách Xóm trong thôn đó — dùng cho phân quyền nhân viên theo từng cấp. */
 export function thonXomTree() {
   return distinctThon().map((thon) => ({ thon, xomList: distinctXom(thon) }));
 }
 
-/** Sinh mã hợp đồng tự động khi không có sẵn (không bắt buộc phải nhập). */
 function autoContractCode(cccd) {
   const n = state.contracts.filter((c) => c.autoCode).length + 1;
   return `HD-${cccd}-${String(n).padStart(3, '0')}`;
 }
 
-/** Phần lõi của upsertContract — KHÔNG gọi notify() (xem ghi chú ở upsertCustomerProfileCore). */
 function upsertContractCore({ customerId, code, principal, disbursedDate, dueDate, interestRate, balance, status, interestPaidUntil }, existing) {
   const customer = getCustomer(customerId);
   const bal = Number(balance) || 0;
@@ -1271,9 +881,9 @@ function upsertContractCore({ customerId, code, principal, disbursedDate, dueDat
     customerId,
     code: code || (ct ? ct.code : autoContractCode(customer?.cccd || customerId)),
     autoCode: !code,
-    principal: principal != null && principal !== '' ? Number(principal) || 0 : bal, // mặc định = dư nợ nếu không có số tiền vay gốc
+    principal: principal != null && principal !== '' ? Number(principal) || 0 : bal,
     disbursedDate,
-    dueDate: dueDate || addDays(new Date(disbursedDate), 365).toISOString().slice(0, 10), // mặc định 1 năm nếu Excel không có
+    dueDate: dueDate || addDays(new Date(disbursedDate), 365).toISOString().slice(0, 10),
     interestRate: interestRate != null && interestRate !== '' ? Number(interestRate) || 0 : (ct ? ct.interestRate : 0),
     balance: bal, status: status || 'dang_vay',
     interestPaidUntil: interestPaidUntil || disbursedDate,
@@ -1288,79 +898,47 @@ export function upsertContract(args) {
   return ct;
 }
 
-/**
- * Admin tự soạn + gửi ngay 1 thông báo đẩy (Web Push) cho 1 khách hàng —
- * khách đó phải đã bật thông báo trên ít nhất 1 thiết bị (xem trang "Đổi mật
- * khẩu" của khách/nút "Bật thông báo nhắc lịch"), nếu chưa sẽ báo lỗi rõ.
- * Trả về { ok, sentCount, reason }.
- */
 export async function sendManualNotification(customerId, title, body) {
   const session = getSession();
   return callCreateAccountFunction(session?.sbToken, { type: 'send-manual-notification', customerId, title, body });
 }
 
-// ------------------------------------------------------------
-// Zalo OA (ZBS Template Message) — 2 tầng danh sách:
-//   Tầng 1 "Danh sách đã thêm vào OA" (zaloCustomers) — theo KHÁCH HÀNG,
-//     danh sách CHUNG (ai có quyền cũng thấy/thêm được), giống "Use" không
-//     tự xóa khi hết hợp đồng/dư nợ.
-//   Tầng 2 "Danh sách gửi tự động" (zaloAutoSendList) — theo HỢP ĐỒNG, RIÊNG
-//     TƯ theo từng người tự chọn (server chỉ trả về đúng lựa chọn của CHÍNH
-//     người gọi, xem RLS "admin sees own zalo auto send selections"), nhưng
-//     1 (hợp đồng, tình huống) chỉ 1 người chọn được tại 1 thời điểm — người
-//     khác cố chọn trùng bị server chặn kèm tên người đã chọn.
-// Xem trang "Quản lý OA" (js/views/admin/zaloOA.js) và
-// docs/supabase-migration.md mục 10. Cần quyền canManageZaloOA (hoặc super).
-// ------------------------------------------------------------
-// Khách CHƯA CÓ SỐ ĐIỆN THOẠI nào để gửi Zalo (người vay chưa có số và người cùng vay cũng chưa có số — xem oaAddBlockReason) tự ra khỏi Danh sách OA:
-// không hiện ở danh sách/số đếm, và ở chi tiết khách hàng hiện "chưa thêm". Dòng trong máy chủ KHÔNG bị xóa — có số điện thoại lại thì tự hiện lại.
 function oaListable(customerId) { return !oaAddBlockReason(customerId); }
 export function isZaloCustomer(customerId) {
   return (state.zaloCustomers || []).some((r) => r.customerId === customerId) && oaListable(customerId);
 }
 export function listZaloCustomers() { return (state.zaloCustomers || []).filter((r) => oaListable(r.customerId)); }
-/** Hợp đồng này đã có trong danh sách gửi tự động CỦA CHÍNH MÌNH chưa (1 hợp đồng chỉ ở được 1 trong 2 mục) — trả về dòng nếu có, null nếu chưa. */
+
 export function findZaloAutoSend(contractId) {
   return listZaloAutoSend().find((r) => r.contractId === contractId) || null;
 }
-/** Chỉ đọc trạng thái và chu kỳ gửi tự động của hợp đồng trong phạm vi quản lý; không cần quyền quản lý OA. */
+
 export async function getZaloAutoSendStatus(contractId) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'get-zalo-auto-send-status', contractId });
   if (!res.ok) throw new Error(res.reason || 'Không kiểm tra được trạng thái gửi tự động.');
   return { enabled: res.enabled === true, intervalMonths: Number(res.intervalMonths) || 1 };
 }
-/** Lựa chọn gửi tự động này là CỦA CHÍNH người đang đăng nhập (dòng cũ không ghi người thêm thì tính cho quản trị toàn quyền). */
+
 function isOwnAutoRow(r) {
   const me = state.session?.id;
   if (!me) return false;
   return r.createdBy === me || (!r.createdBy && getAdmin(me)?.role === 'super');
 }
-/**
- * Danh sách gửi tự động RIÊNG của chính người đang xem — kể cả quản trị toàn quyền (máy chủ cho super đọc được dòng của mọi người,
- * nhưng danh sách này chỉ hiện phần mình đã thêm; muốn xem tổng/số theo từng người thì dùng summarizeZaloAutoByOwner()).
- */
+
 export function listZaloAutoSend() {
-  // Mới thêm nằm TRÊN CÙNG (sắp theo thời điểm thêm, mới nhất trước); dòng cũ không ghi thời điểm xuống cuối.
+
   return (state.zaloAutoSendList || []).filter(isOwnAutoRow).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
 }
-/**
- * Tổng quan gửi tự động của MỌI người (khách + hợp đồng + mục + người đã thêm) — gộp lựa chọn của chính mình (luôn mới nhất) với bản
- * tổng quan tải từ máy chủ (xem refreshZaloAutoOverview). Dùng cho nhãn "Báo lãi tự động" ở Danh sách OA, số tổng ở đầu trang
- * Quản lý OA, và để biết khách nào đã có người khác thêm (mỗi khách chỉ một người được thêm). Chưa tải được bản tổng quan
- * (chưa deploy máy chủ mới, mất mạng) thì chỉ còn lựa chọn của chính mình, như trước.
- */
+
 export function listZaloAutoOverview() {
   const meId = state.session?.id || null;
   const mine = (state.zaloAutoSendList || []).map((r) => ({ id: r.id, customerId: r.customerId, contractId: r.contractId, kind: r.kind, createdBy: r.createdBy || meId, createdByName: '' }));
-  if (state.zaloAutoOverviewFor !== meId) return mine; // bản tổng quan của người đăng nhập trước, bỏ
+  if (state.zaloAutoOverviewFor !== meId) return mine;
   const have = new Set(mine.map((r) => r.id));
   return mine.concat((state.zaloAutoOverview || []).filter((r) => !have.has(r.id)));
 }
-/**
- * Tổng hợp gửi tự động của TẤT CẢ mọi người: tổng số hợp đồng + số hợp đồng của từng người (nhiều nhất trước). Ví dụ { total: 64, owners: [{ id, name: 'Quản trị viên', count: 63, isMe: true }, { name: 'Ba', count: 1 }] }.
- * Không lọc theo khách/hợp đồng đang có trong máy (nhân viên chỉ tải khách thuộc địa bàn của mình, nhưng tổng phải bằng nhau ở mọi tài khoản).
- */
+
 export function summarizeZaloAutoByOwner() {
   const meId = state.session?.id || null;
   const by = new Map();
@@ -1374,21 +952,17 @@ export function summarizeZaloAutoByOwner() {
   const owners = [...by.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
   return { total: owners.reduce((n, o) => n + o.count, 0), owners };
 }
-/** Số liệu tổng hợp đã đủ của MỌI người chưa — quản trị toàn quyền luôn thấy hết; người khác cần đã tải được tổng quan từ máy chủ. */
+
 export function hasZaloAutoOverview() {
   return state.session?.role === 'admin' && (getAdmin(state.session.id)?.role === 'super' || state.zaloAutoOverviewFor === state.session.id);
 }
-/** Khách này đã được NGƯỜI KHÁC thêm vào gửi tự động chưa — trả về { createdBy, createdByName } của người đó, hoặc null (chưa ai thêm / chỉ mình thêm). */
+
 export function zaloAutoSendOwnerOtherThanMe(customerId) {
   const meId = state.session?.id || null;
   const hit = listZaloAutoOverview().find((r) => r.customerId === customerId && r.createdBy !== meId);
   return hit ? { createdBy: hit.createdBy, createdByName: hit.createdByName || getAdmin(hit.createdBy)?.name || '' } : null;
 }
-/**
- * Tải tổng quan gửi tự động của mọi người từ máy chủ (action 'list-zalo-auto-overview', cần quyền quản lý OA). Trả về true nếu
- * dữ liệu có đổi so với lần trước (để trang tự vẽ lại phần của mình); LỖI (máy chủ cũ chưa có action này, mất mạng, thiếu quyền)
- * thì im lặng giữ nguyên và trả về false — trang vẫn dùng được với lựa chọn của chính mình.
- */
+
 export async function refreshZaloAutoOverview() {
   const session = getSession();
   if (!session?.sbToken || session.role !== 'admin') return false;
@@ -1405,12 +979,6 @@ export async function refreshZaloAutoOverview() {
 export function listZaloAutoSendByKind(kind) { return listZaloAutoSend().filter((r) => r.kind === kind); }
 export function listZaloSendLog() { return state.zaloSendLog || []; }
 
-/**
- * Tải thêm lịch sử gửi tin CŨ HƠN (trang "Quản lý gửi tin" bấm "Xem thêm" hoặc chọn
- * "Từ ngày" xa hơn 1 tháng). Chỉ trả về cho nơi gọi giữ tạm trong bộ nhớ — KHÔNG
- * ghi vào state/localStorage để khỏi phình bộ nhớ trình duyệt.
- * `before` (ISO): lấy các dòng có sent_at <= mốc này, mới → cũ, tối đa `limit` dòng.
- */
 export async function fetchOlderZaloSendLog({ before, limit = 500 }) {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
@@ -1419,11 +987,7 @@ export async function fetchOlderZaloSendLog({ before, limit = 500 }) {
   const rows = (data || []).map(mapZaloSendLogRow);
   return { rows, hasMore: rows.length >= limit };
 }
-/**
- * Lần gửi Zalo THÀNH CÔNG gần nhất của 1 hợp đồng — dùng hiện "Đã gửi Zalo ... gần nhất ngày ..." và cảnh báo "còn N ngày mới gửi lại được" trước khi bấm gửi tay.
- * Lấy mới nhất giữa (1) nhật ký đã tải về máy (chỉ 31 ngày gần nhất, tối đa 1.000 dòng) và (2) kết quả tra thẳng nhật ký ĐẦY ĐỦ trên máy chủ
- * (xem fetchLastSuccessfulZaloSend) — lần gửi cũ hơn 31 ngày vẫn còn. Trả về null nếu chưa biết có lần gửi nào.
- */
+
 export function lastSuccessfulZaloSend(contractId) {
   const rows = (state.zaloSendLog || []).filter((l) => l.contractId === contractId && l.status === 'success');
   const known = lastSendFromServer.get(contractId);
@@ -1431,11 +995,8 @@ export function lastSuccessfulZaloSend(contractId) {
   if (!rows.length) return null;
   return rows.reduce((a, b) => (new Date(a.sentAt) > new Date(b.sentAt) ? a : b));
 }
-const lastSendFromServer = new Map(); // mã hợp đồng → lần gửi thành công mới nhất đã tra từ máy chủ (chỉ giữ trong phiên, đăng xuất thì xóa)
-/**
- * Tra THẲNG nhật ký gửi tin trên máy chủ (lưu mãi, không giới hạn 31 ngày) lần gửi Zalo thành công gần nhất của 1 hợp đồng, nhớ lại cho lastSuccessfulZaloSend().
- * Nhật ký gắn với hợp đồng, không phụ thuộc việc hợp đồng có đang trong "Gửi tự động" hay không — bỏ rồi thêm lại gửi tự động không làm mất. Lỗi mạng thì trả null.
- */
+const lastSendFromServer = new Map();
+
 export async function fetchLastSuccessfulZaloSend(contractId) {
   if (!contractId) return null;
   try {
@@ -1448,14 +1009,6 @@ export async function fetchLastSuccessfulZaloSend(contractId) {
   } catch { return null; }
 }
 
-/**
- * Thêm/bỏ khỏi Tầng 1 "Danh sách OA" — vá thẳng vào cache cục bộ + notify()
- * thay vì refreshSessionData() (tải lại TOÀN BỘ dữ liệu phiên — admins,
- * customers, contracts, requests, push, cả 3 bảng Zalo... rất nặng cho 1
- * thao tác đơn giản, đặc biệt rõ khi thêm hàng loạt nhiều khách 1 lúc ở
- * modal "Thêm khách hàng vào OA" — mỗi lần thêm phải đợi 1 lượt tải lại đầy
- * đủ mới xong). Server trả về đủ để tự vá, không cần đợi tải lại.
- */
 export async function addZaloCustomer(customerId) {
   const blocked = oaAddBlockReason(customerId);
   if (blocked) throw new Error(blocked);
@@ -1472,29 +1025,17 @@ export async function removeZaloCustomer(customerId) {
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'remove-zalo-customer', customerId });
   if (!res.ok) throw new Error(res.reason || 'Không xóa được khỏi danh sách OA.');
   state.zaloCustomers = state.zaloCustomers.filter((r) => r.customerId !== customerId);
-  // Server tự cascade xóa mọi lựa chọn Tầng 2 (zalo_auto_send_list) của
-  // khách này khi bỏ khỏi Tầng 1 — kể cả của người khác đã chọn, nhưng RLS
-  // chỉ cho client thấy đúng lựa chọn CỦA CHÍNH MÌNH nên chỉ cần dọn phần
-  // đó ở cache cục bộ, không lệch gì so với việc tải lại.
+
   state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.customerId !== customerId);
   state.zaloAutoOverview = (state.zaloAutoOverview || []).filter((r) => r.customerId !== customerId);
   notify();
 }
-/**
- * Thêm 1 hợp đồng vào Tầng 2 (gửi tự động) — tự đảm bảo khách đã ở Tầng 1,
- * không cần thêm tay riêng trước. "kind": 'lai_hang_thang_auto' (mặc định)
- * hoặc 'lai_hang_thang_custom_day' (cần kèm customDay, 1-30) — KHÔNG còn
- * 'den_han' nữa (đến hạn giờ CHỈ gửi tay, xem sendZaloManual()).
- * "intervalMonths" (1-4, mặc định 1) = định kỳ báo — 1 là hàng tháng như
- * cũ, 2/3/4 là báo mỗi 2/3/4 tháng 1 lần thay vì tháng nào cũng báo.
- */
+
 export async function addZaloAutoSend(contractId, kind = 'lai_hang_thang_auto', customDay = null, intervalMonths = 1) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'add-zalo-auto-send', contractId, kind, customDay, intervalMonths });
   if (!res.ok) throw new Error(res.reason || 'Không thêm được vào danh sách gửi tự động.');
-  // CHỈ đọc đúng dòng vừa tạo (1 truy vấn nhỏ) rồi vá thẳng vào bộ nhớ — KHÔNG tải lại toàn bộ dữ liệu phiên nữa (10 bảng, kể cả
-  // số liệu chốt các tháng rất nặng) nên thêm hợp đồng nhanh hơn hẳn. Danh sách tổng hợp của mọi người (nhãn Danh sách OA, số tổng)
-  // tự tính từ dòng này (xem listZaloAutoOverview) và được làm mới lúc mở trang. Không đọc được dòng vừa tạo thì mới tải lại đầy đủ như cũ.
+
   try {
     const sb = getSupabaseClient(session?.sbToken);
     const { data, error } = await sb.from('zalo_auto_send_list').select('*').eq('contract_id', contractId).maybeSingle();
@@ -1502,7 +1043,7 @@ export async function addZaloAutoSend(contractId, kind = 'lai_hang_thang_auto', 
     const row = mapZaloAutoSendRow(data);
     state.zaloAutoSendList = (state.zaloAutoSendList || []).filter((r) => r.id !== row.id && r.contractId !== row.contractId).concat(row);
     if (!state.zaloCustomers.some((r) => r.customerId === row.customerId)) {
-      state.zaloCustomers.push({ customerId: row.customerId, addedBy: session?.id || null, addedAt: new Date().toISOString() }); // server tự thêm khách vào Danh sách OA nếu chưa có
+      state.zaloCustomers.push({ customerId: row.customerId, addedBy: session?.id || null, addedAt: new Date().toISOString() });
     }
     notify();
   } catch {
@@ -1517,12 +1058,7 @@ export async function removeZaloAutoSend(id) {
   state.zaloAutoOverview = (state.zaloAutoOverview || []).filter((r) => r.id !== id);
   notify();
 }
-/**
- * Sửa ngày gửi (1-30, chỉ mục "Gửi theo ngày cụ thể") và/hoặc định kỳ báo
- * (1-4 tháng, cả 2 mục) của 1 lựa chọn Tầng 2 đã có sẵn — chỉ chính người
- * đã chọn (hoặc super) sửa được. `patch`: { customDay?, intervalMonths? } —
- * chỉ gửi field nào thật sự muốn đổi.
- */
+
 export async function updateZaloAutoSendSettings(id, patch) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'update-zalo-auto-send-settings', id, ...patch });
@@ -1534,27 +1070,15 @@ export async function updateZaloAutoSendSettings(id, patch) {
   }
   notify();
 }
-/**
- * Gửi tay ngay 1 tin Zalo cho khách hàng của 1 hợp đồng — server TỰ CHỌN
- * mẫu theo tình huống (gần/đã đến hạn dùng mẫu Đến hạn, còn xa hạn dùng mẫu
- * Báo lãi), không cần tự chọn mẫu ở đây nữa. BẮT BUỘC khách đã có sẵn trong
- * Tầng 1 "Danh sách OA" và cách lần gửi thành công gần nhất >= 5 ngày (server
- * tự chặn + trả reason rõ ràng nếu chưa đủ điều kiện). Trả về { ok, reason }.
- */
+
 export async function sendZaloManual(contractId) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'send-zalo-manual', contractId });
-  // Gửi tay có ghi log ở server (zalo_send_log) — tải lại session data để
-  // hiện đúng (VD: cảnh báo "còn N ngày" ở lần mở tiếp theo), không cần đợi
-  // refreshSessionData() định kỳ. CHẠY NGẦM (không await) — người vừa bấm
-  // gửi cần biết kết quả THÀNH CÔNG/LỖI càng nhanh càng tốt (gửi Zalo qua
-  // mạng ngoài vốn đã mất vài giây rồi), không nên bắt họ đợi thêm cả 1 lượt
-  // tải lại TOÀN BỘ dữ liệu phiên (8 bảng) nữa mới thấy được kết quả.
+
   refreshSessionData().catch(() => {});
   return res;
 }
 
-/** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account" — hợp đồng tự xóa theo (FK cascade). */
 export async function deleteCustomer(id) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'delete-customer', customerId: id });
@@ -1563,43 +1087,26 @@ export async function deleteCustomer(id) {
   state.contracts = state.contracts.filter((c) => c.customerId !== id);
   notify();
 }
-/** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
+
 export async function deleteContract(id) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'delete-contract', contractId: id });
   if (!res.ok) throw new Error(res.reason || 'Không xóa được hợp đồng.');
   state.contracts = state.contracts.filter((c) => c.id !== id);
-  pruneEmptyCustomerProfiles(); // hết hợp đồng mà chưa có tài khoản Use thì dọn luôn hồ sơ (chỉ ở local cache)
+  pruneEmptyCustomerProfiles();
   notify();
 }
 
-// ------------------------------------------------------------
-// Nhập dữ liệu từ bảng (đọc trực tiếp file .xlsx/.xls hoặc dán dữ liệu copy
-// từ Excel) — đúng thứ tự cột theo mẫu sổ theo dõi vay đang dùng:
-// Số HĐTD | Người nhận nợ | Địa chỉ | Số CMND/CCCD | Số di động |
-// Ngày nhận nợ | Ngày đáo hạn | Thu lãi đến ngày | Số tiền giải ngân |
-// Số dư | Lãi suất
-// (địa chỉ tự tách Xóm/Thôn/Tỉnh; cột nào thiếu dữ liệu sẽ tự tính/tự sinh)
-//
-// Các cột TÙY CHỌN thêm ở CUỐI sau 11 cột chính: Mã khế ước | Phân kỳ trả
-// nợ (JSON) | Giá trị TSBĐ | Loại TSBĐ | Loại vay | Mục đích vay. Mẫu phẳng
-// và dữ liệu dán không có các cột này vẫn dùng được như trước.
-// ------------------------------------------------------------
 export function parseVNNumber(str) {
   let s = String(str ?? '').trim().replace(/[^\d.,-]/g, '');
   if (!s) return 0;
-  // "42.500.000" kiểu VN (chấm ngăn cách hàng nghìn, đúng từng nhóm 3 số) -> bỏ chấm
+
   if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
-  // "100,000,000" kiểu Mỹ (PHẨY ngăn cách hàng nghìn, đúng từng nhóm 3 số,
-  // KHÔNG kèm dấu chấm nào khác — mẫu báo cáo dùng định dạng này) -> bỏ
-  // phẩy, coi như số nguyên. PHẢI kiểm tra TRƯỚC nhánh "chỉ có phẩy -> dấu
-  // thập phân" bên dưới — thiếu nhánh này thì "100,000,000" sẽ bị hiểu
-  // nhầm thành 100 (chỉ đổi ĐÚNG 1 dấu phẩy đầu tiên thành dấu chấm, phẩy
-  // còn lại khiến parseFloat() dừng đọc luôn ở đó) — sai đến hàng triệu lần.
+
   else if (/^-?\d{1,3}(,\d{3})+$/.test(s)) s = s.replace(/,/g, '');
-  else if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.'); // "1.234.567,89"
-  else if (s.includes(',')) s = s.replace(',', '.'); // chỉ có phẩy -> coi là dấu thập phân
-  // còn lại (vd "9.5" từ ô số của Excel/JS): giữ nguyên dấu chấm làm phần thập phân
+  else if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (s.includes(',')) s = s.replace(',', '.');
+
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
 }
@@ -1611,7 +1118,7 @@ export function parseVNDate(str) {
     if (y.length === 2) y = '20' + y;
     return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
-  // Số serial ngày kiểu Excel (ô định dạng Ngày tháng khi đọc từ file .xlsx sẽ ra số thuần)
+
   if (/^\d{4,6}$/.test(s)) {
     const dt = new Date(Date.UTC(1899, 11, 30) + Number(s) * 86400000);
     if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
@@ -1620,12 +1127,6 @@ export function parseVNDate(str) {
   return Number.isNaN(dt.getTime()) ? '' : dt.toISOString().slice(0, 10);
 }
 
-/**
- * Dọn hồ sơ khách hàng không còn dư nợ nào (hết hợp đồng, hoặc còn hợp đồng
- * nhưng tổng dư nợ = 0, đã tất toán hết) VÀ chưa có tài khoản Use — xóa luôn
- * khỏi mục Khách hàng, kèm dọn theo các hợp đồng dư nợ 0 còn sót của họ. Use
- * thì LUÔN giữ lại dù hết dư nợ (2 thứ độc lập với nhau).
- */
 function pruneEmptyCustomerProfiles() {
   const balanceByCustomer = new Map();
   for (const ct of state.contracts) {
@@ -1641,53 +1142,17 @@ function pruneEmptyCustomerProfiles() {
 }
 
 const HEADER_HINTS = ['cccd', 'cmnd', 'người nhận nợ', 'nguoi nhan no', 'họ tên', 'ho ten', 'số hđtd', 'so hdtd'];
-/**
- * Nhập dữ liệu hợp đồng từ Excel/dữ liệu dán — coi file/dữ liệu nhập là
- * NGUỒN SỰ THẬT mới nhất: tên/SĐT/địa chỉ luôn được cập nhật ghi đè theo
- * đúng dữ liệu vừa nhập cho MỌI khách hàng khớp CCCD (dù mới hay đã có sẵn
- * hồ sơ/tài khoản) — Use đã tạo trước cho CCCD đó lần đăng nhập sau sẽ tự
- * thấy ngay thông tin mới vì dùng chung 1 hồ sơ.
- * - CCCD CHƯA từng có trong hệ thống -> ngoài tạo hồ sơ còn tự cấp luôn tài
- *   khoản Use (mật khẩu tự sinh ngẫu nhiên, trả về trong result.newAccounts
- *   để hiện cho admin gửi khách).
- * - CCCD ĐÃ có sẵn -> chỉ cập nhật hồ sơ + hợp đồng, KHÔNG đụng đến tài
- *   khoản đăng nhập đã cấp (mật khẩu vẫn giữ nguyên).
- * Khi `fullSync` bật (dùng cho tải file Excel) — coi file là danh sách ĐẦY ĐỦ
- * hiện tại: hợp đồng nào đang có trong hệ thống mà KHÔNG xuất hiện trong
- * lần nhập này sẽ bị XÓA, để danh sách hợp đồng luôn khớp đúng file mới
- * nhất; khách hàng nào sau đó không còn dư nợ nào và cũng chưa có tài
- * khoản Use thì dọn luôn hồ sơ (xem pruneEmptyCustomerProfiles). Không bật
- * fullSync với kiểu dán tay (chỉ thêm/cập nhật, không xóa/dọn gì).
- */
-/**
- * Tách 1 dòng TSV/CSV (đúng thứ tự cột mẫu sổ theo dõi vay, xem ghi chú đầu
- * mục "Nhập dữ liệu từ bảng" ở trên) thành 1 object hợp đồng thô — DÙNG
- * CHUNG cho cả `importFromPastedTable()` (nhập thật, ghi vào contracts) LẪN
- * `previewHistoricalSnapshot()` (nạp dữ liệu CŨ, chỉ tính tổng — không đụng
- * contracts, xem mục 10.51 docs) — tách riêng ra đây để 2 nơi LUÔN parse
- * giống hệt nhau, không lệch nhau theo thời gian nếu sửa 1 chỗ mà quên chỗ
- * kia. Trả về `null` nếu dòng này không phải 1 hợp đồng thật (thiếu cột,
- * dòng tiêu đề, CCCD không hợp lệ) — kèm lý do trong `error` để nơi gọi tự
- * quyết định báo lỗi hay bỏ qua lặng lẽ tuỳ ngữ cảnh.
- */
+
 function parseImportLine(line) {
   const cells = line.includes('\t') ? line.split('\t') : line.split(',');
   if (cells.length < 2) return { error: 'skip' };
   const headerCheck = cells.slice(0, 2).join(' ').toLowerCase();
-  if (HEADER_HINTS.some((h) => headerCheck.includes(h))) return { error: 'header' }; // bỏ qua dòng tiêu đề
+  if (HEADER_HINTS.some((h) => headerCheck.includes(h))) return { error: 'header' };
 
-  // Các cột sau 11 cột chính chỉ có ở mẫu báo cáo/file số 1; dán tay/mẫu
-  // phẳng cũ không có thì các giá trị tương ứng tự thành undefined.
   const [code, name, address, cccdRaw, phone, disbursedDate, dueDate, interestPaidUntil, principal, balance, interestRate, agreementCode, installmentScheduleRaw, collateralValueRaw, collateralTypeRaw, loanTermRaw, loanPurposeRaw, heirNameRaw] = cells.map((c) => c.trim());
   const cccd = (cccdRaw || '').replace(/\s/g, '');
   if (!cccd || !/^\d{9,12}$/.test(cccd)) return { error: `Bỏ qua dòng (CCCD không hợp lệ): ${line.slice(0, 40)}...` };
 
-  // Phân kỳ trả nợ theo từng năm (nếu file có cột "Phân kỳ năm..."), ĐÓNG
-  // GÓI qua 1 cột chuỗi JSON — chỉ giữ lại năm có SỐ TIỀN THẬT > 0 (năm
-  // ghi 0/rỗng không phải 1 kỳ trả nợ thật). Quyết định "có phân kỳ trả nợ
-  // hẳn hoi hay không" (từ 2 năm có số liệu trở lên) để dành cho chỗ TÍNH
-  // TOÁN hiển thị (xem computeInstallmentPlan()), ở đây chỉ ghi nhận đúng
-  // dữ liệu thô đã có, không tự quyết định trước.
   let installmentSchedule = null;
   if (installmentScheduleRaw) {
     try {
@@ -1698,7 +1163,7 @@ function parseImportLine(line) {
         if (amt > 0) parsed[year] = amt;
       }
       if (Object.keys(parsed).length) installmentSchedule = parsed;
-    } catch (e) { /* dữ liệu phân kỳ lỗi/đọc không được — bỏ qua, không chặn nhập cả dòng vì lỗi ở đúng phần không bắt buộc này */ }
+    } catch (e) {  }
   }
 
   const disbursed = parseVNDate(disbursedDate) || new Date().toISOString().slice(0, 10);
@@ -1713,8 +1178,7 @@ function parseImportLine(line) {
       balance: parseVNNumber(balance),
       interestPaidUntil: parseVNDate(interestPaidUntil) || null,
     };
-  // Chỉ file số 1 có bốn cột bổ sung. Mẫu dán/mẫu cũ không được gửi các
-  // thuộc tính này, để máy chủ giữ nguyên TSBĐ và mã phân loại đã có.
+
   if (cells.length >= 17) {
     const collateralCode = String(collateralTypeRaw || '').trim().toUpperCase();
     const purposeCode = String(loanPurposeRaw || '').trim();
@@ -1730,14 +1194,6 @@ function parseImportLine(line) {
   return { row };
 }
 
-/**
- * Nhập dữ liệu từ Excel/dán tay — ĐÃ CHUYỂN SANG SUPABASE THẬT. Trình duyệt
- * chỉ còn lo tách cột + parse ngày/số (KHÔNG nhạy cảm, giữ nguyên logic cũ ở
- * đây) — việc GHI vào database (đặc biệt tự tạo tài khoản cho khách hoàn
- * toàn mới) chuyển hết sang Edge Function "import-data" (xem
- * docs/supabase-migration.md), vì đó là hành động nhạy cảm cần xác minh
- * đúng người gọi có quyền "super" tại server.
- */
 function prepareImportRows(text, fullSync) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const rows = [];
@@ -1757,19 +1213,12 @@ function prepareImportRows(text, fullSync) {
   return { rows, skipped, parseErrors };
 }
 
-/** Máy chủ cũ chưa có chức năng xem trước/lịch sử nhập sẽ trả lỗi "sai type" — báo rõ thay vì lỗi khó hiểu (và tuyệt đối không nhập thật). */
 function throwIfServerLacksImportReview(res) {
   if (res && !res.ok && /sai "type"/.test(res.reason || '')) {
     throw new Error('Máy chủ chưa cập nhật chức năng xem trước và lịch sử nhập — cần triển khai lại Edge Function create-account rồi thử lại.');
   }
 }
 
-/**
- * Xem trước một lần nhập: gửi đúng dữ liệu như nhập thật nhưng máy chủ CHỈ so
- * sánh với dữ liệu đang có và trả về danh sách cụ thể sẽ làm gì (hợp đồng nào,
- * của ai, đổi gì), KHÔNG ghi gì. Dùng type riêng 'import-preview' để máy chủ
- * cũ (chưa có chức năng này) không bao giờ nhập thật nhầm.
- */
 export async function previewImportFromPastedTable(text, { fullSync = false } = {}) {
   const { rows, skipped, parseErrors } = prepareImportRows(text, fullSync);
   if (!rows.length) throw new Error(parseErrors[0] || 'Không đọc được hợp đồng nào từ dữ liệu này.');
@@ -1787,17 +1236,8 @@ export async function importFromPastedTable(text, { fullSync = false, fileName =
   const res = await callImportDataFunction(session?.sbToken, { rows, fullSync, fileName });
   if (!res.ok) throw new Error(res.reason || 'Không nhập được dữ liệu.');
 
-  // Tải lại toàn bộ khách hàng/hợp đồng từ Supabase để đồng bộ đúng dữ liệu
-  // thật sau khi nhập — chắc chắn đúng hơn tự tính lại ở trình duyệt vì mọi
-  // quyết định thêm/sửa/xóa đều đã xảy ra ở server.
-  // Số liệu chốt các tháng (nặng) chỉ tải lại khi máy chủ báo có sửa; máy chủ cũ không báo gì (undefined) thì vẫn tải lại như trước.
   await loadAdminSessionData(session.sbToken, { snapshots: res.snapshotsChanged !== false });
-  // BẮT BUỘC gọi notify() để lưu dữ liệu vừa tải về vào localStorage — thiếu
-  // dòng này thì màn hình vẫn hiện đúng dữ liệu mới (nhờ redraw thủ công ở
-  // UI), nhưng dữ liệu mới đó CHỈ nằm trong bộ nhớ tạm của tab đang mở; bấm
-  // tải lại trang (F5) sẽ đọc lại đúng localStorage cũ (từ lần notify() gần
-  // nhất trước đó, VD: lúc đăng nhập) -> tưởng như dữ liệu vừa nhập "biến
-  // mất", dù trong Supabase vẫn đúng, không hề mất gì.
+
   notify();
 
   return {
@@ -1807,11 +1247,10 @@ export async function importFromPastedTable(text, { fullSync = false, fileName =
     skipped: skipped + (res.skipped || 0), errors: [...parseErrors, ...(res.errors || [])],
     newAccounts: res.newAccounts || [],
     summary: res.summary || null, details: res.details || null, historyId: res.historyId || null,
-    coBorrowerChanges: res.coBorrowerChanges || [], // khách đổi người cùng vay lần nhập này (đã bỏ khỏi danh sách OA)
+    coBorrowerChanges: res.coBorrowerChanges || [],
   };
 }
 
-/** Nạp file số 2: chỉ bổ sung khế ước và phân kỳ, không xóa hợp đồng khác. */
 function buildSupplementRows(rawRows) {
   if (!Array.isArray(rawRows) || !rawRows.length) throw new Error('File số 2 không có hợp đồng hợp lệ.');
   return rawRows.map((raw) => {
@@ -1823,12 +1262,11 @@ function buildSupplementRows(rawRows) {
       const amount = parseVNNumber(amountRaw);
       if (amount > 0) installmentSchedule[year] = amount;
     }
-    // Ô khế ước trống trong file bổ sung không được ghi đè giá trị đã lưu.
+
     return { code, agreementCode: String(raw.agreementCode || '').trim() || null, installmentSchedule };
   });
 }
 
-/** Xem trước file số 2 (không ghi gì): hợp đồng nào khớp, đổi số khế ước/phân kỳ ra sao, dòng nào không khớp. */
 export async function previewSupplementRows(rawRows) {
   const rows = buildSupplementRows(rawRows);
   const session = getSession();
@@ -1843,7 +1281,7 @@ export async function importSupplementRows(rawRows, { fileName = '' } = {}) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-supplement', rows, fileName });
   if (!res.ok) throw new Error(res.reason || 'Không bổ sung được file số 2.');
-  await loadAdminSessionData(session.sbToken, { snapshots: false }); // file số 2 không đụng tới số liệu chốt các tháng
+  await loadAdminSessionData(session.sbToken, { snapshots: false });
   notify();
   return {
     updated: res.updated || 0, unmatched: res.unmatched || 0, errors: res.errors || [],
@@ -1852,7 +1290,6 @@ export async function importSupplementRows(rawRows, { fileName = '' } = {}) {
   };
 }
 
-/** Lịch sử các lần nhập (chỉ tài khoản toàn quyền): { items, latestActiveId }. */
 export async function listImportHistory() {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-history' });
@@ -1861,7 +1298,6 @@ export async function listImportHistory() {
   return { items: res.items || [], latestActiveId: res.latestActiveId || null };
 }
 
-/** Chi tiết cụ thể của 1 lần nhập (hợp đồng nào, của ai, đổi gì). */
 export async function getImportHistoryDetail(id) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-history-detail', id });
@@ -1869,7 +1305,6 @@ export async function getImportHistoryDetail(id) {
   return res.item;
 }
 
-/** Quay lại bản trước của 1 lần nhập (máy chủ chỉ cho lần mới nhất chưa quay lại), rồi tải lại dữ liệu. */
 export async function rollbackImportHistory(id) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'import-rollback', id });
@@ -1879,22 +1314,6 @@ export async function rollbackImportHistory(id) {
   return res.counts || {};
 }
 
-/**
- * "Nạp dữ liệu cũ" (mục 10.51 docs) — dùng ĐÚNG mẫu Excel "Sao kê hợp đồng
- * tín dụng" như nhập hợp đồng bình thường, nhưng nạp 1 file "TẠI 1 THỜI
- * ĐIỂM ĐÃ QUA" (VD "Đến ngày 31/12/2025") để LƯU LẠI LỊCH SỬ dashboard Tổng
- * quan cho tháng đó — hoàn toàn TÁCH RIÊNG khỏi bảng `contracts` đang sống
- * (KHÔNG thêm/sửa/xóa 1 hợp đồng thật nào) — chỉ tính TỔNG (dư nợ theo
- * nhóm/nợ xấu/lãi phải thu) rồi lưu 1 dòng vào `monthly_snapshots`, y hệt
- * cách tính của debtGroupSummary() (CÙNG 1 hàm, không viết lại — số ra chắc
- * chắn khớp với cách app tính lúc chốt sống).
- *
- * Bước 1 (hàm này) — CHỈ tính, KHÔNG gọi mạng — cho phép giao diện hiện bản
- * xem trước (tổng dư nợ/số hợp đồng/từng nhóm/nợ xấu/lãi phải thu) để người
- * dùng xác nhận đúng trước khi thật sự lưu (xem saveHistoricalSnapshot() bên
- * dưới) — nạp NHẦM file/nhầm ngày sẽ ghi đè mất số liệu thật của đúng tháng
- * đó nên bắt buộc phải xem trước.
- */
 export function previewHistoricalSnapshot(tsvText, asOfDate) {
   if (!asOfDate) throw new Error('File không có dòng "Đến ngày ...". Hãy chọn Ngày chốt trong file để xác định tháng cần lưu.');
   const lines = tsvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -1907,7 +1326,7 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
     contracts.push(row);
   }
   if (!contracts.length) throw new Error('Không đọc được hợp đồng nào từ file — kiểm tra lại đúng mẫu chưa.');
-  // TSBĐ mới nhất của đúng Số HĐTD được áp ngược cho các kỳ cũ.
+
   const currentByCode = new Map();
   const ambiguousCodes = new Set();
   for (const current of state.contracts || []) {
@@ -1942,9 +1361,7 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
   const summary = debtGroupSummary(contracts, asOf);
   const yearMonth = asOfDate.slice(0, 7);
   const existing = (state.monthlySnapshots || []).find((s) => s.yearMonth === yearMonth);
-  // Danh sách hợp đồng của TỪNG NHÓM NỢ (mục 10.53 docs) — để xem lại lịch
-  // sử vẫn tra được đúng danh sách của đúng tháng đã nạp, không chỉ tổng.
-  // Đóng băng TSBĐ đã đối chiếu theo Số HĐTD trong chi tiết tháng này.
+
   const contractsDetail = [];
   for (const ct of contracts) {
     const g = debtGroup(ct, asOf);
@@ -1953,7 +1370,7 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
     contractsDetail.push({
       code: ct.code || null, name: ct.name || null, address: ct.address || null,
       balance: Number(ct.balance) || 0, group: g, daysOverdue: daysOverdue(ct, asOf),
-      // Mục "Cần chú ý" của Tổng quan khi xem lại tháng này (xem snapshotOverview() trong overview.js).
+
       attention: attention.level, attentionDays: attention.days, attentionAmount: attention.dueAmount,
       hasCollateral: ct.hasCollateral, collateralValue: ct.collateralValue,
       collateralType: ct.collateralType || null,
@@ -1961,7 +1378,7 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
       loanPurpose: ct.loanPurpose || null,
     });
   }
-  // Cùng một công thức với dashboard, dùng TSBĐ đã đối chiếu ở trên.
+
   const provision = provisionSummary(contracts, asOf);
   return {
     yearMonth, snapshotDate: asOfDate, contractsCount: contracts.length, summary, contractsDetail, parseErrors, willOverwrite: !!existing,
@@ -1970,14 +1387,6 @@ export function previewHistoricalSnapshot(tsvText, asOfDate) {
   };
 }
 
-/**
- * Bước 2 — lưu THẬT sau khi người dùng đã xem trước & xác nhận (xem
- * previewHistoricalSnapshot() ở trên). Gọi qua Edge Function create-account
- * (type 'import-historical-snapshot', CHỈ super admin gọi được, server tự
- * kiểm tra lại quyền + tự kiểm tra lại số liệu hợp lệ) — upsert theo
- * year_month, tải lên lại tháng đã có sẵn sẽ GHI ĐÈ (đúng để sửa nhầm lẫn
- * nếu có), không tạo trùng dòng.
- */
 export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary, contractsDetail, generalProvision, specificProvision }) {
   const session = state.session;
   const res = await callCreateAccountFunction(session?.sbToken, {
@@ -1995,17 +1404,6 @@ export async function saveHistoricalSnapshot({ yearMonth, snapshotDate, summary,
   return res;
 }
 
-// ------------------------------------------------------------
-// Quản trị viên
-// ------------------------------------------------------------
-/**
- * Đăng nhập quản trị viên/nhân viên — ĐÃ CHUYỂN SANG SUPABASE THẬT, cùng cơ
- * chế với loginCustomer() (xem ghi chú ở đó). Đúng mật khẩu thì tải toàn bộ
- * admins/customers/contracts từ Supabase vào state — RLS tự lọc đúng phạm
- * vi (nhân viên chỉ thấy khách trong Thôn/Xóm được gán, quản trị toàn
- * quyền thấy hết), y hệt logic phân quyền client-side cũ, chỉ khác là giờ
- * chặn được thật ở tầng server chứ không chỉ ẩn trên giao diện.
- */
 export async function loginAdmin(username, password) {
   const res = await callLoginFunction({ role: 'admin', identifier: username, password, device: detectDeviceKind() });
   if (!res.ok) return { ok: false, reason: res.reason };
@@ -2032,24 +1430,6 @@ async function syncHistoricalCollateralOnce(token, adminId) {
   }
 }
 
-/**
- * Tự động tải lại dữ liệu mới nhất từ Supabase — gọi định kỳ từ app.js (xem
- * startAutoRefresh()) để KHÔNG cần thoát ra vào lại mới thấy dữ liệu mới
- * (VD: admin vừa sửa/nhập Excel ở máy khác, khách vừa có yêu cầu tư vấn
- * mới...). Không làm gì nếu chưa đăng nhập. Nếu người dùng đang gõ dở trong
- * 1 ô nhập liệu NGOÀI modal (trong modal/bottom-sheet thì an toàn, vì
- * notify() chỉ vẽ lại #app-content, không đụng tới modal — modal luôn gắn
- * thẳng vào <body>) thì vẫn tải dữ liệu mới về nhưng HOÃN vẽ lại màn hình để
- * khỏi xóa mất chữ đang gõ dở, dữ liệu mới sẽ tự hiện ở lần làm mới kế tiếp.
- *
- * "Bị cấp lại mật khẩu ở nơi khác thì tự đăng xuất ngay" cũng dựa vào ĐÚNG
- * lần làm mới này (không cần thêm cơ chế/hẹn giờ riêng nào khác) — so
- * must_change_password của CHÍNH mình TRƯỚC/SAU khi tải: chuyển từ false
- * sang true nghĩa là VỪA BỊ NGƯỜI KHÁC cấp lại ngay trong lúc đang dùng
- * phiên này (mới đăng nhập bằng mật khẩu tạm thì cờ này đã true SẴN từ đầu
- * phiên rồi, không tính) — đăng xuất ngay, KHÔNG cho hiện màn "nhập mật khẩu
- * mới" trong phiên cũ nữa (khớp yêu cầu: phải đăng nhập lại từ đầu).
- */
 let refreshInFlight = null;
 let refreshQueued = false;
 let refreshFailStreak = 0;
@@ -2057,14 +1437,9 @@ let refreshRetryTimer = null;
 let lastRefreshOkAt = 0;
 let snapshotsLoadedAt = 0;
 const SNAPSHOTS_STALE_MS = 10 * 60 * 1000;
-/** Số liệu chốt các tháng (nặng nhất, ít đổi) chỉ cần tải lại mỗi ~10 phút hoặc khi chưa có — không tải lại ở mọi lượt chuyển trang. */
+
 const snapshotsStale = () => !(state.monthlySnapshots || []).length || Date.now() - snapshotsLoadedAt > SNAPSHOTS_STALE_MS;
 
-/**
- * Mỗi lúc chỉ chạy MỘT lượt làm mới (bấm menu/đổi tab liên tục không còn bắn nhiều lượt tải đồng thời, giành mạng của nhau). Gọi lúc
- * đang có lượt chạy: tải xong chạy thêm đúng 1 lượt nữa (hoặc bỏ qua nếu truyền minAgeMs). minAgeMs: bỏ qua nếu vừa tải đủ trong
- * khoảng đó (dùng khi chuyển trang, xem ghi chú ở app.js). Lượt tải lỗi thì tự thử lại sau vài giây (tối đa 3 lần), dữ liệu đang có được giữ nguyên.
- */
 export function refreshSessionData({ minAgeMs = 0 } = {}) {
   if (!state || !state.session) return Promise.resolve();
   if (minAgeMs && Date.now() - lastRefreshOkAt < minAgeMs) return refreshInFlight || Promise.resolve();
@@ -2079,13 +1454,12 @@ export function refreshSessionData({ minAgeMs = 0 } = {}) {
 
 function scheduleRefreshRetry() {
   refreshFailStreak += 1;
-  // Thử lại 3 lần vẫn không được: báo 1 lần để người dùng biết màn hình đang hiện dữ liệu lần trước (xem app.js)
+
   if (refreshFailStreak === 4) window.dispatchEvent(new CustomEvent('qtd:refresh-failed'));
   if (refreshFailStreak > 3 || refreshRetryTimer) return;
   refreshRetryTimer = setTimeout(() => { refreshRetryTimer = null; refreshSessionData(); }, 3000 * refreshFailStreak);
 }
 
-/** Dấu vân tay dữ liệu phiên (so trước/sau khi làm mới): giống nhau nghĩa là không có gì mới — khỏi ghi bộ nhớ máy và vẽ lại cả trang (trang Khách hàng vẽ lại rất nặng). */
 const sessionFingerprint = () => JSON.stringify([state.admins, state.customers, state.contracts, state.requests, state.pushSubscribedCustomerIds,
   state.zaloCustomers, state.zaloAutoSendList, state.zaloSendLog, state.chatUnreadCount, state.monthlySnapshots]);
 
@@ -2109,53 +1483,16 @@ async function runSessionRefresh() {
   if (!loaded) { scheduleRefreshRetry(); return; }
   refreshFailStreak = 0;
   if (!wasMustChange && getSelf()?.mustChangePassword) { logout(); return; }
-  // "Đăng xuất use" (forceLogoutCustomer/forceLogoutStaff) — CÙNG cơ chế:
-  // mốc thời gian đổi khác lần trước đã biết (kể cả từ null sang có giá trị,
-  // hoặc đổi sang giá trị MỚI hơn nếu đã từng bị đăng xuất kiểu này trước đó
-  // trong lịch sử tài khoản) nghĩa là VỪA bị buộc đăng xuất ngay trong lúc
-  // đang dùng phiên này -> đăng xuất thật, không cần tải lại trang. Áp dụng
-  // cho CẢ quản trị viên/nhân viên lẫn khách hàng (getSelf() tự đọc đúng
-  // bảng theo session.role).
+
   const nowForceLogoutAt = getSelf()?.forceLogoutAt || null;
   if (nowForceLogoutAt && nowForceLogoutAt !== wasForceLogoutAt) { logout(); return; }
-  if (sessionFingerprint() === fingerprintBefore) return; // không có gì mới
-  if (isTypingOutsideModal) persist(); // lưu tạm, chưa vẽ lại ngay
+  if (sessionFingerprint() === fingerprintBefore) return;
+  if (isTypingOutsideModal) persist();
   else notify();
 }
 
-/**
- * Kiểm tra NHẸ (chỉ 2 cột, đúng 1 dòng — KHÁC HẲN refreshSessionData() ở
- * trên vốn tải lại TOÀN BỘ dữ liệu phiên) xem CHÍNH mình vừa bị cấp lại mật
- * khẩu hay bị "Đăng xuất" ngay trong lúc đang dùng phiên này hay chưa — gọi
- * ĐỊNH KỲ mỗi vài giây (xem setInterval ở js/app.js) để 2 việc này TỰ BUNG
- * RA NGAY, không cần đợi người dùng quay lại tab/chuyển trang mới phát hiện
- * ra (khác refreshSessionData(), vốn CHỦ Ý chỉ chạy khi có tín hiệu quay lại
- * tab/chuyển trang, xem ghi chú ở startAutoRefresh() trong js/app.js).
- *
- * AN TOÀN để chạy định kỳ (không lặp lại lỗi "setInterval làm mất bộ lọc/
- * chữ đang gõ dở" đã từng gặp ở mục 10.22 trong docs/supabase-migration.md):
- * hàm này KHÔNG BAO GIỜ gọi persist()/notify() khi không có gì thay đổi —
- * chỉ đụng tới màn hình ĐÚNG lúc thật sự cần đăng xuất ngay (logout() gọi
- * notify() bên trong nó), nên không ảnh hưởng gì tới trang đang xem/đang gõ
- * trong mọi trường hợp khác.
- *
- * CHỈ đăng xuất khi thấy dấu hiệu bất thường ở 2 LƯỢT KIỂM TRA LIÊN TIẾP
- * (~5 giây/lượt, xem pendingForceLogoutSignal) — phòng hờ đăng xuất OAN do 1
- * lượt đọc dữ liệu hiếm khi bị lệch thoáng qua (VD: đúng lúc trùng thời điểm
- * refreshSessionData() đang thay hẳn state.admins/state.customers bằng dữ
- * liệu mới ở 1 tick riêng khác) — lệch thật do bị cấp lại mật khẩu/"Đăng
- * xuất" thì vẫn giữ nguyên qua 2 lượt liền, chỉ chậm thêm tối đa ~5 giây so
- * với bản chỉ kiểm tra 1 lượt.
- */
-// Tín hiệu "có vẻ cần đăng xuất" thấy được ở lượt kiểm tra GẦN NHẤT (dạng
-// chuỗi tóm tắt, xem checkForceLogout()) — CHỈ thật sự đăng xuất khi ĐÚNG
-// tín hiệu này lặp lại ở lượt kế tiếp (~5 giây sau). Phòng hờ 1 lượt đọc dữ
-// liệu "xui" thoáng qua (VD: đúng lúc trùng với refreshSessionData() đang
-// tải lại state.admins/state.customers ở 1 tick khác) làm sai lệch 1 lần rồi
-// tự đúng lại ngay sau đó — không nên đăng xuất oan chỉ vì 1 lần đọc lệch.
 let pendingForceLogoutSignal = null;
 
-/** So 2 mốc thời gian force_logout_at CÙNG Ý NGHĨA hay không, dùng Date thay vì so chuỗi trực tiếp — tránh báo "khác nhau" giả do lệch định dạng chuỗi (VD: độ chính xác phần giây/mili-giây) giữa 2 lần đọc khác cột chọn, dù cùng 1 giá trị thật trong CSDL. */
 function sameInstant(a, b) {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -2173,7 +1510,7 @@ export async function checkForceLogout() {
   try {
     const res = await sb.from(table).select('must_change_password, force_logout_at').eq('id', session.id).maybeSingle();
     data = res.data;
-  } catch (e) { return; } // mất mạng tạm thời -> im lặng, thử lại ở lượt sau
+  } catch (e) { return; }
   if (!data) return;
   const getSelf = () => (session.role === 'admin' ? getAdmin(session.id) : getCustomer(session.id));
   const wasMustChange = !!getSelf()?.mustChangePassword;
@@ -2183,13 +1520,9 @@ export async function checkForceLogout() {
   if (!suspicious) { pendingForceLogoutSignal = null; return; }
   const signal = `${session.id}:${!!data.must_change_password}:${nowForceLogoutAt}`;
   if (pendingForceLogoutSignal === signal) { pendingForceLogoutSignal = null; logout(); return; }
-  pendingForceLogoutSignal = signal; // thấy lần đầu -> chờ đúng tín hiệu này lặp lại ở lượt kế tiếp mới đăng xuất thật
+  pendingForceLogoutSignal = signal;
 }
 
-/**
- * Tải lại số liệu cho trang quản trị. snapshots=false: giữ nguyên số liệu chốt các tháng đang có trong bộ nhớ (loại dữ liệu NẶNG nhất —
- * chi tiết từng hợp đồng của từng tháng) — dùng sau khi nhập file, lúc máy chủ báo số liệu chốt không đổi.
- */
 async function loadAdminSessionData(token, { snapshots = true } = {}) {
   const sb = getSupabaseClient(token);
   const [adminRes, customerRes, contractRes, requestRes, pushRes, zaloCustRes, zaloListRes, zaloLogRes, chatUnreadRes, snapshotRes] = await Promise.all([
@@ -2197,35 +1530,20 @@ async function loadAdminSessionData(token, { snapshots = true } = {}) {
     sb.from('customers').select('*'),
     sb.from('contracts').select('*'),
     sb.from('requests').select('*'),
-    // Chỉ cần biết CÓ hay KHÔNG (không cần chi tiết endpoint) — dùng cho 2
-    // chấm trạng thái (đăng nhập/bật thông báo) ở trang Khách hàng & Hợp đồng
-    // và Quản lý User. Cần policy RLS riêng cho phép admin đọc (xem mục 9
-    // trong docs/supabase-migration.md) — lỗi (chưa chạy policy) thì bỏ qua,
-    // coi như chưa biết ai bật thông báo, không chặn tải các dữ liệu khác.
+
     sb.from('push_subscriptions').select('owner_type, owner_id').eq('owner_type', 'customer').then((r) => r, () => ({ data: [] })),
-    // Tầng 1 "Danh sách đã thêm vào OA" — CHUNG cho mọi admin có quyền trong
-    // phạm vi (không riêng theo người, khác Tầng 2 bên dưới).
+
     sb.from('zalo_customers').select('*').then((r) => r, () => ({ data: [] })),
-    // Tầng 2 "Danh sách gửi tự động" — RLS chỉ trả về đúng lựa chọn của
-    // CHÍNH người đang đăng nhập (super thấy hết) + log gửi tin. Bọc an toàn
-    // (giống push_subscriptions) phòng lúc chưa chạy policy (mục 10).
+
     sb.from('zalo_auto_send_list').select('*').then((r) => r, () => ({ data: [] })),
-    // "Quản lý gửi tin" chỉ hiển thị 1 tháng gần nhất (xem drawLogTab trong zaloOA.js).
+
     sb.from('zalo_send_log').select('*').gte('sent_at', new Date(Date.now() - 31 * 86400000).toISOString()).order('sent_at', { ascending: false }).limit(1000).then((r) => r, () => ({ data: [] })),
-    // Tổng số tin nhắn hỗ trợ (chat) do KHÁCH HÀNG gửi mà CHƯA có ai trong
-    // phạm vi quản lý đọc — dùng cho chấm đỏ ở mục menu "Hỗ trợ" (xem
-    // js/components/shell.js renderSupportNavBadge). Bọc an toàn (giống
-    // push_subscriptions) phòng lúc chưa chạy SQL tạo bảng chat_messages.
+
     sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('sender_role', 'customer').is('read_at', null).then((r) => r, () => ({ count: 0 })),
-    // Số liệu chốt cuối mỗi tháng (dashboard "Tổng quan" — dư nợ/lãi phải
-    // thu/nợ xấu theo tháng, xem mục 10.46 docs) — RLS chỉ trả về dữ liệu cho
-    // quản trị viên toàn quyền (role='super'), nhân viên thường sẽ tự nhận
-    // mảng rỗng (không phải lỗi) — không sao, dashboard này vốn CHỈ hiện cho
-    // super (xem overview.js). Bọc an toàn phòng lúc chưa chạy SQL tạo bảng.
+
     snapshots ? sb.from('monthly_snapshots').select('*').order('year_month').then((r) => r, () => ({ data: [] })) : Promise.resolve(null),
   ]);
-  // Ba bảng chính (nhân viên, khách hàng, hợp đồng) tải LỖI (hết thời gian, rớt mạng thoáng qua...) thì GIỮ NGUYÊN dữ liệu đang có và báo
-  // false để thử lại. Trước đây lỗi bị coi như "bảng trống" -> danh sách khách/hợp đồng biến mất và còn bị lưu luôn vào máy (tải lại vẫn trống).
+
   const failed = [['admins', adminRes], ['customers', customerRes], ['contracts', contractRes]].filter(([, r]) => !queryOk(r));
   if (failed.length) {
     console.warn('Tải dữ liệu chưa trọn vẹn, giữ nguyên dữ liệu cũ:', failed.map(([t, r]) => `${t} (${r?.error?.message || 'không có dữ liệu'})`).join('; '));
@@ -2236,10 +1554,7 @@ async function loadAdminSessionData(token, { snapshots = true } = {}) {
   state.contracts = contractRes.data.map(mapContractRow);
   if (queryOk(requestRes)) state.requests = requestRes.data.map(mapRequestRow);
   if (queryOk(snapshotRes)) { state.monthlySnapshots = snapshotRes.data.map(mapMonthlySnapshotRow); snapshotsLoadedAt = Date.now(); }
-  // Mảng thường (KHÔNG phải Set) — state được JSON.stringify() vào
-  // localStorage mỗi lần persist()/notify(), Set sẽ bị mất sạch dữ liệu khi
-  // serialize (JSON.stringify(new Set(...)) ra "{}"), lần tải lại từ cache sẽ
-  // gọi .has() trên object thường và văng lỗi ngay khi vẽ trang.
+
   if (queryOk(pushRes)) state.pushSubscribedCustomerIds = [...new Set(pushRes.data.map((r) => r.owner_id))];
   if (queryOk(zaloCustRes)) state.zaloCustomers = zaloCustRes.data.map(mapZaloCustomerRow);
   if (queryOk(zaloListRes)) state.zaloAutoSendList = zaloListRes.data.map(mapZaloAutoSendRow);
@@ -2257,29 +1572,16 @@ function mapMonthlySnapshotRow(row) {
     groupBalances: row.group_balances || {},
     badDebtBalance: Number(row.bad_debt_balance) || 0,
     badDebtRatio: Number(row.bad_debt_ratio) || 0,
-    // null = tháng này KHÔNG có dữ liệu Dự phòng đã chốt (VD: nạp qua "Nạp
-    // dữ liệu cũ" — mẫu Excel đó không có cột TSBĐ nên không tính được) —
-    // KHÁC 0 (0 nghĩa là có tính, ra đúng 0đ) — xem mục 10.52 docs. Mọi
-    // tháng chốt từ nay về sau (tự động lẫn bấm tay) đều có 2 số này.
+
     generalProvision: row.general_provision != null ? Number(row.general_provision) : null,
     specificProvision: row.specific_provision != null ? Number(row.specific_provision) : null,
-    // Danh sách hợp đồng của TỪNG NHÓM NỢ TẠI ĐÚNG THÁNG NÀY (mục 10.53 docs)
-    // — mảng rỗng/không có = tháng chốt TRƯỚC khi có tính năng này (VD tháng
-    // 08 chốt bù), xem lại chỉ hiện được danh sách HIỆN TẠI như trước.
+
     contractsDetail: Array.isArray(row.contracts_detail) ? row.contracts_detail : [],
   };
 }
-/** Danh sách số liệu đã chốt theo tháng, sắp xếp từ CŨ -> MỚI (khớp thứ tự vẽ biểu đồ theo thời gian) — dùng cho dashboard "Tổng quan" (chỉ super admin, xem overview.js). */
+
 export function listMonthlySnapshots() { return state.monthlySnapshots || []; }
 
-/**
- * Chốt số liệu THÁNG NÀY ngay bây giờ (không cần đợi đúng ngày cuối tháng) —
- * gọi qua Edge Function create-account (type 'capture-monthly-snapshot',
- * CHỈ super admin gọi được, server tự kiểm tra lại quyền). Tính lại và GHI
- * ĐÈ (upsert theo year_month) — bấm nhiều lần trong cùng 1 tháng chỉ cập
- * nhật đúng 1 dòng của tháng đó, không tạo trùng. Lịch tự động (đúng ngày
- * cuối tháng, xem send-due-reminders) vẫn chạy song song, không đụng nhau.
- */
 export async function captureMonthlySnapshotNow() {
   const session = state.session;
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'capture-monthly-snapshot' });
@@ -2293,7 +1595,7 @@ function mapZaloCustomerRow(row) {
 function mapZaloAutoSendRow(row) {
   return { id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, customDay: row.custom_day, intervalMonths: row.interval_months || 1, createdBy: row.created_by, createdAt: row.created_at };
 }
-/** Lỗi Zalo "Zalo account not existed" (các dòng log CŨ còn lưu nguyên tiếng Anh) -> tiếng Việt để hiện ở "Quản lý gửi tin". Từ nay server đã tự lưu sẵn tiếng Việt. */
+
 function translateZaloError(msg) {
   if (msg && /account\s+not\s+exist/i.test(msg)) return 'Số điện thoại này chưa đăng ký Zalo';
   return msg;
@@ -2303,7 +1605,7 @@ function mapZaloSendLogRow(row) {
     id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, templateId: row.template_id,
     phone: row.phone, status: row.status, errorMessage: translateZaloError(row.error_message),
     triggeredBy: row.triggered_by, triggeredByAdminId: row.triggered_by_admin_id, sentAt: row.sent_at,
-    recipientWho: row.recipient_who === 'main' || row.recipient_who === 'co' ? row.recipient_who : null, // ai nhận, ghi lúc gửi (docs mục 10.89); log cũ không có
+    recipientWho: row.recipient_who === 'main' || row.recipient_who === 'co' ? row.recipient_who : null,
     recipientName: row.recipient_name ? String(row.recipient_name) : '',
   };
 }
@@ -2313,10 +1615,7 @@ function mapAdminRow(row) {
     id: row.id, username: row.username, name: row.name, role: row.role,
     allowedThon: row.allowed_thon || [], allowedXom: row.allowed_xom || [],
     canManageUsers: !!row.can_manage_users,
-    // Cờ RIÊNG cho quyền quản lý gửi tin Zalo OA — KHÔNG dùng chung
-    // canManageUsers, vì gửi tin OA tốn phí thật, cấp riêng để admin toàn
-    // quyền kiểm soát được từng nhân viên muốn cho gửi OA hay không, độc lập
-    // với việc có cho quản lý Use hay không. Xem canManageZaloOA() bên dưới.
+
     canManageZaloOA: !!row.can_manage_zalo_oa,
     canViewBalanceSheet: !!row.can_view_balance_sheet,
     salt: row.salt, hash: row.hash, mustChangePassword: !!row.must_change_password,
@@ -2326,17 +1625,12 @@ function mapAdminRow(row) {
 export function getAdmin(id) { return state.admins.find((a) => a.id === id); }
 export function listAdmins() { return state.admins; }
 export function isSuperAdmin(id) { return getAdmin(id)?.role === 'super'; }
-/**
- * Nhân viên "chỉ xem" có thể được cấp THÊM quyền vào trang "Quản lý User"
- * (tạo/sửa/xóa Use + nhân viên khác) mà KHÔNG cần lên hẳn "Toàn quyền" —
- * xem cờ `canManageUsers` (cột can_manage_users). Toàn quyền thì mặc định
- * luôn có quyền này, không cần cấp riêng.
- */
+
 export function canManageUsers(id) {
   const a = getAdmin(id);
   return !!a && (a.role === 'super' || !!a.canManageUsers);
 }
-/** Y HỆT canManageUsers() nhưng cho quyền quản lý gửi tin Zalo OA — xem ghi chú ở mapAdminRow(). */
+
 export function canManageZaloOA(id) {
   const a = getAdmin(id);
   return !!a && (a.role === 'super' || !!a.canManageZaloOA);
@@ -2346,18 +1640,6 @@ export function canViewBalanceSheet(id) {
   return !!a && (a.role === 'super' || !!a.canViewBalanceSheet);
 }
 
-/**
- * Tạo tài khoản quản trị (role 'super' toàn quyền hoặc 'staff' chỉ xem) —
- * có tên đăng nhập + mật khẩu (tự sinh nếu không nhập) + phân quyền xem ngay
- * trong lúc tạo (chỉ áp dụng cho 'staff'). Phân quyền 2 cấp: allowedThon
- * (xem trọn cả Thôn, gồm mọi Xóm trong đó) và allowedXom (chỉ xem riêng 1
- * vài Xóm cụ thể dù Thôn chứa nó không được cấp trọn).
- */
-/**
- * Tạo tài khoản quản trị viên/nhân viên — ĐÃ CHUYỂN SANG SUPABASE THẬT,
- * cùng cơ chế với activateCustomerAccount() ở trên (qua Edge Function
- * "create-account", chỉ admin role='super' gọi được).
- */
 export async function addStaffAdmin({ username, name, password, role, allowedThon, allowedXom, canManageUsers: canManage, canManageZaloOA: canManageZalo, canViewBalanceSheet: canViewBalance }) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, {
@@ -2370,13 +1652,13 @@ export async function addStaffAdmin({ username, name, password, role, allowedTho
   const idx = state.admins.findIndex((a) => a.id === staff.id);
   if (idx >= 0) state.admins[idx] = staff; else state.admins.push(staff);
   notify();
-  // Máy chủ bản cũ chưa nhận cờ quản lý OA lúc TẠO (bỏ qua) -> đặt lại bằng lệnh cập nhật quyền sẵn có, không cần deploy lại máy chủ mới dùng được.
+
   if (canManageZalo && role === 'staff' && !staff.canManageZaloOA) {
     try { await updateStaffPermissions(staff.id, allowedThon, allowedXom, canManage, true, canViewBalance); } catch (e) { console.warn('Chưa đặt được quyền quản lý OA cho tài khoản mới.', e); }
   }
   return { staff: getAdmin(staff.id) || staff, tempPassword: res.tempPassword };
 }
-/** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
+
 export async function updateStaffPermissions(id, allowedThon, allowedXom, canManage, canManageZalo, canViewBalance) {
   const a = getAdmin(id);
   if (!a || a.role !== 'staff') return;
@@ -2393,13 +1675,7 @@ export async function updateStaffPermissions(id, allowedThon, allowedXom, canMan
   a.canViewBalanceSheet = !!canViewBalance;
   notify();
 }
-/**
- * Đổi vai trò (Toàn quyền <-> Chỉ xem) cho 1 tài khoản quản trị/nhân viên
- * ĐÃ CÓ SẴN — chỉ quản trị viên TOÀN QUYỀN mới gọi được (server tự xác minh
- * lại, không tin JWT mù), tránh 1 nhân viên "được cấp quyền Quản lý User" tự
- * nâng cấp mình/người khác lên Toàn quyền. Server cũng tự giữ lại ít nhất 1
- * quản trị viên toàn quyền, không cho hạ hết xuống Chỉ xem.
- */
+
 export async function updateStaffRole(id, role) {
   const a = getAdmin(id);
   if (!a) return;
@@ -2409,16 +1685,7 @@ export async function updateStaffRole(id, role) {
   a.role = role;
   notify();
 }
-/**
- * Sửa tên hiển thị của 1 tài khoản quản trị viên/nhân viên (KỂ CẢ chính
- * mình đang đăng nhập) — CHỈ quản trị viên toàn quyền gọi được (xem
- * SUPER_ONLY_TYPES trong create-account/index.ts). Thêm để sửa tên các tài
- * khoản còn để tên chung chung kiểu "Quản trị viên" (VD: tài khoản khởi tạo
- * ban đầu) — Nhật ký sử dụng (mục 10.35) hiển thị đúng tên này, sửa lại ở
- * đây là Nhật ký tự hiện đúng tên thật ngay từ lần ghi tiếp theo (không sửa
- * lại được các dòng đã ghi TRƯỚC đó, vì admin_name là ảnh chụp tại đúng lúc
- * ghi, không tự đổi theo).
- */
+
 export async function updateStaffName(id, name) {
   const a = getAdmin(id);
   if (!a) return;
@@ -2430,8 +1697,7 @@ export async function updateStaffName(id, name) {
   a.name = trimmed;
   notify();
 }
-/** Cấp lại mật khẩu cho quản trị viên/nhân viên — có thể tự nhập mật khẩu cụ thể, để trống thì tự sinh ngẫu nhiên. */
-/** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account". */
+
 export async function resetStaffPassword(id, customPassword) {
   const a = getAdmin(id);
   if (!a) throw new Error('Không tìm thấy tài khoản');
@@ -2443,13 +1709,6 @@ export async function resetStaffPassword(id, customPassword) {
   return res.tempPassword;
 }
 
-/**
- * Đăng xuất NGAY 1 quản trị viên/nhân viên đang có phiên đăng nhập ở đâu đó
- * — KHÔNG cấp lại mật khẩu (khác resetStaffPassword ở trên). Cùng cơ chế tự
- * phát hiện của forceLogoutCustomer() (xem refreshSessionData()) — CHỈ quản
- * trị viên toàn quyền mới gọi được (khớp đúng quyền của reset-staff-password
- * ở server, vì tài khoản Quản trị viên/nhân viên vốn chỉ do super quản lý).
- */
 export async function forceLogoutStaff(id) {
   const a = getAdmin(id);
   if (!a) throw new Error('Không tìm thấy tài khoản');
@@ -2460,8 +1719,6 @@ export async function forceLogoutStaff(id) {
   notify();
 }
 
-/** Kiểm tra mật khẩu hiện tại của quản trị viên/nhân viên — dùng cho màn tự đổi mật khẩu. */
-/** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function (chỉ tự xác minh chính mình). */
 export async function verifyAdminPassword(id, password) {
   const session = getSession();
   if (!session || session.id !== id) return false;
@@ -2469,7 +1726,6 @@ export async function verifyAdminPassword(id, password) {
   return !!(res.ok && res.valid);
 }
 
-/** Tự đổi mật khẩu (Quản trị viên/nhân viên tự đặt mật khẩu mới cho chính mình) — ĐÃ CHUYỂN SANG SUPABASE THẬT. */
 export async function setStaffPassword(id, newPassword, opts = {}) {
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'set-own-password', newPassword, mustChangePassword: !!opts.mustChangePassword });
@@ -2479,7 +1735,7 @@ export async function setStaffPassword(id, newPassword, opts = {}) {
   if (a) a.mustChangePassword = !!opts.mustChangePassword;
   notify();
 }
-/** ĐÃ CHUYỂN SANG SUPABASE THẬT qua Edge Function "create-account" (server tự kiểm tra giữ lại ít nhất 1 super admin). */
+
 export async function deleteStaffAdmin(id) {
   const a = getAdmin(id);
   if (!a) return;
@@ -2489,57 +1745,26 @@ export async function deleteStaffAdmin(id) {
   state.admins = state.admins.filter((x) => x.id !== id);
   notify();
 }
-/** Tài khoản khách hàng có đang bị tạm khóa hay không (do nhập sai mật khẩu nhiều lần). */
+
 export function isCustomerLocked(c) { return !!(c.lockedUntil && c.lockedUntil > Date.now()); }
 
-// Phiên đăng nhập (JWT) giờ KHÔNG còn tự hết hạn theo thời gian nữa (xem
-// create-account/index.ts — token không còn field "exp") — đăng nhập 1 lần
-// là duy trì mãi mãi, chỉ hết khi bấm "Đăng xuất" thật. Mốc này vì vậy KHÔNG
-// còn mô phỏng 1 hạn phiên thật nào cả — chỉ là 1 mốc HIỂN THỊ thuần túy, để
-// chấm "đã đăng nhập" không kẹt xanh MÃI MÃI trên màn hình admin nếu khách
-// tắt app/rớt mạng/mất máy mà không bấm "Đăng xuất" (server không có cách
-// nào chủ động biết để tự tắt is_online lúc đó). Chọn 1 năm là hợp lý cho
-// mục đích hiển thị này (đủ dài để không làm phiền, đủ ngắn để dọn dần các
-// tài khoản có vẻ đã bỏ dùng).
 const CUSTOMER_SESSION_HOURS = 24 * 365;
 
-/**
- * "Đã đăng nhập" (cho 2 chấm trạng thái ở trang Khách hàng & Hợp đồng / Quản
- * lý User) — nghĩa là "HIỆN ĐANG đăng nhập" (còn phiên hoạt động), KHÔNG phải
- * "đã từng đăng nhập" (lịch sử) như bản trước: dựa vào cờ is_online — bật lên
- * true NGAY lúc xác minh mật khẩu đúng (Edge Function create-account, type
- * 'login'), tắt về false NGAY lúc khách bấm "Đăng xuất" (type
- * 'customer-logout', xem hàm logout() ở trên). Kèm 1 lớp phòng hờ THUẦN HIỂN
- * THỊ: nếu last_login_at đã quá CUSTOMER_SESSION_HOURS giờ thì coi như hết
- * phiên (chỉ trên màn hình admin) dù is_online lỡ chưa kịp tắt — phiên đăng
- * nhập THẬT của khách vẫn còn nguyên, không hề bị ảnh hưởng. KHÔNG còn suy ra
- * từ hasPushEnabled() nữa — bật thông báo là chuyện RIÊNG, khách bật xong tắt
- * app vẫn còn đăng ký nhận thông báo dù không còn "đang đăng nhập" nữa.
- */
 export function hasCustomerLoggedIn(c) {
   if (!c || !c.isOnline) return false;
-  if (!c.lastLoginAt) return true; // phòng hờ dữ liệu cũ chưa kịp có mốc thời gian
+  if (!c.lastLoginAt) return true;
   return (Date.now() - new Date(c.lastLoginAt).getTime()) < CUSTOMER_SESSION_HOURS * 3600 * 1000;
 }
 
-/** "Đã bật thông báo" — khách có ít nhất 1 thiết bị đã subscribe push (xem loadAdminSessionData()). */
 export function hasPushEnabled(customerId) { return !!(state.pushSubscribedCustomerIds && state.pushSubscribedCustomerIds.includes(customerId)); }
 
-// ------------------------------------------------------------
-// Yêu cầu tư vấn / mở khoản vay
-// ------------------------------------------------------------
 export function listRequests(filters = {}) {
   let list = [...state.requests];
   if (filters.customerId) list = list.filter((r) => r.customerId === filters.customerId);
   if (filters.status && filters.status !== 'all') list = list.filter((r) => r.status === filters.status);
   return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
-/**
- * Khách hàng gửi yêu cầu tư vấn/vay mới — ĐÃ CHUYỂN SANG SUPABASE THẬT, ghi
- * thẳng qua RLS (không cần Edge Function riêng vì đây không phải hành động
- * nhạy cảm — RLS đã chặn khách chỉ tạo được yêu cầu cho ĐÚNG chính mình,
- * xem policy "customer creates own request" trong docs/supabase-migration.md).
- */
+
 export async function createRequest({ customerId, type, amount, purpose, termMonths, note }) {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
@@ -2554,7 +1779,7 @@ export async function createRequest({ customerId, type, amount, purpose, termMon
   notify();
   return req;
 }
-/** Admin cập nhật trạng thái yêu cầu — ĐÃ CHUYỂN SANG SUPABASE THẬT qua RLS. */
+
 export async function updateRequestStatus(id, status) {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
@@ -2573,18 +1798,8 @@ function mapRequestRow(row) {
   };
 }
 
-/**
- * Số yêu cầu tư vấn CHƯA ĐỌC trong phạm vi của adminId — dùng cho chấm đỏ ở
- * tab "Tư vấn" và mục menu "Hỗ trợ" gộp chung (xem js/views/admin/support.js,
- * js/components/shell.js). "Chưa đọc" = read_at còn rỗng — tự đánh dấu đã
- * đọc ngay khi admin VÀO XEM tab "Tư vấn" (xem markAllRequestsRead() bên
- * dưới), vì danh sách đã hiện sẵn TRỌN VẸN nội dung từng yêu cầu (không như
- * chat, chỉ hiện xem trước — phải mở hẳn 1 hội thoại mới coi là "đã đọc").
- */
 export function countUnreadRequests(adminId) {
-  // Yêu cầu đã chuyển "Đã liên hệ" (xử lý xong) KHÔNG tính vào đây nữa dù
-  // chưa từng "đọc" — coi như xong việc thì thôi báo, khớp đúng cách "Yêu
-  // cầu mới nhất" ở Tổng quan cũng tự ẩn các yêu cầu đã xử lý xong.
+
   let list = state.requests.filter((r) => !r.readAt && r.status !== 'da_lien_he');
   const admin = getAdmin(adminId);
   if (admin && admin.role === 'staff') {
@@ -2594,7 +1809,6 @@ export function countUnreadRequests(adminId) {
   return list.length;
 }
 
-/** Đánh dấu TOÀN BỘ yêu cầu tư vấn CHƯA XỬ LÝ XONG (trong đúng phạm vi Thôn/Xóm của adminId, kể cả đang lọc theo trạng thái nào) là đã đọc — gọi mỗi khi tab "Hỗ trợ" (yêu cầu tư vấn) hiện ra, để chấm đỏ tự tắt ngay lúc admin thật sự nhìn thấy danh sách. */
 export async function markAllRequestsRead(adminId) {
   let unread = state.requests.filter((r) => !r.readAt && r.status !== 'da_lien_he');
   const admin = getAdmin(adminId);
@@ -2606,23 +1820,12 @@ export async function markAllRequestsRead(adminId) {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
   const { error } = await sb.from('requests').update({ read_at: new Date().toISOString() }).in('id', unread.map((r) => r.id));
-  if (error) return; // im lặng, thử lại ở lượt sau — không chặn/báo lỗi gì cho người dùng vì đây chỉ là chấm đỏ, không phải thao tác họ chủ động bấm
+  if (error) return;
   const now = new Date().toISOString();
   unread.forEach((r) => { r.readAt = now; });
   notify();
 }
 
-// ------------------------------------------------------------
-// Chat hỗ trợ — khách hàng hỏi, quản trị viên toàn quyền HOẶC nhân viên có
-// quyền "Quản lý User" trả lời (xem docs/supabase-migration.md mục 10.24).
-// Ghi thẳng qua RLS (không cần Edge Function, giống bảng "requests") — mỗi
-// tin nhắn là 1 dòng trong bảng chat_messages, "hội thoại" = toàn bộ tin
-// nhắn cùng 1 customer_id. KHÔNG tải vào state chung như các bảng khác (xem
-// loadAdminSessionData/loadCustomerSessionData) vì cần polling RIÊNG, CHỈ
-// khi khung chat đang mở (xem js/components/chatPanel.js) — các hàm dưới
-// đây được gọi trực tiếp theo yêu cầu, không phải lúc nào cũng có trong bộ
-// nhớ cache.
-// ------------------------------------------------------------
 function mapChatMessageRow(row) {
   return {
     id: row.id, customerId: row.customer_id, senderRole: row.sender_role,
@@ -2631,7 +1834,6 @@ function mapChatMessageRow(row) {
   };
 }
 
-/** Toàn bộ tin nhắn của 1 khách hàng, CŨ -> MỚI — dùng cho khung chat (khách tự xem hội thoại của mình, hoặc admin xem hộ hội thoại của khách đó). */
 export async function listChatMessages(customerId) {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
@@ -2640,7 +1842,6 @@ export async function listChatMessages(customerId) {
   return (data || []).map(mapChatMessageRow);
 }
 
-/** Gửi 1 tin nhắn vào hội thoại của customerId — khách hàng CHỈ gửi được cho CHÍNH MÌNH (RLS tự chặn gửi hộ người khác), admin gửi được cho khách bất kỳ trong phạm vi quản lý. */
 export async function sendChatMessage(customerId, message) {
   const session = getSession();
   const text = String(message || '').trim();
@@ -2654,19 +1855,10 @@ export async function sendChatMessage(customerId, message) {
   };
   const { error } = await sb.from('chat_messages').insert(row);
   if (error) throw new Error('Không gửi được tin nhắn, thử lại sau.');
-  logAdminAction('reply-chat', { customerId }); // tự bỏ qua nếu người gửi là khách hàng (xem logAdminAction())
+  logAdminAction('reply-chat', { customerId });
   return mapChatMessageRow({ ...row, created_at: new Date().toISOString(), read_at: null });
 }
 
-/**
- * Đánh dấu đã đọc mọi tin nhắn CỦA PHÍA BÊN KIA (chưa đọc) trong 1 hội thoại
- * — gọi mỗi khi khung chat đang mở/vừa tải lại tin mới. `.select('id')` để
- * biết CHÍNH XÁC vừa đánh dấu đọc bao nhiêu dòng — nhờ đó trừ thẳng vào
- * state.chatUnreadCount (đang cache trong bộ nhớ, dùng chung cho chấm đỏ nút
- * chat nổi/mục menu "Hỗ trợ", xem js/components/shell.js) rồi notify() NGAY,
- * để chấm đỏ tắt NGAY LÚC xem xong — KHÔNG phải đợi tới lần
- * refreshSessionData() kế tiếp (đổi tab/chuyển trang) mới cập nhật.
- */
 export async function markChatRead(customerId) {
   const session = getSession();
   if (!session) return;
@@ -2675,19 +1867,11 @@ export async function markChatRead(customerId) {
   const { data } = await sb.from('chat_messages').update({ read_at: new Date().toISOString() })
     .eq('customer_id', customerId).eq('sender_role', otherRole).is('read_at', null)
     .select('id');
-  if (!data || !data.length) return; // không có gì mới để đánh dấu -> khỏi notify() thừa
+  if (!data || !data.length) return;
   state.chatUnreadCount = Math.max(0, (state.chatUnreadCount || 0) - data.length);
   notify();
 }
 
-/**
- * Danh sách hội thoại cho trang "Hỗ trợ" (admin) — nhóm theo customer_id từ
- * tối đa 500 tin nhắn gần nhất (đủ dùng cho quy mô 1 quỹ tín dụng, tránh tải
- * cả lịch sử chat không giới hạn mỗi lần mở trang, giống cách zalo_send_log
- * giới hạn 200 dòng gần nhất). Mỗi phần tử: { customerId, lastMessage, lastAt,
- * lastSenderRole, unreadCount } — unreadCount đếm đúng tin CHƯA ĐỌC do KHÁCH
- * gửi (khớp đúng phía admin cần trả lời, không tính tin admin tự gửi).
- */
 export async function listChatConversations() {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
@@ -2698,8 +1882,7 @@ export async function listChatConversations() {
     const m = mapChatMessageRow(row);
     let conv = map.get(m.customerId);
     if (!conv) {
-      // Dòng ĐẦU TIÊN gặp cho 1 customerId (do đã sắp created_at giảm dần)
-      // chính là tin nhắn MỚI NHẤT của hội thoại đó.
+
       conv = { customerId: m.customerId, lastMessage: m.message, lastAt: m.createdAt, lastSenderRole: m.senderRole, unreadCount: 0 };
       map.set(m.customerId, conv);
     }
@@ -2708,26 +1891,13 @@ export async function listChatConversations() {
   return [...map.values()].sort((a, b) => new Date(b.lastAt) - new Date(a.lastAt));
 }
 
-// ------------------------------------------------------------
-// Nhật ký sử dụng (activity_log) — CHỈ quản trị viên toàn quyền (role=
-// 'super') xem được, RLS đã chặn hẳn ở tầng database (không chỉ ẩn trên
-// giao diện) — xem docs/supabase-migration.md mục 10.33. KHÔNG tải sẵn vào
-// state lúc đăng nhập (khác requests/chat, vốn ít và cần cho chấm đỏ ngay) —
-// nhật ký có thể dài dần theo thời gian, chỉ tải khi thật sự mở trang, có
-// phân trang "Tải thêm".
-// ------------------------------------------------------------
 function mapActivityLogRow(row) {
   return {
     id: row.id, adminId: row.admin_id, adminName: row.admin_name,
     action: row.action, description: row.description, createdAt: row.created_at,
   };
 }
-/**
- * Lấy 1 trang nhật ký, mới nhất trước — truyền `before` (createdAt của dòng
- * cuối trang đã tải) để tải tiếp trang kế ("Tải thêm"). Ghi bằng Edge
- * Function (service role) nên chỉ có ĐỌC ở đây — không có hàm ghi phía
- * client (xem logActivity() trong supabase/functions/create-account/index.ts).
- */
+
 export async function listActivityLog({ before, limit = 100 } = {}) {
   const session = getSession();
   const sb = getSupabaseClient(session?.sbToken);
@@ -2738,23 +1908,14 @@ export async function listActivityLog({ before, limit = 100 } = {}) {
   return (data || []).map(mapActivityLogRow);
 }
 
-// ------------------------------------------------------------
-// Lịch sử cuộc gọi — mỗi lần quản trị viên/nhân viên bấm "Gọi" cho 1 khách thì ghi 1 dòng vào bảng call_log
-// { customerId, adminId, adminName, phone, createdAt }. Ghi THẲNG qua Row Level Security (giống chat_messages) — không qua Edge Function.
-// Mọi quản trị viên/nhân viên đều xem được cuộc gọi của tất cả mọi người (RLS ở database chỉ cho tài khoản quản trị đã đăng nhập đọc, xem
-// docs/supabase-migration.md mục 10.79). Chỉ tải khi mở chi tiết 1 khách (loadCallsForCustomer), không tải sẵn lúc đăng nhập.
-// ------------------------------------------------------------
 function mapCallLogRow(row) {
   return { id: row.id, customerId: row.customer_id, adminId: row.admin_id, adminName: row.admin_name, phone: row.phone || '', callee: row.callee === 'co' ? 'co' : 'main', createdAt: row.created_at };
 }
-/** Các cuộc gọi tới 1 khách (của mọi người), mới nhất trước. */
+
 export function listCallsByCustomer(customerId) {
   return (state.callLogs || []).filter((c) => c.customerId === customerId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
-/**
- * Tải lịch sử cuộc gọi của 1 khách từ máy chủ rồi gộp vào bộ nhớ (thay các dòng cũ của khách đó, giữ lại lần gọi vừa bấm mà máy chủ chưa kịp có).
- * Trả true nếu tải được; lỗi (VD chưa chạy SQL tạo bảng call_log) thì giữ nguyên những gì đang có và trả false — không ném lỗi.
- */
+
 export async function loadCallsForCustomer(customerId) {
   const session = getSession();
   if (!session || session.role !== 'admin') return false;
@@ -2769,7 +1930,7 @@ export async function loadCallsForCustomer(customerId) {
     return true;
   } catch { return false; }
 }
-/** Ghi nhận ngay 1 lần bấm Gọi (hiện luôn trong lịch sử, không chờ mạng), lưu lên máy chủ ngầm — không chặn việc mở ứng dụng gọi điện. */
+
 export function logCall(customerId, phone, callee = 'main', coName = '') {
   const session = getSession();
   if (!session || session.role !== 'admin') return null;
@@ -2777,49 +1938,24 @@ export function logCall(customerId, phone, callee = 'main', coName = '') {
   const row = { id: genId('call'), customer_id: customerId, admin_id: session.id, admin_name: (admin && admin.name) || 'Quản trị viên', phone: String(phone || ''), ...(callee === 'co' ? { callee: 'co' } : {}) };
   const entry = mapCallLogRow({ ...row, created_at: new Date().toISOString() });
   (state.callLogs = state.callLogs || []).push(entry);
-  logAdminAction('call-customer', { customerId, ...(callee === 'co' ? { callee: 'co', coName: String(coName || '') } : {}) }); // ghi cả vào Nhật ký sử dụng (server tự tra tên + số điện thoại khách)
-  try { getSupabaseClient(session.sbToken).from('call_log').insert(row).then(() => {}, () => {}); } catch { /* chưa lưu được thì thôi — lần gọi vẫn hiện trong phiên này */ }
+  logAdminAction('call-customer', { customerId, ...(callee === 'co' ? { callee: 'co', coName: String(coName || '') } : {}) });
+  try { getSupabaseClient(session.sbToken).from('call_log').insert(row).then(() => {}, () => {}); } catch {  }
   return entry;
 }
 
-/**
- * Ghi 1 dòng vào Nhật ký sử dụng cho thao tác KHÔNG tự có chỗ ghi log qua
- * Edge Function khác (VD: xem chi tiết khách hàng/hợp đồng, lọc danh sách,
- * trả lời chat, cập nhật trạng thái yêu cầu — những việc này ghi thẳng qua
- * RLS hoặc chỉ là đọc dữ liệu, không đi qua "cửa" nào của create-account để
- * server tự biết mà ghi) — xem type 'log-admin-action' trong
- * supabase/functions/create-account/index.ts. CHẠY NGẦM, KHÔNG throw/chặn
- * UI — chỉ để lưu lại nhật ký, không phải thao tác chính người dùng đang chờ
- * kết quả. Tự bỏ qua nếu không phải phiên quản trị viên (nhật ký chỉ theo
- * dõi quản trị viên/nhân viên, không theo dõi khách hàng).
- */
 export function logAdminAction(action, extra = {}) {
   const session = getSession();
   if (!session || session.role !== 'admin') return;
   callCreateAccountFunction(session.sbToken, { type: 'log-admin-action', action, ...extra }).catch(() => {});
 }
-/**
- * Ghi 1 thao tác trên màn hình vào Nhật ký sử dụng (loại 'ui-action' của log-admin-action): `kind` = chữ thường/số/gạch ngang ngắn gọn
- * (VD 'loan-calc', 'print-notice', 'settings'), `label` = câu mô tả (dùng **...** cho phần giá trị chính, xem js/lib/activityLabels.js).
- * Chạy ngầm, không chặn UI; tự bỏ qua nếu không phải phiên quản trị viên.
- */
+
 export function logUiAction(kind, label) {
   logAdminAction('ui-action', { kind, label });
 }
 
-// ------------------------------------------------------------
-// Session (đăng nhập hiện tại)
-// ------------------------------------------------------------
 export function getSession() { return state.session; }
 export function setSession(session) { state.session = session; notify(); }
 
-/**
- * Đăng xuất — với khách hàng, báo luôn cho server biết để tắt cờ is_online
- * NGAY (dùng cho chấm "đã đăng nhập" ở trang admin) — bắn đi KHÔNG chờ kết
- * quả (fire-and-forget) để không làm chậm/kẹt thao tác đăng xuất ở máy này
- * nếu mạng yếu/rớt mạng; đăng xuất tại đây luôn xử lý xong ngay lập tức bất
- * kể server có nhận được hay không.
- */
 export function logout() {
   const session = state.session;
   if (session && session.role === 'admin') logUiAction('logout', 'Đăng xuất khỏi hệ thống');
@@ -2831,14 +1967,10 @@ export function logout() {
   lastRefreshOkAt = 0;
   refreshFailStreak = 0;
   clearTimeout(refreshRetryTimer); refreshRetryTimer = null;
-  clearDeviceCaches().catch(() => {}); // đệm danh sách tư vấn/bảng cân đối của người này (xem lib/kvCache.js) không để lại cho người dùng chung máy
+  clearDeviceCaches().catch(() => {});
   notify();
 }
 
-// ============================================================
-// Sinh dữ liệu DEMO — toàn bộ tên/CCCD/số liệu dưới đây là GIẢ,
-// không liên quan đến bất kỳ khách hàng thật nào.
-// ============================================================
 async function seedDemoData() {
   const rng = mulberry32(7717);
   const org = {
@@ -2849,8 +1981,7 @@ async function seedDemoData() {
     bannerEnabled: true,
     bannerTitle: 'Ưu đãi lãi suất vay tiêu dùng',
     bannerText: 'Liên hệ quầy giao dịch hoặc gửi yêu cầu tư vấn ngay trên ứng dụng để được hỗ trợ.',
-    // Thông tin nhận thanh toán — dùng chung đúng hằng số BANK_INFO nhúng
-    // cứng ở đầu file (không còn là dữ liệu demo tách riêng nữa).
+
     ...BANK_INFO,
   };
 
@@ -2881,12 +2012,12 @@ async function seedDemoData() {
   const contracts = [];
   const now = new Date();
   customers.forEach((c, i) => {
-    const nContracts = i === 0 ? 2 : 1; // khách đầu tiên có nhiều hợp đồng để minh họa
+    const nContracts = i === 0 ? 2 : 1;
     for (let k = 0; k < nContracts; k++) {
       const principal = randInt(rng, 20, 150) * 1_000_000;
       const disbursed = addDays(now, -randInt(rng, 30, 400));
       const due = addDays(disbursed, randInt(rng, 6, 24) * 30);
-      // Trạng thái phải khớp với ngày đến hạn để dữ liệu demo hợp lý
+
       const isPastDue = due < now;
       const status = isPastDue
         ? (rng() < 0.65 ? 'qua_han' : 'da_tat_toan')
@@ -2899,7 +2030,7 @@ async function seedDemoData() {
         interestRate: [8.5, 9.2, 10.0][randInt(rng, 0, 2)],
         balance: status === 'da_tat_toan' ? 0 : Math.round((principal * (0.3 + rng() * 0.7)) / 100000) * 100000,
         status,
-        // Giả lập lần đóng lãi gần nhất: cách đây một số ngày (0-45 ngày), không vượt quá ngày giải ngân
+
         interestPaidUntil: (() => {
           const lastPaid = addDays(now, -randInt(rng, 0, 45));
           return (lastPaid < disbursed ? disbursed : lastPaid).toISOString().slice(0, 10);

@@ -1,4 +1,3 @@
-// Đọc lại tệp ZIP do js/lib/xlsxWrite.js ghi (lưu không nén) thành { tên: nội dung chữ } — chỉ dùng cho kiểm thử.
 export function unzipEntries(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const eocd = bytes.length - 22;

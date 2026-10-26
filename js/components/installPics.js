@@ -1,6 +1,3 @@
-// Hình minh họa NHỎ cho hướng dẫn "mở bằng trình duyệt" (khách mở link trong Zalo/Facebook...): vẽ mô phỏng 3 bước
-// bằng SVG nội tuyến (không cần tải ảnh, không lệch phiên bản) — vòng cam là chỗ cần bấm. Dùng trong installBtn.js.
-
 const ORANGE = '#e8590c';
 const INK = '#14352d';
 const GREY = '#e3eae7';
@@ -13,7 +10,6 @@ const frame = (h) => `<rect x=".5" y=".5" width="239" height="${h - 1}" rx="10" 
 const ring = (cx, cy, r) => `<circle class="inst-ring" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${ORANGE}" stroke-width="2.5"/>`;
 const bars = (y) => `<rect x="14" y="${y}" width="120" height="5" rx="2.5" fill="${GREY}"/><rect x="14" y="${y + 11}" width="84" height="5" rx="2.5" fill="${GREY}"/>`;
 
-/** Bước 1: thanh trên cùng của Zalo, khoanh nút menu ở góc phải (Android ⋮ dọc · iPhone ⋯ ngang). */
 export function picMenuButton(os) {
   const dots = os === 'ios'
     ? [-7, 0, 7].map((d) => `<circle cx="${212 + d}" cy="20" r="2" fill="${INK}"/>`).join('')
@@ -27,7 +23,6 @@ export function picMenuButton(os) {
     + dots + ring(212, 20, 15) + bars(46));
 }
 
-/** Bước 2: danh sách menu sổ xuống, tô đúng dòng cần chọn. */
 export function picMenuItem(os) {
   const label = os === 'ios' ? 'Mở bằng Safari' : 'Mở bằng trình duyệt';
   const row = (y, w) => `<circle cx="104" cy="${y + 12}" r="5" fill="${GREY}"/><rect x="116" y="${y + 9}" width="${w}" height="6" rx="3" fill="${GREY}"/>`;
@@ -41,7 +36,6 @@ export function picMenuItem(os) {
     + `<rect x="14" y="14" width="56" height="5" rx="2.5" fill="${GREY}"/><rect x="14" y="25" width="40" height="5" rx="2.5" fill="${GREY}"/>`);
 }
 
-/** Bước 3: trang đã mở trong trình duyệt thật, khoanh nút "Cài đặt ứng dụng". */
 export function picInstallButton(os) {
   const browser = os === 'ios' ? 'Safari' : 'Chrome';
   return svg(80, `Trang mở trong ${browser}, nút Cài đặt ứng dụng khoanh tròn`,
@@ -53,7 +47,6 @@ export function picInstallButton(os) {
     + `<rect class="inst-ring" x="57" y="37" width="126" height="36" rx="18" fill="none" stroke="${ORANGE}" stroke-width="2.5"/>`);
 }
 
-/** 3 hình cho 3 bước của hướng dẫn "mở bằng trình duyệt" (os: 'ios' | 'android'). */
 export function inAppPics(os) {
   return [picMenuButton(os), picMenuItem(os), picInstallButton(os)];
 }

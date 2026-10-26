@@ -1,4 +1,3 @@
-// Bộ icon SVG dạng inline (kiểu outline, không phụ thuộc thư viện ngoài)
 const PATHS = {
   home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>',
   box: '<path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
@@ -67,7 +66,6 @@ const PATHS = {
   printer: '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>',
 };
 
-/** Trả về chuỗi SVG icon theo tên. `extraCls` bổ sung thêm (vd: 'icon-sm', 'icon-lg'). */
 export function icon(name, extraCls = '') {
   const p = PATHS[name] || PATHS.info;
   return `<svg class="icon ${extraCls}" viewBox="0 0 24 24">${p}</svg>`;

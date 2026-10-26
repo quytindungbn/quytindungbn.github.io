@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { describeCallTime, formatPhoneDisplay } from '../js/lib/callHistory.js';
 
-const now = new Date(2026, 9, 24, 10, 0); // Thứ Bảy 24/10/2026 10:00
+const now = new Date(2026, 9, 24, 10, 0);
 
 test('cuộc gọi hôm nay: giờ phút, ngày, thứ và "bao lâu trước"', () => {
   const t = describeCallTime(new Date(2026, 9, 24, 9, 36).toISOString(), now);
@@ -20,7 +20,7 @@ test('cuộc gọi các ngày trước: nhãn Hôm qua / N ngày trước / N th
   assert.equal(at(2026, 9, 20).rel, '1 tháng trước');
   assert.equal(at(2026, 4, 1).rel, '6 tháng trước');
   assert.equal(at(2025, 9, 1).rel, '1 năm trước');
-  // 00:30 hôm nay vẫn là "Hôm nay", 23:59 hôm qua là "Hôm qua" dù cách nhau chưa tới 12 tiếng
+
   const early = new Date(2026, 9, 24, 0, 30);
   assert.equal(describeCallTime(early.toISOString(), new Date(2026, 9, 24, 8, 0)).rel, 'Hôm nay');
   assert.equal(describeCallTime(new Date(2026, 9, 23, 23, 59).toISOString(), new Date(2026, 9, 24, 8, 0)).rel, 'Hôm qua');

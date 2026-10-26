@@ -8,7 +8,7 @@ test('gửi cho 2 người (cách nhau vài giây) → gộp thành 1 lần gử
   const g = groupSendLogs([log('a', '0910000000', 0), log('b', '0988777666', 1)]);
   assert.equal(g.length, 1);
   assert.deepEqual(g[0].logs.map((l) => l.id).sort(), ['a', 'b']);
-  assert.equal(g[0].time, Date.UTC(2026, 9, 26, 7, 0, 1)); // mốc của dòng mới nhất
+  assert.equal(g[0].time, Date.UTC(2026, 9, 26, 7, 0, 1));
 });
 
 test('khác hợp đồng / loại tin / cách gửi / người bấm → không gộp', () => {

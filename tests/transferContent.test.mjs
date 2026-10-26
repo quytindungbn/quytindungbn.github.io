@@ -24,7 +24,7 @@ test('mã QR luôn chứa nội dung không dấu, kể cả khi có chữ hiể
 test('chữ hiển thị bị cắt đúng như nội dung trong mã QR (tối đa 50 ký tự khi bỏ dấu)', () => {
   const long = transferContent('tat_toan', { code: 'HD20261001' }, { name: 'NGUYỄN THỊ HOA THÔN BÌNH NGUYÊN XÃ AN PHÚ' });
   const payload = buildVietQrPayload({ bin: '970446', accountNo: '5200000000825012', amount: 1000, content: long.text });
-  const inQr = /0850([A-Z0-9 ]{50})6304/.exec(payload); // tag 62 > 08: nội dung chuyển khoản, dài đúng 50 ký tự khi bị cắt
+  const inQr = /0850([A-Z0-9 ]{50})6304/.exec(payload);
   assert.ok(inQr, 'nội dung dài bị cắt còn 50 ký tự trong mã QR');
   const shown = clipDisplay(long.shown, 50);
   const ascii = shown.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đ]/g, 'd').replace(/[Đ]/g, 'D').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();

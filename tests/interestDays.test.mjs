@@ -16,9 +16,9 @@ test('số ngày lãi: tính bình thường từ "Thu lãi đến ngày" tới 
 test('số ngày lãi: quy ước "thu lãi đến ngày = giải ngân + 1" cộng thêm 1 ngày', () => {
   const ct = { disbursedDate: '2026-08-17', interestPaidUntil: '2026-08-18' };
   assert.equal(interestBonusDays(ct), 1);
-  assert.equal(interestDaysBetween(ct, d(2026, 8, 19)), 2); // ví dụ trong chú thích cũ của state.js
+  assert.equal(interestDaysBetween(ct, d(2026, 8, 19)), 2);
   const early = { disbursedDate: '2026-08-20', interestPaidUntil: '2026-08-21' };
-  assert.equal(interestDaysBetween(early, d(2026, 8, 20)), 0); // -1 + 1 = 0, không phải 1
+  assert.equal(interestDaysBetween(early, d(2026, 8, 20)), 0);
 });
 
 test('đổi số ngày -> ngày rồi tính lại ra đúng số ngày đó (cả trường hợp ngày đặc biệt)', () => {
@@ -26,7 +26,7 @@ test('đổi số ngày -> ngày rồi tính lại ra đúng số ngày đó (c�
     { disbursedDate: '2026-01-03', interestPaidUntil: '2026-09-12' },
     { disbursedDate: '2026-08-17', interestPaidUntil: '2026-08-18' },
     { disbursedDate: '2026-03-01', interestPaidUntil: '2026-03-01' },
-    { disbursedDate: '2025-12-25' }, // chưa có "thu lãi đến ngày": dùng ngày giải ngân
+    { disbursedDate: '2025-12-25' },
   ];
   for (const ct of cases) {
     for (let n = 0; n <= 800; n++) {

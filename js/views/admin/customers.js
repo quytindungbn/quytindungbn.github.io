@@ -37,34 +37,19 @@ const COLLATERAL_NAMES = Object.freeze({
   '06': 'Sổ tiết kiệm',
 });
 
-// "Gần đến hạn" ở đây rộng hơn hẳn NEAR_DUE_DAYS (15 ngày, dùng cho nhắc nợ/
-// Zalo OA...) — hiển thị TRƯỚC tới S.WIDE_NEAR_DUE_DAYS (45) ngày, y hệt
-// ngưỡng của popup "Gần đến hạn" ở Tổng quan (xem UPCOMING_LIST_CAP_DAYS
-// trong overview.js — dùng CHUNG S.contractAttentionInfo() ở state.js với
-// trang này), để xem trước lịch sắp tới xa hơn ngay tại trang này.
-
 let query = '';
-let filterThon = []; // rỗng = Tất cả — có thể tích chọn nhiều Thôn cùng lúc
-let filterXom = [];  // rỗng = Tất cả — có thể tích chọn nhiều Xóm cùng lúc
-let urgencyFilter = 'all'; // 'all' | 'qua_han' | 'gan_den_han' — CHỈ chọn được 1 trong 3 (không phải nhiều lựa chọn cùng lúc như trước)
+let filterThon = [];
+let filterXom = [];
+let urgencyFilter = 'all';
 let sortMode = 'default';
-// Lọc theo khoảng của từng khách: số tiền (tổng dư nợ gốc / tổng lãi tạm tính) và số ngày lãi (của hợp đồng); null = không giới hạn phía đó.
+
 let amountRange = { interestMin: null, interestMax: null, principalMin: null, principalMax: null, daysMin: null, daysMax: null };
-let filterSheetRefresh = null; // vẽ lại bảng "Bộ lọc" (điện thoại) khi đang mở và lựa chọn đổi
+let filterSheetRefresh = null;
 const manualOaSending = new Set();
 const manualOaSentAt = new Map();
-// Nhãn hiển thị dùng chung cho urgencyFilter — dùng lại khi ghi Nhật ký sử
-// dụng (S.logAdminAction('filter-customers', ...)), khỏi lặp lại chuỗi.
+
 const URGENCY_FILTER_LABELS = { all: 'Tất cả', qua_han: 'Nợ quá hạn', gan_den_han: 'Gần đến hạn' };
 
-/**
- * Reset MỌI bộ lọc/ô tìm kiếm về mặc định — KHÔNG gọi từ render() (cố tình
- * giữ bộ lọc khi CÙNG 1 người chuyển qua trang khác rồi quay lại, xem ghi
- * chú trong render()), CHỈ gọi từ app.js đúng lúc đổi NGƯỜI đang đăng nhập
- * (đăng xuất/đăng nhập tài khoản khác) — biến ở đây sống theo cả trang web
- * (module-level), không tự mất khi đổi phiên, nếu không reset thì người
- * vào sau sẽ thấy nguyên bộ lọc/kết quả tìm kiếm của người trước để lại.
- */
 export function resetFilters() {
   query = ''; filterThon = []; filterXom = []; urgencyFilter = 'all'; sortMode = 'default';
   clearAmountRange();
@@ -77,12 +62,12 @@ const principalRangeOn = () => amountRange.principalMin != null || amountRange.p
 const daysRangeOn = () => amountRange.daysMin != null || amountRange.daysMax != null;
 const amountRangeCount = () => (interestRangeOn() ? 1 : 0) + (principalRangeOn() ? 1 : 0) + (daysRangeOn() ? 1 : 0);
 const amountInRange = (value, min, max) => (min == null || value >= min) && (max == null || value <= max);
-/** Mô tả ngắn cho nhật ký: "Lãi từ 100.000 đến 500.000; Gốc từ 50.000.000". */
+
 function amountRangeDesc() {
   const part = (label, min, max) => (min == null && max == null ? '' : `${label}${min != null ? ` từ ${formatNumber(min)}` : ''}${max != null ? ` đến ${formatNumber(max)}` : ''}`);
   return [part('Lãi', amountRange.interestMin, amountRange.interestMax), part('Gốc', amountRange.principalMin, amountRange.principalMax), part('Ngày lãi', amountRange.daysMin, amountRange.daysMax)].filter(Boolean).join('; ');
 }
-/** Khối 3 dòng "Số ngày lãi / Số tiền lãi / Gốc: từ … đến …" — dùng chung cho hộp Sắp xếp (máy tính) và bảng Bộ lọc (điện thoại). */
+
 function amountRangeHtml() {
   const group = (title, minKey, maxKey, unit = '₫') => `<div class="amt-group">
       <div class="amt-title">${title}</div>
@@ -106,16 +91,12 @@ function currentAdmin() {
 }
 
 let ledgerDrawToken = 0;
-const LEDGER_FIRST_CHUNK = 30; // số khách vẽ ngay khi vào trang
-const LEDGER_NEXT_CHUNK = 80; // số khách thêm mỗi đợt sau đó
+const LEDGER_FIRST_CHUNK = 30;
+const LEDGER_NEXT_CHUNK = 80;
 
 export function render(contentEl, filterEl) {
   const admin = currentAdmin();
   const isStaff = admin.role === 'staff';
-  // KHÔNG reset filterThon/filterXom/sortMode ở đây nữa — giữ nguyên bộ lọc
-  // đang chọn khi chuyển qua trang khác rồi quay lại, giống hệt cách
-  // urgencyFilter (Quá hạn/Gần đến hạn) và query (ô tìm kiếm) đã làm từ
-  // trước (2 biến đó cũng không hề bị reset ở render()).
 
   filterEl.innerHTML = `
     <div class="filter-align-content"><div class="filter-card${isStaff ? ' no-actions' : ''}">
@@ -137,20 +118,16 @@ export function render(contentEl, filterEl) {
     </div></div>
   `;
   bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(); });
-  mountScrollTopButton(filterEl); // nút nhỏ về đầu trang khi kéo xuống danh sách dài
+  mountScrollTopButton(filterEl);
   if (!isStaff) {
     filterEl.querySelector('#btn-import').addEventListener('click', openImportModal);
-    filterEl.querySelector('#btn-filter-import').addEventListener('click', openImportModal); // nút nhập Excel dạng biểu tượng trên điện thoại
+    filterEl.querySelector('#btn-filter-import').addEventListener('click', openImportModal);
   }
   filterEl.querySelectorAll('[data-urgency]').forEach((chip) => {
     chip.addEventListener('click', () => {
-      // CHỈ chọn được 1 trong 3 tại 1 thời điểm (giống nút radio) — bấm 1 nút
-      // là tự bỏ chọn nút kia, khác kiểu tích nhiều trước đây.
+
       urgencyFilter = chip.dataset.urgency;
-      // Chỉ vẽ lại phần danh sách (draw()), KHÔNG gọi lại render() — render()
-      // reset cả filterThon/filterXom/sortMode (chỉ nên xảy ra lúc mới vào
-      // trang), gọi lại nó ở đây sẽ xóa mất bộ lọc Thôn/Xóm đang chọn mỗi
-      // lần bấm "Quá hạn"/"Gần đến hạn".
+
       filterEl.querySelectorAll('[data-urgency]').forEach((c) => {
         c.classList.toggle('active', c.dataset.urgency === urgencyFilter);
       });
@@ -163,14 +140,11 @@ export function render(contentEl, filterEl) {
     const on = [interestRangeOn() ? 'lãi' : '', principalRangeOn() ? 'gốc' : '', daysRangeOn() ? 'ngày' : ''].filter(Boolean);
     return `Sắp xếp: ${SORT_LABEL[sortMode]}${on.length ? ` · Lọc ${on.join(' + ')}` : ''} `;
   };
-  // Gõ số tiền: lọc ngay sau khi ngừng gõ một chút (không vẽ lại danh sách ở mỗi phím).
+
   let amountTimer = null;
   const runAmountRange = () => { clearTimeout(amountTimer); amountTimer = null; renderFilterPills(); draw(); };
   const applyAmountRange = () => { clearTimeout(amountTimer); amountTimer = setTimeout(runAmountRange, 250); };
-  /**
-   * Gắn các ô "Từ/Đến" trong `root`; trả về hàm đưa lại giá trị hiện có vào ô (sau khi bấm Xóa lọc). Bấm Enter trong 1 ô = xong:
-   * áp dụng ngay (không chờ 0,25 giây), ẩn bàn phím rồi gọi `onDone()` (đóng hộp/bảng lọc như bấm nút Xong/Áp dụng).
-   */
+
   function bindAmountRange(root, onDone) {
     const warn = root.querySelector('.amt-warn');
     const check = () => {
@@ -193,7 +167,7 @@ export function render(contentEl, filterEl) {
     check();
     return () => { root.querySelectorAll('[data-amt]').forEach((input) => { const v = amountRange[input.dataset.amt]; input.value = v ? formatNumber(v) : ''; }); check(); };
   }
-  /** Máy tính: hộp "Sắp xếp & lọc số tiền" — chọn kiểu sắp xếp + nhập khoảng Lãi/Gốc; đổi gì là áp dụng ngay, bấm Xong để đóng. */
+
   function openSortDialog() {
     const optionsHtml = () => SORT_OPTIONS.map((o) => `<button type="button" class="sortdlg-opt${o.value === sortMode ? ' is-on' : ''}" data-sort="${o.value}"><span>${o.label}</span>${o.value === sortMode ? icon('check', 'icon-sm') : ''}</button>`).join('');
     openModal({
@@ -223,14 +197,6 @@ export function render(contentEl, filterEl) {
     });
   }
 
-  /**
-   * Vẽ lại cả 3 pill (Thôn/Xóm/Sắp xếp) theo đúng trạng thái lọc hiện tại rồi
-   * gắn lại sự kiện — gọi mỗi khi có gì thay đổi (chọn lọc mới HOẶC bấm "x" bỏ
-   * lọc) để dấu "x" hiện/ẩn đúng, KHÔNG động gì đến draw()/danh sách bên dưới
-   * nếu không cần (tách riêng cho rõ: đổi lọc luôn kéo theo draw() lại, còn
-   * đây chỉ là vẽ lại chính cái pill).
-   */
-  /** Xóa nhanh MỌI bộ lọc Thôn/Xóm/Sắp xếp/khoảng (không đụng ô tìm kiếm và 3 nút Tất cả/Quá hạn/Gần đến hạn) — dấu ✕ trên nút Lọc (điện thoại; máy tính đã có ✕ trên từng nút Thôn/Xóm/Sắp xếp). */
   function clearAllFilters() {
     filterThon = []; filterXom = []; sortMode = 'default'; clearAmountRange();
     renderFilterPills();
@@ -249,7 +215,7 @@ export function render(contentEl, filterEl) {
     bindPickers();
     wrap.querySelectorAll('[data-pill-clear]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        e.stopPropagation(); // không cho nổi bọt lên nút pill (sẽ mở nhầm picker)
+        e.stopPropagation();
         const id = btn.dataset.pillClear;
         if (id === 'pill-thon') { filterThon = []; filterXom = []; }
         else if (id === 'pill-xom') { filterXom = []; }
@@ -258,7 +224,7 @@ export function render(contentEl, filterEl) {
         draw();
       });
     });
-    // Chấm số trên nút "Lọc" = số mục Thôn/Xóm/Sắp xếp đang được chọn.
+
     const activeCount = filterActiveCount();
     const badge = filterEl.querySelector('.filter-open-badge');
     if (badge) { badge.hidden = !activeCount; badge.textContent = String(activeCount); }
@@ -268,7 +234,7 @@ export function render(contentEl, filterEl) {
   }
   function bindPickers() {
     filterEl.querySelector('#pill-thon').addEventListener('click', () => {
-      const allowedThon = S.territoryThonList(admin.id); // nhân viên: chỉ Thôn trong địa bàn được cấp (kể cả Thôn chỉ được cấp vài Xóm)
+      const allowedThon = S.territoryThonList(admin.id);
       openPicker({
         title: 'Chọn Thôn (chọn được nhiều)', selected: filterThon, multiSelect: true,
         options: allowedThon.map((t) => ({ value: t, label: t })),
@@ -294,7 +260,7 @@ export function render(contentEl, filterEl) {
       });
     });
     filterEl.querySelector('#pill-sort').addEventListener('click', () => {
-      // Máy tính: hộp "Sắp xếp" có thêm phần lọc theo số tiền. Điện thoại: giữ bảng chọn sắp xếp cũ (lọc số tiền nằm thẳng trong bảng "Bộ lọc").
+
       if (!window.matchMedia('(max-width: 899px)').matches) { openSortDialog(); return; }
       openPicker({
         title: 'Sắp xếp theo', selected: sortMode,
@@ -310,7 +276,6 @@ export function render(contentEl, filterEl) {
   }
   renderFilterPills();
 
-  // ---- Điện thoại: nút "Lọc" mở bảng Thôn/Xóm/Sắp xếp; nút kẹp giấy = Nhập từ Excel (máy tính vẫn hiện thẳng các ô lọc, 2 nút này bị ẩn bằng CSS) ----
   filterEl.querySelector('#btn-filter-open').addEventListener('click', openFilterSheet);
   function openFilterSheet() {
     const valueOf = {
@@ -327,12 +292,12 @@ export function render(contentEl, filterEl) {
       onMount(sheet, closeSheet) {
         const paintSheet = () => {
           sheet.querySelector('#fsheet-fields').innerHTML = rowHtml('thon', 'Thôn') + rowHtml('xom', 'Xóm') + rowHtml('sort', 'Sắp xếp');
-          // Chọn từng mục dùng đúng bảng chọn (picker) của 3 ô lọc gốc — ô gốc bị ẩn trên điện thoại nhưng vẫn bấm được bằng mã.
+
           sheet.querySelectorAll('[data-fkey]').forEach((row) => row.addEventListener('click', () => filterEl.querySelector('#pill-' + row.dataset.fkey).click()));
         };
         filterSheetRefresh = paintSheet;
         paintSheet();
-        const syncInputs = bindAmountRange(sheet, closeSheet); // ô số tiền nằm ngoài #fsheet-fields nên không bị vẽ lại khi đổi Thôn/Xóm/Sắp xếp
+        const syncInputs = bindAmountRange(sheet, closeSheet);
         sheet.querySelector('#fsheet-amt-clear').addEventListener('click', () => {
           clearAmountRange(); syncInputs(); renderFilterPills(); draw();
           S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền & ngày lãi' });
@@ -357,11 +322,7 @@ export function render(contentEl, filterEl) {
     });
     if (query.trim()) {
       const q = query.trim().toLowerCase();
-      // Tìm được cả theo SỐ HỢP ĐỒNG (Số HĐTD, VD "455/26"): giữ các khách có hợp
-      // đồng ĐANG CÒN DƯ NỢ khớp số đó — cùng tập hợp đồng đang hiển thị bên dưới
-      // (hợp đồng đã tất toán không hiện nên không dùng để tìm). Tìm được cả theo tên
-      // NGƯỜI CÙNG ĐỨNG VAY (heirName, VD hợp đồng "PHẠM THỊ TÀI và NGUYỄN DUY HUY" thì
-      // gõ NGUYỄN DUY HUY vẫn ra hợp đồng đó).
+
       const contractMatchedCustomerIds = new Set(
         S.getState().contracts
           .filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan' && (String(ct.code || '').toLowerCase().includes(q) || String(ct.heirName || '').toLowerCase().includes(q)))
@@ -369,54 +330,41 @@ export function render(contentEl, filterEl) {
       );
       list = list.filter((c) => c.name.toLowerCase().includes(q) || c.cccd.includes(q) || (c.phone || '').includes(q) || contractMatchedCustomerIds.has(c.id));
     }
-    // Gộp sẵn hợp đồng + tổng gốc (= dư nợ hiện tại)/lãi + mức "đáng chú ý
-    // nhất" (quá hạn/gần đến hạn bao nhiêu ngày) từng khách hàng — dùng để
-    // hiển thị & sắp xếp. Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào
-    // danh sách hiển thị nữa — bỏ hẳn ngay từ đây.
+
     let enriched = list.map((c) => {
-      // Hợp đồng của 1 khách: mới nhất trước (ngày vay mới nhất → số thứ tự HĐTD lớn nhất; "461/26" thì 461 là số thứ tự, 26 chỉ là năm).
+
       const contracts = S.listContractsByCustomer(c.id).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan').sort(compareContractsNewestFirst);
       const totalBalance = contracts.reduce((s, ct) => s + (ct.balance || 0), 0);
       const totalInterest = contracts.reduce((s, ct) => s + S.accruedInterest(ct), 0);
-      // Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
-      // có) — xem S.contractAttentionInfo(). Ngưỡng "gần đến hạn" RỘNG 45
-      // ngày (khớp popup "Gần đến hạn" ở Tổng quan) — không phải đúng 15
-      // ngày "chính thức" của contractUrgency()/NEAR_DUE_DAYS nữa.
+
       const contractInfos = contracts.map((ct) => ({ ct, info: S.contractAttentionInfo(ct) }));
       const overdueContracts = contractInfos.filter((x) => x.info.level === 'qua_han').map((x) => x.ct);
       const nearDueContracts = contractInfos.filter((x) => x.info.level === 'gan_den_han').map((x) => x.ct);
       const hasOverdue = overdueContracts.length > 0;
       const hasNearDue = !hasOverdue && nearDueContracts.length > 0;
-      // Mốc đáng chú ý nhất chỉ dùng để lọc/sắp xếp; mỗi hợp đồng tự hiện trạng thái riêng cạnh mã HĐTD.
+
       const mostOverdueDays = hasOverdue ? Math.max(...contractInfos.filter((x) => x.info.level === 'qua_han').map((x) => x.info.days)) : 0;
       const mostNearDueDays = hasNearDue ? Math.min(...contractInfos.filter((x) => x.info.level === 'gan_den_han').map((x) => x.info.days)) : 0;
       return { c, contracts, totalBalance, totalInterest, hasOverdue, hasNearDue, mostOverdueDays, mostNearDueDays };
     });
-    // Khách không còn dư nợ nào (hết hợp đồng, hoặc file mới nhất không còn
-    // họ nữa nên hợp đồng đã bị full-sync xóa) thì KHÔNG hiển thị ở đây nữa
-    // — dù hồ sơ/tài khoản Use của họ vẫn được giữ (xem Quản lý User), chỉ
-    // là không còn hiện trong danh sách khách hàng đang vay này.
+
     enriched = enriched.filter((e) => e.totalBalance > 0);
-    // Lọc theo khoảng Lãi/Gốc (tổng của khách) và Số ngày lãi (khách có ÍT NHẤT 1 hợp đồng trong khoảng) — trước khi đếm số khách từng nhóm để 3 con số ở nút lọc khớp với danh sách.
+
     if (amountRangeCount()) {
       enriched = enriched.filter((e) => amountInRange(Math.round(e.totalInterest), amountRange.interestMin, amountRange.interestMax)
         && amountInRange(e.totalBalance, amountRange.principalMin, amountRange.principalMax)
         && (!daysRangeOn() || e.contracts.some((ct) => amountInRange(S.interestDaysAccrued(ct), amountRange.daysMin, amountRange.daysMax))));
     }
-    // Số khách của từng nhóm (theo đúng tìm kiếm/Thôn/Xóm đang chọn) hiện cạnh 3 nút lọc.
+
     const urgencyCounts = { all: enriched.length, qua_han: enriched.filter((e) => e.hasOverdue).length, gan_den_han: enriched.filter((e) => e.hasNearDue).length };
     filterEl.querySelectorAll('[data-urgency]').forEach((btn) => {
       const badge = btn.querySelector('.seg-n');
       if (badge) badge.textContent = urgencyCounts[btn.dataset.urgency] ?? 0;
     });
     if (urgencyFilter === 'qua_han') enriched = enriched.filter((e) => e.hasOverdue);
-    // "Gần đến hạn" dùng ngưỡng RỘNG 45 ngày (isWideNearDue), không phải
-    // đúng 15 ngày của contractUrgency() — xem giải thích ở WIDE_NEAR_DUE_DAYS.
+
     else if (urgencyFilter === 'gan_den_han') enriched = enriched.filter((e) => e.hasNearDue);
-    // Đang lọc theo "Nợ quá hạn"/"Gần đến hạn" thì tự sắp theo SỐ NGÀY tăng
-    // dần (0, 1, 2, 3...) — đúng số ngày đáng chú ý nhất của từng khách hàng
-    // — thay hẳn cho lựa chọn ở nút "Sắp xếp" (Gốc/Lãi không còn ý nghĩa ưu
-    // tiên bằng số ngày khi đang xem đúng 1 nhóm cần chú ý này).
+
     if (urgencyFilter === 'qua_han') enriched.sort((a, b) => a.mostOverdueDays - b.mostOverdueDays);
     else if (urgencyFilter === 'gan_den_han') enriched.sort((a, b) => a.mostNearDueDays - b.mostNearDueDays);
     else if (sortMode !== 'default') {
@@ -424,14 +372,12 @@ export function render(contentEl, filterEl) {
       const key = field === 'principal' ? 'totalBalance' : 'totalInterest';
       enriched.sort((a, b) => (dir === 'asc' ? a[key] - b[key] : b[key] - a[key]));
     } else {
-      // Mặc định (mới vào trang): khách có hợp đồng MỚI NHẤT lên đầu — theo ngày vay mới nhất, cùng ngày thì số thứ tự HĐTD lớn hơn (xem lib/contractOrder.js).
+
       enriched.sort((a, b) => compareContractsNewestFirst(a.contracts[0], b.contracts[0]));
     }
     const totalContracts = enriched.reduce((s, e) => s + e.contracts.length, 0);
     const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);
 
-    // Danh sách dài hàng trăm/nghìn khách: vào trang chỉ vẽ ngay LỚP ĐẦU để hiện tức thì, phần còn lại thêm dần từng đợt phía dưới (người dùng chưa cuộn
-    // tới nên không thấy khác biệt). Đang cuộn giữa danh sách (vẽ lại do dữ liệu mới/đổi lọc) thì vẽ đủ ngay như trước để vị trí cuộn không nhảy.
     const drawToken = ++ledgerDrawToken;
     const progressive = window.scrollY < 40 && enriched.length > LEDGER_FIRST_CHUNK;
     const firstGroups = progressive ? enriched.slice(0, LEDGER_FIRST_CHUNK) : enriched;
@@ -443,11 +389,11 @@ export function render(contentEl, filterEl) {
         <button type="button" data-jump="bottom" title="Xuống cuối trang" aria-label="Xuống cuối trang">↓</button>
       </nav>` : ''}
     `;
-    // Điện thoại: dòng tóm tắt nằm ngay trong khung lọc (máy tính vẫn hiện phía trên danh sách — xem CSS .filter-sum).
+
     const filterSumEl = filterEl.querySelector('.filter-sum');
     if (filterSumEl) filterSumEl.innerHTML = `${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong>`;
     bindCustomerLedger(contentEl, { readOnly: isStaff });
-    // Thêm dần phần còn lại của danh sách (mỗi đợt một khung hình); trang khác/vẽ lại thì tự dừng.
+
     let restGroups = progressive ? enriched.slice(LEDGER_FIRST_CHUNK) : [];
     const ledgerEl = contentEl.querySelector('.customer-ledger');
     const appendNextChunk = () => {
@@ -461,7 +407,7 @@ export function render(contentEl, filterEl) {
     contentEl.querySelectorAll('.customer-page-jump [data-jump]').forEach((button) => {
       button.addEventListener('click', () => {
         if (button.dataset.jump === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-        // Xuống cuối: vẽ nốt phần còn lại rồi cuộn; các khối ở xa được vẽ lười (content-visibility) nên chiều cao còn dịch chuyển khi tới nơi — cuộn lại vài lần cho tới đúng đáy.
+
         appendAllNow();
         let tries = 0;
         const goBottom = () => {
@@ -476,7 +422,6 @@ export function render(contentEl, filterEl) {
   window.__qtdRedrawCustomers = draw;
 }
 
-/** Các khối khách hàng (mỗi khách một khối kèm hợp đồng) — tách riêng để trang Khách hàng vẽ dần từng đợt, xem draw(). */
 export function customerLedgerGroupsHtml(groups, canManageZalo) {
   return groups.map(({ c, contracts, totalBalance }) => {
         const location = [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn';
@@ -498,7 +443,6 @@ export function customerLedgerGroupsHtml(groups, canManageZalo) {
       }).join('');
 }
 
-/** Cùng một bảng hợp đồng cho trang Khách hàng và hai danh sách cảnh báo ở Tổng quan. */
 export function customerLedgerHtml(groups, canManageZalo, { framed = false } = {}) {
   return `<div class="customer-ledger-wrap ${framed ? 'is-framed' : ''} ${canManageZalo ? 'has-oa-actions' : ''}">
     <div class="customer-ledger-heading">
@@ -526,10 +470,10 @@ export function bindCustomerLedger(root, { readOnly = false } = {}) {
       ledgerColumns.style.transform = `translateX(${-ledger.scrollLeft}px)`;
     }, { passive: true });
   }
-  // MỘT bộ lắng nghe cho cả danh sách (thay vì gắn riêng từng nút) — danh sách dài hàng nghìn nút, và các khối thêm sau (vẽ dần) tự dùng được.
+
   wrap.addEventListener('click', (e) => {
     const callLink = e.target.closest('a.customer-ledger-call[href^="tel:"]');
-    if (callLink && wrap.contains(callLink)) { // ghi lại lần gọi, vẫn để trình duyệt mở ứng dụng gọi điện như thường
+    if (callLink && wrap.contains(callLink)) {
       const person = callLink.closest('.customer-ledger-person')?.querySelector('[data-id]');
       if (person) S.logCall(person.dataset.id, callLink.getAttribute('href').replace(/^tel:/, ''));
       return;
@@ -545,8 +489,7 @@ export function bindCustomerLedger(root, { readOnly = false } = {}) {
     const personRow = e.target.closest('[data-id]');
     if (personRow && wrap.contains(personRow)) openCustomerDetail(personRow.dataset.id, { readOnly });
   });
-  // Menu chuột phải gắn vào đúng dòng hợp đồng, không gắn vào tên khách hàng:
-  // một khách có thể có nhiều món và mỗi giấy báo phải lấy đúng món được chọn.
+
   wrap.addEventListener('contextmenu', (event) => {
     const row = event.target.closest('[data-view-contract]');
     if (!row || !wrap.contains(row) || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
@@ -557,7 +500,6 @@ export function bindCustomerLedger(root, { readOnly = false } = {}) {
 
 let closeContractNoticeMenu = null;
 
-/** anchor: nút bấm mở menu (nút "In giấy báo" trên tiêu đề chi tiết hợp đồng) — menu canh mép phải theo nút và bấm lại nút thì đóng; không có anchor là menu chuột phải. */
 function showContractNoticeMenu(contractId, clientX, clientY, { anchor = null } = {}) {
   closeContractNoticeMenu?.();
   const contract = S.getContract(contractId);
@@ -586,7 +528,7 @@ function showContractNoticeMenu(contractId, clientX, clientY, { anchor = null } 
     if (closeContractNoticeMenu === close) closeContractNoticeMenu = null;
   }
   function outside(event) { if (!menu.contains(event.target) && !(anchor && anchor.contains(event.target))) close(); }
-  // Dừng Escape tại đây để chỉ đóng menu, không đóng luôn cả khung chi tiết hợp đồng đang mở phía sau.
+
   function escape(event) { if (event.key === 'Escape') { event.stopPropagation(); close(); } }
   closeContractNoticeMenu = close;
   if (anchor) { anchor.classList.add('is-open'); anchor.setAttribute('aria-expanded', 'true'); }
@@ -605,12 +547,6 @@ function showContractNoticeMenu(contractId, clientX, clientY, { anchor = null } 
   menu.querySelector('button')?.focus();
 }
 
-/**
- * Gọi khi có dữ liệu mới nhưng admin vẫn đang đứng ở trang này (xem
- * renderApp() trong app.js) — CHỈ vẽ lại danh sách bằng draw() hiện có, KHÔNG
- * gọi render() nên bộ lọc Thôn/Xóm/Sắp xếp/Quá hạn đang chọn (và ô tìm kiếm
- * đang gõ) được giữ nguyên, không tự nhảy về "Tất cả" nữa.
- */
 export function refresh() {
   if (window.__qtdRedrawCustomers) window.__qtdRedrawCustomers();
 }
@@ -691,40 +627,16 @@ function showCredential(customer, tempPassword) {
   });
 }
 
-/**
- * Soạn sẵn tiêu đề + nội dung thông báo theo đúng tình trạng hiện tại của 1
- * hợp đồng — admin vẫn sửa lại thoải mái trước khi gửi (openSendNotificationModal).
- * 3 mẫu theo đúng yêu cầu:
- *   - Chưa đến hạn (còn xa, chưa vào diện "gần đến hạn"): chỉ nhắc lãi.
- *   - Gần đến hạn (S.contractStatusInfo().status === 'gan_den_han'): nhắc gốc + lãi + hạn chót.
- *   - Trễ hạn (S.contractStatusInfo().status === 'qua_han'): nhắc gốc + lãi, giọng mạnh hơn.
- * Tiêu đề mặc định LUÔN là "<tên quỹ> thông báo:" cho cả 3 mẫu (giống hệt
- * thông báo tự động ở send-due-reminders) — không còn tiêu đề riêng theo
- * từng loại nữa, cho đồng nhất.
- *
- * S.contractStatusInfo() xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của
- * phân kỳ trả nợ (nếu có) — hợp đồng có 1 kỳ giữa chừng gần/quá hạn cũng tự
- * chuyển sang đúng mẫu này, "Số tiền gốc" lấy ĐÚNG số tiền của KỲ đó (không
- * phải toàn bộ dư nợ), "hạn chót" cũng lấy đúng ngày đến hạn của KỲ đó.
- */
-/**
- * Tính sẵn phần DÙNG CHUNG cho cả thông báo App (buildContractNotificationPreset)
- * LẪN SMS (buildSmsLink) — accrued/info/org/mẫu (org.pushTemplates)/dueDate
- * đúng của KỲ đang cảnh báo (nếu có phân kỳ) — mỗi nơi gọi tự ghép token +
- * định dạng riêng (App in đậm số/ngày, SMS bỏ dấu cả chuỗi), tránh lặp code.
- */
 function contractNotificationContext(contract) {
   const accrued = S.accruedInterest(contract);
   const info = S.contractStatusInfo(contract);
   const org = S.getOrg();
   const tpl = org.pushTemplates || S.DEFAULT_PUSH_TEMPLATES;
-  // Ngày "hạn chót" hiện trong mẫu Gần đến hạn — lấy đúng ngày của KỲ đang
-  // cảnh báo (nếu có), không phải luôn luôn Ngày đến hạn hợp đồng gốc.
+
   const dueDate = info.source === 'installment' ? S.nextInstallmentInfo(contract).next.dueDate : contract.dueDate;
   return { accrued, info, org, tpl, dueDate };
 }
 
-/** Chọn đúng mẫu BODY (chưa thay token) theo tình trạng hợp đồng — dùng chung cho cả App lẫn SMS. */
 function pickNotificationBodyTemplate(tpl, info) {
   if (info.status === 'qua_han') return tpl.overdue;
   if (info.status === 'gan_den_han') return tpl.nearDue;
@@ -733,7 +645,7 @@ function pickNotificationBodyTemplate(tpl, info) {
 
 function buildContractNotificationPreset(contract, customer) {
   const { accrued, info, org, tpl, dueDate } = contractNotificationContext(contract);
-  // Số tiền/ngày tháng in đậm (Unicode, xem ghi chú boldDigits() trong utils.js) để nổi bật hơn phần chữ xung quanh — chỉ áp cho GIÁ TRỊ, không áp cho nhãn chữ xung quanh.
+
   const tokens = {
     Ten_KH: customer ? customer.name : '',
     Ma_HD: contract.code,
@@ -748,15 +660,6 @@ function buildContractNotificationPreset(contract, customer) {
   return { title, body };
 }
 
-/**
- * Admin tự soạn + gửi ngay 1 thông báo đẩy cho 1 khách hàng — tiện dùng khi
- * cần nhắc riêng ngoài lịch tự động. `preset` (tùy chọn) điền sẵn tiêu
- * đề/nội dung (VD: soạn sẵn theo đúng tình trạng hợp đồng, xem
- * buildContractNotificationPreset) — admin vẫn sửa lại thoải mái trước khi
- * gửi. Khách phải đã bật thông báo trên ít nhất 1 thiết bị thì mới gửi được
- * — báo lỗi rõ nếu chưa bật. Popup KHÔNG tự đóng sau khi gửi để admin thấy
- * rõ trạng thái thành công/thất bại ngay tại chỗ.
- */
 function openSendNotificationModal(customer, preset = {}) {
   openModal({
     title: `Gửi thông báo cho ${customer.name}`,
@@ -801,31 +704,16 @@ function openSendNotificationModal(customer, preset = {}) {
   });
 }
 
-/**
- * context 'customer' (mặc định, mở từ trang Khách hàng & Hợp đồng): KHÔNG có
- * nút xóa — hồ sơ/hợp đồng đến từ file Excel, tất toán/không còn trong file
- * nữa thì tự dọn theo (xem full-sync), không xóa tay từ màn chi tiết này.
- * context 'use' (mở từ trang Quản lý User): nút xóa là "Xóa Use" — chỉ gỡ
- * tài khoản đăng nhập, KHÔNG đụng đến hồ sơ/hợp đồng vì 2 thứ này độc lập
- * với nhau (hợp đồng vẫn còn nguyên trong Khách hàng & Hợp đồng sau khi xóa).
- */
-/** Nút thêm/bỏ OA đúng theo trạng thái hiện tại — tách riêng để cập nhật TẠI CHỖ sau khi thêm/bỏ (xem updateZaloUi trong openCustomerDetail), khỏi phải đóng/mở lại cả modal (trước đây làm vậy gây "chớp khung như tải lại"). */
 function zaloActionButtonHtml(inZaloList, blockedReason = '') {
-  // Nút nằm ngay sau nhãn OA ở đầu hồ sơ (mọi tài khoản có quyền OA). "Thêm vào OA" (dấu +) nổi bật; "Bỏ khỏi OA" kín đáo hơn.
-  // blockedReason (người vay lẫn người cùng vay đều chưa có số điện thoại): nút mờ, bấm vào chỉ báo lý do — không thêm được (S.oaAddBlockReason).
+
   return inZaloList
     ? `<button class="cd-oa-btn is-remove" id="btn-remove-zalo-cust">${icon('minus', 'icon-sm')} Bỏ khỏi OA</button>`
     : `<button class="cd-oa-btn is-add${blockedReason ? ' is-blocked' : ''}" id="btn-add-zalo-cust"${blockedReason ? ` aria-disabled="true" title="${escapeHtml(blockedReason)}"` : ''}>${icon('plus', 'icon-sm')} Thêm vào OA</button>`;
 }
 
-/** Chấm tròn xanh (đã có) / đỏ (chưa) nhỏ cạnh tên trạng thái trong chi tiết khách hàng. */
 const statusDotInline = (on) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${on ? 'var(--success)' : 'var(--danger)'};flex:none"></span>`;
 
-// ------------------------------------------------------------
-// Chi tiết khách hàng — thanh Gọi, Lịch sử cuộc gọi, thẻ hợp đồng. Mỗi lần bấm "Gọi" (ở danh sách hoặc ở đây) được ghi lại: giờ phút to rõ bên trái,
-// ngày/thứ ngay dưới, người gọi bên phải. Toàn quyền thấy cuộc gọi của mọi người; nhân viên chỉ thấy của mình (xem S.listCallsByCustomer).
-// ------------------------------------------------------------
-const CALL_PREVIEW = 4; // số cuộc gọi hiện sẵn, còn lại bấm "Xem thêm"
+const CALL_PREVIEW = 4;
 
 function callBarHtml(calls, dialPhone, c) {
   const last = calls[0];
@@ -856,7 +744,6 @@ function callEntryHtml(call, myId) {
   </li>`;
 }
 
-/** Danh sách cuộc gọi (đã lọc "Của tôi" nếu chọn) kèm nút "Xem thêm". */
 function callListHtml(calls, myId, { showAll = false, mineOnly = false } = {}) {
   const list = mineOnly ? calls.filter((x) => x.adminId === myId) : calls;
   if (!list.length) {
@@ -878,44 +765,32 @@ function callCardHtml(calls, { myId }) {
 
 const OA_MIN_RECIPIENT_MSG = 'Cần giữ ít nhất 1 người nhận Zalo OA — hoặc tắt hợp đồng này bằng công tắc bên trái';
 const OA_MIN_RECIPIENT_SIMPLE_MSG = 'Cần giữ ít nhất 1 người nhận Zalo OA';
-/** Từ ô vừa bấm (enabled | main | co) và trạng thái hiện tại của hợp đồng → thay đổi gửi lên máy chủ; null nếu sau khi đổi hợp đồng đang bật mà không còn người nhận nào. */
+
 function oaTickPatch(st, kind, on) {
   if (kind === 'enabled') return { enabled: on };
   if (kind === 'main') return !on && !st.toCo ? null : { toMain: on };
   return !on && !st.toMain ? null : { toCo: on };
 }
 
-// ------------------------------------------------------------
-// Chi tiết khách hàng — thẻ "Người cùng vay & Zalo OA" (docs mục 10.83). Tên người cùng vay lấy tự động từ từng hợp đồng; số điện thoại lưu trong
-// sổ người cùng vay của khách (đúng 10 số, bắt đầu 0; xóa hết cũng lưu được) — nhập 1 lần dùng cho mọi hợp đồng có tên người đó.
-// Ai có quyền OA thì có thêm phần "Gửi Zalo OA theo từng hợp đồng": mỗi hợp đồng 1 hàng, công tắc bật/tắt cả hợp đồng + tick Người vay / người cùng vay
-// (CHỈ người có tên trong chính hợp đồng đó; chưa có số điện thoại thì không tick được). Thẻ chỉ hiện khi khách có người cùng vay, hoặc có từ 2 hợp đồng trở lên.
-// ------------------------------------------------------------
 const shortMoney = (n) => {
   const v = Math.round(Number(n) || 0);
   const f = (x) => x.toLocaleString('vi-VN', { maximumFractionDigits: 1 });
   return v >= 1e9 ? `${f(v / 1e9)} tỷ` : v >= 1e6 ? `${f(v / 1e6)} tr` : formatNumber(v);
 };
 
-/** Thẻ này có cần hiện không: có người cùng vay (ai sửa được số / có quyền OA), hoặc có quyền OA và khách từ 2 hợp đồng trở lên (để tắt/bật từng hợp đồng). */
-/**
- * Kiểu hiện thẻ: 'simple' = như trước (1 người cùng vay chung cho mọi hợp đồng của khách: 2 ô tick Người vay / Người cùng vay, áp cho mọi hợp đồng của người đó);
- * 'detail' = theo từng hợp đồng (từ 2 người cùng vay khác nhau trở lên, hoặc có hợp đồng đang tắt gửi OA để còn bật lại được); 'none' = không có gì để hiện.
- */
 function coCardMode(customerId, contracts) {
   const people = S.listCoPeople(customerId);
-  // Từ 2 hợp đồng trở lên (hoặc từ 2 người cùng vay, hoặc có hợp đồng đã tắt) → hiện "Gửi Zalo OA theo từng hợp đồng"; 1 hợp đồng + 1 người cùng vay → 2 ô tick như cũ.
+
   if (contracts.length >= 2 || people.length >= 2 || contracts.some((ct) => ct.oaEnabled === false)) return 'detail';
   return people.length === 1 ? 'simple' : 'none';
 }
 function coCardShown(customerId, contracts, { canOa, canEdit }) {
   const mode = coCardMode(customerId, contracts);
   if (mode === 'none') return false;
-  if (mode === 'detail' && !S.listCoPeople(customerId).length) return canOa; // chỉ có hợp đồng tắt, không có người cùng vay: để quyền OA bật lại
+  if (mode === 'detail' && !S.listCoPeople(customerId).length) return canOa;
   return canOa || canEdit;
 }
 
-/** Một người cùng vay: avatar + tên + số điện thoại (sửa/nhập số) + nút Gọi; đang sửa thì có ô nhập số ngay dưới. */
 function coPersonHtml(p, { canEdit, editing, pending }) {
   const key = escapeHtml(normPersonName(p.name));
   const dial = String(p.phone || '').replace(/[^\d+]/g, '');
@@ -944,10 +819,9 @@ function coPersonHtml(p, { canEdit, editing, pending }) {
     </div>`;
 }
 
-/** Một hàng hợp đồng trong phần "Gửi Zalo OA theo từng hợp đồng": công tắc bật/tắt + tick người vay / người cùng vay của hợp đồng đó. */
 function coContractRowHtml(ct, oa) {
   const pill = (kind, label, on, extraCls = '') => `<label class="cdo-ck${extraCls}${on ? '' : ' off'}"><input type="checkbox" data-oa="${kind}" ${on ? 'checked' : ''} ${oa.enabled ? '' : 'disabled'}><i>${icon('check')}</i>${escapeHtml(label)}</label>`;
-  // Người chưa có số điện thoại: VẪN có ô tick (chưa tick); bấm vào thì hiện ô nhập số, lưu số xong tự tick (xem [data-oa-need]).
+
   const need = (label, key, extraCls = '') => `<button type="button" class="cdo-ck off need${extraCls}" data-oa-need="${key}" title="Chưa có số điện thoại — tick để nhập số" ${oa.enabled ? '' : 'disabled'}><i>${icon('check')}</i>${escapeHtml(label)}</button>`;
   const main = oa.mainLocked ? need('Người vay', '@main') : pill('main', 'Người vay', oa.toMain);
   const co = oa.coName ? (oa.coLocked ? need(shortPersonName(oa.coName), escapeHtml(normPersonName(oa.coName)), ' co') : pill('co', shortPersonName(oa.coName), oa.toCo, ' co')) : '';
@@ -958,10 +832,6 @@ function coContractRowHtml(ct, oa) {
     </div>`;
 }
 
-/**
- * Kiểu như trước: ô chọn "Gửi Zalo OA tới" — Người vay / Người cùng vay (áp cho mọi hợp đồng có tên người đó; Người vay áp cho mọi hợp đồng). Người cùng vay chưa có số điện thoại
- * thì không tick được: bấm vào ô để nhập số, lưu xong mới tick.
- */
 function coPickHtml(c, contracts) {
   const p = S.listCoPeople(c.id)[0];
   if (!p) return '';
@@ -978,7 +848,6 @@ function coPickHtml(c, contracts) {
       </div></div>`;
 }
 
-/** Ô nhập số điện thoại cho NGƯỜI VAY chưa có số (mở khi tick gửi OA cho người vay): lưu số xong tự tick. */
 function mainPhoneFormHtml(c) {
   return `<div class="cd-pp is-editing" data-person="@main">
       <div class="cd-pp-top">
@@ -993,7 +862,6 @@ function mainPhoneFormHtml(c) {
     </div>`;
 }
 
-/** Nội dung thẻ: danh sách người cùng vay (+ sửa số) và — nếu có quyền OA — ô chọn người nhận (kiểu simple) hoặc gửi Zalo OA theo từng hợp đồng (kiểu detail). */
 function coCardHtml(c, contracts, { canOa, canEdit, editKey = null, pending = false }) {
   const people = S.listCoPeople(c.id);
   const peopleHtml = people.map((p) => coPersonHtml(p, { canEdit, editing: !!editKey && normPersonName(p.name) === editKey, pending })).join('');
@@ -1012,7 +880,6 @@ function coCardHtml(c, contracts, { canOa, canEdit, editKey = null, pending = fa
     ${warn}${peopleHtml}${mainForm}${pickSection}${oaSection}`;
 }
 
-/** Thẻ hợp đồng gọn trong chi tiết khách hàng: vạch màu theo tình trạng, mã + nhãn tình trạng, gốc/lãi bên phải; bấm vào mở chi tiết hợp đồng. */
 function contractCardHtml(ct) {
   const info = S.contractAttentionInfo(ct);
   let tone = 'ok', statusHtml;
@@ -1027,11 +894,10 @@ function contractCardHtml(ct) {
   </div>`;
 }
 
-
 export function openCustomerDetail(customerId, { readOnly = false, context = 'customer', showActions = context === 'use', reopen = false } = {}) {
   const c = S.getCustomer(customerId);
-  if (!reopen) S.logAdminAction('view-customer', { customerId }); // reopen: mở lại sau khi nhập số người vay — không ghi thêm 1 lượt "xem khách hàng" vào Nhật ký
-  // Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào danh sách hiển thị nữa.
+  if (!reopen) S.logAdminAction('view-customer', { customerId });
+
   const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
   const session = S.getSession();
   const canManageZalo = S.canManageZaloOA(session.id);
@@ -1040,18 +906,12 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const calls = S.listCallsByCustomer(customerId);
   const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
   const logged = S.hasCustomerLoggedIn(c), pushOn = S.hasPushEnabled(c.id);
-  // Nút trong khung Thao tác theo QUYỀN của tài khoản đang đăng nhập — giống nhau dù mở từ Khách hàng hay Quản lý User:
-  //  · toàn quyền, hoặc quản trị viên có cờ "Quản lý User": Cấp lại mật khẩu, Đăng xuất, Gửi thông báo (máy chủ cho phép cả hai loại);
-  //  · Sửa hồ sơ: chỉ toàn quyền (máy chủ chỉ cho super — xem SUPER_ONLY_TYPES);
-  //  · Xóa Use: chỉ toàn quyền VÀ chỉ khi mở từ Quản lý User (context 'use').
-  // Nút Thêm/Bỏ OA luôn nằm trên, ngay sau nhãn OA (không nằm trong khung Thao tác).
-  // Khung Thao tác CHỈ có khi mở từ Quản lý User (showActions); mở từ Khách hàng / Quản lý OA thì không có khung này
-  // (riêng "Cấp lại mật khẩu" từ trang Hỗ trợ vẫn truyền showActions: true).
+
   const canManageUse = S.canManageUsers(myId);
   const canEditProfile = S.isSuperAdmin(myId);
   const canDeleteUse = canEditProfile && context === 'use';
   const hasActions = canManageUse && showActions;
-  // Khung Thao tác: các ô nhỏ (icon + chữ) trên cùng 1 hàng — Xóa Use cũng là 1 ô (đỏ nhạt), không còn nút to tách riêng.
+
   const tile = (id, ico, label, hint, cls = '') => `<button type="button" class="cd-tile${cls ? ' ' + cls : ''}" id="${id}" title="${hint}" aria-label="${hint}">${icon(ico)}<span>${label}</span></button>`;
   const actionTiles = hasActions ? [
     tile('btn-reset-pw', 'key', 'Mật khẩu', 'Cấp lại mật khẩu'),
@@ -1061,7 +921,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
     ...(canDeleteUse ? [tile('btn-del-cust', 'trash', 'Xóa Use', 'Xóa tài khoản Use của khách', 'is-danger')] : []),
   ] : [];
   const addressText = c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ');
-  const coShown = coCardShown(customerId, contracts, { canOa: canManageZalo, canEdit: canManageZalo || canManageUse }); // không có người cùng vay (và chỉ 1 hợp đồng) thì không hiện thẻ
+  const coShown = coCardShown(customerId, contracts, { canOa: canManageZalo, canEdit: canManageZalo || canManageUse });
 
   const chip = (on, text, extra = '') => `<span class="cd-chip ${on ? 'on' : 'off'}" ${extra}><i></i>${text}</span>`;
   const close = openModal({
@@ -1100,8 +960,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
     `,
     onMount(sheet, closeFn) {
       sheet.querySelector('[data-cd-close]').addEventListener('click', closeFn);
-      // Bấm Gọi (thanh Gọi hoặc số điện thoại ở mục Thông tin): ghi lại cuộc gọi rồi vẽ lại lịch sử + thanh Gọi ngay; vẫn mở ứng dụng gọi điện như thường.
-      // Nút sao chép cạnh số điện thoại: chép dãy số liền (không dấu cách) để dán vào Zalo/bàn phím gọi cho tiện; đổi sang dấu ✓ một lúc.
+
       const copyPhone = async (btn) => {
         if (!dialPhone) return;
         if (await copyText(dialPhone)) {
@@ -1121,7 +980,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         const bar = sheet.querySelector('#cd-callbar');
         if (bar) bar.innerHTML = callBarHtml(list, dialPhone, c);
       };
-      S.loadCallsForCustomer(customerId).then((ok) => { if (ok && sheet.isConnected) redrawCalls(); }); // lịch sử đầy đủ từ máy chủ (hiện ngay những gì đang có trước)
+      S.loadCallsForCustomer(customerId).then((ok) => { if (ok && sheet.isConnected) redrawCalls(); });
       sheet.addEventListener('click', (e) => {
         const copyBtn = e.target.closest('[data-copy-phone]');
         if (copyBtn) { copyPhone(copyBtn); return; }
@@ -1136,30 +995,18 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           redrawCalls();
         }
       });
-      // Mở chi tiết hợp đồng CHỒNG lên trên (không đóng màn khách hàng này
-      // trước) — đóng chi tiết hợp đồng lại là quay ngay về đúng màn khách
-      // hàng đang xem, không phải mở lại từ danh sách ngoài cùng.
+
       sheet.querySelectorAll('[data-view-contract]').forEach((btn) => {
         btn.addEventListener('click', () => { openContractView(customerId, S.getContract(btn.dataset.viewContract), { readOnly }); });
       });
-      // Thêm/bỏ OA KHÔNG phụ thuộc readOnly — nhân viên chỉ xem nhưng có
-      // riêng quyền canManageZaloOA vẫn thêm/bỏ được nhanh ngay từ đây (xem
-      // khai báo canManageZalo/inZaloList ở đầu hàm), dù không sửa được các
-      // thứ khác của khách hàng. Các nút còn lại (đổi mật khẩu/thông báo/
-      // sửa/xóa Use) vẫn giữ nguyên chặn readOnly như cũ.
-      //
-      // Cập nhật TẠI CHỖ (chỉ 2 mẩu DOM nhỏ: dòng trạng thái + nút) sau khi
-      // thêm/bỏ OA thành công — KHÔNG đóng rồi mở lại cả modal như trước
-      // (closeFn(); openCustomerDetail(...)) vì cách đó tạo cảm giác "chớp
-      // khung như tải lại" và chậm hơn hẳn (dựng lại toàn bộ modal + toàn bộ
-      // danh sách hợp đồng bên dưới trong khi chẳng có gì trong đó đổi cả).
+
       function updateZaloUi(newInZaloList) {
         const oaChip = sheet.querySelector('#cd-oa-chip');
         if (oaChip) { oaChip.classList.toggle('on', newInZaloList); oaChip.classList.toggle('off', !newInZaloList); oaChip.innerHTML = `<i></i>${newInZaloList ? 'Đã thêm OA' : 'Chưa thêm OA'}`; }
         const btnWrap = sheet.querySelector('#oa-action-btn-wrap');
         if (btnWrap) { btnWrap.innerHTML = zaloActionButtonHtml(newInZaloList, newInZaloList ? '' : S.oaAddBlockReason(customerId)); bindZaloButtons(); }
       }
-      /** Nhập/xóa số điện thoại người cùng vay xong: nút "Thêm vào OA" sáng lên / mờ đi theo (chỉ khi khách chưa ở trong danh sách OA). */
+
       function syncOaAddBtn() {
         const btnWrap = sheet.querySelector('#oa-action-btn-wrap');
         if (btnWrap && !S.isZaloCustomer(customerId)) { btnWrap.innerHTML = zaloActionButtonHtml(false, S.oaAddBlockReason(customerId)); bindZaloButtons(); }
@@ -1175,7 +1022,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           const blocked = S.oaAddBlockReason(customerId);
           if (blocked) { toast(blocked, 'error'); return; }
           const chg = S.coChangeInfo(customerId);
-          if (chg) { // người cùng vay trong hợp đồng đã đổi từ lần trước: cảnh báo trước khi thêm lại
+          if (chg) {
             confirmDialog({
               title: 'Người cùng vay đã thay đổi',
               message: `Hợp đồng nay ghi người cùng vay ${chg.names.length ? `là <b>${chg.names.map(escapeHtml).join(', ')}</b>` : 'khác'}, khác với <b>${escapeHtml(chg.prevName)}</b> đã chọn trước đó. Chỉ gửi Zalo OA cho người vay, hoặc nhập số và tick gửi cho người mới trước khi gửi cho họ. Vẫn thêm khách vào danh sách OA?`,
@@ -1199,18 +1046,18 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         });
       }
       bindZaloButtons();
-      // Thẻ Người cùng vay & Zalo OA (xem coCardHtml): gọi (ghi lịch sử), nhập/sửa/xóa số điện thoại từng người, bật/tắt gửi OA từng hợp đồng + tick người nhận.
+
       const ppCard = sheet.querySelector('#cd-pp-card');
       if (ppCard) {
         const canEditCo = canManageZalo || canManageUse;
-        let ppEditKey = null, ppPending = null, ppSaving = false; // ppPending = { ctId }: mở ô nhập số từ ô khóa "chưa có số" của 1 hợp đồng → lưu số xong tự tick cho hợp đồng đó
+        let ppEditKey = null, ppPending = null, ppSaving = false;
         const drawPp = () => {
           ppCard.innerHTML = coCardHtml(S.getCustomer(customerId) || c, contracts, { canOa: canManageZalo, canEdit: canEditCo, editKey: ppEditKey, pending: !!ppPending });
           if (ppEditKey) ppCard.querySelector('#pp-phone')?.focus();
           syncOaAddBtn();
         };
         const personOf = (key) => S.listCoPeople(customerId).find((p) => normPersonName(p.name) === key);
-        // Kiểu simple (1 người cùng vay chung): tick Người vay áp cho mọi hợp đồng; tick Người cùng vay áp cho mọi hợp đồng có tên người đó. Trả về danh sách thay đổi, hoặc null nếu bỏ tick sẽ hết người nhận.
+
         const simpleTargets = (kind, on) => {
           const p = S.listCoPeople(customerId)[0];
           if (!p) return [];
@@ -1225,21 +1072,21 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         };
         const runTargets = (targets) => Promise.all(targets.map((t) => S.setContractOa(t.id, t.patch)));
         const mainDigits = String(c.phone || '').replace(/[^\d]/g, '').replace(/^84/, '0');
-        // Ô số điện thoại chỉ nhận chữ số, tối đa 10 số.
+
         ppCard.addEventListener('input', (e) => {
           const inp = e.target.closest('#pp-phone');
           if (!inp) return;
           const v = sanitizeCoPhoneInput(inp.value);
           if (v !== inp.value) inp.value = v;
         });
-        // Bấm Enter trong ô số điện thoại = bấm Lưu (không làm khi đang gõ dấu tiếng Việt bằng bộ gõ).
+
         ppCard.addEventListener('keydown', (e) => {
           if (e.key !== 'Enter' || e.isComposing || !e.target.closest('#pp-phone')) return;
           e.preventDefault();
           ppCard.querySelector('[data-pp-save]')?.click();
         });
         ppCard.addEventListener('click', async (e) => {
-          // Sao chép số người cùng vay: chép dãy số liền (không dấu cách); đổi sang dấu ✓ một lúc.
+
           const cp = e.target.closest('[data-pp-copy]');
           if (cp) {
             const p = personOf(cp.dataset.ppCopy);
@@ -1260,10 +1107,10 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
             return;
           }
           const need = e.target.closest('[data-oa-need]');
-          if (need) { ppEditKey = need.dataset.oaNeed; ppPending = { ctId: need.closest('[data-ct]')?.dataset.ct || null }; drawPp(); return; } // chưa có số: phải nhập số mới tick được
+          if (need) { ppEditKey = need.dataset.oaNeed; ppPending = { ctId: need.closest('[data-ct]')?.dataset.ct || null }; drawPp(); return; }
           const needTile = e.target.closest('button.cd-pp-tile.is-need[data-pp-tick]');
           if (needTile) {
-            if (needTile.dataset.ppTick === 'main') { ppEditKey = '@main'; ppPending = { all: true }; drawPp(); return; } // người vay chưa có số: nhập số rồi mới tick
+            if (needTile.dataset.ppTick === 'main') { ppEditKey = '@main'; ppPending = { all: true }; drawPp(); return; }
             const p0 = S.listCoPeople(customerId)[0]; if (p0) { ppEditKey = normPersonName(p0.name); ppPending = { all: true }; drawPp(); } return;
           }
           const edit = e.target.closest('[data-pp-edit]');
@@ -1272,7 +1119,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           const saveBtn = e.target.closest('[data-pp-save]');
           if (saveBtn) {
             if (ppSaving) return;
-            const isMain = ppEditKey === '@main'; // nhập số cho NGƯỜI VAY chưa có số (bấm tick Người vay)
+            const isMain = ppEditKey === '@main';
             const person = isMain ? null : personOf(ppEditKey);
             if (!isMain && !person) { ppEditKey = null; ppPending = null; drawPp(); return; }
             const chk = checkCoPhone(ppCard.querySelector('#pp-phone').value);
@@ -1284,13 +1131,13 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
             try {
               if (isMain) {
                 await S.saveMainPhone(customerId, chk.phone);
-                if (canManageZalo && ppPending) { // người vay mặc định nhận tin ở mọi hợp đồng; chỉ tick lại hợp đồng nào đang bỏ tick
+                if (canManageZalo && ppPending) {
                   if (ppPending.ctId) { if (!(S.getContractOa(ppPending.ctId) || {}).toMain) await S.setContractOa(ppPending.ctId, { toMain: true }, { optimistic: false }); }
                   else await runTargets(simpleTargets('main', true) || []);
                 }
                 toast('Đã lưu số điện thoại và bật gửi Zalo OA cho người vay', 'success');
                 ppEditKey = null; ppPending = null;
-                closeFn(); openCustomerDetail(customerId, { readOnly, context, showActions, reopen: true }); // mở lại để đầu hồ sơ hiện số mới + nút Gọi
+                closeFn(); openCustomerDetail(customerId, { readOnly, context, showActions, reopen: true });
                 return;
               }
               await S.saveCoPhone(customerId, person.name, chk.phone);
@@ -1305,15 +1152,15 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
             } finally { ppSaving = false; }
           }
         });
-        // Bật/tắt hợp đồng, tick/bỏ tick người nhận: cập nhật NGAY trên màn hình (không chờ máy chủ) rồi lưu ngầm; lỗi thì tự trả lại như cũ.
+
         ppCard.addEventListener('change', (e) => {
           const tickWrap = e.target.closest('label[data-pp-tick]');
-          if (tickWrap) { // kiểu simple: 2 ô "Gửi Zalo OA tới"
+          if (tickWrap) {
             const on = e.target.checked;
             const targets = simpleTargets(tickWrap.dataset.ppTick, on);
             if (!targets) { e.target.checked = !on; toast(OA_MIN_RECIPIENT_SIMPLE_MSG, 'error'); return; }
             ppEditKey = null; ppPending = null;
-            const saving = runTargets(targets); // phần đồng bộ đã cập nhật bộ nhớ
+            const saving = runTargets(targets);
             drawPp();
             saving.catch((err) => { toast(err.message || 'Có lỗi xảy ra', 'error'); if (ppCard.isConnected) drawPp(); });
             return;
@@ -1327,7 +1174,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           const patch = oaTickPatch(st, kind, on);
           if (!patch) { inp.checked = !on; toast(OA_MIN_RECIPIENT_MSG, 'error'); return; }
           ppEditKey = null; ppPending = null;
-          const saving = S.setContractOa(ctId, patch); // phần đồng bộ của hàm đã cập nhật bộ nhớ
+          const saving = S.setContractOa(ctId, patch);
           drawPp();
           saving.catch((err) => { toast(err.message || 'Có lỗi xảy ra', 'error'); if (ppCard.isConnected) drawPp(); });
         });
@@ -1357,10 +1204,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       sheet.querySelector('#btn-send-noti').addEventListener('click', () => openSendNotificationModal(c));
       const editBtn = sheet.querySelector('#btn-edit-cust');
       if (editBtn) editBtn.addEventListener('click', () => { closeFn(); openCustomerForm(c); });
-      // Chỉ context 'use' (Quản lý User) mới có nút xóa — gỡ tài khoản đăng
-      // nhập thôi, KHÔNG đụng hồ sơ/hợp đồng. Đã bỏ hẳn "Xóa khách hàng và
-      // toàn bộ hợp đồng liên quan" ở context 'customer' — vô lý, khách hàng
-      // & hợp đồng đến từ file Excel, không nên xóa tay từ đây.
+
       const delBtn = sheet.querySelector('#btn-del-cust');
       if (delBtn) delBtn.addEventListener('click', () => {
         confirmDialog({
@@ -1376,12 +1220,6 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   });
 }
 
-/**
- * Cột phải "Gốc / Lãi" — dùng cho hàng khách hàng chỉ có 1 hợp đồng lẫn từng
- * dòng hợp đồng gọn. "Gốc" ở đây là DƯ NỢ HIỆN TẠI (số còn phải trả), không
- * phải số tiền vay ban đầu — số tiền vay ban đầu chỉ hiện trong màn chi tiết
- * hợp đồng (mục "Số tiền vay ban đầu").
- */
 function contractLedgerRow(ct, canManageZalo) {
   const info = S.contractAttentionInfo(ct);
   const interest = S.accruedInterest(ct);
@@ -1417,21 +1255,6 @@ function contractAmountsHtml(ct) {
     </div>`;
 }
 
-/**
- * Soạn sẵn tin nhắn SMS cho khách hàng — mở app nhắn tin sẵn có trên điện
- * thoại quản trị viên, không cần dịch vụ SMS ngoài. DÙNG CHUNG ĐÚNG 1 NỘI
- * DUNG với thông báo App (org.pushTemplates, tự chuyển đúng mẫu Báo
- * lãi/Gần đến hạn/Đã trễ hạn theo S.contractStatusInfo() — xem
- * buildContractNotificationPreset() ở trên) — đổi mẫu trong "Cài đặt" thì
- * SMS cũng tự đổi theo, không cần sửa gì riêng ở đây. CHỈ khác 2 điểm:
- *   1. Không in đậm (boldDigits chỉ có ý nghĩa trên thông báo đẩy — ký tự
- *      Unicode "Mathematical Bold" không phải chữ số thường, SMS/điện thoại
- *      cũ không hiểu, dễ vỡ chữ/tốn thêm tin nhắn).
- *   2. Bỏ dấu tiếng Việt CẢ CHUỖI (title + body, stripDiacriticsKeepCase) —
- *      máy điện thoại đời cũ/mạng SMS truyền thống không hiển thị đúng được
- *      tiếng Việt có dấu (dễ vỡ chữ, mất chữ, tốn nhiều tin nhắn hơn do phải
- *      mã hoá UCS-2).
- */
 function buildSmsLink(customer, contract) {
   const { accrued, info, org, tpl, dueDate } = contractNotificationContext(contract);
   const tokens = {
@@ -1449,18 +1272,12 @@ function buildSmsLink(customer, contract) {
   return `sms:${customer.phone.replace(/\s/g, '')}?body=${encodeURIComponent(msg)}`;
 }
 
-/**
- * Dòng chú thích dưới nút "Gửi tin Zalo OA ngay" — tách riêng thành hàm để
- * gọi lại được ngay sau khi gửi THÀNH CÔNG (xem onMount trong
- * openContractView), khỏi phải đóng/mở lại popup mới thấy nút tự chìm
- * xuống + đúng ngày/số ngày chờ mới.
- */
 function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
   if (!inZaloList) {
     return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} Khách chưa có trong Danh sách OA — vào chi tiết khách hàng (nút "Thêm vào OA") để thêm trước khi gửi được.</div>`;
   }
   if (!lastZaloSend) return '';
-  // Nói rõ lần gần nhất là gửi tự động hay gửi tay (lấy từ nhật ký gửi: triggeredBy = 'auto' | 'manual'; lượt vừa bấm gửi trong phiên này là gửi tay).
+
   const how = lastZaloSend.triggeredBy === 'auto' ? 'tự động' : 'bằng tay';
   const lastText = `Đã gửi Zalo ${how} gần nhất ngày <strong>${formatDate(lastZaloSend.sentAt)}</strong>`;
   if (zaloCooldownDaysLeft > 0) {
@@ -1497,7 +1314,7 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = compact ? 'Đang gửi' : `${icon('refresh', 'icon-sm')} Đang gửi...`;
   try {
     const res = await S.sendZaloManual(contractId);
-    // Gửi đúng người theo cài đặt của hợp đồng đó (tick Người vay / Người cùng vay ở chi tiết khách hàng); mặc định chỉ người vay.
+
     const okText = res.sent >= 2 ? 'Đã gửi tin Zalo OA cho người vay và người cùng vay' : res.sentTo === 'co' ? 'Đã gửi tin Zalo OA cho người cùng vay' : 'Đã gửi tin Zalo OA cho người vay';
     toast(res.ok ? (res.note ? `${okText}. ${res.note}` : okText) : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error', res.note || /chưa đăng ký Zalo/.test(res.reason || '') ? 7000 : undefined);
     if (res.ok) {
@@ -1515,17 +1332,12 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = originalLabel;
 }
 
-/**
- * Số tiền luôn nằm gọn trên MỘT dòng: chữ to sẵn theo giao diện, nếu số tiền dài (VD hàng chục tỷ) vượt chỗ chứa thì thu nhỏ dần cho vừa
- * — không bao giờ tụt xuống dòng dưới hay tràn ra ngoài khung. Gọi lại mỗi khi số đổi hoặc khung đổi kích thước.
- */
 function fitOneLine(el, minPx = 9) {
   el.style.fontSize = '';
   let size = parseFloat(getComputedStyle(el).fontSize) || 16;
   while (el.scrollWidth > el.clientWidth + 0.5 && size > minPx) { size -= 0.5; el.style.fontSize = `${size}px`; }
 }
 
-/** Máy không cho sao chép tự động thì hiện khung chữ đã chọn sẵn để người dùng tự chạm giữ → Sao chép. */
 function openCopyFallback(text) {
   openModal({
     title: 'Sao chép thông tin khoản vay',
@@ -1534,45 +1346,28 @@ function openCopyFallback(text) {
   });
 }
 
-/** Dòng "Cách tính lãi": số dư × số ngày × lãi suất ÷ 365 = tiền lãi — dùng cả lúc mở popup lẫn lúc sửa ngày/số ngày. */
 function contractFormulaHtml(contract, days, accrued) {
   return `${formatVND(contract.balance)} × ${days} ngày × ${contract.interestRate}%<br class="cf-br"> ÷ 365 ngày = <strong>${formatVND(accrued)}</strong>`;
 }
 
-/**
- * Xem chi tiết hợp đồng — hiển thị đầy đủ giống hệt trang khách hàng thấy khi
- * họ bấm vào. Dữ liệu lấy từ Excel, quản trị viên KHÔNG chỉnh sửa trực tiếp
- * tại đây (không có ô nhập/nút "Sửa") — muốn cập nhật thì nhập lại file Excel
- * mới nhất, hệ thống tự khớp đúng hợp đồng theo Số HĐTD.
- */
 export function openContractView(customerId, contract, { readOnly = false } = {}) {
   const customer = S.getCustomer(customerId);
   S.logAdminAction('view-contract', { contractId: contract.id });
-  // Trạng thái + dòng cảnh báo xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới"
-  // của phân kỳ trả nợ (nếu có) — xem S.contractStatusInfo(). Hợp đồng
-  // không có phân kỳ thì kết quả y hệt như trước giờ.
+
   const info = S.contractStatusInfo(contract);
   const interestPaidUntil = contract.interestPaidUntil || contract.disbursedDate;
   const interestDays = S.interestDaysAccrued(contract);
-  let accrued = S.accruedInterest(contract); // đổi được khi quản trị sửa "Tính đến ngày"/"Số ngày lãi" (chỉ để xem, không lưu)
+  let accrued = S.accruedInterest(contract);
   const collateralName = contract.hasCollateral ? COLLATERAL_NAMES[contract.collateralType] : null;
   const canPay = S.effectiveContractStatus(contract) !== 'da_tat_toan';
   const session = S.getSession();
   const canManageZalo = S.canManageZaloOA(session.id);
-  // Gửi tay Zalo: BẮT BUỘC khách đã có trong Tầng 1 "Danh sách OA", và cách
-  // lần gửi thành công gần nhất phải >= 5 ngày — server luôn là nơi quyết
-  // định thật sự (chặn cả 2 điều kiện này), ở đây chỉ tính trước để BÁO
-  // TRƯỚC cho admin biết lý do trước khi bấm, đỡ bấm xong mới biết bị chặn.
+
   const { inZaloList, lastZaloSend, cooldownDaysLeft: zaloCooldownDaysLeft } = manualOaState(contract);
 
-  // Mã QR VietQR cho quản trị viên/nhân viên — 2 ô Gốc/Lãi riêng, cộng lại ra
-  // số tiền trên QR. Mặc định chỉ có sẵn Lãi (= "Lãi đến nay"), ô Gốc để
-  // trống, cần thì tự gõ vào (VD: khách trả gộp cả gốc lẫn lãi, hoặc trả 1
-  // phần gốc).
   const org = S.getOrg();
   const hasBank = canPay && org.bankBin && org.bankAccountNo;
-  // Nội dung chuyển khoản: `text` KHÔNG DẤU nằm trong mã QR (đúng yêu cầu ngân hàng), `shown` có dấu để người xem đọc cho dễ
-  // — xem transferContent(). Dấu "/" trong số hợp đồng ở bản không dấu tự thành dấu cách.
+
   function qrContent(goc, lai, settle = false) {
     const kind = settle ? 'tat_toan' : goc > 0 && lai > 0 ? 'goc_lai' : goc > 0 ? 'goc' : 'lai';
     return transferContent(kind, contract, customer);
@@ -1583,17 +1378,14 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   };
   const qrUrl = hasBank ? buildVietQrUrl(qrParamsFor(accrued, 0, accrued)) : '';
 
-  // Người thừa kế/đồng vay (cột D file số 1): có thì nối thêm " và <tên>" vào tiêu đề, không có (hoặc trùng tên khách) thì để nguyên như cũ.
   const heirName = String(contract.heirName || '').trim();
   const heirTitle = heirName && customer && heirName.toLowerCase() !== String(customer.name || '').trim().toLowerCase() ? ` và ${escapeHtml(heirName)}` : '';
-  // Số tiền đã trả = số tiền vay ban đầu trừ dư nợ hiện tại (gốc đã trả); hợp đồng không có số tiền vay thì hiện "—".
+
   const principalNum = Number(contract.principal) || 0;
   const paidText = principalNum > 0 ? formatVND(Math.max(0, principalNum - (Number(contract.balance) || 0))) : '—';
 
   const close = openModal({
-    // Kèm thêm tên khách hàng vào tiêu đề để đỡ nhầm giữa nhiều hợp đồng đang
-    // mở/xem liên tiếp (VD: khách có nhiều hợp đồng, hoặc mở hợp đồng từ danh
-    // sách quá hạn/gần đến hạn ở Tổng quan) — trước đây chỉ có mã hợp đồng.
+
     title: `Hợp đồng ${escapeHtml(contract.code)}${customer ? ` - ${escapeHtml(customer.name)}${heirTitle}` : ''}<button type="button" class="copy-info-btn" id="btn-copy-loan" title="Sao chép thông tin khoản vay để gửi khách" aria-label="Sao chép thông tin khoản vay để gửi khách">${icon('copy')}</button>`,
     sheetClass: 'customer-contract-sheet',
     bodyHtml: `
@@ -1680,7 +1472,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     `,
     footHtml: readOnly ? '' : `<button class="btn btn-danger-outline btn-block" id="del-contract">${icon('trash', 'icon-sm')} Xóa hợp đồng</button>`,
     onMount(sheet, closeFn) {
-      // Máy tính (có chuột): nút "In giấy báo" ở góc phải tiêu đề, cạnh nút đóng — bấm ra 2 loại giấy báo giống menu chuột phải. Điện thoại không hiện.
+
       const closeBtn = sheet.querySelector('.modal-head [data-close]');
       if (customer && closeBtn && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
         closeBtn.insertAdjacentHTML('beforebegin', `<button type="button" class="notice-print-btn" id="btn-print-notice" aria-haspopup="menu" aria-expanded="false" title="In giấy báo">${icon('printer')}<span>In giấy báo</span>${icon('chevronDown')}</button>`);
@@ -1701,8 +1493,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const qrImgEl = sheet.querySelector('#qr-img-ct');
       let gocAmount = 0;
       let laiAmount = accrued;
-      let settleFull = false; // Tất toán khoản vay — trả hết gốc (= dư nợ còn lại) + lãi, khóa cả 2 ô
-      /** Sửa ô Gốc hoặc Lãi là vẽ lại ảnh QR theo tổng 2 ô cộng lại. */
+      let settleFull = false;
+
       function updateQrTotal() {
         const totalEl = sheet.querySelector('#qr-total-ct');
         if (totalEl) totalEl.textContent = formatVND(gocAmount + laiAmount);
@@ -1711,33 +1503,25 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         if (!qrImgEl) return;
         qrImgEl.src = qrImageSrc(buildVietQrUrl(qrParamsFor(gocAmount + laiAmount, gocAmount, laiAmount, settleFull)), { compact: true });
       }
-      // Ảnh QR tải từ dịch vụ ngoài — mỗi lần đổi src là 1 request mạng render
-      // ảnh mới, gọi thẳng theo từng phím gõ làm popup nặng/giật. Debounce lại,
-      // chỉ tải ảnh mới khi ngưng gõ 400ms.
+
       const refreshQrDebounced = debounce(refreshQr, 400);
       const settleCb = sheet.querySelector('#settle-full-cb-ct');
       const gocInput = sheet.querySelector('#qr-goc-input');
       const laiInput = sheet.querySelector('#qr-lai-input');
       const laiHint = sheet.querySelector('#qr-lai-hint');
-      /**
-       * Có nhập số tiền trả Gốc (hoặc đang tất toán) thì khóa cứng Lãi = đúng
-       * "Lãi đến nay" (không cho tự sửa tay) — chỉ khi Gốc để trống mới được
-       * tự chỉnh Lãi.
-       */
+
       function syncLaiLock() {
         if (!laiInput) return;
         const locked = settleFull || gocAmount > 0;
         laiInput.disabled = locked;
-        // Đang tất toán thì tự hiểu là khóa cả 2 ô rồi (đã có checkbox riêng
-        // giải thích) — chỉ cần hiện dòng chú thích này cho đúng trường hợp
-        // "chỉ nhập Gốc" (chưa tất toán) để khỏi lặp ý.
+
         if (laiHint) laiHint.style.display = (locked && !settleFull) ? 'block' : 'none';
         if (locked) {
           laiAmount = accrued;
           laiInput.value = formatNumber(accrued);
         }
       }
-      /** Tích "Tất toán" thì Gốc tự điền = toàn bộ dư nợ còn lại, khóa luôn cả 2 ô; bỏ tích thì Gốc về lại 0, chỉ còn Lãi. */
+
       function syncSettleFull() {
         if (gocInput) gocInput.disabled = settleFull;
         gocAmount = settleFull ? contract.balance : 0;
@@ -1753,7 +1537,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       if (downloadQrBtn) downloadQrBtn.addEventListener('click', () => { S.logUiAction('qr', `Tải mã QR thanh toán hợp đồng **${contract.code}**`); downloadQrImage(qrImgEl.src, `qr-thanh-toan-${contract.code}.png`); });
       const shareQrBtn = sheet.querySelector('#btn-share-qr-ct');
       if (shareQrBtn) shareQrBtn.addEventListener('click', () => { S.logUiAction('qr', `Chia sẻ mã QR thanh toán hợp đồng **${contract.code}**`); shareQrImage(qrImgEl.src, qrContent(gocAmount, laiAmount, settleFull).shown); });
-      // ---- Sửa "Tính đến ngày" / "Số ngày lãi": CHỈ ĐỂ TÍNH XEM (không lưu vào hợp đồng, mở lại là về hôm nay). Sửa ngày -> số ngày tự tính lại và ngược lại; lãi, "Cách tính lãi", ô Lãi và mã QR đổi theo. ----
+
       const accruedEl = sheet.querySelector('#ct-accrued');
       const asOfInput = sheet.querySelector('#ct-asof');
       const nativeDate = sheet.querySelector('#ct-asof-native');
@@ -1769,12 +1553,12 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         let asOf = today;
         const clamp = (dt) => (dt < minAsOf ? minAsOf : dt > maxAsOf ? maxAsOf : dt);
         const sizeDays = () => { daysInput.style.width = `${Math.max(2, daysInput.value.length) + 0.9}ch`; };
-        // Điện thoại (cảm ứng): chạm vào ô ngày là mở lịch chọn luôn, không bật bàn phím. Máy tính: gõ trực tiếp hoặc bấm biểu tượng lịch.
+
         const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
         asOfInput.readOnly = coarse;
         nativeDate.min = toDateInputValue(minAsOf);
         nativeDate.max = toDateInputValue(maxAsOf);
-        /** `from`: ô đang được gõ ('date' | 'days') — không ghi đè lại chính ô đó khi vẽ lại. */
+
         function render(from) {
           const days = S.interestDaysAccrued(contract, asOf);
           accrued = S.accruedInterest(contract, asOf);
@@ -1786,7 +1570,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           const edited = daysBetween(today, asOf) !== 0;
           if (resetRow) resetRow.hidden = !edited;
           if (resetRowDate) resetRowDate.textContent = formatDate(asOf);
-          // Ô Lãi (và tổng chuyển khoản/mã QR) theo ngày đã chọn
+
           laiAmount = accrued;
           if (laiInput) laiInput.value = accrued ? formatNumber(accrued) : '';
           updateQrTotal();
@@ -1831,7 +1615,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         });
         const resetBtn = sheet.querySelector('#ct-reset2');
         if (resetBtn) resetBtn.addEventListener('click', () => { asOf = today; render(); });
-        // Nút "Sao chép" ở tiêu đề: tạo tin "Thông tin khoản vay" đúng số liệu đang hiện (kể cả khi đã chỉnh "Tính đến ngày") để dán gửi khách.
+
         const copyBtn = sheet.querySelector('#btn-copy-loan');
         if (copyBtn) copyBtn.addEventListener('click', async () => {
           const inst = S.nextInstallmentInfo(contract, asOf);
@@ -1850,7 +1634,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         });
         sizeDays();
       }
-      // Số tiền (Dư nợ / Số tiền đã trả / Lãi cộng dồn) luôn gọn trên 1 dòng dù số lớn: thu nhỏ chữ cho vừa, tính lại khi đổi kích thước hoặc font tải xong.
+
       const moneyEls = [...sheet.querySelectorAll('.customer-contract-metrics strong')];
       const fitMoney = () => moneyEls.forEach((el) => fitOneLine(el));
       fitMoney();
@@ -1863,7 +1647,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       });
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       const zaloHintWrap = sheet.querySelector('#zalo-hint-wrap-ct');
-      // "Đã gửi Zalo ... gần nhất ngày ...": nhật ký đã tải về máy chỉ có 31 ngày gần nhất — tra thêm nhật ký đầy đủ trên máy chủ của riêng hợp đồng này để lần gửi cũ hơn không bị mất.
+
       if (zaloHintWrap) S.fetchLastSuccessfulZaloSend(contract.id).then((row) => {
         if (!row || !zaloHintWrap.isConnected) return;
         const st = manualOaState(contract);
@@ -1871,8 +1655,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         const btn = sheet.querySelector('#btn-zalo-manual-ct');
         if (btn && !manualOaSending.has(contract.id)) btn.disabled = !st.inZaloList || st.cooldownDaysLeft > 0;
       });
-      // Gửi tay: luôn bấm được (khi khách đã ở trong Danh sách OA và qua hạn chờ 5 ngày). Mặc định gửi cho người vay; hợp đồng có cài đặt tùy chỉnh
-      // (tick người cùng vay / bỏ tick người vay ở chi tiết khách hàng) thì gửi đúng như cài đặt — máy chủ tự quyết định người nhận.
+
       if (zaloManualBtn) zaloManualBtn.addEventListener('click', () => sendManualOa(contract.id, zaloManualBtn, (sentAt) => {
         if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt, triggeredBy: 'manual' });
       }));
@@ -1895,7 +1678,6 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
 const REQUIRED_COLUMNS = 'Số HĐTD, Người nhận nợ, Địa chỉ, Số CMND/CCCD, Số di động, Ngày nhận nợ, Ngày đáo hạn, Thu lãi đến ngày, Số tiền giải ngân, Số dư, Lãi suất';
 const REPORT_TEMPLATE_COLUMNS = 'Tên khách hàng, Địa chỉ, Số CMND, Điện thoại, Số HĐ, Ngày vay, Ngày đáo hạn, Lãi suất, Số tiền vay, Số dư, Thu lãi đến ngày';
 
-/** File "SĐT người cùng vay" (docs mục 10.85): chọn file → xem trước kết quả khớp (máy chủ chỉ tính, chưa ghi) → bấm Lưu mới ghi vào sổ người cùng vay của khách. */
 function bindCoPhoneImport(sheet) {
   const input = sheet.querySelector('#file-input-3');
   const btn = sheet.querySelector('#btn-upload-file-3');
@@ -2010,10 +1792,6 @@ function openImportModal() {
       sheet.querySelector('#btn-import-history').addEventListener('click', () => openImportHistory({ onChanged: () => window.__qtdRedrawCustomers?.() }));
       bindCoPhoneImport(sheet);
 
-      // Chỉ lo việc nhập + hiện kết quả + thông báo — KHÔNG đụng vào trạng
-      // thái nút bấm (nút "Tải lên" và nút "Nhập từ dữ liệu đã dán" tự quản
-      // lý trạng thái bận/xong của riêng mình bên dưới, vì mỗi nút có 1 giai
-      // đoạn chờ trước đó khác nhau — trộn chung dễ bị kẹt ở chữ "Đang..." mãi).
       const showImportResult = (res) => {
         resultEl.innerHTML = `
           <div class="card card-pad mt-16" style="background:var(--surface-alt)">
@@ -2029,14 +1807,14 @@ function openImportModal() {
             ${res.errors.length ? `<div class="text-sm text-danger mt-8">${res.errors.slice(0, 5).map(escapeHtml).join('<br/>')}</div>` : ''}
           </div>
         `;
-        // Kết quả CỤ THỂ: hợp đồng nào mới/đổi/xóa, của ai (lưu cả vào "Lịch sử nhập" để xem lại hoặc quay lại).
+
         resultEl.insertAdjacentHTML('beforeend', `<div class="mt-8">${importSummaryHtml(res.summary)}${importDetailsHtml(res.details)}${res.historyId ? '<div class="text-sm text-muted mt-8">Đã lưu vào “Lịch sử nhập” — nhập nhầm thì mở mục đó để quay lại bản trước.</div>' : ''}</div>`);
         bindImportDetails(resultEl);
         resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         toast('Đã nhập dữ liệu xong', 'success');
         window.__qtdRedrawCustomers?.();
       };
-      // Luôn XEM TRƯỚC (máy chủ chỉ so sánh, chưa ghi gì) rồi mới nhập thật khi bấm "Xác nhận nhập".
+
       const runImport = async (tsvText, fullSync, fileName) => {
         if (!tsvText.trim()) { toast('Không có dữ liệu để nhập', 'error'); return; }
         const prev = await S.previewImportFromPastedTable(tsvText, { fullSync });
@@ -2046,14 +1824,12 @@ function openImportModal() {
           notes: [fileName ? `File: ${fileName}` : '', prev.localSkipped ? `${prev.localSkipped} dòng không phải dòng hợp đồng đã bị bỏ qua khi đọc file.` : '', ...(prev.parseErrors || []).slice(0, 3)].filter(Boolean),
           async onConfirm() {
             const res = await S.importFromPastedTable(tsvText, { fullSync, fileName });
-            // Lỗi khi VẼ kết quả (nếu có) không được làm cửa sổ xem trước kẹt lại như thể nhập chưa xong — dữ liệu đã nhập rồi.
+
             try { showImportResult(res); } catch (renderErr) { console.error(renderErr); }
           },
         });
       };
 
-      // Chọn file xong chỉ hiện tên file + bật nút "Tải lên" — bấm nút mới
-      // thật sự đọc/xử lý file, tránh xử lý nhầm ngay khi vừa chọn nhầm file.
       fileInput.addEventListener('change', () => {
         uploadBtn.disabled = !fileInput.files[0];
       });

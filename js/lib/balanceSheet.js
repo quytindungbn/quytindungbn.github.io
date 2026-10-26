@@ -1,5 +1,3 @@
-// Bảng cân đối tài khoản A01/QTDCS: C/D = dư đầu kỳ Nợ/Có, G/H = dư cuối kỳ.
-// Chỉ lấy mã tài khoản ở cột B; không cộng các dòng con vào dòng cha lần nữa.
 function amount(value, row, column) {
   if (value == null || value === '') return 0;
   const n = typeof value === 'number' ? value : Number(String(value).replace(/[,.\s]/g, ''));
@@ -22,7 +20,6 @@ function periodFromRows(rows) {
   return { yearMonth: `${ey}-${String(em).padStart(2, '0')}`, periodEnd: end.toISOString().slice(0, 10) };
 }
 
-/** Chuyển sheet đầu tiên của file A01/QTDCS thành số liệu đã kiểm tra cân đối. */
 export function parseBalanceSheetRows(rows) {
   if (!Array.isArray(rows) || rows.length < 20) throw new Error('File bảng cân đối không có đủ dữ liệu.');
   const period = periodFromRows(rows);
@@ -41,8 +38,7 @@ export function parseBalanceSheetRows(rows) {
       ![...accounts.keys()].some((code) => /^[45678]/.test(code))) {
     throw new Error('File không có đủ tài khoản tài sản và nguồn vốn để kiểm tra cân đối.');
   }
-  // Nếu tài khoản cha không xuất hiện, cộng các tài khoản con gần nhất đang có.
-  // Tài khoản không phát sinh trong kỳ được coi là 0, không phải lỗi thiếu cột.
+
   const account = (code) => {
     if (accounts.has(code)) return accounts.get(code);
     const children = [...accounts.keys()].filter((child) => child.startsWith(code) && child.length > code.length);
@@ -63,7 +59,7 @@ export function parseBalanceSheetRows(rows) {
       const value = -debit(code);
       return value === 0 ? 0 : value;
     };
-    // Chọn tài khoản chi tiết nhất tới cấp yêu cầu; không cộng lại dòng cha.
+
     const breakdown = (prefixes, level, balance, total, excluded = []) => {
       const candidates = new Set([...accounts.keys()]
         .map((code) => code.split('.')[0])
@@ -153,7 +149,7 @@ export function parseBalanceSheetRows(rows) {
     };
     expandDetail(accountDetails.otherLiabilities, '484', ['4841', '4842']);
     const accountCodes = [...accounts.keys()];
-    // Một số mẫu A01 dùng 469.01 cho lợi tức vốn góp; xử lý như nhánh 461.
+
     for (const parentCode of ['461', '469']) {
       const children = accountCodes.filter((code) => code.startsWith(parentCode) && code.length > parentCode.length &&
         !accountCodes.some((child) => child.length > code.length && child.startsWith(code))).sort();

@@ -17,7 +17,7 @@ const COLLATERAL_NAMES = Object.freeze({
   '04': 'Xe ô tô chính chủ',
   '06': 'Sổ tiết kiệm',
 });
-// Chỉ tồn tại trong phiên trang hiện tại. Mở ứng dụng mới sẽ chọn tháng mới nhất.
+
 let selectedDashboardMonth = null;
 export function resetSelection() { selectedDashboardMonth = null; }
 
@@ -26,7 +26,6 @@ function collateralDescription(contract) {
   return name ? `${name}: ${formatVND(contract.collateralValue)}` : 'Không có tài sản bảo đảm';
 }
 
-/** "2026-08" -> "Th08/26" — nhãn gọn cho trục ngang biểu đồ theo tháng. */
 function monthLabel(yearMonth) {
   const [y, m] = String(yearMonth).split('-');
   return `Th${m}/${y.slice(2)}`;
@@ -34,7 +33,7 @@ function monthLabel(yearMonth) {
 function formatPercent(n) {
   return `${n.toFixed(1).replace('.', ',')}%`;
 }
-/** Nhãn tháng (dạng chữ thường, không kèm thẻ HTML) kèm ghi chú "đang cập nhật" cho tháng sống — dùng thống nhất ở mọi chỗ hiện tên tháng ngoài bảng "Xem chi tiết" (nơi cần tô màu nhạt riêng cho ghi chú, xem monthDetailTableHtml/openMonthlyDetailModal). */
+
 function monthLabelWithNote(m) {
   return m.live ? `${m.label} (đang cập nhật)` : m.label;
 }
@@ -43,14 +42,12 @@ export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Tổng quan quản trị' });
 }
 
-/** Vai trò của phiên admin đang đăng nhập — gọi lại MỖI LẦN cần (rẻ, không gọi mạng), tránh phải truyền isStaff/isSuper xuyên suốt nhiều lớp hàm. */
 function currentRoles() {
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
   return { isStaff: admin.role === 'staff', isSuper: S.isSuperAdmin(session.id) };
 }
 
-/** Hợp đồng ĐÚNG phạm vi được phép xem của phiên đang đăng nhập — super = toàn quỹ, staff = chỉ khách trong Thôn/Xóm được gán (khớp đúng cách "Tổng dư nợ"/4 ô thống kê chính đang lọc, dùng lại cho cả "Dư nợ theo nhóm nợ" + Dự phòng bên dưới để 2 nơi luôn đối chiếu khớp nhau). RLS ở Supabase đã tự chặn KHÔNG CHO staff tải về hợp đồng ngoài phạm vi ngay từ đầu — filter này chỉ để khớp đúng với cách "Tổng dư nợ" đang tính (qua listCustomers), không phải lớp bảo mật (lớp bảo mật thật là RLS phía server). */
 function visibleContracts() {
   const { isStaff } = currentRoles();
   if (!isStaff) return S.getState().contracts;
@@ -60,27 +57,18 @@ function visibleContracts() {
   return S.getState().contracts.filter((c) => customerIds.has(c.customerId));
 }
 
-/**
- * Số liệu "sống" của THÁNG HIỆN TẠI (chưa chốt) — tính trực tiếp từ hợp đồng đang có, đúng phạm vi của phiên đăng nhập.
- * Tháng ĐÃ CHỐT không dùng hàm này mà dùng bản chốt đã lưu, xem snapshotOverview().
- */
 function computeLiveOverview() {
   const { isStaff } = currentRoles();
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
   const customers = S.listCustomers({ adminId: isStaff ? admin.id : undefined });
   const contracts = visibleContracts();
-  // "Tổng khách hàng" chỉ tính khách còn dư nợ > 0 — khớp đúng với số khách
-  // hàng thực sự hiện ra ở trang Khách hàng & Hợp đồng (trang đó cũng ẩn
-  // khách hết dư nợ), để 2 nơi luôn đồng bộ với nhau.
+
   const balanceByCustomer = new Map();
   for (const ct of contracts) balanceByCustomer.set(ct.customerId, (balanceByCustomer.get(ct.customerId) || 0) + (ct.balance || 0));
   const activeCustomerCount = customers.filter((c) => (balanceByCustomer.get(c.id) || 0) > 0).length;
   const totalOutstanding = contracts.filter((c) => S.effectiveContractStatus(c) !== 'da_tat_toan').reduce((sum, c) => sum + c.balance, 0);
-  // Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
-  // có) — xem S.contractAttentionInfo() — để hợp đồng có 1 kỳ giữa chừng
-  // (chưa tới ngày đáo hạn cuối) đến/quá hạn cũng được tính vào đây, y hệt
-  // trang "Khách hàng & Hợp đồng". Tính 1 lần, dùng lại cho cả ô lẫn popup.
+
   const attention = contracts
     .filter((c) => Number(c.balance) > 0)
     .map((c) => ({ c, info: S.contractAttentionInfo(c) }));
@@ -88,15 +76,12 @@ function computeLiveOverview() {
     .filter((x) => x.info.level === 'qua_han')
     .sort((a, b) => a.info.days - b.info.days)
     .map((x) => x.c);
-  // Ô thống kê + tổng tiền "Gần đến hạn" GIỮ NGUYÊN đúng trong NEAR_DUE_DAYS
-  // (15 ngày chính thức) — không phải ngưỡng RỘNG 45 ngày.
+
   const nearDue = attention.filter((x) => x.info.level === 'gan_den_han' && x.info.days <= S.NEAR_DUE_DAYS).map((x) => x.c);
-  // Tổng cộng CỦA NHÓM = cộng ĐÚNG số tiền của KỲ đến hạn (info.dueAmount)
-  // khi cảnh báo đến từ 1 kỳ cụ thể, không phải toàn bộ dư nợ hợp đồng.
+
   const overdueTotal = attention.filter((x) => x.info.level === 'qua_han').reduce((sum, x) => sum + x.info.dueAmount, 0);
   const nearDueTotal = attention.filter((x) => x.info.level === 'gan_den_han' && x.info.days <= S.NEAR_DUE_DAYS).reduce((sum, x) => sum + x.info.dueAmount, 0);
-  // Danh sách trong popup "Gần đến hạn" liệt kê TIẾP cả những hợp đồng xa hơn
-  // (tới S.WIDE_NEAR_DUE_DAYS = 45 ngày), sắp xếp gần nhất trước.
+
   const upcoming = attention
     .filter((x) => x.info.level === 'gan_den_han')
     .sort((a, b) => a.info.days - b.info.days)
@@ -107,24 +92,16 @@ function computeLiveOverview() {
   };
 }
 
-/**
- * Số liệu của 1 THÁNG ĐÃ CHỐT, tính từ chi tiết từng hợp đồng đã lưu lúc chốt (contractsDetail).
- * - Khách hàng: bản chốt không lưu mã khách nên đếm theo (tên + địa bàn) — đủ chính xác trừ khi 2 người trùng cả tên lẫn xóm.
- * - Quá hạn: hợp đồng có daysOverdue > 0 tại ngày chốt; "tiền" là dư nợ của các hợp đồng đó.
- * - Gần đến hạn: bản chốt KHÔNG lưu ngày đến hạn nên không tính lại được -> báo "chưa lưu", không đoán.
- * `hasDetail` = false khi tháng đó không có chi tiết hợp đồng (chốt trước khi có tính năng lưu chi tiết).
- */
 function snapshotOverview(m) {
   const rows = Array.isArray(m.contractsDetail) ? m.contractsDetail.filter((d) => Number(d.balance) > 0) : [];
   if (!rows.length && Number(m.balance) > 0) return { hasDetail: false, hasAttention: false };
-  // Bản chốt MỚI lưu sẵn mức cần chú ý (attention/attentionDays/attentionAmount) tính ĐÚNG như tháng sống;
-  // bản chốt cũ chỉ có số ngày quá hạn nên "quá hạn" vẫn suy ra được còn "gần đến hạn" thì không.
+
   const hasAttention = rows.length > 0 && rows.every((d) => Object.prototype.hasOwnProperty.call(d, 'attention'));
   const amountOf = (d) => (hasAttention ? Number(d.attentionAmount) || 0 : Number(d.balance) || 0);
   const overdueRows = hasAttention
     ? rows.filter((d) => d.attention === 'qua_han').sort((a, b) => a.attentionDays - b.attentionDays)
     : rows.filter((d) => Number(d.daysOverdue) > 0).sort((a, b) => a.daysOverdue - b.daysOverdue);
-  // Y HỆT tháng sống: ô thống kê chỉ đếm trong NEAR_DUE_DAYS (15 ngày), danh sách bấm vào xem tiếp tới 45 ngày.
+
   const upcomingRows = hasAttention ? rows.filter((d) => d.attention === 'gan_den_han').sort((a, b) => a.attentionDays - b.attentionDays) : [];
   const nearRows = upcomingRows.filter((d) => d.attentionDays <= S.NEAR_DUE_DAYS);
   return {
@@ -141,13 +118,11 @@ function snapshotOverview(m) {
   };
 }
 
-/** Tháng dương lịch hiện tại — dù đã có bản chốt hay chưa, 2 khối đầu trang (Tổng dư nợ, Cần chú ý) vẫn tính SỐNG cho tháng này như trước. */
 function isCurrentMonth(m) {
   const now = new Date();
   return !!m.live || m.yearMonth === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/** Phần "Tổng dư nợ" ở đầu trang — ĐỔI THEO tháng đang chọn (kỳ báo cáo): số dư, so với tháng trước, lãi phải thu, đường xu hướng, khách hàng, hợp đồng, nợ xấu. */
 function heroInnerHtml(m, ctx) {
   const { months, prevMonthOf } = ctx.dashboardData;
   const useLive = isCurrentMonth(m);
@@ -172,9 +147,8 @@ function heroInnerHtml(m, ctx) {
       </div>`;
 }
 
-/** Tiêu đề trong thẻ "Cần chú ý" — chỉ hiện trên máy tính (điện thoại dùng tiêu đề rời phía trên thẻ). */
 const ATTN_TITLE = '<h3 class="lux-h lux-attn-title"><span>Cần chú ý</span></h3>';
-/** Hai dòng "Cần chú ý" — tháng hiện tại tính sống; tháng đã chốt lấy từ bản chốt (xem snapshotOverview()). */
+
 function attentionInnerHtml(m, ctx) {
   if (isCurrentMonth(m)) {
     const L = ctx.live;
@@ -216,7 +190,6 @@ function attentionInnerHtml(m, ctx) {
       </div>`}`;
 }
 
-/** Gắn click cho 2 dòng "Cần chú ý" — tháng sống mở bảng hợp đồng như cũ; tháng đã chốt mở danh sách đã lưu của tháng đó. */
 function bindAttention(root, m, live) {
   const { isStaff } = currentRoles();
   const useLive = isCurrentMonth(m);
@@ -230,7 +203,6 @@ function bindAttention(root, m, live) {
   });
 }
 
-/** Danh sách "Cần chú ý" ĐÃ CHỐT của 1 tháng (chỉ xem — bản chốt không có hồ sơ để mở tiếp). `kind`: 'qua_han' | 'gan_den_han'. */
 function openSnapshotAttentionModal(m, kind) {
   const snap = snapshotOverview(m);
   const overdue = kind === 'qua_han';
@@ -266,9 +238,7 @@ export function render(contentEl) {
   const admin = S.getAdmin(session.id);
   const customers = S.listCustomers({ adminId: isStaff ? admin.id : undefined });
   const customerIds = new Set(customers.map((c) => c.id));
-  // "Yêu cầu mới nhất" chỉ để nhắc việc CẦN LÀM — yêu cầu đã chuyển "Đã liên
-  // hệ" (xử lý xong) tự ẩn khỏi đây, xem đầy đủ (kể cả đã xử lý) ở trang
-  // "Hỗ trợ" (tab "Tư vấn") qua nút "Xem tất cả".
+
   const requests = S.listRequests({}).filter((r) => (!isStaff || customerIds.has(r.customerId)) && r.status !== 'da_lien_he');
   const dashboardData = buildDebtDashboardData();
   const dashboardMonth = dashboardData.months.find((m) => m.yearMonth === selectedDashboardMonth)
@@ -307,17 +277,8 @@ export function render(contentEl) {
     </div>
   `;
 
-  // Bấm thẳng vào ô "Hợp đồng quá hạn"/"Gần đến hạn" ở trên là ra đúng danh
-  // sách chi tiết của nhóm đó (giống hệt "Xem tất cả" trước đây) — gộp
-  // thông tin số lượng + tổng tiền + danh sách vào chung 1 chỗ cho gọn,
-  // không cần 2 bảng riêng bên dưới nữa.
   bindAttention(contentEl, dashboardMonth, ctx.live);
 
-  // "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng giảm" LUÔN
-  // hiện cho MỌI vai trò (staff lẫn super) — bấm vào 1 cột/nhãn nhóm nợ để
-  // xem danh sách hợp đồng đúng nhóm đó; bấm vào 1 cặp cột tháng ở biểu đồ
-  // "Biến động hàng tháng" để CHUYỂN cả "Dư nợ theo nhóm nợ" lẫn "Tổng hợp
-  // tăng giảm" sang đúng tháng đó (xem selectMonth()) — không tải lại trang.
   bindNhomNoClicks(contentEl);
   bindProvisionDetails(contentEl);
   bindMonthClicks(contentEl);
@@ -328,7 +289,6 @@ export function render(contentEl) {
   contentEl.querySelector('#btn-import-historical')?.addEventListener('click', openImportHistoricalModal);
 }
 
-/** Làm mới dữ liệu nền mà không đổi tháng hay vị trí biểu đồ đang xem. */
 export function refresh(contentEl) {
   const scrollPositions = [...contentEl.querySelectorAll('#trend-chart-slot .trend-scroll')].map((el) => el.scrollLeft);
   render(contentEl);
@@ -337,18 +297,6 @@ export function refresh(contentEl) {
   });
 }
 
-/**
- * Gắn click cho mỗi cột/nhãn "Dư nợ theo nhóm nợ" (data-id = số nhóm, xem
- * nhomNoBarHtml()) — mở danh sách hợp đồng ĐÚNG nhóm đó theo phân loại
- * HIỆN TẠI (LUÔN tính từ dữ liệu hợp đồng sống, KỂ CẢ khi đang xem lại 1
- * tháng đã chốt trong quá khứ — quỹ chỉ lưu TỔNG theo nhóm lúc chốt, không
- * lưu chi tiết từng hợp đồng nên không tra đúng danh sách CỦA đúng tháng đó
- * được; openDebtGroupModal() tự ghi rõ đây là dữ liệu hiện tại khi mở từ 1
- * tháng không phải tháng sống, tránh hiểu nhầm là khớp đúng số liệu tháng
- * đó). Đọc tháng đang xem qua `data-ym` trên #nhom-no-slot (do
- * debtDashboardHtml()/selectMonth() tự ghi) — gọi lại mỗi lần #nhom-no-slot
- * được vẽ lại (render() đầu VÀ mỗi lần selectMonth() đổi tháng).
- */
 function bindNhomNoClicks(root) {
   const slot = root.querySelector('#nhom-no-slot');
   if (!slot) return;
@@ -361,12 +309,11 @@ function bindNhomNoClicks(root) {
 }
 
 const GROUP_COLORS = { 1: '#0c4a3f', 2: '#b08d3c', 3: '#d49a8a', 4: '#a8402f', 5: '#5e1717' };
-// Tên gọi phân loại nợ theo Thông tư 02/2013 — hiện cạnh số nhóm ở "Dư nợ theo nhóm nợ".
+
 const GROUP_NAMES = { 1: 'Đủ tiêu chuẩn', 2: 'Cần chú ý', 3: 'Dưới tiêu chuẩn', 4: 'Nghi ngờ', 5: 'Có khả năng mất vốn' };
 
-/** Số tiền rút gọn cho số lớn: 48,62 tỷ đ / 236,48 triệu đ / 429 triệu đ (tròn thì bỏ ",00") / 950.000 đ. */
 function compactVnd(n) { return compactParts(n); }
-/** Đường xu hướng nhỏ (tối đa 6 tháng gần nhất) cho thẻ Tổng dư nợ. */
+
 function sparklineSvg(values) {
   const w = 340, h = 52;
   const min = Math.min(...values), max = Math.max(...values);
@@ -414,7 +361,6 @@ const COMPOSITION_UNKNOWN = { label: 'Khác / chưa xác định', color: '#cbbf
 let activeCompositionTab = 'purpose';
 let activeCompositionMetric = 'balance';
 
-/** Excel đôi khi chuyển 01 thành số 1; mã kỳ hạn trong file có dạng NH01/TH01. */
 function compositionCode(value, tab) {
   const code = String(value ?? '').trim().toUpperCase();
   if (tab === 'term') {
@@ -436,15 +382,12 @@ function compositionRows(m) {
     .filter((row) => Number(row.balance) > 0);
 }
 
-/** Dùng cùng quy tắc phân loại cho biểu đồ và danh sách khi bấm vào từng mục. */
 function compositionBucket(row, tab) {
   const code = compositionCode(row[COMPOSITION_OPTIONS[tab].field], tab);
   if (tab === 'collateral' && !COMPOSITION_OPTIONS.collateral.categories.some((c) => c.code === code)) return 'KCDB';
   return COMPOSITION_OPTIONS[tab].categories.some((c) => c.code === code) ? code : 'unknown';
 }
 
-/** Các bản chốt cũ có thể chưa lưu mã phân loại; không suy diễn loại TSBĐ
- * cho phần dư nợ thiếu cả chi tiết hợp đồng. */
 function compositionData(m, tab) {
   const option = COMPOSITION_OPTIONS[tab];
   const rows = compositionRows(m);
@@ -462,7 +405,7 @@ function compositionData(m, tab) {
     item.value += balance;
     item.count += 1;
   }
-  // Một số bản lưu cũ chỉ có số tổng, chưa có chi tiết từng hợp đồng.
+
   const total = Math.max(0, Number(m.balance) || 0, detailTotal);
   const missingBalance = Math.max(0, total - detailTotal);
   unknownBucket.value += missingBalance;
@@ -591,13 +534,12 @@ function bindCompositionTabs(root) {
   });
 }
 
-/** Biểu đồ cột "Dư nợ theo nhóm nợ" của ĐÚNG 1 tháng (m — có thể là tháng đang sống hoặc tháng đã chốt trong quá khứ, xem selectMonth()) — mỗi cột bấm được để mở danh sách hợp đồng, xem bindNhomNoClicks(). */
 function nhomNoBarHtml(m) {
   const gb = m.groupBalances || {};
   const groups = [1, 2, 3, 4, 5];
   const total = groups.reduce((sum, g) => sum + (gb[g] || 0), 0);
   const share = (g) => (total > 0 ? ((gb[g] || 0) / total) * 100 : 0);
-  // Mỗi đoạn của thanh tỷ lệ và mỗi dòng bên dưới đều có data-id = số nhóm — bấm vào mở danh sách hợp đồng nhóm đó (bindNhomNoClicks).
+
   const segments = groups.filter((g) => (gb[g] || 0) > 0).map((g) => `<button type="button" class="lux-seg" data-id="${g}" aria-label="Nhóm ${g}: ${formatVND(gb[g])}" style="flex:${Math.max(share(g), 1.5).toFixed(2)};background:${GROUP_COLORS[g]}"></button>`).join('');
   const rows = groups.map((g) => {
     const money = compactVnd(gb[g] || 0);
@@ -611,22 +553,13 @@ function nhomNoBarHtml(m) {
     ${total > 0 ? `<div class="lux-stack">${segments}</div>` : ''}
     <div class="lux-legs">${rows}</div>`;
 }
-/**
- * Dự phòng phải trích của ĐÚNG 1 tháng (m, mục 10.52 docs) — tháng ĐANG
- * SỐNG luôn tính lại NGAY BÂY GIỜ (`m.live`, tự cập nhật ngay khi dư nợ/
- * TSBĐ đổi — VD vừa tải file Excel mới, xem selectMonth()/render()); tháng
- * ĐÃ CHỐT dùng ĐÚNG số đã lưu lúc chốt (`captureMonthlySnapshot()` trong
- * send-due-reminders/index.ts) — không tính lại theo TSBĐ/dư nợ HIỆN TẠI
- * nữa, giữ đúng lịch sử của tháng đó. `null` (không phải 0) nếu tháng đó
- * chốt TRƯỚC khi có tính năng lưu Dự phòng, hoặc nạp qua "Nạp dữ liệu cũ"
- * (mẫu Excel đó không có cột TSBĐ nên không tính được).
- */
+
 function provisionForMonth(m) {
   if (m.live) return S.provisionSummary(visibleContracts(), new Date());
   return S.provisionFromSnapshot({ ...m, totalBalance: m.balance })
     || { generalProvision: null, specificProvision: null };
 }
-/** 2 dòng "Dự phòng chung/cụ thể phải trích" — chỉ chữ, không bỏ trong khung. `null` (xem provisionForMonth()) hiện "—" kèm ghi chú thay vì 0đ dễ hiểu nhầm là ĐÃ tính ra đúng 0. */
+
 function provisionRowsHtml(provision) {
   const val = (n) => (n != null ? formatVND(n) : '<span class="text-muted" style="font-weight:400;font-size:12px">— chưa có dữ liệu</span>');
   return `
@@ -714,48 +647,7 @@ function bindProvisionDetails(root) {
     if (month) openSpecificProvisionModal(month);
   });
 }
-/**
- * Dashboard "Dư nợ theo nhóm nợ" + "Biến động hàng tháng" + "Tổng hợp tăng
- * giảm" — LUÔN hiện cho MỌI quản trị viên (staff lẫn super), dưới 4 ô thống
- * kê chính. "Dự phòng chung/cụ thể phải trích" ĐỔI theo tháng đang xem như
- * mọi mục khác (xem provisionForMonth() ở trên) — tháng sống tính SỐNG, tháng
- * đã chốt dùng đúng số đã lưu lúc chốt.
- *
- * "Lãi phải thu" CHỈ tính Nhóm 1 (từ Nhóm 2 trở lên coi như khó thu lãi
- * đúng hạn, không tính vào lãi phải thu nữa). "Nợ xấu" CHÍNH THỨC = Nhóm
- * 3+4+5 (không tính Nhóm 2, dù Nhóm 2 đã là "nợ cần chú ý").
- *
- * MỘT trạng thái "tháng đang xem" DÙNG CHUNG cho cả "Dư nợ theo nhóm nợ" lẫn
- * "Tổng hợp tăng giảm" (mặc định = tháng mới nhất/đang sống) — bấm vào 1 cặp
- * cột tháng bất kỳ ở biểu đồ "Biến động hàng tháng" (data-month, xem
- * js/components/charts.js) để CHUYỂN cả 2 mục đó sang đúng tháng vừa bấm,
- * xem trực quan lịch sử — riêng bản THÂN biểu đồ "Biến động hàng tháng" LUÔN
- * vẽ TOÀN BỘ lịch sử, chỉ tô khung mờ + đậm nhãn tháng đang chọn, không thu
- * gọn lại — xem selectMonth()/bindMonthClicks() bên dưới.
- *
- * Biểu đồ "Biến động hàng tháng" (monthlyComboChartSvg — xem
- * js/components/charts.js) mỗi tháng vẽ 1 cột Dư nợ, đơn vị TỶ ĐỒNG ghi 1
- * lần ở đầu, LỒNG sẵn đoạn màu cam đè lên ở đáy thể hiện Nợ xấu (số tiền +
- * % ghi ngay trong cột) — co theo ĐÚNG tỷ lệ % của cột Dư nợ tháng đó.
- * KHÔNG còn cột Lãi phải thu riêng ở biểu đồ này (đã có đủ, kèm %, ở bảng
- * "Tổng hợp tăng giảm"/modal "Xem chi tiết" bên dưới). Đọc dữ liệu từ bảng
- * monthly_snapshots (RLS cho MỌI admin SELECT — xem mục
- * 10.48 docs/supabase-migration.md) — bảng này KHÔNG có sẵn số liệu quá khứ
- * (mỗi lần nhập Excel mới đè lên số liệu cũ, không lưu lịch sử) nên lịch sử
- * chỉ bắt đầu từ lúc tính năng này ra đời. Số liệu tự chốt vào ĐÚNG ngày
- * cuối cùng mỗi tháng (xem send-due-reminders/index.ts); tháng hiện tại
- * (chưa chốt) tự tính "sống" theo dữ liệu hợp đồng đang có, không cần thao
- * tác gì — riêng tháng SỐNG này tính trực tiếp từ `contracts` (RLS đã tự
- * giới hạn staff về đúng phạm vi Thôn/Xóm được gán) nên CHỈ tháng sống mới
- * có thể lệch phạm vi giữa staff/super — mọi tháng ĐÃ CHỐT trong quá khứ đều
- * là số TOÀN QUỸ như nhau cho mọi vai trò (đã lưu sẵn dạng tổng hợp lúc chốt
- * bằng service_role, không qua RLS).
- *
- * Cột "So sánh năm" ở bảng "Tổng hợp tăng giảm" so với CUỐI KỲ 31/12 năm
- * liền trước (đầu năm), KHÔNG phải cùng tháng năm trước — xem yearStartOf()
- * trong buildDebtDashboardData().
- */
-/** Tính lại toàn bộ dữ liệu tháng (kể cả tháng hiện tại đang "sống", chưa chốt) — gọi lại MỖI LẦN cần vẽ (kể cả khi bấm chọn tháng khác), rẻ vì chỉ tính trên dữ liệu đã có sẵn trong bộ nhớ, không gọi mạng. */
+
 function buildDebtDashboardData() {
   const now = new Date();
   const contracts = S.getState().contracts;
@@ -763,9 +655,6 @@ function buildDebtDashboardData() {
   const snapshots = S.listMonthlySnapshots();
   const lastSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
 
-  // interestRatio (Lãi phải thu / Dư nợ) KHÔNG có sẵn cột riêng trong
-  // monthly_snapshots (chỉ lưu bad_debt_ratio) — tự tính lại từ 2 số đã có,
-  // dùng chung cho cả tháng đã chốt lẫn tháng sống.
   const interestRatio = (interest, balance) => (balance > 0 ? (interest / balance) * 100 : 0);
   const months = snapshots.map((s) => ({
     yearMonth: s.yearMonth, label: monthLabel(s.yearMonth),
@@ -783,26 +672,20 @@ function buildDebtDashboardData() {
       interestRatio: interestRatio(summary.interestReceivable, summary.totalBalance),
       groupBalances: summary.groupBalances,
       live: true,
-      // Tháng sống LUÔN tính dự phòng SỐNG (xem provisionForMonth()) — 2 field
-      // này chỉ dùng cho tháng ĐÃ CHỐT, giữ null ở đây cho rõ không dùng tới.
+
       generalProvision: null, specificProvision: null,
     });
   }
-  months.sort((a, b) => a.yearMonth.localeCompare(b.yearMonth)); // luôn xếp cũ -> mới (biểu đồ, nút tăng/giảm kỳ báo cáo đều dựa vào thứ tự này)
+  months.sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
   const byYearMonth = new Map(months.map((m) => [m.yearMonth, m]));
-  /** Tháng liền trước (so sánh hàng tháng) — tra trực tiếp theo year_month, không giả định mảng liền mạch (có thể thiếu tháng nếu app mới dùng tính năng giữa chừng). */
+
   function prevMonthOf(ym) {
     const [y, m] = ym.split('-').map(Number);
     const py = m === 1 ? y - 1 : y;
     const pm = m === 1 ? 12 : m - 1;
     return byYearMonth.get(`${py}-${String(pm).padStart(2, '0')}`) || null;
   }
-  /**
-   * "So sánh năm" = so với CUỐI KỲ 31/12 năm liền trước (đầu năm nay) đến
-   * ĐÚNG tháng đang xem — không phải so với cùng tháng năm trước. Tính năng
-   * còn quá mới, CHƯA có dữ liệu tới tận 31/12 năm trước — lúc đó tạm lấy
-   * THÁNG SỚM NHẤT đang có làm mốc, để luôn có gì đó so sánh thay vì ẩn hẳn.
-   */
+
   function yearStartOf(ym) {
     const [y] = ym.split('-').map(Number);
     const exact = byYearMonth.get(`${y - 1}-12`);
@@ -813,24 +696,15 @@ function buildDebtDashboardData() {
   return { months, prevMonthOf, yearStartOf };
 }
 
-/**
- * Bảng tổng hợp tăng/giảm — mỗi dòng 1 chỉ tiêu (Dư nợ/Lãi phải thu/Nợ xấu)
- * của ĐÚNG 1 tháng (m): số dư ĐÚNG tháng đó, kèm % so với tháng trước VÀ "So
- * sánh năm" (so với 31/12 năm liền trước — chưa đủ lịch sử tới mốc đó thì
- * yearStartOf() tự lấy tạm THÁNG SỚM NHẤT hiện có, xem giải thích ở đó — cột
- * này chỉ hiện "—" khi thực sự chưa có tháng nào khác để so). Dòng Nợ xấu
- * LUÔN tô màu đỏ (không đổi theo tỷ lệ nghiêm trọng) — đây là nhãn NHẬN DIỆN
- * chỉ tiêu, không phải màu cảnh báo mức độ.
- */
 function monthDetailTableHtml(m, prevMonthOf, yearStartOf, months = []) {
-  // Máy tính: 3 thẻ chỉ tiêu; điện thoại: giữ bảng gọn như cũ (CSS ẩn/hiện theo cỡ màn hình).
+
   return `<div class="lux-diff-desktop">${monthDetailCardsHtml(m, prevMonthOf, yearStartOf, months)}</div><div class="lux-diff-mobile">${monthDetailMobileHtml(m, prevMonthOf, yearStartOf)}</div>`;
 }
 
 function monthDetailCardsHtml(m, prevMonthOf, yearStartOf, months = []) {
   const prev = prevMonthOf(m.yearMonth);
   const yearStart = yearStartOf(m.yearMonth);
-  // Đường xu hướng: tối đa 6 tháng, kết thúc ở tháng đang xem.
+
   const at = months.findIndex((x) => x.yearMonth === m.yearMonth);
   const trail = at >= 0 ? months.slice(Math.max(0, at - 5), at + 1) : [m];
   const items = [
@@ -853,7 +727,6 @@ function monthDetailCardsHtml(m, prevMonthOf, yearStartOf, months = []) {
   }).join('')}</div>`;
 }
 
-/** Bảng gọn cho điện thoại (dạng cũ): mỗi dòng 1 chỉ tiêu, cột số dư, % so tháng trước và so sánh năm. */
 function monthDetailMobileHtml(m, prevMonthOf, yearStartOf) {
   const prev = prevMonthOf(m.yearMonth);
   const yearStart = yearStartOf(m.yearMonth);
@@ -862,7 +735,7 @@ function monthDetailMobileHtml(m, prevMonthOf, yearStartOf) {
     { label: 'Nợ xấu', color: '#a8402f', value: m.badDebt, extra: formatPercent(m.badDebtRatio), prevV: prev?.badDebt ?? null, yearStartV: yearStart ? yearStart.badDebt : null, mode: 'worse' },
     { label: 'Lãi phải thu', color: '#8a6a22', value: m.interest, extra: formatPercent(m.interestRatio), prevV: prev?.interest ?? null, yearStartV: yearStart ? yearStart.interest : null, mode: 'better' },
   ];
-  // Số tiền luôn nằm gọn trên 1 dòng (tỷ lệ % xuống dòng riêng bên dưới); kiểu dáng ở .ld-* trong css/styles.css.
+
   const bodyRows = rows.map((r) => `
     <tr>
       <td class="ld-name" style="color:${r.color}">${r.label}</td>
@@ -884,7 +757,6 @@ function monthDetailMobileHtml(m, prevMonthOf, yearStartOf) {
     </div>`;
 }
 
-/** Đường xu hướng nhỏ của 1 chỉ tiêu qua các tháng gần nhất; chấm tròn ở tháng đang xem, kèm nhãn tháng đầu/cuối. */
 function kpiSparkHtml(trail, key) {
   const pts = trail.map((t) => Number(t[key]) || 0);
   if (pts.length < 2) return '<div class="lux-kpi-spark is-empty"></div>';
@@ -909,7 +781,6 @@ function kpiSparkHtml(trail, key) {
   </div>`;
 }
 
-/** Một ô so sánh (so tháng trước / so đầu năm): nhãn, % thay đổi dạng thẻ màu (xanh = tốt, đỏ = xấu) và số tiền tăng/giảm. */
 function kpiCompareHtml(label, value, base, mode) {
   if (base === null || base === undefined || Number.isNaN(base)) {
     return `<div class="lux-cmp"><span class="lux-cmp-l">${label}</span><span class="lux-cmp-na">Chưa có số liệu</span></div>`;
@@ -926,10 +797,6 @@ function kpiCompareHtml(label, value, base, mode) {
   return `<div class="lux-cmp"><span class="lux-cmp-l">${label}</span><span class="lux-pill ${tone}">${arrow} ${p === null ? '—' : `${Math.abs(p).toFixed(1).replace('.', ',')}%`}</span><span class="lux-cmp-amt">${amount}</span></div>`;
 }
 
-/**
- * Modal "Xem chi tiết" của Tổng hợp tăng giảm: xem lại TOÀN BỘ các tháng của từng chỉ tiêu. Chọn chỉ tiêu bằng 3 tab
- * (Dư nợ / Nợ xấu / Lãi phải thu), bên dưới là bảng tháng (mới nhất lên đầu) gồm số dư, so tháng trước và so đầu năm — hiện sẵn thẻ % xanh/đỏ và số tiền tăng/giảm, không phải bấm mở rộng từng dòng.
- */
 const DETAIL_METRICS = [
   { key: 'balance', label: 'Dư nợ', tone: 'green', mode: 'better' },
   { key: 'badDebt', label: 'Nợ xấu', tone: 'red', mode: 'worse', ratioKey: 'badDebtRatio' },
@@ -978,18 +845,8 @@ function openMonthlyDetailModal() {
   });
 }
 
-/**
- * Nút chọn tháng để xem lại lịch sử, đặt ngay dưới bốn ô tổng quan —
- * chọn 1 tháng bất kỳ (VD 07/2026) sẽ gọi selectMonth() y hệt như bấm vào
- * cột biểu đồ "Biến động hàng tháng". Danh sách xếp mới nhất trước cho dễ
- * tìm. Kèm nút "Nạp dữ liệu cũ" (CHỈ super, xem openImportHistoricalModal())
- * — nạp file Excel của 1 tháng ĐÃ QUA để có số liệu xem lại lịch sử, TÁCH
- * RIÊNG hẳn khỏi nút "Nhập dữ liệu từ Excel" ở trang Khách hàng (nút đó ghi
- * đè danh sách hợp đồng ĐANG SỐNG — nút này chỉ tính tổng rồi lưu 1 dòng
- * lịch sử, không đụng gì tới hợp đồng thật).
- */
 function monthSelectorHtml(months, selectedYm, isSuper) {
-  const ascending = months; // cũ -> mới; danh sách chọn bên dưới xếp ngược (mới nhất trên cùng)
+  const ascending = months;
   const options = months
     .slice()
     .reverse()
@@ -1042,18 +899,17 @@ function debtDashboardHtml({ months, prevMonthOf, yearStartOf }, initial) {
   `;
 }
 
-/** Gắn click cho mỗi cặp cột tháng ở biểu đồ "Biến động hàng tháng" (data-month = year_month) — bấm vào để CHUYỂN "Dư nợ theo nhóm nợ" + "Tổng hợp tăng giảm" sang đúng tháng đó, xem selectMonth(). */
 function bindMonthClicks(root) {
   root.querySelectorAll('[data-month]').forEach((el) => {
     el.addEventListener('click', () => selectMonth(root, el.dataset.month));
   });
 }
-/** Gắn sự kiện đổi cho nút chọn tháng dưới bốn ô tổng quan; chọn tháng cũng cập nhật các biểu đồ và chi tiết. */
+
 function bindMonthSelector(root) {
   const sel = root.querySelector('#month-select');
   if (!sel) return;
   sel.addEventListener('change', () => selectMonth(root, sel.value));
-  // Nút tăng/giảm cạnh ô Kỳ báo cáo (máy tính): chuyển sang tháng sau/trước.
+
   root.querySelectorAll('.period-step-btn').forEach((button) => button.addEventListener('click', () => {
     const { months } = buildDebtDashboardData();
     const target = months[months.findIndex((m) => m.yearMonth === sel.value) + Number(button.dataset.step)];
@@ -1061,7 +917,6 @@ function bindMonthSelector(root) {
   }));
 }
 
-/** Dò dòng "Đến ngày DD/MM/YYYY" (mẫu "Sao kê hợp đồng tín dụng" luôn ghi ở vài dòng đầu file, TRƯỚC dòng tiêu đề cột "STT") trong dữ liệu THÔ đọc từ Excel (chưa qua remapReportTemplateRows — hàm đó đã bỏ các dòng này) — đây là ngày quyết định số liệu vừa nạp thuộc về THÁNG NÀO. null nếu không tìm thấy. */
 function extractReportAsOfDate(rawRows) {
   for (const row of rawRows.slice(0, 10)) {
     for (const cell of row || []) {
@@ -1072,17 +927,8 @@ function extractReportAsOfDate(rawRows) {
   return null;
 }
 
-/**
- * "Nạp dữ liệu cũ" (mục 10.51 docs) — TÁCH RIÊNG hẳn nút "Nhập dữ liệu từ
- * Excel" ở trang Khách hàng (nút đó ghi đè danh sách hợp đồng ĐANG SỐNG).
- * Dùng mẫu sao kê có dòng "Đến ngày" hoặc file số 1 kèm ngày chốt do người
- * dùng chọn — đọc + tính tổng NGAY TRONG TRÌNH DUYỆT (KHÔNG đụng gì tới bảng
- * hợp đồng thật), hiện bản xem trước để xác nhận, rồi mới lưu 1 dòng lịch sử
- * cho đúng tháng của ngày "Đến ngày" đó (xem S.previewHistoricalSnapshot()/
- * S.saveHistoricalSnapshot() trong state.js).
- */
 function openImportHistoricalModal() {
-  let preview = null; // { yearMonth, snapshotDate, contractsCount, summary, parseErrors, willOverwrite }
+  let preview = null;
   openModal({
     title: 'Nạp dữ liệu cũ',
     bodyHtml: `
@@ -1164,11 +1010,11 @@ function openImportHistoricalModal() {
     },
   });
 }
-/** Tự cuộn khối "Biến động hàng tháng" (nếu có cuộn ngang — quá 7 tháng, xem monthlyComboChartSvg()) về SÁT MÉP PHẢI ngay sau khi vẽ — LUÔN thấy đúng tháng MỚI NHẤT trước tiên, không phải kéo từ tháng đầu tiên bên trái mới tới được tháng mới nhất. CHỈ gọi lúc mới vào trang (render() đầu) — bấm chọn 1 tháng khác (selectMonth(), kể cả bấm thẳng vào 1 cột trong biểu đồ) KHÔNG được tự kéo lại về mép phải, giữ nguyên đúng vị trí đang cuộn để không giật ngược ngay dưới ngón tay vừa bấm. */
+
 function scrollTrendChartToEnd(root) {
   root.querySelectorAll('#trend-chart-slot .trend-scroll').forEach((el) => { el.scrollLeft = el.scrollWidth; });
 }
-/** Chuyển "Dư nợ theo nhóm nợ" + "Dự phòng" + "Tổng hợp tăng giảm" sang đúng tháng `ym` vừa bấm — vẽ lại TOÀN BỘ biểu đồ "Biến động hàng tháng" để tô lại khung mờ + đậm nhãn đúng tháng đang chọn (chart này vẫn luôn vẽ đủ lịch sử, không thu gọn) — GIỮ NGUYÊN vị trí đang cuộn ngang (nếu có), không tự kéo về mép nào cả, xem scrollTrendChartToEnd(). */
+
 function selectMonth(root, ym) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === ym);
@@ -1181,14 +1027,12 @@ function selectMonth(root, ym) {
   root.querySelector('#composition-slot').innerHTML = compositionPanelHtml(m);
   root.querySelector('#month-detail-slot').innerHTML = monthDetailTableHtml(m, prevMonthOf, yearStartOf, months);
   root.querySelector('#month-detail-label').textContent = monthLabelWithNote(m);
-  // Tổng dư nợ, khách hàng, hợp đồng, nợ xấu và "Cần chú ý" cũng đổi theo tháng đang chọn.
+
   const ctx = { live: computeLiveOverview(), dashboardData: { months, prevMonthOf, yearStartOf } };
   root.querySelector('#hero-slot').innerHTML = heroInnerHtml(m, ctx);
   root.querySelector('#attention-slot').innerHTML = attentionInnerHtml(m, ctx);
   bindAttention(root, m, ctx.live);
-  // Đổi trend-chart-slot.innerHTML sẽ làm mất luôn vị trí cuộn ngang cũ (nếu
-  // khối trước đó có cuộn) — LƯU LẠI trước, đặt lại ĐÚNG vị trí đó sau khi
-  // vẽ xong, thay vì gọi scrollTrendChartToEnd() (chỉ dùng lúc mới vào trang).
+
   const oldScrollLeft = [...root.querySelectorAll('#trend-chart-slot .trend-scroll')].map((el) => el.scrollLeft);
   root.querySelector('#trend-chart-slot').innerHTML = monthlyTrendLineChartSvg({ months, selectedYm: ym });
   root.querySelectorAll('#trend-chart-slot .trend-scroll').forEach((el, i) => { el.scrollLeft = oldScrollLeft[i] || 0; });
@@ -1200,17 +1044,11 @@ function selectMonth(root, ym) {
   bindMonthClicks(root);
 }
 
-/** % thay đổi so với 1 giá trị trước đó — null nếu chưa có gì để so (chưa đủ lịch sử, hoặc giá trị trước = 0). */
 function pct(curr, prevVal) {
   if (prevVal === null || prevVal === undefined || prevVal === 0) return null;
   return ((curr - prevVal) / Math.abs(prevVal)) * 100;
 }
-/**
- * `mode`: 'better' (tăng = TỐT, tam giác XANH — giảm = ĐỎ; dùng cho Dư nợ/
- * Lãi phải thu, quỹ cho vay ra được nhiều hơn/thu lãi tốt hơn là tín hiệu
- * tốt) | 'worse' (tăng = XẤU, tam giác ĐỎ — giảm = XANH; dùng cho Nợ xấu) |
- * bỏ trống = trung tính (chỉ hiện mũi tên + %, không tô màu phán xét).
- */
+
 function deltaChip(p, { mode = null } = {}) {
   if (p === null) return `<span style="font-size:10.5px;color:var(--text-faint)">—</span>`;
   const flat = Math.abs(p) < 0.05;
@@ -1221,29 +1059,11 @@ function deltaChip(p, { mode = null } = {}) {
   return `<span style="font-size:10.5px;font-weight:700;color:${color}">${arrow} ${Math.abs(p).toFixed(1).replace('.', ',')}%</span>`;
 }
 
-/**
- * Danh sách hợp đồng thuộc ĐÚNG 1 nhóm nợ (1-5, phân loại theo Thông tư
- * 02/2013 — xem S.debtGroup()) — mở khi bấm vào cột/nhãn tương ứng ở biểu đồ
- * "Dư nợ theo nhóm nợ", bấm được ở MỌI tháng (kể cả tháng đã chốt trong quá
- * khứ, xem nhomNoBarHtml()/bindNhomNoClicks()). Luôn tính theo phân loại
- * HIỆN TẠI (thời điểm bấm) — quỹ chỉ lưu TỔNG theo nhóm lúc chốt, không lưu
- * chi tiết từng hợp đồng của đúng tháng đó — nên khi mở từ 1 tháng KHÔNG
- * phải tháng sống (`m.live` false, `m` truyền vào từ bindNhomNoClicks()) tự
- * ghi rõ đây là danh sách HIỆN TẠI, tránh hiểu nhầm khớp đúng số liệu tháng
- * đang xem. Dùng ĐÚNG phạm vi được phép xem của phiên đang đăng nhập
- * (visibleContracts() — super = toàn quỹ, staff = trong Thôn/Xóm được gán).
- */
 function openDebtGroupModal(g, isStaff, m) {
   const color = GROUP_COLORS[g];
-  // TSBĐ (tài sản bảo đảm) chỉ có ý nghĩa với Nhóm 2-5 (Nhóm 1 = 0% dự phòng
-  // cụ thể, xem S.provisionSummary()) — Nhóm 1 giữ đúng danh sách gọn như cũ.
+
   const showTsbd = g >= 2;
-  // Tháng ĐÃ CHỐT và có lưu sẵn chi tiết từng hợp đồng (mục 10.53 docs, chốt
-  // từ nay về sau) -> dùng ĐÚNG danh sách CỦA THÁNG ĐÓ (đông cứng theo lúc
-  // chốt). Tháng ĐANG SỐNG, hoặc tháng đã chốt TRƯỚC khi có tính năng này
-  // (VD tháng 08 chốt bù) -> vẫn phải dùng dữ liệu HIỆN TẠI như trước, có
-  // ghi chú rõ khi không phải tháng sống để không hiểu nhầm khớp đúng tháng
-  // đang xem.
+
   const isHistorical = m && !m.live;
   const historicalList = isHistorical && Array.isArray(m.contractsDetail)
     ? m.contractsDetail.filter((d) => d.group === g)
@@ -1301,7 +1121,7 @@ function openDebtGroupModal(g, isStaff, m) {
     title: `Nhóm ${g} (${count})`,
     bodyHtml: listHtml,
     onMount(sheet) {
-      if (historicalList) return; // danh sách đông cứng của tháng đã chốt — chỉ xem, không click-through/sửa TSBĐ được.
+      if (historicalList) return;
       sheet.querySelectorAll('[data-view-ct]').forEach((row) => {
         row.addEventListener('click', (e) => {
           const ct = S.getContract(row.dataset.viewCt);
@@ -1312,12 +1132,10 @@ function openDebtGroupModal(g, isStaff, m) {
   });
 }
 
-/** TSBĐ chỉ đọc từ cột T/AB của file số 1 hoặc dữ liệu đã chốt. */
 function tsbdRowHtml(ct) {
   return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-muted)">${collateralDescription(ct)}</div>`;
 }
 
-/** Hai ô cảnh báo dùng chung bảng hợp đồng với trang Khách hàng; chỉ lọc các món thuộc nhóm đang xem. */
 function openContractListModal(title, contracts, isStaff, colorVar) {
   const total = contracts.reduce((s, ct) => s + S.contractAttentionInfo(ct).dueAmount, 0);
   const grouped = new Map();

@@ -1,15 +1,9 @@
-// Bộ đọc file .xlsx tối giản, thuần trình duyệt — không dùng thư viện ngoài
-// (SheetJS...). Đọc ZIP bằng DecompressionStream('deflate-raw') có sẵn trong
-// trình duyệt hiện đại + phân tích XML bằng DOMParser có sẵn.
-// Chỉ hỗ trợ .xlsx (định dạng OOXML/zip). File .xls cũ (OLE nhị phân) KHÔNG
-// đọc được bằng cách này — cần lưu lại dưới dạng .xlsx.
-
 const EOCD_SIG = 0x06054b50;
 const CDFH_SIG = 0x02014b50;
 const LFH_SIG = 0x04034b50;
 
 function findEOCD(view) {
-  const maxBack = Math.min(view.byteLength, 65557); // 22 + tối đa 65535 byte comment
+  const maxBack = Math.min(view.byteLength, 65557);
   for (let i = view.byteLength - 22; i >= view.byteLength - maxBack && i >= 0; i--) {
     if (view.getUint32(i, true) === EOCD_SIG) return i;
   }
@@ -22,7 +16,6 @@ async function inflateRaw(bytes) {
   return new Uint8Array(buf);
 }
 
-/** Đọc toàn bộ entry trong file .xlsx (zip) thành Map<tên file, Uint8Array>. */
 async function readZipEntries(arrayBuffer, wantedNames) {
   const bytes = new Uint8Array(arrayBuffer);
   const view = new DataView(arrayBuffer);
@@ -44,7 +37,7 @@ async function readZipEntries(arrayBuffer, wantedNames) {
     const name = new TextDecoder().decode(bytes.subarray(ptr + 46, ptr + 46 + nameLen));
 
     if (wanted.has(name)) {
-      // Đọc local file header để biết chính xác vị trí dữ liệu (tên/extra có thể khác CD)
+
       const lfhNameLen = view.getUint16(localOffset + 26, true);
       const lfhExtraLen = view.getUint16(localOffset + 28, true);
       const dataStart = localOffset + 30 + lfhNameLen + lfhExtraLen;
@@ -61,7 +54,6 @@ function parseXml(bytes) {
   return new DOMParser().parseFromString(text, 'application/xml');
 }
 
-/** Chuyển tên cột kiểu "AB" -> chỉ số 0-based. */
 function colLetterToIndex(letters) {
   let n = 0;
   for (let i = 0; i < letters.length; i++) n = n * 26 + (letters.charCodeAt(i) - 64);
@@ -100,15 +92,11 @@ function parseSheetToRows(xmlDoc, sharedStrings) {
       row[colIdx] = value;
     });
   });
-  // Lấp các dòng trống bị bỏ qua trong XML, đảm bảo mảng liền mạch
+
   for (let i = 0; i < rows.length; i++) if (!rows[i]) rows[i] = [];
   return rows;
 }
 
-/**
- * Đọc file .xlsx (đối tượng File từ input) -> trả về mảng 2 chiều (rows x cols)
- * của sheet đầu tiên trong workbook.
- */
 export async function readXlsxFirstSheet(file) {
   const buf = await file.arrayBuffer();
 
@@ -121,7 +109,7 @@ export async function readXlsxFirstSheet(file) {
   if (!firstSheetEl) throw new Error('Không tìm thấy sheet nào trong file.');
   const rid = firstSheetEl.getAttribute('r:id') || firstSheetEl.getAttribute('id');
 
-  let sheetPath = 'xl/worksheets/sheet1.xml'; // dự phòng nếu không đọc được rels
+  let sheetPath = 'xl/worksheets/sheet1.xml';
   if (rootEntries['xl/_rels/workbook.xml.rels']) {
     const relsXml = parseXml(rootEntries['xl/_rels/workbook.xml.rels']);
     const relEl = Array.from(relsXml.getElementsByTagName('Relationship')).find((r) => r.getAttribute('Id') === rid);
@@ -140,7 +128,6 @@ export async function readXlsxFirstSheet(file) {
   return parseSheetToRows(sheetXml, sharedStrings);
 }
 
-/** Chuyển mảng 2 chiều thành text dạng dán-từ-Excel (phân cách Tab/xuống dòng) để tái sử dụng bộ nhập liệu sẵn có. */
 export function rowsToTsv(rows) {
   return rows
     .map((row) => row.map((cell) => (cell == null ? '' : String(cell))).join('\t'))
@@ -148,23 +135,6 @@ export function rowsToTsv(rows) {
     .join('\n');
 }
 
-// ------------------------------------------------------------
-// "Mẫu báo cáo" — file sổ theo dõi vay xuất ra từ phần mềm nghiệp vụ (VD:
-// "IN SAO KÊ HỢP ĐỒNG TÍN DỤNG THEO SẢN PHẨM"), khác hẳn mẫu Excel PHẲNG cũ
-// (đúng 11 cột, dòng đầu là tiêu đề, hết) mà importFromPastedTable() trong
-// js/state.js đang đọc theo THỨ TỰ CỐ ĐỊNH. Mẫu báo cáo này có:
-// - Vài dòng tiêu đề/quốc hiệu ở TRÊN dòng tiêu đề cột thật (không phải
-//   dòng đầu tiên mới là tiêu đề).
-// - Nhiều cột hơn, KHÔNG cùng thứ tự app đang cần, kể cả thừa cột (Sổ thành
-//   viên, Dự thu lũy kế, Phân kỳ theo từng năm...) không dùng tới.
-// - XEN GIỮA các dòng khách hàng thật là các dòng "cộng dồn theo loại vay"
-//   (VD: "Cho vay vốn trong nước ngắn hạn - ...") và dòng "Tổng cộng" +
-//   khối chữ ký cuối file — đều KHÔNG PHẢI là 1 hợp đồng thật, phải loại bỏ,
-//   nếu không sẽ bị hiểu nhầm thành hợp đồng có số tiền khổng lồ (cộng dồn
-//   cả trăm khách) hoặc lỗi khi thiếu CCCD.
-// ------------------------------------------------------------
-
-/** Tên cột mẫu báo cáo (đã chuẩn hóa: cắt khoảng trắng + viết thường) ứng với từng trường app cần — CHỈ cần khớp ĐÚNG tên, không quan tâm thứ tự cột trong file. */
 const REPORT_TEMPLATE_HEADER_MAP = {
   code: 'số hđ',
   name: 'tên khách hàng',
@@ -179,23 +149,16 @@ const REPORT_TEMPLATE_HEADER_MAP = {
   interestRate: 'lãi suất',
   agreementCode: 'mã khế ước',
 };
-// Thứ tự CỐ ĐỊNH khi xuất ra — PHẢI khớp đúng thứ tự destructuring trong
-// importFromPastedTable() ở js/state.js (agreementCode đứng SAU CÙNG các
-// trường cố định, installmentSchedule — nếu có cột "Phân kỳ năm..." — luôn
-// là cột cuối, xem bên dưới).
+
 const REPORT_TEMPLATE_FIELD_ORDER = ['code', 'name', 'address', 'cccd', 'phone', 'disbursedDate', 'dueDate', 'interestPaidUntil', 'principal', 'balance', 'interestRate', 'agreementCode'];
 const REPORT_TEMPLATE_REQUIRED_FIELDS = REPORT_TEMPLATE_FIELD_ORDER.filter((field) => field !== 'agreementCode');
-// "Phân kỳ năm 2026", "Phân kỳ năm 2027"... — dò theo MẪU tên cột (không
-// liệt kê cứng danh sách năm), vì file các năm sau có thể thêm cột mới
-// (2031, 2032... "và miết tới", theo đúng yêu cầu) mà không cần sửa code.
+
 const INSTALLMENT_COLUMN_RE = /^phân kỳ năm (\d{4})$/;
 
 function normalizeHeaderCell(v) {
   return String(v ?? '').trim().toLowerCase();
 }
 
-// Sổ theo dõi vay (file số 1) có hàng tiêu đề riêng, không có cột STT. B là
-// Số HĐTD; W/AA/AB là mã nghiệp vụ nhưng tiêu đề cũng chỉ là chữ cái cột.
 const PRIMARY_REPORT_FIELDS = {
   code: 'số hđtd', name: 'người nhận nợ', address: 'địa chỉ',
   cccd: 'số cmnd/cccd', phone: 'số di động',
@@ -218,7 +181,7 @@ function remapPrimaryLoanRows(rows) {
     if (idx < 0) throw new Error(`File số 1 thiếu cột "${labels[0]}".`);
     colMap[field] = idx;
   }
-  // T/W/AA/AB được người dùng định nghĩa theo VỊ TRÍ cột, không theo nhãn.
+
   if (!['giá trị tsđb', 'giá trị tsbđ'].includes(header[19]) || header[22] !== 'w' || header[26] !== 'aa' || header[27] !== 'ab') {
     throw new Error('File số 1 đã thay đổi vị trí cột T/W/AA/AB; hãy kiểm tra đúng mẫu trước khi tải lên.');
   }
@@ -232,10 +195,10 @@ function remapPrimaryLoanRows(rows) {
       throw new Error(`File số 1 có dòng thiếu Số HĐTD hoặc CCCD hợp lệ (hàng ${rowIdx + 1}). Không thể đồng bộ toàn bộ.`);
     }
     const line = REPORT_TEMPLATE_REQUIRED_FIELDS.map((field) => String(row[colMap[field]] ?? '').trim());
-    line.push('', ''); // agreementCode, installmentSchedule: file số 2 bổ sung sau.
+    line.push('', '');
     line.push(String(row[19] ?? '').trim(), String(row[27] ?? '').trim(),
       String(row[22] ?? '').trim(), String(row[26] ?? '').trim());
-    { const heir = String(row[3] ?? '').trim(); line.push(/\p{L}/u.test(heir) ? heir : ''); } // cột D: người thừa kế/đồng vay (hiện cạnh tên khách ở chi tiết hợp đồng; ô chỉ toàn số/ký hiệu thì bỏ qua)
+    { const heir = String(row[3] ?? '').trim(); line.push(/\p{L}/u.test(heir) ? heir : ''); }
     out.push(line);
   }
   if (!out.length) throw new Error('File số 1 không có hợp đồng hợp lệ.');
@@ -253,7 +216,6 @@ export function isSupplementReportRows(rows) {
   return supplementHeaderIndex(rows) >= 0;
 }
 
-/** File số 2 chỉ bổ sung khế ước và phân kỳ, tuyệt đối không đồng bộ toàn bộ. */
 export function parseSupplementReportRows(rows) {
   const headerIdx = supplementHeaderIndex(rows);
   if (headerIdx < 0) throw new Error('File số 2 thiếu hàng tiêu đề Số HĐ, Mã khế ước hoặc Phân kỳ năm.');
@@ -268,7 +230,7 @@ export function parseSupplementReportRows(rows) {
   for (const row of rows.slice(headerIdx + 1)) {
     const code = String(row?.[7] ?? '').trim();
     if (!code) continue;
-    // Mã HĐ có thể chứa '/' hoặc '.'; nhận dòng hợp đồng qua CCCD cột E.
+
     const cccd = String(row?.[4] ?? '').trim().replace(/\s/g, '');
     if (!/^\d{9,12}$/.test(cccd)) continue;
     if (seenCodes.has(code)) throw new Error(`File số 2 có Số HĐ ${code} bị trùng.`);
@@ -284,40 +246,12 @@ export function parseSupplementReportRows(rows) {
   return out;
 }
 
-/**
- * Nếu `rows` (mảng 2 chiều thô đọc từ file) khớp đúng "mẫu báo cáo" (tìm
- * thấy 1 dòng có ô "STT" + đủ tên cột cần dùng ở REPORT_TEMPLATE_HEADER_MAP)
- * thì tự dò đúng cột theo TÊN (không theo vị trí — file đổi thứ tự cột vẫn
- * nhận đúng), lọc bỏ mọi dòng KHÔNG PHẢI hợp đồng thật (dòng tiêu đề/cộng
- * dồn/tổng cộng/chữ ký — nhận biết qua việc thiếu đúng 1 CCCD 9-12 số ở cột
- * "Số CMND"), rồi trả về mảng đã xếp lại ĐÚNG thứ tự app cần (khớp
- * `importFromPastedTable()` trong js/state.js: code, name, address, cccd,
- * phone, disbursedDate, dueDate, interestPaidUntil, principal, balance,
- * interestRate, agreementCode, [installmentScheduleJson nếu có cột "Phân kỳ
- * năm..."]) — không kèm dòng tiêu đề (importFromPastedTable không bắt buộc
- * phải có).
- *
- * Các cột "Phân kỳ năm YYYY" (nếu có) được GỘP LẠI thành 1 cột DUY NHẤT ở
- * CUỐI mỗi dòng, dạng chuỗi JSON (VD: {"2027":"50,000,000","2028":"50,000,000"})
- * — giữ NGUYÊN VĂN chữ số trong file (chưa đổi kiểu số ở đây), việc đổi
- * kiểu số + quyết định "có phân kỳ trả nợ hay không" (từ 2 năm có số liệu
- * > 0 trở lên) làm ở importFromPastedTable() bên state.js, cùng chỗ với các
- * trường số khác cho nhất quán. Chỉ ĐÓNG GÓI qua 1 cột chuỗi vì toàn bộ
- * đường truyền giữa "đọc file" và "nhập thật" đang đi qua dạng văn bản
- * TSV — nhét thẳng qua đây là cách ít xáo trộn code nhất, không cần sửa lại
- * cả luồng "dán dữ liệu từ Excel" đang dùng chung TSV cho cả nhập file lẫn
- * dán tay.
- *
- * KHÔNG khớp mẫu báo cáo (VD: đang là mẫu PHẲNG cũ, không có ô "STT" nào) —
- * trả về NGUYÊN VẸN `rows` như cũ, KHÔNG đổi gì — giữ đúng hành vi cũ cho
- * ai vẫn đang dùng mẫu cũ, không bắt buộc phải đổi ngay.
- */
 export function remapReportTemplateRows(rows) {
   const primary = remapPrimaryLoanRows(rows);
   if (primary) return primary;
   let headerRowIdx = -1;
   let colMap = null;
-  let installmentCols = null; // { '2026': colIdx, '2027': colIdx, ... } hoặc null nếu file không có cột nào
+  let installmentCols = null;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i] || [];
     const normalized = row.map(normalizeHeaderCell);
@@ -341,14 +275,13 @@ export function remapReportTemplateRows(rows) {
     if (Object.keys(ik).length) installmentCols = ik;
     break;
   }
-  if (headerRowIdx === -1) return rows; // không phải mẫu báo cáo — giữ nguyên, xử lý như mẫu cũ
+  if (headerRowIdx === -1) return rows;
 
   const out = [];
   for (let i = headerRowIdx + 1; i < rows.length; i++) {
     const row = rows[i] || [];
     const cccd = String(row[colMap.cccd] ?? '').trim().replace(/\s/g, '');
-    // Dòng "cộng dồn theo loại vay"/"Tổng cộng"/chữ ký cuối file đều KHÔNG có
-    // CCCD hợp lệ ở đúng cột này — loại thẳng, không phải hợp đồng thật.
+
     if (!/^\d{9,12}$/.test(cccd)) continue;
     const line = REPORT_TEMPLATE_FIELD_ORDER.map((field) => {
       const v = colMap[field] >= 0 ? row[colMap[field]] : '';

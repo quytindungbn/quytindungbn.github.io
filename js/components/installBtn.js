@@ -1,7 +1,3 @@
-// "Cài đặt ứng dụng" — UI dùng CHUNG cho trang đăng nhập (login.js), sidebar/menu
-// "Thêm" khi đã đăng nhập (shell.js), VÀ 1 banner tự động mời cài lúc vào app trên máy CHƯA cài
-// (initAutoInstallPrompt(), gọi 1 LẦN DUY NHẤT lúc khởi động app — xem app.js).
-// Logic thật (bắt sự kiện beforeinstallprompt) ở lib/installPwa.js; nhận diện trình duyệt/máy ở lib/installEnv.js.
 import { icon } from '../icons.js';
 import { openModal } from './modal.js';
 import { toast } from './toast.js';
@@ -10,32 +6,24 @@ import { promptInstall, isStandalone, onInstallable, looksInstalled } from '../l
 import { currentInstallEnv, installGuideKind } from '../lib/installEnv.js';
 import { inAppPics } from './installPics.js';
 
-const ASKED_KEY = 'qtd_install_asked'; // sessionStorage: khách đã bấm "Để sau"/"Cài đặt" ở lần vào này → tải lại trang trong cùng phiên không hỏi lại; mở lại app/tab mới thì hỏi tiếp
-const OLD_KEYS = ['qtd_install_snooze_at', 'qtd_install_ios_seen']; // khóa cũ (nhớ 7 ngày / iPhone mời 1 lần) — không còn dùng, dọn đi
+const ASKED_KEY = 'qtd_install_asked';
+const OLD_KEYS = ['qtd_install_snooze_at', 'qtd_install_ios_seen'];
 
 function askedThisVisit() {
   try { return !!sessionStorage.getItem(ASKED_KEY); } catch { return false; }
 }
 function markAsked() {
-  try { sessionStorage.setItem(ASKED_KEY, '1'); } catch { /* bỏ qua — chỉ là nhớ để khỏi hỏi lại khi tải lại trang */ }
+  try { sessionStorage.setItem(ASKED_KEY, '1'); } catch {  }
 }
 function cleanOldKeys() {
-  try { OLD_KEYS.forEach((k) => localStorage.removeItem(k)); } catch { /* bỏ qua */ }
+  try { OLD_KEYS.forEach((k) => localStorage.removeItem(k)); } catch {  }
 }
 
-/** Gắn hành vi bấm cho 1 nút "Cài đặt ứng dụng" có sẵn trong DOM (sidebar, menu Thêm, trang đăng nhập...). */
 export function bindInstallButton(btn) {
   btn.addEventListener('click', () => runInstallFlow(btn));
   window.addEventListener('appinstalled', () => btn.remove(), { once: true });
 }
 
-/**
- * Chạy luồng cài đặt thật — BẮT BUỘC chỉ gọi từ đúng 1 handler click (user
- * gesture) — trình duyệt CHỈ cho hiện hộp thoại cài đặt thật khi được gọi từ
- * đúng 1 cú bấm/chạm thật; tự động gọi sẽ bị âm thầm bỏ qua NHƯNG vẫn coi
- * như đã "dùng" mất cơ hội đó, khiến nút bấm sau này không còn gì để hiện.
- * `btn` không bắt buộc (banner tự đóng lại trước khi gọi, không có nút để giữ trạng thái).
- */
 async function runInstallFlow(btn) {
   if (btn) btn.disabled = true;
   try {
@@ -49,8 +37,7 @@ async function runInstallFlow(btn) {
     } else if (outcome === 'dismissed') {
       toast('Bạn đã bỏ qua — có thể bấm lại nút này bất cứ lúc nào.', 'info');
     } else {
-      // 'in-app' (đang mở trong Zalo/Facebook...), 'ios-manual', 'unsupported' (Firefox, Safari máy tính, hoặc đã cài sẵn rồi):
-      // không tự cài được — hiện hướng dẫn ĐÚNG với máy/trình duyệt đang dùng.
+
       openInstallGuide();
     }
   } finally {
@@ -61,7 +48,6 @@ async function runInstallFlow(btn) {
 const ST = (n, html, pic = '') => `<li><span class="inst-n">${n}</span><div>${html}${pic}</div></li>`;
 const SHARE = icon('shareIos', 'icon-sm');
 
-/** Nội dung hướng dẫn cài tay theo loại máy/trình duyệt (xem installGuideKind). */
 function guideContent(kind, env) {
   switch (kind) {
     case 'in-app': {
@@ -120,7 +106,7 @@ function guideContent(kind, env) {
         steps: [ST(1, 'Mở menu <b>Tệp</b> (File) trên thanh menu phía trên'), ST(2, 'Chọn <b>Thêm vào Dock</b>')],
         foot: 'Phiên bản cũ hơn chưa hỗ trợ — hãy dùng <b>Chrome</b> hoặc <b>Edge</b>.',
       };
-    default: // desktop-firefox, desktop-other
+    default:
       return {
         title: 'Cài đặt ứng dụng',
         lead: 'Trình duyệt này chưa hỗ trợ cài ứng dụng. Hãy mở trang bằng <b>Chrome</b> hoặc <b>Edge</b> để cài.',
@@ -130,10 +116,6 @@ function guideContent(kind, env) {
   }
 }
 
-/**
- * Hướng dẫn cài TAY — UI CỦA CHÍNH APP (không phải API trình duyệt) nên mở được ở mọi nơi, kể cả iPhone
- * (Apple không cho web tự cài), Firefox, Safari máy tính và trình duyệt nhúng trong Zalo/Facebook.
- */
 export function openInstallGuide() {
   const env = currentInstallEnv();
   const g = guideContent(installGuideKind(env), env);
@@ -158,11 +140,6 @@ export function openInstallGuide() {
 
 let bannerEl = null;
 
-/**
- * Hiện 1 thẻ mời NỔI Ở DƯỚI MÀN HÌNH — đây là UI CỦA CHÍNH APP (không phải hộp thoại thật của trình duyệt) nên tự
- * hiện lên được, an toàn. Bấm "Cài đặt" TRÊN THẺ NÀY mới là lúc gọi hộp thoại thật (cú bấm đó là user gesture hợp lệ,
- * không vi phạm giới hạn của trình duyệt — khác với việc tự gọi thẳng promptInstall() mà không qua cú bấm nào).
- */
 function showInstallBanner(onGo, onLater) {
   if (bannerEl || isStandalone()) return;
   bannerEl = document.createElement('div');
@@ -180,7 +157,7 @@ function showInstallBanner(onGo, onLater) {
     </div>
   `;
   document.body.appendChild(bannerEl);
-  document.body.classList.add('has-inst-banner'); // trang đăng nhập nhích nội dung lên để thẻ mời không che nút
+  document.body.classList.add('has-inst-banner');
   bannerEl.querySelector('[data-go]').addEventListener('click', () => { closeBanner(); onGo(); });
   bannerEl.querySelector('[data-later]').addEventListener('click', () => { closeBanner(); if (onLater) onLater(); });
 }
@@ -190,16 +167,6 @@ function closeBanner() {
 }
 window.addEventListener('appinstalled', closeBanner);
 
-/**
- * Điểm vào DUY NHẤT để tự mời cài đặt — gọi 1 LẦN lúc khởi động app (xem app.js). MỖI LẦN VÀO APP trên máy CHƯA cài (trang
- * đăng nhập lẫn đã đăng nhập rồi, điện thoại lẫn máy tính, TRÌNH DUYỆT NÀO CŨNG VẬY) đều hiện thẻ mời ở dưới màn hình:
- *   - Chrome/Edge/Samsung/Opera: hiện ngay khi trình duyệt báo "cài được"; sau ~2,5 giây vẫn không có tín hiệu (đã cài sẵn
- *     rồi, hoặc trình duyệt chưa báo) thì hiện nếu chưa chắc là đã cài. Bấm "Cài đặt" → hộp thoại cài thật, đồng ý là xong.
- *   - iPhone, Firefox, Safari máy Mac/máy tính, trình duyệt nhúng trong Zalo/Facebook...: không có hộp thoại thật nên tự hiện
- *     thẻ mời, bấm "Cài đặt" mở hướng dẫn đúng với máy đang dùng.
- * Bấm "Để sau" hoặc "Cài đặt" thì thẻ đóng; tải lại trang trong cùng phiên không hỏi lại, lần vào sau (mở lại app/tab mới) hỏi tiếp.
- * Máy đã cài và mở bằng icon (chạy như app) thì không bao giờ hiện. Nút "Cài đặt ứng dụng" ở trang đăng nhập/menu vẫn luôn có.
- */
 export function initAutoInstallPrompt() {
   cleanOldKeys();
   if (isStandalone() || askedThisVisit()) return;

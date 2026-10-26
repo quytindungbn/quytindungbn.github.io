@@ -7,44 +7,16 @@ import { openCustomerDetail } from './customers.js';
 import { formatVND, formatDateTime, initials, colorFor, escapeHtml, stripDiacritics } from '../../utils.js';
 import { lsGetJson, lsSetJson } from '../../lib/kvCache.js';
 
-// ------------------------------------------------------------
-// Trang "Hỗ trợ" — GỘP 2 mục menu cũ ("Yêu cầu tư vấn" + "Hỗ trợ") thành 1,
-// hiện dưới dạng 2 tab trong CÙNG 1 trang. Tên 2 tab CỐ Ý đảo ngược so với
-// tên gọi kỹ thuật của từng phần (xem `activeTab` bên dưới) theo đúng yêu
-// cầu — "Hỗ trợ" (tab) = danh sách yêu cầu tư vấn/vay mới (mỗi yêu cầu = 1
-// lần cần được HỖ TRỢ xử lý), "Tư vấn" (tab) = khung chat (trò chuyện trực
-// tiếp = TƯ VẤN cho khách ngay lúc đó) — khớp đúng cách đặt tên trực quan
-// hơn theo góc nhìn người dùng, dù bên trong code vẫn gọi 2 phần này là
-// 'requests'/'chat' cho dễ đọc (KHÔNG đổi theo tên hiển thị, tránh phải sửa
-// lại toàn bộ code mỗi khi đổi tên hiển thị lần nữa).
-//
-// Cả 2 tab đều có chấm đỏ báo số CHƯA ĐỌC, tự tắt ngay khi admin xem xong
-// (xem markAllRequestsRead()/markChatRead() ở state.js).
-//
-// Tab chat CHỈ hiện cho ai có quyền xem chat (super hoặc canManageUsers,
-// khớp đúng RLS bảng chat_messages) — nhân viên "chỉ xem" không có quyền
-// này thấy đúng nội dung yêu cầu tư vấn y hệt trang cũ, không có tab nào cả
-// (giữ nguyên trải nghiệm/phạm vi cũ, chỉ đổi tên + vị trí mục menu).
-// ------------------------------------------------------------
-
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Hỗ trợ' });
 }
 
-let activeTab = 'requests'; // 'requests' (hiển thị "Hỗ trợ") | 'chat' (hiển thị "Tư vấn")
-let activeStatus = 'all'; // bộ lọc trạng thái của tab yêu cầu tư vấn
-let searchQuery = ''; // ô tìm kiếm của tab chat
-// Ghi nhớ ĐÚNG 1 lần "hash?query" gần nhất đã áp dụng tham số ?tab= từ URL
-// (VD: link "Xem tất cả" cạnh "Yêu cầu mới nhất" ở trang Tổng quan trỏ tới
-// #/admin/ho-tro?tab=requests, ép mở đúng tab yêu cầu tư vấn dù đang đứng ở
-// tab chat trước đó) — CHỈ áp dụng lúc thật sự vừa ĐIỀU HƯỚNG tới (hash
-// đổi), không áp dụng lại ở các lượt render() tiếp theo do dữ liệu tự làm
-// mới (hash không đổi) — nếu không, mỗi lần notify() sẽ ép quay lại đúng
-// ?tab= cũ, làm người dùng không tài nào bấm chuyển sang tab khác được (xem
-// render() bên dưới).
+let activeTab = 'requests';
+let activeStatus = 'all';
+let searchQuery = '';
+
 let lastNavKey = null;
 
-/** Reset toàn bộ tab/bộ lọc về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt ở customers.js/zaloOA.js. */
 export function resetFilters() {
   activeTab = 'requests';
   activeStatus = 'all';
@@ -54,41 +26,25 @@ export function resetFilters() {
   lastConversationsAt = 0;
 }
 
-// Danh sách hội thoại chat đã tải lần gần nhất — giữ lại để lọc theo ô tìm
-// kiếm KHÔNG cần gọi lại server mỗi lần gõ chữ (chỉ tải lại thật khi vào tab
-// hoặc vừa đóng 1 khung chat, xem renderConversationList() bên dưới).
 let lastConversations = [];
-// Lần gần nhất tải danh sách hội thoại (0 = chưa tải). Vào lại tab "Tư vấn" thì hiện NGAY danh sách đã có, chỉ tải lại ngầm khi đã cũ hơn CONV_FRESH_MS
-// (trước đây mỗi lần vào/mỗi lần dữ liệu làm mới đều hiện "Đang tải..." rồi gọi máy chủ lại từ đầu).
+
 let lastConversationsAt = 0;
 let conversationsPromise = null;
 const CONV_FRESH_MS = 20000;
-// Danh sách hội thoại còn được lưu trên máy (localStorage) theo từng quản trị viên: tải lại trang/vào lại là hiện ngay bản lần trước (kể cả khi
-// máy chủ chậm), rồi cập nhật ngầm — trước đây chỉ giữ trong bộ nhớ nên mỗi lần tải lại trang lại phải chờ máy chủ từ đầu.
+
 const convCacheKey = (adminId) => `conv:${adminId}`;
 function restoreConversationsCache(adminId) {
   const cached = lsGetJson(convCacheKey(adminId));
   if (!cached || !Array.isArray(cached.rows)) return false;
   lastConversations = cached.rows;
-  lastConversationsAt = 1; // coi như đã cũ: hiện bản này ngay rồi tải lại ngầm
+  lastConversationsAt = 1;
   return true;
 }
 
-/**
- * Tab "Hỗ trợ" tải dữ liệu KIỂU BẤT ĐỒNG BỘ (khác tab "Tư vấn", vốn chỉ đọc
- * state đã có sẵn) — nếu người dùng chuyển sang trang khác TRONG LÚC đang
- * chờ tải, kết quả trả về muộn có thể đè nhầm lên đúng #app-content/
- * #filter-slot của trang MỚI (2 khối DOM này dùng CHUNG cho mọi trang, xem
- * app.js). Chặn bằng kiểm tra lại hash hiện tại trước khi đụng vào DOM.
- */
 function isThisRouteActive() {
   return (location.hash || '#/').split('?')[0] === '#/admin/ho-tro';
 }
 
-/**
- * Có dữ liệu phiên mới nhưng vẫn đứng ở trang này (xem renderApp() trong app.js): chỉ vẽ lại từ dữ liệu đã có — KHÔNG tải lại danh sách
- * hội thoại từ máy chủ trừ khi đã cũ, không nháy "Đang tải...", không đụng ô tìm kiếm đang gõ.
- */
 export function refresh(contentEl, filterEl, params, query) {
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
@@ -108,8 +64,8 @@ export async function render(contentEl, filterEl, params, query) {
 
   const session = S.getSession();
   const admin = S.getAdmin(session.id);
-  const canChat = S.canManageUsers(admin.id); // trùng đúng điều kiện RLS "admin sees chat"
-  if (!canChat) activeTab = 'requests'; // phòng hờ mất quyền canManageUsers giữa chừng mà vẫn đang đứng ở tab chat
+  const canChat = S.canManageUsers(admin.id);
+  if (!canChat) activeTab = 'requests';
 
   renderFilterBar(contentEl, filterEl, admin, canChat);
 
@@ -132,7 +88,6 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
     </div>` : `
     <div class="sup-search">${searchBoxHtml('support-search', 'Tìm theo tên/SĐT khách hàng...', searchQuery)}</div>`;
 
-  // Cả cụm nút/ô tìm kiếm nằm trong khung cùng lề trái-phải với danh sách bên dưới (xem .sup-align trong styles.css).
   filterEl.innerHTML = `<div class="sup-align">${tabsHtml}${subFilterHtml}</div>`;
 
   filterEl.querySelectorAll('[data-tab]').forEach((btn) => {
@@ -143,14 +98,11 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
       chip.addEventListener('click', () => { activeStatus = chip.dataset.s; render(contentEl, filterEl); });
     });
   } else {
-    // CHỈ lọc lại cục bộ trên lastConversations đã tải sẵn (drawConversationList),
-    // KHÔNG gọi lại renderConversationList() (sẽ tải lại server + hiện "Đang
-    // tải..." mỗi lần gõ 1 chữ — không cần thiết, dữ liệu đã có sẵn rồi).
+
     bindSearchBox(filterEl, 'support-search', (v) => { searchQuery = v; drawConversationList(contentEl, filterEl); });
   }
 }
 
-// ---------------- Tab "Hỗ trợ" (yêu cầu tư vấn/vay mới) ----------------
 function renderRequestsList(contentEl, admin) {
   const isStaff = admin.role === 'staff';
   let list = S.listRequests({ status: activeStatus });
@@ -193,20 +145,16 @@ function renderRequestsList(contentEl, admin) {
     });
   });
 
-  // Danh sách đã hiện TRỌN VẸN nội dung từng yêu cầu ngay tại đây (không như
-  // tab "Tư vấn" (chat), chỉ hiện xem trước) — nên coi như admin ĐÃ ĐỌC ngay
-  // khi tab này hiện ra, tự tắt chấm đỏ. Không chặn/chờ gì (chạy ngầm).
   S.markAllRequestsRead(admin.id).catch(() => {});
 }
 
-// ---------------- Tab "Tư vấn" (chat) ----------------
 function loadConversations() {
-  // Dùng chung một lượt tải đang chạy, không bắn nhiều lượt cùng lúc
+
   if (!conversationsPromise) {
     const ownerId = S.getSession()?.id;
     conversationsPromise = S.listChatConversations()
       .then((rows) => {
-        if (S.getSession()?.id !== ownerId) return rows; // đã đổi/đăng xuất giữa chừng: không ghi đè của người khác
+        if (S.getSession()?.id !== ownerId) return rows;
         lastConversations = rows;
         lastConversationsAt = Date.now();
         lsSetJson(convCacheKey(ownerId), { at: lastConversationsAt, rows });
@@ -217,10 +165,6 @@ function loadConversations() {
   return conversationsPromise;
 }
 
-/**
- * Tải sẵn danh sách hội thoại ngầm (app.js gọi sau khi mở app xong) — lúc bấm vào "Tư vấn" thì đã có sẵn. Chỉ làm khi người này xem được chat;
- * lỗi thì bỏ qua (vào tab sẽ tự tải lại và báo lỗi nếu cần).
- */
 export function prefetch() {
   const session = S.getSession();
   if (!session || session.role !== 'admin') return;
@@ -234,13 +178,13 @@ export function prefetch() {
 async function renderConversationList(contentEl, filterEl) {
   if (!lastConversationsAt) restoreConversationsCache(S.getSession()?.id);
   const haveCache = lastConversationsAt > 0;
-  if (haveCache) drawConversationList(contentEl, filterEl); // hiện ngay danh sách đã có
+  if (haveCache) drawConversationList(contentEl, filterEl);
   else contentEl.innerHTML = `<div class="card card-pad text-sm text-muted" style="text-align:center">Đang tải...</div>`;
   if (haveCache && Date.now() - lastConversationsAt < CONV_FRESH_MS) return;
   try {
     await loadConversations();
   } catch (e) {
-    if (haveCache) return; // tải lại ngầm không được thì cứ giữ danh sách đang hiện
+    if (haveCache) return;
     if (isThisRouteActive()) contentEl.innerHTML = `<div class="card card-pad">${emptyState({ iconName: 'message', title: 'Không tải được', message: e.message || 'Có lỗi xảy ra, thử lại sau.' })}</div>`;
     return;
   }
@@ -285,10 +229,8 @@ function drawConversationList(contentEl, filterEl) {
       const customerId = row.dataset.id;
       const c = S.getCustomer(customerId);
       openChatPanel(customerId, c?.name || DEFAULT_CHAT_TITLE, {
-        // Đóng khung chat xong tải lại danh sách THẬT (khác drawConversationList()
-        // khi gõ tìm kiếm) — để chấm đỏ "chưa đọc" vừa xem xong tự tắt ngay,
-        // không cần rời trang rồi quay lại mới thấy đúng.
-        onClose: () => { lastConversationsAt = 1; render(contentEl, filterEl); }, // đánh dấu danh sách đã cũ -> hiện bản đang có rồi tải lại ngầm
+
+        onClose: () => { lastConversationsAt = 1; render(contentEl, filterEl); },
       });
     });
   });

@@ -1,14 +1,3 @@
-// Trang "Quản lý User" — quản lý tài khoản trong hệ thống ở 1 chỗ: "Use"
-// (tài khoản khách hàng) và "Quản trị viên" (super toàn quyền hoặc staff chỉ
-// xem, có phân quyền theo Thôn/Xóm). Vào được trang này: quản trị viên toàn
-// quyền, HOẶC nhân viên "chỉ xem" được cấp riêng cờ canManageUsers (xem
-// checkbox "Cho phép quản lý User" trong adminPermissionSectionHtml()) —
-// route đã đặt requiresManageUsers ở app.js. NHƯNG nhân viên có cờ này CHỈ
-// quản lý được Use KHÁCH HÀNG (tạo/cấp lại mật khẩu/khóa/xóa) — KHÔNG được
-// tạo/sửa/xóa/xem chi tiết bất kỳ tài khoản Quản trị viên/nhân viên nào
-// khác (kể cả 1 nhân viên chỉ xem khác), server tự chặn 403 nếu cố gọi
-// (xem SUPER_ONLY_TYPES trong create-account/index.ts) — UI cũng tự ẩn hết
-// các lựa chọn/nút liên quan tới tài khoản Quản trị viên với nhóm này.
 import * as S from '../../state.js';
 import { icon } from '../../icons.js';
 import { pageHeader } from '../../components/shell.js';
@@ -22,7 +11,7 @@ export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Quản lý User' });
 }
 
-let filterRole = 'all'; // 'all' | 'use' | 'admin'
+let filterRole = 'all';
 let query = '';
 
 export function render(contentEl, filterEl) {
@@ -32,10 +21,6 @@ export function render(contentEl, filterEl) {
   draw(contentEl);
 }
 
-/**
- * Khung cố định của trang: số liệu (#us-top) · hàng "ô tìm kiếm + nút Tạo User" (cùng kiểu trang Quản lý OA) · thanh lọc + danh sách (#us-body).
- * Hàng tìm kiếm nằm NGOÀI phần được vẽ lại (draw) nên gõ chữ không bị mất focus/con trỏ — giống cách trang Khách hàng & Hợp đồng làm.
- */
 function buildFrame(contentEl) {
   contentEl.innerHTML = `
     <div id="us-top"></div>
@@ -48,11 +33,6 @@ function buildFrame(contentEl) {
   contentEl.querySelector('#btn-add-user').addEventListener('click', () => openCreateUserModal(S.thonXomTree(), contentEl));
 }
 
-/**
- * Có dữ liệu mới nhưng vẫn đang đứng ở trang này (xem renderApp() trong
- * app.js) — chỉ vẽ lại danh sách bằng draw(), KHÔNG gọi render() nên bộ lọc
- * (Tất cả/Use/Quản trị viên) và ô tìm kiếm đang gõ được giữ nguyên.
- */
 export function refresh(contentEl) {
   draw(contentEl);
 }
@@ -60,16 +40,14 @@ export function refresh(contentEl) {
 function permissionSummary(a) {
   const xomLabels = a.allowedXom.map((key) => {
     const { thon, xom } = S.parseXomKey(key);
-    return thon ? `${xom} (${thon})` : `Xóm ${xom}`; // fallback nếu còn dữ liệu cũ lưu bare xom (trước bản sửa lỗi trùng tên Xóm)
+    return thon ? `${xom} (${thon})` : `Xóm ${xom}`;
   });
   const parts = [...a.allowedThon, ...xomLabels];
   return parts.length ? parts.join(', ') : 'Chưa gán địa bàn nào';
 }
 
 function draw(contentEl) {
-  // "Use" ở trang này chỉ tính khách hàng ĐÃ có tài khoản đăng nhập (salt+hash) —
-  // hồ sơ nhập từ Excel chưa được "Tạo User" thuộc về trang Khách hàng & Hợp
-  // đồng, không phải Use, để 2 khái niệm không lẫn vào nhau.
+
   const customers = S.getState().customers.filter((c) => c.salt && c.hash);
   const admins = S.listAdmins();
   const lockedCount = customers.filter((c) => S.isCustomerLocked(c)).length;
@@ -87,7 +65,7 @@ function draw(contentEl) {
       : data.name.toLowerCase().includes(q) || data.username.toLowerCase().includes(q));
   }
 
-  if (!contentEl.querySelector('#us-body')) buildFrame(contentEl); // chưa từng render() ở trang này
+  if (!contentEl.querySelector('#us-body')) buildFrame(contentEl);
   contentEl.querySelector('#us-top').innerHTML = `
     <div class="grid-4 mb-16">
       <div class="stat-tile c-blue">
@@ -140,7 +118,6 @@ function draw(contentEl) {
   if (pushOnTile) pushOnTile.addEventListener('click', () => openStatListModal('Use đã bật thông báo', customers.filter((c) => S.hasPushEnabled(c.id))));
 }
 
-/** Bấm vào ô thống kê "Use đã đăng nhập"/"Use đã bật thông báo" — ra đúng danh sách những Use đó, bấm vào 1 dòng mở luôn chi tiết Use đó. */
 function openStatListModal(title, list) {
   openModal({
     title: `${title} (${list.length})`,
@@ -193,7 +170,6 @@ function showCredential(title, username, password) {
   });
 }
 
-/** Cây chọn quyền 2 cấp: tích cả Thôn = xem trọn Thôn đó; tích riêng từng Xóm (dạng chip) = chỉ xem Xóm đó dù Thôn không được cấp trọn. */
 function permissionTreeHtml(tree, admin) {
   if (!tree.length) return `<p class="text-sm text-muted">Chưa có dữ liệu Thôn/Xóm nào trong danh sách khách hàng.</p>`;
   return `
@@ -237,29 +213,11 @@ function bindPermissionTreeChips(sheet) {
   });
 }
 
-/**
- * Khối "Địa bàn được xem" — chỉ có ý nghĩa với role='staff'. Kèm thêm 1
- * checkbox riêng "Cho phép quản lý User" — nhân viên chỉ xem được tích thêm
- * quyền này thì vào được hẳn trang Quản lý User (tạo/sửa/xóa Use + nhân
- * viên khác), coi như "toàn quyền thu nhỏ", không cần nâng hẳn lên Toàn
- * quyền. `admin` truyền vào có thể là vai trò ĐANG CHỌN THỬ (pendingRole,
- * chưa lưu) chứ không nhất thiết vai trò thật đang lưu trong CSDL — xem
- * openAdminDetail(): đổi vai trò tại chỗ là đổi luôn khối này theo, không
- * cần lưu xong mở lại mới thấy cây Thôn/Xóm để chọn.
- */
 function adminPermissionSectionHtml(admin, tree, isSelf = false) {
   if (admin.role !== 'staff') return `<p class="field-hint mt-16">Quản trị viên toàn quyền xem được mọi địa bàn và quản lý User, không cần gán riêng.</p>`;
-  // Khóa cứng checkbox "Cho phép quản lý User" khi tự xem CHÍNH MÌNH — nếu
-  // không khóa, nhân viên đang có quyền này có thể tự bỏ tích rồi lưu, LẬP
-  // TỨC mất quyền vào trang này ngay giữa chừng (route tự đá về trang mặc
-  // định do không còn đủ quyền requiresManageUsers) — đúng lỗi "đang sửa xong
-  // tự nhảy ra trang ngoài" đã gặp. Y hệt cách khối đổi vai trò đã tự chặn
-  // isSelf ở trên.
+
   const lockCheckbox = isSelf ? 'checked disabled' : (admin.canManageUsers ? 'checked' : '');
-  // Cờ quản lý gửi tin Zalo OA — RIÊNG, không khóa cứng khi tự xem chính mình
-  // như canManageUsers ở trên, vì trang "Quản lý OA" không có gì để "tự nhảy
-  // ra giữa chừng" nghiêm trọng như Quản lý User (không đang đứng sẵn ở đó
-  // lúc sửa quyền này).
+
   const zaloChecked = admin.canManageZaloOA ? 'checked' : '';
   const balanceChecked = admin.canViewBalanceSheet ? 'checked' : '';
   return `
@@ -292,12 +250,6 @@ function openAdminDetail(admin, tree, contentEl) {
   const isSelf = session?.id === admin.id;
   const viewerIsSuper = S.isSuperAdmin(session?.id);
 
-  // Nhân viên "chỉ xem" có quyền Quản lý User (không phải Toàn quyền thật)
-  // CHỈ quản lý được Use KHÁCH HÀNG — không được đụng vào bất kỳ tài khoản
-  // Quản trị viên/nhân viên nào khác (server cũng tự chặn 403 nếu cố gọi,
-  // xem SUPER_ONLY_TYPES trong create-account/index.ts). Ở đây chỉ hiện
-  // thông tin, không có nút thao tác nào — tránh hiện nút mà bấm vào lại
-  // báo lỗi, gây hiểu nhầm là làm được.
   if (!viewerIsSuper) {
     openModal({
       title: admin.name,
@@ -311,13 +263,8 @@ function openAdminDetail(admin, tree, contentEl) {
     return;
   }
 
-  let pendingRole = admin.role; // chỉ đổi cục bộ trong popup, lưu khi bấm "Lưu quyền"
-  // Chỉ hiện nút "Lưu quyền" khi có gì đó THẬT SỰ có thể lưu: hoặc người xem
-  // đổi được vai trò (viewerIsSuper && !isSelf — dù target đang là Toàn
-  // quyền, vẫn cần nút để hạ xuống Chỉ xem), hoặc target là "staff" nên có
-  // cây Thôn/Xóm để sửa. Không rơi vào 2 trường hợp này (VD: nhân viên chỉ
-  // xem thường tự mở xem 1 quản trị viên toàn quyền khác) thì không có gì để
-  // lưu, ẩn hẳn nút đi — y hệt hành vi cũ.
+  let pendingRole = admin.role;
+
   const canShowSaveBtn = (viewerIsSuper && !isSelf) || admin.role === 'staff';
 
   const close = openModal({
@@ -359,7 +306,7 @@ function openAdminDetail(admin, tree, contentEl) {
       if (saveNameBtn) saveNameBtn.addEventListener('click', async () => {
         const val = nameInput.value.trim();
         if (!val) { toast('Tên không được để trống', 'error'); return; }
-        if (val === admin.name) return; // không đổi gì thì thôi, khỏi gọi server vô ích
+        if (val === admin.name) return;
         saveNameBtn.disabled = true;
         try {
           await S.updateStaffName(admin.id, val);
@@ -378,9 +325,7 @@ function openAdminDetail(admin, tree, contentEl) {
         roleRow.querySelectorAll('[data-role]').forEach((opt) => opt.addEventListener('click', () => {
           pendingRole = opt.dataset.role;
           roleRow.querySelectorAll('[data-role]').forEach((o) => o.classList.toggle('active', o.dataset.role === pendingRole));
-          // Đổi vai trò tại chỗ là đổi luôn khối "Địa bàn được xem" theo —
-          // chọn "Chỉ xem" hiện ngay cây Thôn/Xóm để chọn, không cần lưu
-          // xong mở lại; chọn "Toàn quyền" thì khối này ẩn đi luôn.
+
           permSection.innerHTML = adminPermissionSectionHtml({ ...admin, role: pendingRole }, tree, isSelf);
           bindPermissionTreeChips(sheet);
         }));
@@ -391,18 +336,12 @@ function openAdminDetail(admin, tree, contentEl) {
         saveBtn.addEventListener('click', async () => {
           saveBtn.disabled = true;
           try {
-            // Đổi vai trò TRƯỚC (nếu có) — server chỉ nhận cập nhật Thôn/Xóm
-            // cho tài khoản ĐANG LÀ 'staff', nên nếu vừa hạ Toàn quyền xuống
-            // Chỉ xem thì phải đổi vai trò xong xuôi rồi mới lưu quyền theo.
+
             if (pendingRole !== admin.role) await S.updateStaffRole(admin.id, pendingRole);
             if (pendingRole === 'staff') {
               const formEl = sheet.querySelector('#perm-form');
               const fd = formEl ? new FormData(formEl) : new FormData();
-              // Checkbox "canManageUsers" bị khóa (disabled) khi tự xem chính
-              // mình — input disabled KHÔNG được đưa vào FormData, nên
-              // fd.get() trả về null dù đang tích sẵn -> phải tự giữ nguyên
-              // giá trị cũ, không đọc từ form (không sẽ vô tình gửi lên
-              // false, tự xóa quyền của chính mình).
+
               const canManage = isSelf ? admin.canManageUsers : fd.get('canManageUsers') === 'on';
               const canManageZalo = fd.get('canManageZaloOA') === 'on';
               const canViewBalance = fd.get('canViewBalanceSheet') === 'on';
@@ -461,16 +400,11 @@ function openAdminDetail(admin, tree, contentEl) {
 }
 
 function openCreateUserModal(tree, contentEl) {
-  let kind = 'use'; // 'use' | 'admin'
-  let adminRole = 'staff'; // 'staff' | 'super'
-  // Đổi Vai trò (data-admin-role) vẽ lại cả form -> phải tự giữ lại những gì
-  // đã gõ (tên đăng nhập/họ tên/mật khẩu) trước khi vẽ lại, không thì mất
-  // trắng mỗi lần đổi qua lại giữa "Chỉ xem"/"Toàn quyền".
+  let kind = 'use';
+  let adminRole = 'staff';
+
   let adminUsername = '', adminName = '', adminPassword = '';
-  // Nhân viên có cờ canManageUsers (không phải Toàn quyền thật) vào được
-  // trang này nhưng KHÔNG được tự tạo tài khoản Toàn quyền — server cũng tự
-  // chặn lại (403/ép về staff) nếu cố tình gửi lên, đây chỉ là ẩn lựa chọn
-  // đó khỏi giao diện cho đỡ rối, tránh tưởng nhầm là tạo được.
+
   const viewerIsSuper = S.isSuperAdmin(S.getSession()?.id);
 
   const close = openModal({
@@ -544,7 +478,7 @@ function openCreateUserModal(tree, contentEl) {
         `;
         body.querySelectorAll('[data-kind]').forEach((opt) => opt.addEventListener('click', () => { kind = opt.dataset.kind; draw2(); }));
         body.querySelectorAll('[data-admin-role]').forEach((opt) => opt.addEventListener('click', () => {
-          // Giữ lại dữ liệu đã nhập trước khi vẽ lại form theo vai trò mới.
+
           const form = body.querySelector('#admin-form');
           if (form) {
             adminUsername = form.username.value;
