@@ -161,22 +161,49 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
     </article></body></html>`;
 }
 
-/** Chờ kiểu chữ (Inter, Source Serif 4) tải xong — tối đa 3 giây — rồi mới in, để bản in không bị đổi sang chữ dự phòng. */
+/**
+ * Logo quỹ dạng data: URI, nạp sẵn từ lúc mở app. Nhúng thẳng vào giấy báo thì cửa sổ in hiện logo ngay,
+ * không phải gọi mạng lại (trước đây cửa sổ mới tải logo từ máy chủ → logo hiện chậm hẳn so với chữ).
+ */
+let logoDataUrl = '';
+let logoLoading = false;
+function preloadNoticeLogo() {
+  if (logoDataUrl || logoLoading || typeof document === 'undefined' || typeof fetch !== 'function' || typeof FileReader !== 'function') return;
+  logoLoading = true;
+  fetch(new URL('icons/logo-pcf.png', document.baseURI).href)
+    .then((res) => (res.ok ? res.blob() : null))
+    .then((blob) => {
+      if (!blob) { logoLoading = false; return; }
+      const reader = new FileReader();
+      reader.onload = () => { logoDataUrl = String(reader.result || ''); logoLoading = false; };
+      reader.onerror = () => { logoLoading = false; };
+      reader.readAsDataURL(blob);
+    })
+    .catch(() => { logoLoading = false; });
+}
+preloadNoticeLogo();
+
+/** Chờ kiểu chữ (Inter, Source Serif 4) và logo tải xong — tối đa 3 giây — rồi mới in, để bản in không bị đổi sang chữ dự phòng hay thiếu logo. */
 function whenFontsReady(page) {
   const doc = page.document;
   const link = doc.querySelector('link[data-fonts]');
   const linkDone = link && !link.sheet ? new Promise((res) => { link.addEventListener('load', res); link.addEventListener('error', res); }) : Promise.resolve();
-  const loaded = linkDone
+  const logo = doc.querySelector('img.logo');
+  const logoDone = logo && !logo.complete ? new Promise((res) => { logo.addEventListener('load', res); logo.addEventListener('error', res); }) : Promise.resolve();
+  const loaded = Promise.all([logoDone, linkDone
     .then(() => Promise.all(['600 10px "Inter"', '700 10px "Inter"', '400 10px "Source Serif 4"', '700 20px "Source Serif 4"', 'italic 400 10px "Source Serif 4"'].map((f) => doc.fonts.load(f).catch(() => null))))
-    .then(() => doc.fonts.ready);
+    .then(() => doc.fonts.ready)]);
   return Promise.race([loaded, new Promise((res) => setTimeout(res, 3000))]);
 }
 
 export function printNotice(data) {
   const page = window.open('', '_blank', 'width=900,height=900');
   if (!page) return false;
-  let logoUrl = '';
-  try { logoUrl = new URL('icons/logo-pcf.png', document.baseURI).href; } catch { /* không có logo thì bỏ qua */ }
+  let logoUrl = logoDataUrl;
+  if (!logoUrl) {
+    preloadNoticeLogo(); // chưa nạp kịp (lần đầu) → dùng địa chỉ thường, các lần sau đã có sẵn
+    try { logoUrl = new URL('icons/logo-pcf.png', document.baseURI).href; } catch { /* không có logo thì bỏ qua */ }
+  }
   page.document.open();
   page.document.write(buildNoticeHtml({ ...data, logoUrl }));
   page.document.close();
