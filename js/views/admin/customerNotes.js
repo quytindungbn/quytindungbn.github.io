@@ -363,7 +363,7 @@ function whenHtml(f, today) {
   }
   const amount = f.amount ? `, ${f.kind === 'monthly' ? 'thu' : 'hẹn trả'} ${formatVND(Number(f.amount))}` : '';
   let line;
-  if (f.kind === 'monthly') line = `${d.pushed ? `Ngày ${f.monthlyDay} còn dưới 10 ngày nên kỳ đầu tiên tính từ tháng sau. ` : ''}Sau đó mỗi tháng vào ngày ${f.monthlyDay}${amount}; ${f.contractId ? 'tự dừng khi hợp đồng tất toán' : 'dừng khi bạn xóa ghi chú'}.`;
+  if (f.kind === 'monthly') line = `Sau đó mỗi tháng vào ngày ${f.monthlyDay}${amount}; ${f.contractId ? 'tự dừng khi hợp đồng tất toán' : 'dừng khi bạn xóa ghi chú'}.`;
   else if (f.kind === 'after') line = `Còn ${d.inDays} ngày kể từ hôm nay (${formatVnDate(today)}). Hiện ở mục Cần chú ý khi đến hạn${amount}.`;
   else line = `Đến ngày đó sẽ hiện ở mục Cần chú ý${amount}.`;
   return `<div class="nt-when">${icon('bell')}<div><b>${f.kind === 'monthly' ? 'Nhắc lần đầu' : 'Nhắc vào'}: ${d.text}</b><span>${line}</span></div></div>`;
