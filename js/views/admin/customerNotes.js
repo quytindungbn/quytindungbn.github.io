@@ -113,7 +113,7 @@ function cardInnerHtml(customerId, ui) {
     : '';
   return `<div class="nr-bar" role="button" tabindex="0" aria-expanded="${ui.expanded}" data-nt-toggle>
       <span class="nq-ic">${icon('bell')}</span>
-      <span class="nr-tt">Ghi chú &amp; nhắc việc${sum.total ? `<em>${sum.total}</em>` : ''}</span>
+      <span class="nr-tt"><span class="nr-tx">Ghi chú &amp; nhắc việc</span>${sum.total ? `<em>${sum.total}</em>` : ''}</span>
       <button type="button" class="nr-add" data-nt-add>${ic('plus')}Ghi chú</button>
       <span class="nq-chev">${ic('chevronDown')}</span>
     </div>

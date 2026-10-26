@@ -2802,7 +2802,8 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .nq-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: #fbf1cf; color: #8a6a22; }
 .nq-ic svg { width: 18px; height: 18px; }
 .nr-tt { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font: 700 11px/1 var(--lux-sans, system-ui, sans-serif); letter-spacing: .14em; text-transform: uppercase; color: var(--cd-gold); white-space: nowrap; }
-.nr-tt em { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 7px; border-radius: 999px; background: var(--cd-em); color: #fff; font: 700 11px/1 var(--lux-sans, system-ui, sans-serif); font-style: normal; letter-spacing: 0; }
+.nr-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nr-tt em { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 7px; border-radius: 999px; background: var(--cd-em); color: #fff; font: 700 11px/1 var(--lux-sans, system-ui, sans-serif); font-style: normal; letter-spacing: 0; }
 .nr-add { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 13px 0 10px; border: 1px solid #c9a94f; border-radius: 999px; background: linear-gradient(180deg, #f6e3a1, #e2bd5c); color: #3d2d06; font: 700 13px/1 var(--lux-sans, system-ui, sans-serif); box-shadow: 0 6px 14px -8px rgba(150, 112, 20, .75); cursor: pointer; }
 .nr-add svg { width: 15px; height: 15px; }
 .nq-chev { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid var(--cd-line); border-radius: 50%; background: #f4f8f6; color: var(--cd-em); }
@@ -2920,6 +2921,7 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .nr-bar { padding: 11px 10px 6px 12px; gap: 8px; }
   .nr-tt { letter-spacing: .1em; font-size: 10.5px; gap: 6px; }
   .nr-sum { padding: 0 12px 12px 12px; gap: 4px 12px; font-size: 12px; }
+  .nr-bar .nq-ic { display: none; }
   .nq-body { padding: 12px 12px 14px; }
   .nq-x .nt-acts .nt-btn, .nv-b .nt-acts .nt-btn { flex: 1; padding: 0 8px; }
   .nq-x .nt-acts .nt-btn.ok, .nv-b .nt-acts .nt-btn.ok { flex: 1.5; }
