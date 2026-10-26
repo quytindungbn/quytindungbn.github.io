@@ -3250,6 +3250,25 @@ grant select, insert, update, delete on public.co_people_archive to service_role
   Nhật ký gắn với hợp đồng chứ không gắn với danh sách Gửi tự động, nên bỏ rồi thêm lại gửi tự động không làm mất. Hợp đồng bị xóa (tất toán) thì máy chủ vẫn giữ các dòng nhật ký nhưng bỏ liên kết hợp đồng (xem phần nhập file).
 - **Lịch sử gửi**: hàng đầu có **ô tìm kiếm** (tên khách không phân biệt dấu, số HĐTD, số điện thoại của khách hoặc người đã nhận tin — gõ có hay không có dấu cách đều được, tên người cùng vay), rồi 2 ô **Từ ngày / Đến ngày** cân đối (điện thoại: tìm kiếm 1 hàng, 2 ô ngày 1 hàng; máy tính: 1 hàng 3 ô). Các nút lọc và số đếm tính theo kết quả tìm.
 
+### 10.89. Lịch sử gửi ghi sẵn NGƯỜI NHẬN lúc gửi — không còn bị "Số khác" khi số điện thoại sửa sau (CẦN chạy SQL, rồi deploy lại CẢ 2 Edge Function)
+
+**Vì sao trước đây có dòng "Số khác"**: nhật ký `zalo_send_log` chỉ lưu *số điện thoại đã gửi*; trang Lịch sử gửi đoán người nhận bằng cách so số đó với số người vay / người cùng vay **hiện tại**.
+Nếu sau lần gửi, số người cùng vay bị sửa hoặc xóa (VD nhập nhầm số, gửi báo "chưa đăng ký Zalo", rồi nhập lại số đúng) hoặc hồ sơ khách đổi, thì số cũ không còn khớp ai nên hiện "Số khác".
+
+**Cách sửa**: lúc gửi, máy chủ ghi thêm 2 cột vào dòng nhật ký: `recipient_who` (`main` = người vay, `co` = người cùng vay) và `recipient_name` (tên người cùng vay trên hợp đồng). Màn hình dùng đúng 2 cột này khi có;
+dòng cũ chưa có cột thì vẫn so số như trước (chỉ lần gửi MỚI mới đúng tuyệt đối). Hàm `logRecipient` trong `js/lib/coBorrower.js`.
+
+**Việc cần bạn làm** (chưa làm thì mọi thứ vẫn chạy như cũ — máy chủ tự ghi lại không có 2 cột khi chưa có cột, nên không mất nhật ký và không hỏng việc gửi):
+
+1. Chạy SQL trong Supabase → SQL Editor (`supabase/migrations/20261028_zalo_log_recipient.sql`):
+
+```sql
+alter table zalo_send_log add column if not exists recipient_who text check (recipient_who in ('main', 'co'));
+alter table zalo_send_log add column if not exists recipient_name text;
+```
+
+2. Deploy lại 2 Edge Function: **`create-account`** và **`send-due-reminders`** (code trong `supabase/functions/`).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

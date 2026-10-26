@@ -662,6 +662,8 @@ const noZaloCustomerIds = new Set<string>();
 async function sendZaloTemplate(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string;
+  /** Người nhận của số này ('main' = người vay, 'co' = người cùng vay) + tên — ghi vào nhật ký để lịch sử luôn đúng dù sau này số điện thoại được sửa (xem docs mục 10.89). */
+  who?: 'main' | 'co'; whoName?: string;
   /** true khi đang gửi cho 2 số cùng lúc: chưa tự bỏ khách khỏi OA khi 1 số báo "chưa đăng ký Zalo" — để sendZaloToCustomer() quyết định theo kết quả của cả 2 số. */
   deferNoAccount?: boolean;
 }): Promise<{ ok: boolean; noAccount: boolean }> {
@@ -688,10 +690,17 @@ async function sendZaloTemplate(opts: {
     console.error('Lỗi gọi API gửi tin Zalo:', e);
   }
   if (noAccount && !opts.deferNoAccount) { noZaloCustomerIds.add(opts.customerId); await removeCustomerFromZaloLists(opts.customerId); }
-  await admin.from('zalo_send_log').insert({
+  const logRow: Record<string, unknown> = {
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null, triggered_by: 'auto',
-  });
+  };
+  if (opts.who) { logRow.recipient_who = opts.who; logRow.recipient_name = opts.whoName || null; }
+  const { error: logErr } = await admin.from('zalo_send_log').insert(logRow);
+  if (logErr && opts.who && /recipient_(who|name)/i.test(String(logErr.message || ''))) {
+    // Chưa chạy SQL thêm cột người nhận (docs mục 10.89): ghi như trước để vẫn có nhật ký, không làm hỏng việc gửi.
+    delete logRow.recipient_who; delete logRow.recipient_name;
+    await admin.from('zalo_send_log').insert(logRow);
+  }
   return { ok: status === 'success', noAccount };
 }
 
@@ -777,6 +786,7 @@ async function sendZaloToCustomer(opts: {
   const results = await Promise.all(recipients.map((r) => sendZaloTemplate({
     accessToken: opts.accessToken, phone: r.phone, templateId: opts.templateId, templateData: opts.templateData,
     contractId: opts.contractId, customerId: opts.customerId, kind: opts.kind, deferNoAccount: true,
+    who: r.who, whoName: r.who === 'co' ? heirOfRow(opts.contract, opts.customer.name) : String(opts.customer.name || ''),
   })));
   const noWho = recipients.filter((_, i) => results[i].noAccount).map((r) => r.who);
   if (noWho.length) {

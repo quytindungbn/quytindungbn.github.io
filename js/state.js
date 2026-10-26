@@ -2303,6 +2303,8 @@ function mapZaloSendLogRow(row) {
     id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, templateId: row.template_id,
     phone: row.phone, status: row.status, errorMessage: translateZaloError(row.error_message),
     triggeredBy: row.triggered_by, triggeredByAdminId: row.triggered_by_admin_id, sentAt: row.sent_at,
+    recipientWho: row.recipient_who === 'main' || row.recipient_who === 'co' ? row.recipient_who : null, // ai nhận, ghi lúc gửi (docs mục 10.89); log cũ không có
+    recipientName: row.recipient_name ? String(row.recipient_name) : '',
   };
 }
 

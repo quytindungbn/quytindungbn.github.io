@@ -658,6 +658,8 @@ async function removeCustomerFromZaloLists(customerId: string): Promise<void> {
 async function sendZaloTemplateLogged(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string; triggeredBy: 'auto' | 'manual'; triggeredByAdminId?: string | null;
+  /** Người nhận của số này ('main' = người vay, 'co' = người cùng vay) + tên — ghi vào nhật ký để lịch sử luôn đúng dù sau này số điện thoại được sửa (xem docs mục 10.89). */
+  who?: 'main' | 'co'; whoName?: string;
   /** true khi đang gửi cho 2 số cùng lúc: chưa tự bỏ khách khỏi OA khi 1 số báo "chưa đăng ký Zalo" — để nơi gọi quyết định theo kết quả của cả 2 số. */
   deferNoAccount?: boolean;
 }): Promise<{ ok: boolean; reason?: string; noAccount?: boolean }> {
@@ -683,11 +685,18 @@ async function sendZaloTemplateLogged(opts: {
     errorMessage = String(e?.message || e);
   }
   if (noAccount && !opts.deferNoAccount) await removeCustomerFromZaloLists(opts.customerId);
-  await admin.from('zalo_send_log').insert({
+  const logRow: Record<string, unknown> = {
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null,
     triggered_by: opts.triggeredBy, triggered_by_admin_id: opts.triggeredByAdminId || null,
-  });
+  };
+  if (opts.who) { logRow.recipient_who = opts.who; logRow.recipient_name = opts.whoName || null; }
+  const { error: logErr } = await admin.from('zalo_send_log').insert(logRow);
+  if (logErr && opts.who && /recipient_(who|name)/i.test(String(logErr.message || ''))) {
+    // Chưa chạy SQL thêm cột người nhận (docs mục 10.89): ghi như trước để vẫn có nhật ký, không làm hỏng việc gửi.
+    delete logRow.recipient_who; delete logRow.recipient_name;
+    await admin.from('zalo_send_log').insert(logRow);
+  }
   return status === 'success' ? { ok: true } : { ok: false, reason: errorMessage || 'Gửi thất bại.', noAccount };
 }
 
@@ -2259,6 +2268,7 @@ Deno.serve(async (req) => {
       const results = await Promise.all(recipients.map((r) => sendZaloTemplateLogged({
         accessToken, phone: r.phone, templateId, templateData,
         contractId, customerId: customer.id, kind, triggeredBy: 'manual', triggeredByAdminId: caller.id,
+        who: r.who, whoName: r.who === 'co' ? heirOfRow(contract, customer.name) : String(customer.name || ''),
         deferNoAccount: true,
       })));
       const sentCount = results.filter((r) => r.ok).length;

@@ -104,11 +104,14 @@ export function hasOaPhone(contracts, customer) {
 }
 
 /**
- * Một lần gửi Zalo (dòng lịch sử gửi tin) đã gửi cho AI: so số điện thoại đã gửi với số người vay, rồi với người cùng vay GHI TRÊN HỢP ĐỒNG đó, rồi với cả sổ người
- * cùng vay của khách (hợp đồng đã đổi người cùng vay vẫn tra ra được). Trả { who: 'main' | 'co' | 'other', name, phone }; 'other' = số không còn trong hồ sơ khách.
+ * Một lần gửi Zalo (dòng lịch sử gửi tin) đã gửi cho AI. Dòng log có GHI SẴN người nhận lúc gửi (`recorded` = { who: 'main' | 'co', name }, xem docs mục 10.89)
+ * thì dùng đúng như đã ghi — dù sau này số điện thoại bị sửa/xóa vẫn không đổi. Log cũ chưa ghi thì so số điện thoại đã gửi với số người vay, rồi với người cùng vay
+ * GHI TRÊN HỢP ĐỒNG đó, rồi với cả sổ người cùng vay của khách. Trả { who: 'main' | 'co' | 'other', name, phone }; 'other' = số không còn trong hồ sơ khách.
  */
-export function logRecipient(logPhone, customer, contract) {
+export function logRecipient(logPhone, customer, contract, recorded = null) {
   const phone = String(logPhone || '').trim();
+  if (recorded && recorded.who === 'main') return { who: 'main', name: recorded.name || (customer && customer.name) || '', phone };
+  if (recorded && recorded.who === 'co') return { who: 'co', name: recorded.name || '', phone };
   if (!phone || !customer) return { who: 'other', name: '', phone };
   if (samePhone(phone, customer.phone)) return { who: 'main', name: customer.name || '', phone };
   const st = contract ? contractOa(contract, customer) : null;

@@ -960,7 +960,7 @@ function buildLogItems(logs) {
     const first = g.logs[0];
     const customer = S.getCustomer(first.customerId);
     const contract = first.contractId ? S.getContract(first.contractId) : null;
-    const recips = g.logs.map((l) => ({ l, rc: logRecipient(l.phone, customer, contract) })).sort((a, b) => LOG_WHO_ORDER[a.rc.who] - LOG_WHO_ORDER[b.rc.who]);
+    const recips = g.logs.map((l) => ({ l, rc: logRecipient(l.phone, customer, contract, { who: l.recipientWho, name: l.recipientName }) })).sort((a, b) => LOG_WHO_ORDER[a.rc.who] - LOG_WHO_ORDER[b.rc.who]);
     const okN = recips.filter((r) => r.l.status === 'success').length;
     return { id: first.id, time: g.time, first, customer, contract, recips, allOk: okN === recips.length, partial: okN > 0 && okN < recips.length };
   });

@@ -186,3 +186,16 @@ test('logRecipient: lần gửi đã gửi cho ai — người vay / người c�
   assert.equal(logRecipient('0910000000', customer, null).who, 'main');
   assert.equal(logRecipient('0988777666', customer, null).who, 'co');
 });
+
+test('logRecipient: log đã ghi sẵn người nhận thì dùng đúng như đã ghi, dù số điện thoại sau đó bị sửa', () => {
+  const customer = { name: 'LÂM VĂN THU', phone: '0910000000', coPeople: [{ name: 'LÊ VĂN KHÁNH', phone: '0905999888' }] }; // Khánh đã sửa số sau lần gửi
+  // lúc gửi, số của Khánh là 0905222333 (không còn khớp sổ) — nhưng log ghi sẵn recipient_who = 'co'
+  assert.deepEqual(logRecipient('0905222333', customer, null, { who: 'co', name: 'LÊ VĂN KHÁNH' }), { who: 'co', name: 'LÊ VĂN KHÁNH', phone: '0905222333' });
+  // không ghi sẵn → như trước: số cũ không còn khớp ai
+  assert.equal(logRecipient('0905222333', customer, null).who, 'other');
+  assert.equal(logRecipient('0905222333', customer, null, { who: null, name: '' }).who, 'other');
+  // người vay ghi sẵn: tên lấy theo log hoặc theo khách
+  assert.deepEqual(logRecipient('0911111111', customer, null, { who: 'main', name: '' }), { who: 'main', name: 'LÂM VĂN THU', phone: '0911111111' });
+  // khách đã bị xóa nhưng log có ghi sẵn
+  assert.equal(logRecipient('0905222333', null, null, { who: 'co', name: 'Khánh' }).who, 'co');
+});
