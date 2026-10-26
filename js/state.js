@@ -907,7 +907,10 @@ function oaListable(customerId) { return !oaAddBlockReason(customerId); }
 export function isZaloCustomer(customerId) {
   return (state.zaloCustomers || []).some((r) => r.customerId === customerId) && oaListable(customerId);
 }
-export function listZaloCustomers() { return (state.zaloCustomers || []).filter((r) => oaListable(r.customerId)); }
+export function listZaloCustomers() {
+  const addedMs = (r) => Date.parse(r.addedAt) || 0;
+  return (state.zaloCustomers || []).filter((r) => oaListable(r.customerId)).sort((a, b) => addedMs(b) - addedMs(a));
+}
 
 export function findZaloAutoSend(contractId) {
   return listZaloAutoSend().find((r) => r.contractId === contractId) || null;

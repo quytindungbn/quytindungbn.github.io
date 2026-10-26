@@ -3248,6 +3248,7 @@ grant select, insert, update, delete on public.co_people_archive to service_role
 - Dòng **"Đã gửi Zalo tự động/bằng tay gần nhất ngày …"** (chi tiết hợp đồng, kèm thời gian chờ 5 ngày giữa 2 lần gửi tay) trước đây chỉ đọc nhật ký đã tải về máy — **31 ngày gần nhất, tối đa 1.000 dòng** — nên hợp đồng gửi lần cuối cách đây lâu bị mất dòng này.
   Nay mở chi tiết hợp đồng, màn hình tra thêm **thẳng nhật ký `zalo_send_log` trên máy chủ** (lưu mãi, theo `contract_id`) lần gửi thành công mới nhất của đúng hợp đồng đó (`fetchLastSuccessfulZaloSend` trong `js/state.js`) rồi lấy ngày mới nhất giữa 2 nguồn.
   Nhật ký gắn với hợp đồng chứ không gắn với danh sách Gửi tự động, nên bỏ rồi thêm lại gửi tự động không làm mất. Hợp đồng bị xóa (tất toán) thì máy chủ vẫn giữ các dòng nhật ký nhưng bỏ liên kết hợp đồng (xem phần nhập file).
+- **Danh sách OA**: khách **mới thêm vào OA hiện đầu tiên** (sắp theo `zalo_customers.added_at` giảm dần; dòng cũ không có ngày xuống cuối) — `listZaloCustomers` trong `js/state.js`.
 - **Lịch sử gửi**: hàng đầu có **ô tìm kiếm** (tên khách không phân biệt dấu, số HĐTD, số điện thoại của khách hoặc người đã nhận tin — gõ có hay không có dấu cách đều được, tên người cùng vay), rồi 2 ô **Từ ngày / Đến ngày** cân đối (điện thoại: tìm kiếm 1 hàng, 2 ô ngày 1 hàng; máy tính: 1 hàng 3 ô). Các nút lọc và số đếm tính theo kết quả tìm.
 
 ### 10.89. Lịch sử gửi ghi sẵn NGƯỜI NHẬN lúc gửi — không còn bị "Số khác" khi số điện thoại sửa sau (CẦN chạy SQL, rồi deploy lại CẢ 2 Edge Function)
