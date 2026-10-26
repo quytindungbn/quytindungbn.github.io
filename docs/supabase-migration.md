@@ -3270,6 +3270,16 @@ alter table zalo_send_log add column if not exists recipient_name text;
 
 2. Deploy lại 2 Edge Function: **`create-account`** và **`send-due-reminders`** (code trong `supabase/functions/`).
 
+### 10.90. Nhập số người cùng vay: cảnh báo trùng số với ai nhưng vẫn lưu được (CẦN deploy lại Edge Function `create-account` — chỉ cho trường hợp trùng số người vay của chính khách; không cần SQL)
+
+Ông A vay chung với bà B, ông C cũng vay chung với bà B → bà B có mặt ở nhiều khách nên số của bà trùng là chuyện bình thường. Vì vậy:
+
+- Gõ đủ 10 số ở ô *Số điện thoại của …* (chi tiết khách hàng → Người cùng vay), màn hình hiện khung vàng **"Số này trùng với N người — vẫn lưu được"**, liệt kê tối đa 4 người: *người vay* của khách nào, *người cùng vay* của khách nào, hoặc *chính người vay của khách này* (kèm ghi chú gửi OA chỉ gửi 1 tin cho số đó). Hàm `phoneHolders` (`js/lib/coBorrower.js`).
+- Bấm Lưu / Enter vẫn lưu bình thường; thông báo sau khi lưu có thêm "Lưu ý: trùng số với …".
+- Trước đây số người cùng vay trùng số người vay của chính khách bị chặn ("Trùng số của người vay") ở cả màn hình lẫn máy chủ (`save-co-phone`): nay bỏ chặn. Khi trùng số người vay của chính khách, người cùng vay không tick riêng được (gửi OA chỉ 1 tin), như cũ.
+- Trùng với khách khác thì máy chủ trước giờ không chặn nên không cần deploy; chỉ trường hợp trùng số người vay của chính khách mới cần deploy lại `create-account`.
+- Ô nhập số cho **người vay** (khi chưa có số) và nhập từ file Excel (bỏ qua dòng trùng số người vay) giữ nguyên như cũ.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

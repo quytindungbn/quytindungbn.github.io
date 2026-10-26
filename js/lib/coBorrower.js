@@ -79,6 +79,21 @@ export function logRecipient(logPhone, customer, contract, recorded = null) {
   return p ? { who: 'co', name: p.name || '', phone } : { who: 'other', name: '', phone };
 }
 
+export function phoneHolders(customers, phone, { exceptCustomerId = '', exceptCoName = '' } = {}) {
+  const out = [];
+  if (!String(phone || '').trim()) return out;
+  for (const c of customers || []) {
+    const same = !!exceptCustomerId && c.id === exceptCustomerId;
+    if (samePhone(c.phone, phone)) out.push({ kind: 'main', customerId: c.id, customerName: c.name || '', name: c.name || '', same });
+    for (const p of c.coPeople || []) {
+      if (!p || !samePhone(p.phone, phone)) continue;
+      if (same && samePerson(p.name, exceptCoName)) continue;
+      out.push({ kind: 'co', customerId: c.id, customerName: c.name || '', name: p.name || '', same });
+    }
+  }
+  return out;
+}
+
 export function shortPersonName(name) {
   const words = String(name || '').trim().split(/\s+/).filter(Boolean);
   const w = words[words.length - 1] || '';

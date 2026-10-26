@@ -1,6 +1,6 @@
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { describeOrgPatch } from './lib/activityLabels.js';
-import { heirNamesOf, heirOfContract, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone } from './lib/coBorrower.js';
+import { heirNamesOf, heirOfContract, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, phoneHolders } from './lib/coBorrower.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
 import { clearDeviceCaches } from './lib/kvCache.js';
@@ -604,6 +604,7 @@ function activeContractsOf(customerId) {
   return listContractsByCustomer(customerId).filter((ct) => effectiveContractStatus(ct) !== 'da_tat_toan');
 }
 
+export function findPhoneHolders(phone, customerId, coName) { return phoneHolders(state.customers, phone, { exceptCustomerId: customerId, exceptCoName: coName }); }
 export function listCoPeople(customerId) {
   const c = getCustomer(customerId);
   if (!c) return [];

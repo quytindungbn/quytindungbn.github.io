@@ -1405,7 +1405,6 @@ Deno.serve(async (req) => {
     if (raw) {
       const clean = cleanVnPhone(raw);
       if (!clean) return json({ ok: false, reason: 'Số điện thoại phải đủ 10 số và bắt đầu bằng số 0.' });
-      if (samePhone(clean, customer.phone)) return json({ ok: false, reason: 'Trùng số của người vay.' });
       phone = clean;
     }
     const people: CoEntry[] = (Array.isArray(customer.co_people) ? customer.co_people : [])

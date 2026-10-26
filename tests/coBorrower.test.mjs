@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normPersonName, samePerson, samePhone, heirOfContract, heirNamesOf, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, shortPersonName, checkCoPhone, sanitizeCoPhoneInput, logRecipient } from '../js/lib/coBorrower.js';
+import { normPersonName, samePerson, samePhone, heirOfContract, heirNamesOf, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, shortPersonName, checkCoPhone, sanitizeCoPhoneInput, logRecipient, phoneHolders } from '../js/lib/coBorrower.js';
 
 test('so sánh tên: bỏ qua hoa/thường và khoảng trắng thừa, giữ dấu', () => {
   assert.equal(normPersonName('  Trần   Văn  Bình '), 'trần văn bình');
@@ -198,4 +198,19 @@ test('logRecipient: log đã ghi sẵn người nhận thì dùng đúng như đ
   assert.deepEqual(logRecipient('0911111111', customer, null, { who: 'main', name: '' }), { who: 'main', name: 'LÂM VĂN THU', phone: '0911111111' });
 
   assert.equal(logRecipient('0905222333', null, null, { who: 'co', name: 'Khánh' }).who, 'co');
+});
+
+test('phoneHolders: tìm ai đang dùng số này (người vay hoặc người cùng vay của khách khác), bỏ qua chính người đang sửa', () => {
+  const customers = [
+    { id: 'a', name: 'ÔNG A', phone: '0911111111', coPeople: [{ name: 'BÀ B', phone: '0988777666' }, { name: 'CÔ D', phone: '' }] },
+    { id: 'c', name: 'ÔNG C', phone: '0922222222', coPeople: [{ name: 'Bà B', phone: '0988 777 666' }] },
+    { id: 'e', name: 'ÔNG E', phone: '+84 988 777 666', coPeople: [] },
+  ];
+  const h = phoneHolders(customers, '0988777666', { exceptCustomerId: 'c', exceptCoName: 'BÀ B' });
+  assert.deepEqual(h.map((x) => `${x.kind}:${x.customerName}:${x.name}:${x.same}`), ['co:ÔNG A:BÀ B:false', 'main:ÔNG E:ÔNG E:false']);
+  const own = phoneHolders(customers, '0911111111', { exceptCustomerId: 'a', exceptCoName: 'CÔ D' });
+  assert.deepEqual(own.map((x) => `${x.kind}:${x.same}`), ['main:true']);
+  assert.deepEqual(phoneHolders(customers, '0900000000', { exceptCustomerId: 'a' }), []);
+  assert.deepEqual(phoneHolders(customers, '', {}), []);
+  assert.deepEqual(phoneHolders(null, '0911111111'), []);
 });

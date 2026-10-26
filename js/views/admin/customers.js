@@ -791,6 +791,15 @@ function coCardShown(customerId, contracts, { canOa, canEdit }) {
   return canOa || canEdit;
 }
 
+function phoneDupHtml(hs) {
+  const who = (h) => (h.kind === 'main'
+    ? (h.same ? 'chính <b>người vay</b> của khách này' : `<b>${escapeHtml(h.name)}</b> — người vay`)
+    : (h.same ? `<b>${escapeHtml(h.name)}</b> — người cùng vay khác của khách này` : `<b>${escapeHtml(h.name)}</b> — người cùng vay của ${escapeHtml(h.customerName)}`));
+  const sameMain = hs.some((h) => h.same && h.kind === 'main');
+  return `<div class="cd-pp-dup-h">${icon('info', 'icon-sm')}<b>Số này trùng với ${hs.length} người</b><span>vẫn lưu được</span></div>
+    <ul>${hs.slice(0, 4).map((h) => `<li>${who(h)}</li>`).join('')}${hs.length > 4 ? `<li>… và ${hs.length - 4} người khác</li>` : ''}</ul>
+    ${sameMain ? '<div class="cd-pp-dup-n">Trùng số người vay nên gửi OA chỉ gửi 1 tin cho số này.</div>' : ''}`;
+}
 function coPersonHtml(p, { canEdit, editing, pending }) {
   const key = escapeHtml(normPersonName(p.name));
   const dial = String(p.phone || '').replace(/[^\d+]/g, '');
@@ -808,6 +817,7 @@ function coPersonHtml(p, { canEdit, editing, pending }) {
         <label for="pp-phone">${pending ? `Nhập số điện thoại để bật gửi Zalo OA cho ${escapeHtml(shortPersonName(p.name))}` : `Số điện thoại của ${escapeHtml(shortPersonName(p.name))}`}</label>
         <div class="cd-pp-formrow"><input class="cd-pp-in" id="pp-phone" type="tel" inputmode="numeric" maxlength="16" autocomplete="off" value="${escapeHtml(editVal)}">
           <button type="button" class="btn btn-primary btn-sm" data-pp-save>Lưu</button><button type="button" class="btn btn-outline btn-sm" data-pp-cancel>Hủy</button></div>
+        <div class="cd-pp-dup" id="pp-dup" hidden></div>
       </div>` : '';
   return `<div class="cd-pp${p.phone ? '' : ' is-need'}${editing ? ' is-editing' : ''}" data-person="${key}">
       <div class="cd-pp-top">
@@ -1053,8 +1063,17 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         let ppEditKey = null, ppPending = null, ppSaving = false;
         const drawPp = () => {
           ppCard.innerHTML = coCardHtml(S.getCustomer(customerId) || c, contracts, { canOa: canManageZalo, canEdit: canEditCo, editKey: ppEditKey, pending: !!ppPending });
-          if (ppEditKey) ppCard.querySelector('#pp-phone')?.focus();
+          if (ppEditKey) { ppCard.querySelector('#pp-phone')?.focus(); updateDup(); }
           syncOaAddBtn();
+        };
+        const updateDup = () => {
+          const box = ppCard.querySelector('#pp-dup'), inp = ppCard.querySelector('#pp-phone');
+          if (!box || !inp) return;
+          const person = ppEditKey && ppEditKey !== '@main' ? personOf(ppEditKey) : null;
+          const chk = checkCoPhone(inp.value);
+          const hs = person && chk.ok && !chk.empty ? S.findPhoneHolders(chk.phone, customerId, person.name) : [];
+          box.hidden = !hs.length;
+          box.innerHTML = hs.length ? phoneDupHtml(hs) : '';
         };
         const personOf = (key) => S.listCoPeople(customerId).find((p) => normPersonName(p.name) === key);
 
@@ -1071,13 +1090,13 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           return p.contracts.filter((ct) => st(ct).toCo !== on).map((ct) => ({ id: ct.id, patch: { toCo: on } }));
         };
         const runTargets = (targets) => Promise.all(targets.map((t) => S.setContractOa(t.id, t.patch)));
-        const mainDigits = String(c.phone || '').replace(/[^\d]/g, '').replace(/^84/, '0');
 
         ppCard.addEventListener('input', (e) => {
           const inp = e.target.closest('#pp-phone');
           if (!inp) return;
           const v = sanitizeCoPhoneInput(inp.value);
           if (v !== inp.value) inp.value = v;
+          updateDup();
         });
 
         ppCard.addEventListener('keydown', (e) => {
@@ -1126,7 +1145,6 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
             if (!chk.ok) { toast(chk.reason, 'error'); return; }
             if (chk.empty && (isMain || ppPending)) { toast(`Nhập số điện thoại để bật gửi Zalo OA cho ${isMain ? 'người vay' : 'người cùng vay'}`, 'error'); return; }
             if (isMain && S.listCoPeople(customerId).some((p) => p.phone && samePhone(p.phone, chk.phone))) { toast('Trùng số của người cùng vay', 'error'); return; }
-            if (!isMain && !chk.empty && chk.phone === mainDigits) { toast('Trùng số của người vay', 'error'); return; }
             ppSaving = true; saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu…';
             try {
               if (isMain) {
@@ -1140,11 +1158,13 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
                 closeFn(); openCustomerDetail(customerId, { readOnly, context, showActions, reopen: true });
                 return;
               }
+              const holders = chk.empty ? [] : S.findPhoneHolders(chk.phone, customerId, person.name);
               await S.saveCoPhone(customerId, person.name, chk.phone);
-              const wantTick = !chk.empty && canManageZalo && ppPending && (ppPending.ctId || ppPending.all);
+              const wantTick = !chk.empty && canManageZalo && ppPending && (ppPending.ctId || ppPending.all) && !holders.some((h) => h.same && h.kind === 'main');
               if (wantTick && ppPending.ctId) await S.setContractOa(ppPending.ctId, { toCo: true }, { optimistic: false });
               else if (wantTick) await runTargets(simpleTargets('co', true) || []);
-              toast(chk.empty ? 'Đã xóa số điện thoại người cùng vay' : wantTick ? 'Đã lưu số và bật gửi Zalo OA cho người cùng vay' : 'Đã lưu số điện thoại người cùng vay', 'success');
+              const dupNote = holders.length ? ` Lưu ý: trùng số với ${holders.slice(0, 2).map((h) => h.name).join(', ')}${holders.length > 2 ? ` và ${holders.length - 2} người khác` : ''}.` : '';
+              toast((chk.empty ? 'Đã xóa số điện thoại người cùng vay' : wantTick ? 'Đã lưu số và bật gửi Zalo OA cho người cùng vay' : 'Đã lưu số điện thoại người cùng vay') + dupNote, 'success', dupNote ? 5000 : 2200);
               ppEditKey = null; ppPending = null; drawPp();
             } catch (err) {
               toast(err.message || 'Có lỗi xảy ra', 'error');

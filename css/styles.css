@@ -2756,3 +2756,11 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .lg-time { padding-top: 0; font-size: 14.5px; }
 }
 @media (max-width: 480px) { .lg-name { font-size: 14px; } .lg-rc { font-size: 12px; } }
+.cd-pp-dup { margin-top: 9px; padding: 8px 10px; border: 1px solid #ecd9a0; border-radius: 10px; background: #fff4d2; color: #6b4e10; font: 600 12.5px/1.45 var(--lux-sans, inherit); }
+.cd-pp-dup[hidden] { display: none; }
+.cd-pp-dup-h { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.cd-pp-dup-h svg { flex: none; color: #b27a13; }
+.cd-pp-dup-h span { padding: 1px 8px; border-radius: 999px; background: #fffbef; color: #8a6a22; font-size: 11px; }
+.cd-pp-dup ul { margin: 5px 0 0; padding-left: 18px; font-weight: 500; }
+.cd-pp-dup li b { font-weight: 700; }
+.cd-pp-dup-n { margin-top: 5px; font-weight: 500; font-size: 12px; opacity: .9; }
