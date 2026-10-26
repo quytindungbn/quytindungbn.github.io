@@ -3408,6 +3408,12 @@ create policy "admins add note log" on customer_note_log
 - Nhãn tình trạng chỉ hiện khi hợp đồng sắp đến hạn hoặc quá hạn (đúng điều kiện cũ của dòng cảnh báo); khung "Liên hệ và gửi thông báo" ẩn khi hợp đồng đã tất toán. Trên điện thoại ẩn dòng nhãn "Cách tính lãi" và nút In giấy báo; nút gửi thông báo nhỏ hơn máy tính.
 - Giữ nguyên mọi chức năng và mã phần tử (`#ct-asof`, `#ct-days`, `#qr-*`, `#btn-*-ct`, `#del-contract`…); không đổi công thức tính lãi.
 
+### 10.94 Gửi Zalo OA gọn hơn + chọn người nhận ở chi tiết hợp đồng (không cần SQL)
+
+- Chi tiết khách hàng (khách nhiều hợp đồng), điện thoại: mỗi hợp đồng trong "Gửi Zalo OA theo từng hợp đồng" gọn thành 1 hàng (công tắc, số hợp đồng + Gốc, hai ô tick người nhận); máy tính giữ nguyên.
+- Chi tiết hợp đồng, khung "Liên hệ và gửi thông báo": thêm khối "Gửi Zalo OA tới" (2 ô tick Người vay / Người cùng vay, không ghi lại tên hay số hợp đồng) cho riêng hợp đồng đang xem, lưu bằng `save-contract-oa` như bên chi tiết khách hàng (không cho bỏ hết người nhận). Chỉ hiện khi tài khoản quản lý OA, hợp đồng còn hiệu lực, đang bật gửi OA và có người cùng vay; ô chưa có số điện thoại bấm sẽ nhắc nhập số ở chi tiết khách hàng. Công tắc bật/tắt hợp đồng vẫn nằm ở chi tiết khách hàng.
+- Khung "Thông tin hợp đồng": dưới dòng SĐT thêm dòng "SĐT người cùng vay" (nút sao chép + số bấm để gọi, ghi lượt gọi người cùng vay), chỉ hiện khi người cùng vay có số.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

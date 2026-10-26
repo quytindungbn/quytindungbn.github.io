@@ -2481,9 +2481,21 @@ button.cdo-ck.need:hover:not(:disabled) { border-color: #0c8a5c; background: #f4
 button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cdo-r.is-off .cdo-ck { opacity: .55; cursor: not-allowed; }
 @media (max-width: 560px) {
-  .cdo-r { grid-template-columns: auto minmax(0, 1fr); row-gap: 9px; }
-  .cdo-pills { grid-column: 1 / -1; }
+  .cdo-sec { margin: 12px 0 7px; }
+  .cdo-rows { gap: 6px; }
+  .cdo-r { grid-template-columns: auto 74px minmax(0, 1fr); gap: 8px; padding: 6px 9px 6px 14px; border-radius: 12px; }
+  .cdo-pills { flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+  .cdo-sw i { width: 36px; height: 22px; }
+  .cdo-sw i::after { top: 3px; left: 3px; width: 16px; height: 16px; }
+  .cdo-sw input:checked + i::after { left: 17px; }
+  .cdo-code { gap: 2px; }
+  .cdo-code b { font-size: 14px; }
+  .cdo-code span { font-size: 11px; }
+  .cdo-ck { min-height: 26px; padding: 3px 9px 3px 4px; gap: 5px; font-size: 12px; }
+  .cdo-ck i { width: 16px; height: 16px; border-radius: 5px; }
+  .cdo-ck i svg { width: 11px; height: 11px; }
 }
+.cv-oa { margin-top: 14px; }
 
 .oa-inline { flex-wrap: wrap; }
 .oa-hc { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 11px; border: 1px solid #bfe3d2; border-radius: 999px; background: #eef8f3; color: #0b5148; font: 600 12px/1.2 Inter, sans-serif; white-space: nowrap; }

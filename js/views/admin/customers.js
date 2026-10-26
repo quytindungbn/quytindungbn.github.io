@@ -869,6 +869,19 @@ function coPickHtml(c, contracts) {
       </div></div>`;
 }
 
+function contractOaPickHtml(contract) {
+  const st = S.getContractOa(contract.id);
+  if (!st || !st.coName) return '';
+  const tile = (key, on, title) => `<label class="cd-pp-tile${on ? ' on' : ''}" data-cv-tick="${key}"><input type="checkbox" ${on ? 'checked' : ''}><i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></label>`;
+  const need = (title) => `<button type="button" class="cd-pp-tile is-need" data-cv-need aria-label="${title} — chưa có số điện thoại"><i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></button>`;
+  return `<div class="cd-pp-picks">
+      <div class="cd-pp-pick-h">Gửi Zalo OA tới</div>
+      <div class="cd-pp-pick-row">
+        ${st.mainLocked ? need('Người vay') : tile('main', st.toMain, 'Người vay')}
+        ${st.coLocked ? need('Người cùng vay') : tile('co', st.toCo, 'Người cùng vay')}
+      </div></div>`;
+}
+
 function mainPhoneFormHtml(c) {
   return `<div class="cd-pp is-editing" data-person="@main">
       <div class="cd-pp-top">
@@ -1429,7 +1442,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   const coName = customer ? heirOfContract(contract, customer.name) : '';
   const dialOf = (v) => String(v || '').replace(/[^\d+]/g, '');
   const mainDial = customer ? dialOf(customer.phone) : '';
-  const coDial = coName ? dialOf(coPhoneOf(customer.coPeople, coName)) : '';
+  const coPhoneRaw = coName ? coPhoneOf(customer.coPeople, coName) : '';
+  const coDial = dialOf(coPhoneRaw);
   const callBtn = (who, dial, label) => (dial ? `<a class="cv-call" href="tel:${escapeHtml(dial)}" data-cv-call="${who}" aria-label="${label}" title="${label}">${icon('phone', 'icon-sm')}<span class="t">Gọi</span></a>` : '');
   const custHtml = !customer ? '' : coName
     ? `<p class="cv-cust"><span class="nm"><span class="g"><b>${escapeHtml(customer.name)}</b>${callBtn('main', mainDial, 'Gọi người vay')}</span><span class="g"><i>và</i><b>${escapeHtml(coName)}</b>${callBtn('co', coDial, 'Gọi người cùng vay')}</span></span></p>`
@@ -1450,11 +1464,13 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
     customer && canPay ? `<button type="button" class="cv-act" id="btn-noti-app-ct">${icon('bell')}<span>Thông báo qua ứng dụng</span></button>` : '',
     zaloShown ? `<button type="button" class="cv-act" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('send')}<span>Gửi tin Zalo OA ngay</span></button>` : '',
   ].filter(Boolean);
+  const oaPickHtml = canManageZalo && canPay && contract.oaEnabled !== false ? contractOaPickHtml(contract) : '';
   const contactHtml = canPay ? `
             <section class="cv-card cv-c-contact">
               <h4 class="cv-h">${icon('send')}Liên hệ và gửi thông báo</h4>
               ${actBtns.length ? `<div class="cv-acts" style="--n:${actBtns.length}">${actBtns.join('')}</div>` : ''}
               ${zaloShown ? `<div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
+              ${oaPickHtml ? `<div class="cv-oa" id="cv-oa-pick">${oaPickHtml}</div>` : ''}
               <div id="zalo-auto-status-ct">${zaloAutoStatusHtml(null)}</div>
             </section>` : '';
   const payHtml = `
@@ -1548,7 +1564,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
                 <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
                 <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
                 <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
-                <div class="oc-line"><span>SĐT</span><b class="cv-ph">${mainDial ? `<button type="button" class="cv-cp" data-cv-copy title="Sao chép số điện thoại" aria-label="Sao chép số điện thoại">${icon('copy', 'icon-sm')}</button><a class="cv-tel" href="tel:${escapeHtml(mainDial)}" data-cv-call="main">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
+                <div class="oc-line"><span>SĐT</span><b class="cv-ph">${mainDial ? `<button type="button" class="cv-cp" data-cv-copy="main" title="Sao chép số điện thoại" aria-label="Sao chép số điện thoại">${icon('copy', 'icon-sm')}</button><a class="cv-tel" href="tel:${escapeHtml(mainDial)}" data-cv-call="main">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
+                ${coDial ? `<div class="oc-line"><span>SĐT người cùng vay</span><b class="cv-ph"><button type="button" class="cv-cp" data-cv-copy="co" title="Sao chép số điện thoại người cùng vay" aria-label="Sao chép số điện thoại người cùng vay">${icon('copy', 'icon-sm')}</button><a class="cv-tel" href="tel:${escapeHtml(coDial)}" data-cv-call="co">${icon('phone', 'icon-sm')} ${escapeHtml(coPhoneRaw)}</a></b></div>` : ''}
               </section>${contactHtml}
             </div>
             <div class="cv-col">
@@ -1571,15 +1588,34 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         if (call.dataset.cvCall === 'co') S.logCall(customer.id, coPhoneOf(customer.coPeople, coName), 'co', coName);
         else S.logCall(customer.id, customer.phone);
       });
-      const copyPhoneBtn = sheet.querySelector('[data-cv-copy]');
-      if (copyPhoneBtn) copyPhoneBtn.addEventListener('click', async () => {
-        if (await copyText(mainDial)) {
-          S.logUiAction('copy-phone', `Sao chép số điện thoại khách hàng "**${customer.name}**"`);
+      sheet.querySelectorAll('[data-cv-copy]').forEach((copyPhoneBtn) => copyPhoneBtn.addEventListener('click', async () => {
+        const isCo = copyPhoneBtn.dataset.cvCopy === 'co';
+        const dial = isCo ? coDial : mainDial;
+        if (await copyText(dial)) {
+          S.logUiAction('copy-phone', isCo ? `Sao chép số điện thoại người cùng vay "**${coName}**" của khách hàng "**${customer.name}**"` : `Sao chép số điện thoại khách hàng "**${customer.name}**"`);
           toast('Đã sao chép số điện thoại', 'success');
           copyPhoneBtn.classList.add('is-done'); copyPhoneBtn.innerHTML = icon('check', 'icon-sm');
           setTimeout(() => { if (copyPhoneBtn.isConnected) { copyPhoneBtn.classList.remove('is-done'); copyPhoneBtn.innerHTML = icon('copy', 'icon-sm'); } }, 1800);
-        } else openCopyFallback(mainDial);
-      });
+        } else openCopyFallback(dial);
+      }));
+      const oaPick = sheet.querySelector('#cv-oa-pick');
+      if (oaPick) {
+        const drawOaPick = () => { oaPick.innerHTML = contractOaPickHtml(contract); };
+        oaPick.addEventListener('click', (e) => {
+          if (e.target.closest('[data-cv-need]')) toast('Chưa có số điện thoại — nhập số ở Chi tiết khách hàng để bật gửi Zalo OA', 'error');
+        });
+        oaPick.addEventListener('change', (e) => {
+          const tick = e.target.closest('label[data-cv-tick]');
+          const st = tick && S.getContractOa(contract.id);
+          if (!st) return;
+          const on = e.target.checked;
+          const patch = oaTickPatch(st, tick.dataset.cvTick, on);
+          if (!patch) { e.target.checked = !on; toast(OA_MIN_RECIPIENT_SIMPLE_MSG, 'error'); return; }
+          const saving = S.setContractOa(contract.id, patch);
+          drawOaPick();
+          saving.catch((err) => { toast(err.message || 'Có lỗi xảy ra', 'error'); if (oaPick.isConnected) drawOaPick(); });
+        });
+      }
       if (customer && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
         closeBtn.insertAdjacentHTML('beforebegin', `<button type="button" class="cv-tbtn txt cv-print" id="btn-print-notice" aria-haspopup="menu" aria-expanded="false" title="In giấy báo">${icon('printer')}<span>In giấy báo</span>${icon('chevronDown')}</button>`);
         const printBtn = sheet.querySelector('#btn-print-notice');
