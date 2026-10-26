@@ -3412,6 +3412,7 @@ create policy "admins add note log" on customer_note_log
 
 - Chi tiết khách hàng (khách nhiều hợp đồng), điện thoại: mỗi hợp đồng trong "Gửi Zalo OA theo từng hợp đồng" gọn thành 1 hàng (công tắc, số hợp đồng + Gốc, hai ô tick người nhận); máy tính giữ nguyên.
 - Chi tiết hợp đồng, khung "Liên hệ và gửi thông báo": thêm khối "Gửi Zalo OA tới" (2 ô tick Người vay / Người cùng vay, không ghi lại tên hay số hợp đồng) cho riêng hợp đồng đang xem, lưu bằng `save-contract-oa` như bên chi tiết khách hàng (không cho bỏ hết người nhận). Chỉ hiện khi tài khoản quản lý OA, hợp đồng còn hiệu lực, đang bật gửi OA và có người cùng vay; ô chưa có số điện thoại bấm sẽ nhắc nhập số ở chi tiết khách hàng. Công tắc bật/tắt hợp đồng vẫn nằm ở chi tiết khách hàng.
+- Người cùng vay chưa có số: bấm ô "Người cùng vay" trong khối "Gửi Zalo OA tới" hiện khung nhập số ngay tại chi tiết hợp đồng (Enter = Lưu, cảnh báo trùng số như chi tiết khách). Lưu xong số được ghi vào hồ sơ khách (`save-co-phone`), bật gửi OA cho hợp đồng này, chi tiết hợp đồng mở lại và chi tiết khách phía sau tự cập nhật. Người vay chưa có số vẫn nhắc nhập ở chi tiết khách.
 - Khung "Thông tin hợp đồng": dưới dòng SĐT thêm dòng "SĐT người cùng vay" (nút sao chép + số bấm để gọi, ghi lượt gọi người cùng vay), chỉ hiện khi người cùng vay có số.
 
 ---

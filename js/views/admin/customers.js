@@ -869,17 +869,23 @@ function coPickHtml(c, contracts) {
       </div></div>`;
 }
 
-function contractOaPickHtml(contract) {
+function contractOaPickHtml(contract, { editing = false } = {}) {
   const st = S.getContractOa(contract.id);
   if (!st || !st.coName) return '';
   const tile = (key, on, title) => `<label class="cd-pp-tile${on ? ' on' : ''}" data-cv-tick="${key}"><input type="checkbox" ${on ? 'checked' : ''}><i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></label>`;
-  const need = (title) => `<button type="button" class="cd-pp-tile is-need" data-cv-need aria-label="${title} — chưa có số điện thoại"><i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></button>`;
+  const need = (key, title) => `<button type="button" class="cd-pp-tile is-need" data-cv-need="${key}" aria-label="${title} — chưa có số điện thoại"><i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></button>`;
+  const form = editing && st.coLocked ? `<div class="cd-pp-form">
+      <label for="cv-pp-phone">Nhập số điện thoại để bật gửi Zalo OA cho ${escapeHtml(shortPersonName(st.coName))}</label>
+      <div class="cd-pp-formrow"><input class="cd-pp-in" id="cv-pp-phone" type="tel" inputmode="numeric" maxlength="16" autocomplete="off" value="">
+        <button type="button" class="btn btn-primary btn-sm" data-cv-save>Lưu</button><button type="button" class="btn btn-outline btn-sm" data-cv-cancel>Hủy</button></div>
+      <div class="cd-pp-dup" id="cv-pp-dup" hidden></div>
+    </div>` : '';
   return `<div class="cd-pp-picks">
       <div class="cd-pp-pick-h">Gửi Zalo OA tới</div>
       <div class="cd-pp-pick-row">
-        ${st.mainLocked ? need('Người vay') : tile('main', st.toMain, 'Người vay')}
-        ${st.coLocked ? need('Người cùng vay') : tile('co', st.toCo, 'Người cùng vay')}
-      </div></div>`;
+        ${st.mainLocked ? need('main', 'Người vay') : tile('main', st.toMain, 'Người vay')}
+        ${st.coLocked ? need('co', 'Người cùng vay') : tile('co', st.toCo, 'Người cùng vay')}
+      </div></div>${form}`;
 }
 
 function mainPhoneFormHtml(c) {
@@ -1104,6 +1110,11 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           box.innerHTML = hs.length ? phoneDupHtml(hs) : '';
         };
         const personOf = (key) => S.listCoPeople(customerId).find((p) => normPersonName(p.name) === key);
+        const onCoSaved = (e) => {
+          if (!ppCard.isConnected) { document.removeEventListener('qtd-co-saved', onCoSaved); return; }
+          if (e.detail && e.detail.customerId === customerId && !ppEditKey) drawPp();
+        };
+        document.addEventListener('qtd-co-saved', onCoSaved);
 
         const simpleTargets = (kind, on) => {
           const p = S.listCoPeople(customerId)[0];
@@ -1411,9 +1422,9 @@ function contractFormulaHtml(contract, days, accrued) {
   return `${formatVND(contract.balance)} × ${days} ngày × ${contract.interestRate}% ÷ 365 ngày = <strong>${formatVND(accrued)}</strong>`;
 }
 
-export function openContractView(customerId, contract, { readOnly = false } = {}) {
+export function openContractView(customerId, contract, { readOnly = false, reopen = false } = {}) {
   const customer = S.getCustomer(customerId);
-  S.logAdminAction('view-contract', { contractId: contract.id });
+  if (!reopen) S.logAdminAction('view-contract', { contractId: contract.id });
 
   const info = S.contractStatusInfo(contract);
   const interestPaidUntil = contract.interestPaidUntil || contract.disbursedDate;
@@ -1600,9 +1611,58 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       }));
       const oaPick = sheet.querySelector('#cv-oa-pick');
       if (oaPick) {
-        const drawOaPick = () => { oaPick.innerHTML = contractOaPickHtml(contract); };
-        oaPick.addEventListener('click', (e) => {
-          if (e.target.closest('[data-cv-need]')) toast('Chưa có số điện thoại — nhập số ở Chi tiết khách hàng để bật gửi Zalo OA', 'error');
+        let oaEditing = false, oaSaving = false;
+        const updateOaDup = () => {
+          const box = oaPick.querySelector('#cv-pp-dup'), inp = oaPick.querySelector('#cv-pp-phone');
+          if (!box || !inp) return;
+          const chk = checkCoPhone(inp.value);
+          const hs = chk.ok && !chk.empty ? S.findPhoneHolders(chk.phone, customerId, coName) : [];
+          box.hidden = !hs.length;
+          box.innerHTML = hs.length ? phoneDupHtml(hs) : '';
+        };
+        const drawOaPick = () => {
+          oaPick.innerHTML = contractOaPickHtml(contract, { editing: oaEditing });
+          if (oaEditing) { oaPick.querySelector('#cv-pp-phone')?.focus(); updateOaDup(); }
+        };
+        oaPick.addEventListener('input', (e) => {
+          const inp = e.target.closest('#cv-pp-phone');
+          if (!inp) return;
+          const v = sanitizeCoPhoneInput(inp.value);
+          if (v !== inp.value) inp.value = v;
+          updateOaDup();
+        });
+        oaPick.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' || e.isComposing || !e.target.closest('#cv-pp-phone')) return;
+          e.preventDefault();
+          oaPick.querySelector('[data-cv-save]')?.click();
+        });
+        oaPick.addEventListener('click', async (e) => {
+          const need = e.target.closest('[data-cv-need]');
+          if (need) {
+            if (need.dataset.cvNeed === 'co') { oaEditing = true; drawOaPick(); }
+            else toast('Người vay chưa có số điện thoại — nhập số ở Chi tiết khách hàng để bật gửi Zalo OA', 'error');
+            return;
+          }
+          if (e.target.closest('[data-cv-cancel]')) { oaEditing = false; drawOaPick(); return; }
+          const saveBtn = e.target.closest('[data-cv-save]');
+          if (!saveBtn || oaSaving) return;
+          const chk = checkCoPhone(oaPick.querySelector('#cv-pp-phone').value);
+          if (!chk.ok) { toast(chk.reason, 'error'); return; }
+          if (chk.empty) { toast('Nhập số điện thoại để bật gửi Zalo OA cho người cùng vay', 'error'); return; }
+          oaSaving = true; saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu…';
+          try {
+            const holders = S.findPhoneHolders(chk.phone, customerId, coName);
+            await S.saveCoPhone(customerId, coName, chk.phone);
+            const wantTick = !holders.some((h) => h.same && h.kind === 'main');
+            if (wantTick) await S.setContractOa(contract.id, { toCo: true }, { optimistic: false });
+            const dupNote = holders.length ? ` Lưu ý: trùng số với ${holders.slice(0, 2).map((h) => h.name).join(', ')}${holders.length > 2 ? ` và ${holders.length - 2} người khác` : ''}.` : '';
+            toast((wantTick ? 'Đã lưu số và bật gửi Zalo OA cho người cùng vay' : 'Đã lưu số điện thoại người cùng vay') + dupNote, 'success', dupNote ? 5000 : 2200);
+            document.dispatchEvent(new CustomEvent('qtd-co-saved', { detail: { customerId } }));
+            closeFn(); openContractView(customerId, S.getContract(contract.id), { readOnly, reopen: true });
+          } catch (err) {
+            toast(err.message || 'Có lỗi xảy ra', 'error');
+            if (saveBtn.isConnected) { saveBtn.disabled = false; saveBtn.textContent = 'Lưu'; }
+          } finally { oaSaving = false; }
         });
         oaPick.addEventListener('change', (e) => {
           const tick = e.target.closest('label[data-cv-tick]');
@@ -1611,6 +1671,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           const on = e.target.checked;
           const patch = oaTickPatch(st, tick.dataset.cvTick, on);
           if (!patch) { e.target.checked = !on; toast(OA_MIN_RECIPIENT_SIMPLE_MSG, 'error'); return; }
+          oaEditing = false;
           const saving = S.setContractOa(contract.id, patch);
           drawOaPick();
           saving.catch((err) => { toast(err.message || 'Có lỗi xảy ra', 'error'); if (oaPick.isConnected) drawOaPick(); });

@@ -2496,6 +2496,7 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cdo-ck i svg { width: 11px; height: 11px; }
 }
 .cv-oa { margin-top: 14px; }
+.cv-oa .cd-pp-form { margin: 10px 0 0; }
 
 .oa-inline { flex-wrap: wrap; }
 .oa-hc { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 11px; border: 1px solid #bfe3d2; border-radius: 999px; background: #eef8f3; color: #0b5148; font: 600 12px/1.2 Inter, sans-serif; white-space: nowrap; }
