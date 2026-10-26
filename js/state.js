@@ -1419,11 +1419,33 @@ export async function fetchOlderZaloSendLog({ before, limit = 500 }) {
   const rows = (data || []).map(mapZaloSendLogRow);
   return { rows, hasMore: rows.length >= limit };
 }
-/** Lần gửi Zalo THÀNH CÔNG gần nhất của 1 hợp đồng (từ cache log, tối đa 200 dòng gần nhất) — dùng hiện cảnh báo "còn N ngày mới gửi lại được" trước khi bấm gửi tay. Trả về null nếu chưa gửi lần nào (trong phạm vi cache). */
+/**
+ * Lần gửi Zalo THÀNH CÔNG gần nhất của 1 hợp đồng — dùng hiện "Đã gửi Zalo ... gần nhất ngày ..." và cảnh báo "còn N ngày mới gửi lại được" trước khi bấm gửi tay.
+ * Lấy mới nhất giữa (1) nhật ký đã tải về máy (chỉ 31 ngày gần nhất, tối đa 1.000 dòng) và (2) kết quả tra thẳng nhật ký ĐẦY ĐỦ trên máy chủ
+ * (xem fetchLastSuccessfulZaloSend) — lần gửi cũ hơn 31 ngày vẫn còn. Trả về null nếu chưa biết có lần gửi nào.
+ */
 export function lastSuccessfulZaloSend(contractId) {
   const rows = (state.zaloSendLog || []).filter((l) => l.contractId === contractId && l.status === 'success');
+  const known = lastSendFromServer.get(contractId);
+  if (known) rows.push(known);
   if (!rows.length) return null;
   return rows.reduce((a, b) => (new Date(a.sentAt) > new Date(b.sentAt) ? a : b));
+}
+const lastSendFromServer = new Map(); // mã hợp đồng → lần gửi thành công mới nhất đã tra từ máy chủ (chỉ giữ trong phiên, đăng xuất thì xóa)
+/**
+ * Tra THẲNG nhật ký gửi tin trên máy chủ (lưu mãi, không giới hạn 31 ngày) lần gửi Zalo thành công gần nhất của 1 hợp đồng, nhớ lại cho lastSuccessfulZaloSend().
+ * Nhật ký gắn với hợp đồng, không phụ thuộc việc hợp đồng có đang trong "Gửi tự động" hay không — bỏ rồi thêm lại gửi tự động không làm mất. Lỗi mạng thì trả null.
+ */
+export async function fetchLastSuccessfulZaloSend(contractId) {
+  if (!contractId) return null;
+  try {
+    const sb = getSupabaseClient(getSession()?.sbToken);
+    const { data, error } = await sb.from('zalo_send_log').select('*').eq('contract_id', contractId).eq('status', 'success').order('sent_at', { ascending: false }).limit(1);
+    if (error || !Array.isArray(data) || !data.length) return null;
+    const row = mapZaloSendLogRow(data[0]);
+    lastSendFromServer.set(contractId, row);
+    return row;
+  } catch { return null; }
 }
 
 /**
@@ -2803,6 +2825,7 @@ export function logout() {
     callCreateAccountFunction(session.sbToken, { type: 'customer-logout' }).catch(() => {});
   }
   state.session = null;
+  lastSendFromServer.clear();
   lastRefreshOkAt = 0;
   refreshFailStreak = 0;
   clearTimeout(refreshRetryTimer); refreshRetryTimer = null;

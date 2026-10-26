@@ -1863,6 +1863,14 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       });
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       const zaloHintWrap = sheet.querySelector('#zalo-hint-wrap-ct');
+      // "Đã gửi Zalo ... gần nhất ngày ...": nhật ký đã tải về máy chỉ có 31 ngày gần nhất — tra thêm nhật ký đầy đủ trên máy chủ của riêng hợp đồng này để lần gửi cũ hơn không bị mất.
+      if (zaloHintWrap) S.fetchLastSuccessfulZaloSend(contract.id).then((row) => {
+        if (!row || !zaloHintWrap.isConnected) return;
+        const st = manualOaState(contract);
+        zaloHintWrap.innerHTML = zaloHintHtml(st.inZaloList, st.cooldownDaysLeft, st.lastZaloSend);
+        const btn = sheet.querySelector('#btn-zalo-manual-ct');
+        if (btn && !manualOaSending.has(contract.id)) btn.disabled = !st.inZaloList || st.cooldownDaysLeft > 0;
+      });
       // Gửi tay: luôn bấm được (khi khách đã ở trong Danh sách OA và qua hạn chờ 5 ngày). Mặc định gửi cho người vay; hợp đồng có cài đặt tùy chỉnh
       // (tick người cùng vay / bỏ tick người vay ở chi tiết khách hàng) thì gửi đúng như cài đặt — máy chủ tự quyết định người nhận.
       if (zaloManualBtn) zaloManualBtn.addEventListener('click', () => sendManualOa(contract.id, zaloManualBtn, (sentAt) => {

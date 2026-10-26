@@ -3243,6 +3243,13 @@ grant select, insert, update, delete on public.co_people_archive to service_role
 - Một lần gửi cho 2 người mà kết quả khác nhau: biểu tượng cảnh báo vàng, mỗi chip có ✓/✕, dòng lỗi ghi rõ người lỗi. "Lỗi" tính cả lần gửi có người nhận bị lỗi. Ô *Thành công* đầu trang đếm theo lần gửi.
 - Bộ lọc **Trạng thái** (có số đếm) + **Người nhận**: Mọi người nhận / Người vay / Người cùng vay / Cả 2 người / Số khác — số đếm tính theo bộ lọc còn lại nên luôn khớp danh sách.
 
+### 10.88. "Đã gửi Zalo ... gần nhất" lưu mãi theo hợp đồng + ô tìm kiếm ở Lịch sử gửi (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy Edge Function)
+
+- Dòng **"Đã gửi Zalo tự động/bằng tay gần nhất ngày …"** (chi tiết hợp đồng, kèm thời gian chờ 5 ngày giữa 2 lần gửi tay) trước đây chỉ đọc nhật ký đã tải về máy — **31 ngày gần nhất, tối đa 1.000 dòng** — nên hợp đồng gửi lần cuối cách đây lâu bị mất dòng này.
+  Nay mở chi tiết hợp đồng, màn hình tra thêm **thẳng nhật ký `zalo_send_log` trên máy chủ** (lưu mãi, theo `contract_id`) lần gửi thành công mới nhất của đúng hợp đồng đó (`fetchLastSuccessfulZaloSend` trong `js/state.js`) rồi lấy ngày mới nhất giữa 2 nguồn.
+  Nhật ký gắn với hợp đồng chứ không gắn với danh sách Gửi tự động, nên bỏ rồi thêm lại gửi tự động không làm mất. Hợp đồng bị xóa (tất toán) thì máy chủ vẫn giữ các dòng nhật ký nhưng bỏ liên kết hợp đồng (xem phần nhập file).
+- **Lịch sử gửi**: hàng đầu có **ô tìm kiếm** (tên khách không phân biệt dấu, số HĐTD, số điện thoại của khách hoặc người đã nhận tin — gõ có hay không có dấu cách đều được, tên người cùng vay), rồi 2 ô **Từ ngày / Đến ngày** cân đối (điện thoại: tìm kiếm 1 hàng, 2 ô ngày 1 hàng; máy tính: 1 hàng 3 ô). Các nút lọc và số đếm tính theo kết quả tìm.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

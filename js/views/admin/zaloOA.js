@@ -20,7 +20,7 @@ import { pageHeader } from '../../components/shell.js';
 import { emptyState, openPicker, pillSelectHtml, searchBoxHtml, bindSearchBox } from '../../components/ui.js';
 import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { formatDateTime, formatDate, formatVND, colorFor, initials, escapeHtml } from '../../utils.js';
+import { formatDateTime, formatDate, formatVND, colorFor, initials, escapeHtml, stripDiacritics } from '../../utils.js';
 import { openCustomerDetail, openContractView } from './customers.js';
 import { shortPersonName, logRecipient } from '../../lib/coBorrower.js';
 import { formatPhoneDisplay } from '../../lib/callHistory.js';
@@ -42,6 +42,7 @@ let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
 let logRcvFilter = 'all'; // lọc lịch sử theo NGƯỜI NHẬN của lần gửi: 'all' | 'main' (chỉ người vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người) | 'other' (số không còn trong hồ sơ)
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
+let logQuery = ''; // ô tìm kiếm ở tab Lịch sử gửi: tên khách, số HĐTD, số điện thoại (người vay / người cùng vay), tên người cùng vay
 // "Quản lý gửi tin": mặc định chỉ hiện 1 tháng gần nhất; bấm "Xem thêm" hoặc chọn "Từ ngày" cũ hơn thì tải thêm log cũ từ máy chủ (giữ tạm trong bộ nhớ).
 let extraLogs = [];        // log cũ hơn khoảng đã tải sẵn lúc đăng nhập
 let logCoveredFrom = null; // mốc thời gian (ms) cũ nhất mà dữ liệu đã tải phủ kín; -Infinity = đã tải hết
@@ -161,7 +162,7 @@ function openAutoBreakdownModal() {
 
 /** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
 export function resetFilters() {
-  activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; oaRcv = 'all'; logStatusFilter = 'all'; logRcvFilter = 'all'; logFromDate = ''; logToDate = '';
+  activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; oaRcv = 'all'; logStatusFilter = 'all'; logRcvFilter = 'all'; logFromDate = ''; logToDate = ''; logQuery = '';
   extraLogs = []; logCoveredFrom = null; logViewFrom = null;
 }
 
@@ -967,6 +968,22 @@ function buildLogItems(logs) {
   });
 }
 
+/**
+ * Ô tìm kiếm của tab Lịch sử gửi: khớp tên khách (không phân biệt hoa/thường và dấu), số HĐTD, số điện thoại của khách hoặc của người đã nhận tin
+ * (gõ có hay không có dấu cách đều được), tên người cùng vay. Nhiều từ thì phải khớp đủ các từ.
+ */
+function logMatchesQuery(raw) {
+  const words = stripDiacritics(raw).split(' ').filter(Boolean);
+  const digits = String(raw).replace(/[\s.\-()]/g, '');
+  const phoneQ = digits.length >= 3 && /^\+?\d+$/.test(digits) ? digits.replace(/^\+?84/, '0') : '';
+  return (it) => {
+    const phones = [it.customer && it.customer.phone, ...it.recips.map((r) => r.rc.phone)].filter(Boolean).map((p) => String(p).replace(/[^\d+]/g, '').replace(/^\+?84/, '0'));
+    if (phoneQ && phones.some((p) => p.includes(phoneQ))) return true;
+    const hay = stripDiacritics([it.customer && it.customer.name, it.contract && it.contract.code, it.contract && it.contract.heirName, ...it.recips.map((r) => r.rc.name), ...phones].filter(Boolean).join(' '));
+    return words.every((w) => hay.includes(w));
+  };
+}
+
 /** Một dòng lịch sử gửi tin = 1 LẦN GỬI: trạng thái · khách + hợp đồng · gửi tới ai (1 hoặc 2 người) · gửi tay/tự động + loại tin · giờ gửi (lỗi thì có thêm dòng báo lỗi). */
 function logRowHtml(it) {
   const { first, customer, contract, recips } = it;
@@ -995,12 +1012,14 @@ function logRowHtml(it) {
 function drawLogTab(slot) {
   const failedFrom = new Set(); // các mốc "Từ ngày" đã thử tải log cũ mà lỗi — không tự thử lại vô hạn
   slot.innerHTML = `
-    <div class="lg-dates">
+    <div class="lg-bar">
+      <div class="oa-search lg-search">${searchBoxHtml('log-search', 'Tìm tên khách, số HĐTD, số điện thoại...', escapeHtml(logQuery))}</div>
       <label class="lg-date"><span>Từ ngày</span><input type="date" id="log-from" value="${logFromDate}"/></label>
       <label class="lg-date"><span>Đến ngày</span><input type="date" id="log-to" value="${logToDate}"/></label>
     </div>
     <div id="log-list"></div>
   `;
+  bindSearchBox(slot, 'log-search', (v) => { logQuery = v; drawList(); });
   slot.querySelector('#log-from').addEventListener('change', (e) => { logFromDate = e.target.value; drawList(); });
   slot.querySelector('#log-to').addEventListener('change', (e) => { logToDate = e.target.value; drawList(); });
   drawList();
@@ -1021,7 +1040,8 @@ function drawLogTab(slot) {
     const viewFromMs = fromMs !== null ? fromMs : (logViewFrom !== null ? logViewFrom : Date.now() - 30 * 86400000);
     let base = allLoadedLogs().filter((l) => logTime(l) >= viewFromMs && S.isZaloLogVisible(l)); // hợp đồng đã tắt gửi OA: không hiện lịch sử của nó
     if (logToDate) base = base.filter((l) => new Date(l.sentAt) <= new Date(`${logToDate}T23:59:59`));
-    const items = buildLogItems(base); // mỗi phần tử = 1 LẦN GỬI (gửi cho cả 2 người vẫn là 1)
+    let items = buildLogItems(base); // mỗi phần tử = 1 LẦN GỬI (gửi cho cả 2 người vẫn là 1)
+    if (logQuery.trim()) items = items.filter(logMatchesQuery(logQuery)); // tìm theo ô tìm kiếm trước, rồi mới đếm các nút lọc
     // Số đếm từng nút lọc tính theo bộ lọc CÒN LẠI (đang chọn "Lỗi" thì số Người vay/Người cùng vay là của các lần lỗi) nên khớp với danh sách bên dưới.
     // "Lỗi" = có ít nhất 1 người nhận bị lỗi; "Thành công" = mọi người nhận đều thành công.
     const byRcv = (x) => logRcvFilter === 'all' || x.mode === logRcvFilter;
@@ -1033,7 +1053,7 @@ function drawLogTab(slot) {
     }
     if ((logRcvFilter === 'other' || logRcvFilter === 'both') && !rcvCnt[logRcvFilter]) logRcvFilter = 'all';
     const rows = items.filter((x) => byStatus(x) && byRcv(x));
-    const hasFilter = logStatusFilter !== 'all' || logRcvFilter !== 'all' || logFromDate || logToDate;
+    const hasFilter = logStatusFilter !== 'all' || logRcvFilter !== 'all' || logFromDate || logToDate || logQuery.trim();
     // Nút "Xem thêm" (khi không chọn "Từ ngày"): còn log cũ hơn để tải thì hiện nút, hết thì báo đã hiện toàn bộ.
     const canLoadMore = fromMs === null && logCoveredFrom !== -Infinity;
     const moreHtml = fromMs !== null ? '' : (canLoadMore
