@@ -1548,7 +1548,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
                 <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
                 <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
                 <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
-                <div class="oc-line"><span>SĐT</span><b>${mainDial ? `<a class="cv-tel" href="tel:${escapeHtml(mainDial)}" data-cv-call="main">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
+                <div class="oc-line"><span>SĐT</span><b class="cv-ph">${mainDial ? `<button type="button" class="cv-cp" data-cv-copy title="Sao chép số điện thoại" aria-label="Sao chép số điện thoại">${icon('copy', 'icon-sm')}</button><a class="cv-tel" href="tel:${escapeHtml(mainDial)}" data-cv-call="main">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
               </section>${contactHtml}
             </div>
             <div class="cv-col">
@@ -1570,6 +1570,15 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         if (!call || !customer) return;
         if (call.dataset.cvCall === 'co') S.logCall(customer.id, coPhoneOf(customer.coPeople, coName), 'co', coName);
         else S.logCall(customer.id, customer.phone);
+      });
+      const copyPhoneBtn = sheet.querySelector('[data-cv-copy]');
+      if (copyPhoneBtn) copyPhoneBtn.addEventListener('click', async () => {
+        if (await copyText(mainDial)) {
+          S.logUiAction('copy-phone', `Sao chép số điện thoại khách hàng "**${customer.name}**"`);
+          toast('Đã sao chép số điện thoại', 'success');
+          copyPhoneBtn.classList.add('is-done'); copyPhoneBtn.innerHTML = icon('check', 'icon-sm');
+          setTimeout(() => { if (copyPhoneBtn.isConnected) { copyPhoneBtn.classList.remove('is-done'); copyPhoneBtn.innerHTML = icon('copy', 'icon-sm'); } }, 1800);
+        } else openCopyFallback(mainDial);
       });
       if (customer && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
         closeBtn.insertAdjacentHTML('beforebegin', `<button type="button" class="cv-tbtn txt cv-print" id="btn-print-notice" aria-haspopup="menu" aria-expanded="false" title="In giấy báo">${icon('printer')}<span>In giấy báo</span>${icon('chevronDown')}</button>`);
