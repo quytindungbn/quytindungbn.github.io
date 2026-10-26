@@ -68,19 +68,19 @@ function rcvChipsHtml(customer, { mini = false } = {}) {
   if (!ov || !ov.custom) return ''; // mặc định: như bình thường, không hiện thêm gì
   const cls = `oa-rcv${mini ? ' is-mini' : ''}`;
   const items = ov.items;
-  if (items.length <= 1) {
-    const st = items[0] && items[0].state;
-    if (!st) return '';
-    if (!st.enabled) return `<div class="${cls}"><span class="oa-hc off">Hợp đồng đã tắt gửi OA</span></div>`;
-    if (!st.recipients.length) return `<div class="${cls}"><span class="oa-hc warn">Chưa có số điện thoại để gửi Zalo</span></div>`;
-    if (st.toCo && st.toMain) return `<div class="${cls}"><span class="oa-two" title="Gửi Zalo cho cả người vay và người cùng vay">Gửi cả 2 người</span></div>`;
-    if (st.toCo) {
-      const sub = `${escapeHtml(st.coName)}${st.coPhone ? ` · <em>${escapeHtml(st.coPhone)}</em>` : ''}`;
+  if (!ov.detail) {
+    // Cùng 1 người cùng vay cho mọi hợp đồng (hoặc không có): như trước — 1 nhãn chung cho cả khách.
+    if (ov.anyCo && ov.anyMain) return `<div class="${cls}"><span class="oa-two" title="Gửi Zalo cho cả người vay và người cùng vay">Gửi cả 2 người</span></div>`;
+    if (ov.anyCo) {
+      const p = ov.people[0] || {};
+      const sub = `${escapeHtml(p.name || '')}${p.phone ? ` · <em>${escapeHtml(p.phone)}</em>` : ''}`;
       if (mini) return `<div class="${cls}"><span class="oa-rcv-l">Gửi tới</span><span class="oa-rc is-co"><i>${icon('check', 'icon-sm')}</i><span class="oa-rc-tx"><b>Người cùng vay</b></span></span></div>`;
       return `<div class="${cls}"><span class="oa-rcv-l">Gửi tới</span><span class="oa-line-rc"><i>${icon('check', 'icon-sm')}</i><span><b>Người cùng vay:</b> ${sub}</span></span></div>`;
     }
+    if (ov.noRecipient) return `<div class="${cls}"><span class="oa-hc warn">Chưa có số điện thoại để gửi Zalo</span></div>`;
     return '';
   }
+  if (items.length <= 1) return `<div class="${cls}"><span class="oa-hc off">Hợp đồng đã tắt gửi OA</span></div>`;
   // Nhiều hợp đồng: mỗi hợp đồng 1 ô nhỏ cho biết hợp đồng đó gửi ai.
   const chips = items.map(({ contract, state: st }) => {
     const code = `<b>${escapeHtml(contract.code)}</b>`;
@@ -424,9 +424,9 @@ function openAddCustomerToOAModal(admin, onDone) {
     footHtml: `<button class="btn btn-primary btn-block" id="add-oa-confirm" disabled>Thêm đã chọn (0)</button>`,
     onMount(sheet, closeFn) {
       function getFiltered() {
-        // Chỉ gửi được Zalo cho khách CÓ SĐT — khách chưa có SĐT ẩn khỏi
-        // danh sách này luôn, khỏi thêm nhầm rồi không gửi được.
-        let list = S.listCustomers({ adminId: isStaff ? admin.id : undefined }).filter((c) => !zaloIds.has(c.id) && c.phone);
+        // Chỉ gửi được Zalo khi có ít nhất 1 số: người vay có SĐT, hoặc người cùng vay (ghi trên hợp đồng) có SĐT — cả 2 đều chưa có số thì
+        // ẩn khỏi danh sách này luôn, khỏi thêm nhầm rồi không gửi được (S.oaAddBlockReason; máy chủ cũng chặn).
+        let list = S.listCustomers({ adminId: isStaff ? admin.id : undefined }).filter((c) => !zaloIds.has(c.id) && !S.oaAddBlockReason(c.id));
         if (pThon.length || pXom.length) list = list.filter((c) => matchThonXom(c, pThon, pXom));
         if (query) {
           const q = query.toLowerCase();
@@ -462,9 +462,9 @@ function openAddCustomerToOAModal(admin, onDone) {
               <div class="row-sub">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
               ${c.coPrevName ? '<div class="oa-warn-tag">Người cùng vay đã đổi — cần xem lại</div>' : ''}
             </div>
-            <b style="font-size:13px;white-space:nowrap;flex-shrink:0">${c.phone}</b>
+            <b style="font-size:13px;white-space:nowrap;flex-shrink:0">${c.phone || `<span style="font-size:11.5px;font-weight:600;color:var(--text-muted)">Người cùng vay · ${escapeHtml((S.listCoPeople(c.id).find((p) => p.phone) || {}).phone || '')}</span>`}</b>
           </div>
-        `).join('') : `<p class="text-sm text-muted">Không có khách hàng phù hợp (đã lọc bớt khách chưa có SĐT hoặc đã có sẵn trong danh sách OA).</p>`;
+        `).join('') : `<p class="text-sm text-muted">Không có khách hàng phù hợp (đã lọc bớt khách chưa có SĐT nào — cả người vay lẫn người cùng vay — hoặc đã có sẵn trong danh sách OA).</p>`;
         sheet.querySelectorAll('[data-row]').forEach((row) => {
           row.addEventListener('click', (e) => {
             if (e.target.matches('[data-check]')) return; // để checkbox tự xử lý, khỏi bấm 2 lần

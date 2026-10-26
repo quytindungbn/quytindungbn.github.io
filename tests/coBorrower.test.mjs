@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normPersonName, samePerson, samePhone, heirOfContract, heirNamesOf, coPhoneOf, contractOa, customerOaSummary, shortPersonName, checkCoPhone, sanitizeCoPhoneInput } from '../js/lib/coBorrower.js';
+import { normPersonName, samePerson, samePhone, heirOfContract, heirNamesOf, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, shortPersonName, checkCoPhone, sanitizeCoPhoneInput } from '../js/lib/coBorrower.js';
 
 test('so sánh tên: bỏ qua hoa/thường và khoảng trắng thừa, giữ dấu', () => {
   assert.equal(normPersonName('  Trần   Văn  Bình '), 'trần văn bình');
@@ -130,4 +130,19 @@ test('sanitizeCoPhoneInput: chỉ giữ chữ số, tối đa 10 số, đổi +8
   assert.equal(sanitizeCoPhoneInput('84988777666'), '0988777666');
   assert.equal(sanitizeCoPhoneInput('098'), '098');
   assert.equal(sanitizeCoPhoneInput(''), '');
+});
+
+test('hasOaPhone: chỉ cần người vay hoặc 1 người cùng vay (ghi trên hợp đồng) có số là thêm được vào OA', () => {
+  const cts = [{ heirName: 'TRẦN THỊ BÍCH' }, { heirName: 'LÊ VĂN KHÁNH' }];
+  // người vay có số
+  assert.ok(hasOaPhone(cts, { name: 'A', phone: '0912345678', coPeople: [] }));
+  // người vay không số, không người cùng vay
+  assert.ok(!hasOaPhone([{}], { name: 'A', phone: '', coPeople: [] }));
+  assert.ok(!hasOaPhone([], { name: 'A', phone: '  ', coPeople: [] }));
+  // cả 2 không số
+  assert.ok(!hasOaPhone(cts, { name: 'A', phone: '', coPeople: [{ name: 'TRẦN THỊ BÍCH', phone: '' }] }));
+  // người vay không số nhưng người cùng vay có số (không phân biệt hoa/thường)
+  assert.ok(hasOaPhone(cts, { name: 'A', phone: '', coPeople: [{ name: 'Trần Thị Bích', phone: '0988777666' }] }));
+  // số của người không còn ghi trên hợp đồng nào thì không tính
+  assert.ok(!hasOaPhone(cts, { name: 'A', phone: '', coPeople: [{ name: 'NGUYỄN VĂN CŨ', phone: '0988777666' }] }));
 });

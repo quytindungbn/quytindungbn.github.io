@@ -800,6 +800,14 @@ function coPhoneOfPeople(people: unknown, name: unknown): string {
   const p = (Array.isArray(people) ? people : []).find((x: any) => samePerson(x?.name, name));
   return p ? String((p as any).phone ?? '').trim() : '';
 }
+/**
+ * Khách có ít nhất 1 số để gửi Zalo OA không (contracts: các hợp đồng còn dư nợ): người vay có số, hoặc có người cùng vay (ghi trên các hợp đồng đó)
+ * đã có số trong sổ người cùng vay. Cả 2 đều chưa có số → không cho thêm vào Danh sách OA (y hệt hasOaPhone ở màn hình).
+ */
+function customerHasOaPhone(contracts: any[], customer: any): boolean {
+  if (String(customer?.phone ?? '').trim()) return true;
+  return heirNamesOfRows(contracts, customer?.name).some((n) => !!coPhoneOfPeople(customer?.co_people, n));
+}
 type ZaloRecipient = { who: 'main' | 'co'; phone: string };
 /**
  * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG (customer: { name, phone, co_people }):
@@ -1709,6 +1717,14 @@ Deno.serve(async (req) => {
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy khách hàng hoặc bạn không có quyền với khách hàng này.' }, 403);
       const { data: existing } = await admin.from('zalo_customers').select('customer_id').eq('customer_id', customerId).maybeSingle();
       if (existing) return json({ ok: false, reason: 'Khách hàng này đã có trong danh sách OA rồi.' });
+      // Người vay lẫn người cùng vay đều chưa có số điện thoại → không có ai để gửi, không cho thêm.
+      if (!String(scope.customer?.phone ?? '').trim()) {
+        const { data: ctRows } = await admin.from('contracts').select('heir_name').eq('customer_id', customerId).gt('balance', 0);
+        if (!customerHasOaPhone(ctRows || [], scope.customer)) {
+          const hasCo = heirNamesOfRows(ctRows || [], String(scope.customer?.name ?? '')).length > 0;
+          return json({ ok: false, reason: hasCo ? 'Người vay và người cùng vay đều chưa có số điện thoại nên chưa thêm được vào danh sách OA.' : 'Khách hàng chưa có số điện thoại nên chưa thêm được vào danh sách OA.' });
+        }
+      }
       const { error } = await admin.from('zalo_customers').insert({ customer_id: customerId, added_by: caller.id });
       if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
       await clearCoPrevName(customerId);

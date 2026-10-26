@@ -89,6 +89,15 @@ export function customerOaSummary(contracts, customer) {
   return { items, anyMain, anyCo, offCount, noRecipient, mode, custom };
 }
 
+/**
+ * Khách có ít nhất 1 số điện thoại để gửi Zalo OA không (contracts: các hợp đồng còn hiệu lực): người vay có số, hoặc có người cùng vay
+ * (ghi trên các hợp đồng đó) đã có số. Cả 2 đều chưa có số → không cho thêm vào Danh sách OA.
+ */
+export function hasOaPhone(contracts, customer) {
+  if (String(customer?.phone || '').trim()) return true;
+  return heirNamesOf(contracts, customer?.name).some((n) => !!coPhoneOf(customer?.coPeople, n));
+}
+
 /** Tên gọi ngắn của 1 người (từ cuối họ tên, viết hoa chữ đầu): "TRẦN THỊ BÍCH" → "Bích". */
 export function shortPersonName(name) {
   const words = String(name || '').trim().split(/\s+/).filter(Boolean);

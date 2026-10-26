@@ -11,7 +11,7 @@
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { describeOrgPatch } from './lib/activityLabels.js';
-import { heirNamesOf, heirOfContract, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary } from './lib/coBorrower.js';
+import { heirNamesOf, heirOfContract, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone } from './lib/coBorrower.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
 import { clearDeviceCaches } from './lib/kvCache.js';
@@ -920,6 +920,17 @@ export function listCoPeople(customerId) {
     contracts: cts.filter((ct) => samePerson(heirOfContract(ct, c.name), name)),
   }));
 }
+/**
+ * Lý do KHÔNG cho thêm khách vào Danh sách OA ('' = thêm được): người vay lẫn người cùng vay đều chưa có số điện thoại thì không có ai để gửi.
+ * Chỉ cần 1 trong 2 có số là thêm được (máy chủ add-zalo-customer kiểm tra lại y như vậy).
+ */
+export function oaAddBlockReason(customerId) {
+  const c = getCustomer(customerId);
+  if (!c || String(c.phone || '').trim() || hasOaPhone(activeContractsOf(customerId), c)) return '';
+  return listCoPeople(customerId).length
+    ? 'Người vay và người cùng vay đều chưa có số điện thoại nên chưa thêm được vào danh sách OA.'
+    : 'Khách hàng chưa có số điện thoại nên chưa thêm được vào danh sách OA.';
+}
 /** Trạng thái gửi Zalo OA có hiệu lực của 1 hợp đồng (xem contractOa ở lib/coBorrower.js). */
 export function getContractOa(contractId) {
   const ct = getContract(contractId);
@@ -929,7 +940,11 @@ export function getContractOa(contractId) {
 /** Tóm tắt gửi Zalo OA của 1 khách qua các hợp đồng còn hiệu lực (xem customerOaSummary ở lib/coBorrower.js). */
 export function customerOaOverview(customerId) {
   const c = getCustomer(customerId);
-  return c ? customerOaSummary(activeContractsOf(customerId), c) : null;
+  if (!c) return null;
+  const sum = customerOaSummary(activeContractsOf(customerId), c);
+  const people = listCoPeople(customerId);
+  // detail = cần xem theo TỪNG HỢP ĐỒNG (từ 2 người cùng vay khác nhau, hoặc có hợp đồng đang tắt); ngược lại 1 người cùng vay chung cho mọi hợp đồng → hiển thị như trước.
+  return { ...sum, people, detail: people.length >= 2 || sum.offCount > 0 };
 }
 /** Dòng log gửi Zalo có được hiện không: hợp đồng đã TẮT gửi OA thì không hiện lịch sử của nó. */
 export function isZaloLogVisible(log) {
@@ -1382,6 +1397,8 @@ export function lastSuccessfulZaloSend(contractId) {
  * đủ mới xong). Server trả về đủ để tự vá, không cần đợi tải lại.
  */
 export async function addZaloCustomer(customerId) {
+  const blocked = oaAddBlockReason(customerId);
+  if (blocked) throw new Error(blocked);
   const session = getSession();
   const res = await callCreateAccountFunction(session?.sbToken, { type: 'add-zalo-customer', customerId });
   if (!res.ok) throw new Error(res.reason || 'Không thêm được vào danh sách OA.');
