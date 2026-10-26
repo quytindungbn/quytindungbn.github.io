@@ -80,13 +80,11 @@ function draw(contentEl) {
       </div>
       <div class="stat-tile c-green" data-stat="logged-in" style="cursor:pointer">
         <div class="stat-label">Use đã đăng nhập</div>
-        <div class="stat-value">${formatNumber(loggedInCount)}</div>
-        <div class="stat-trend">/ ${formatNumber(customers.length)} Use</div>
+        <div class="stat-line"><div class="stat-value">${formatNumber(loggedInCount)}</div><div class="stat-trend">/ ${formatNumber(customers.length)} Use</div></div>
       </div>
       <div class="stat-tile c-orange" data-stat="push-on" style="cursor:pointer">
         <div class="stat-label">Use đã bật thông báo</div>
-        <div class="stat-value">${formatNumber(pushOnCount)}</div>
-        <div class="stat-trend">/ ${formatNumber(loggedInCount)} đã đăng nhập</div>
+        <div class="stat-line"><div class="stat-value">${formatNumber(pushOnCount)}</div><div class="stat-trend">/ ${formatNumber(loggedInCount)} đã đăng nhập</div></div>
       </div>
     </div>`;
   contentEl.querySelector('#us-body').innerHTML = `
