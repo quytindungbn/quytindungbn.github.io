@@ -2795,3 +2795,9 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cd-pp-form { margin: 0 11px 10px; }
   .cd-callee { padding: 1px 7px 1px 5px; font-size: 10px; }
 }
+
+/* Nhập SĐT người cùng vay từ file (docs mục 10.85) */
+.cph-list { max-height: 260px; overflow: auto; margin-top: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.cph-row { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+.cph-row:last-child { border-bottom: 0; }
+.cph-row.is-warn b { color: var(--warning); }

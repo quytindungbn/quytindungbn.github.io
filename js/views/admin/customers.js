@@ -12,6 +12,7 @@ import { transferContent } from '../../lib/transferContent.js';
 import { interestAsOfForDays, MAX_INTEREST_DAYS } from '../../lib/interestDays.js';
 import { describeCallTime, formatPhoneDisplay } from '../../lib/callHistory.js';
 import { checkCoPhone, sanitizeCoPhoneInput, normPersonName, shortPersonName, samePhone } from '../../lib/coBorrower.js';
+import { parseCoPhoneRows, CO_PHONE_STATUS } from '../../lib/coPhoneFile.js';
 import { buildLoanSummaryText } from '../../lib/loanSummary.js';
 import { printNotice } from '../../lib/printNotices.js';
 import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
@@ -1861,6 +1862,73 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
 const REQUIRED_COLUMNS = 'Số HĐTD, Người nhận nợ, Địa chỉ, Số CMND/CCCD, Số di động, Ngày nhận nợ, Ngày đáo hạn, Thu lãi đến ngày, Số tiền giải ngân, Số dư, Lãi suất';
 const REPORT_TEMPLATE_COLUMNS = 'Tên khách hàng, Địa chỉ, Số CMND, Điện thoại, Số HĐ, Ngày vay, Ngày đáo hạn, Lãi suất, Số tiền vay, Số dư, Thu lãi đến ngày';
 
+/** File "SĐT người cùng vay" (docs mục 10.85): chọn file → xem trước kết quả khớp (máy chủ chỉ tính, chưa ghi) → bấm Lưu mới ghi vào sổ người cùng vay của khách. */
+function bindCoPhoneImport(sheet) {
+  const input = sheet.querySelector('#file-input-3');
+  const btn = sheet.querySelector('#btn-upload-file-3');
+  const out = sheet.querySelector('#cophone-result');
+  let items = [];
+  let overwrite = false;
+  const idleHtml = btn.innerHTML;
+  const lineHtml = (r) => {
+    const st = CO_PHONE_STATUS[r.status] || { label: r.status, tone: 'warn' };
+    const who = [r.customer, r.person].filter(Boolean).map(escapeHtml).join(' · ');
+    const cur = r.current ? ` (đang lưu ${escapeHtml(r.current)})` : '';
+    return `<div class="text-sm cph-row is-${st.tone}"><b>Dòng ${r.row} · ${escapeHtml(r.code)}</b>${who ? ` · ${who}` : ''}${r.phone ? ` · ${escapeHtml(r.phone)}` : ''}<br/><span class="text-muted">${escapeHtml(st.label)}${cur}</span></div>`;
+  };
+  const draw = (res) => {
+    const c = res.counts || {};
+    const willSave = (c.added || 0) + (c.replaced || 0);
+    const skipped = [
+      ['same', 'dòng đã có số y hệt'], ['conflict', 'dòng đã lưu số khác — giữ nguyên'], ['nophone', 'dòng không có SĐT trong file'], ['nocontract', 'Số HĐTD không có trên web'],
+      ['settled', 'hợp đồng đã tất toán'], ['noheir', 'hợp đồng chưa ghi tên người cùng vay'], ['badphone', 'SĐT sai định dạng'], ['samemain', 'trùng số của người vay'], ['noscope', 'ngoài địa bàn được phép'],
+    ].filter(([k]) => c[k]).map(([k, label]) => `<div class="text-sm text-muted">• ${c[k]} ${label}</div>`).join('');
+    const problems = (res.rows || []).filter((r) => (CO_PHONE_STATUS[r.status] || {}).tone === 'warn');
+    out.innerHTML = `
+      <div class="card card-pad mt-16" style="background:var(--surface-alt)" id="cophone-card">
+        <div class="fw-700 mb-8" id="cophone-sum">${willSave ? `Sẽ lưu <b>${willSave}</b> số điện thoại cho <b>${res.customers || 0}</b> khách hàng` : 'Không có số nào cần lưu'}${c.replaced ? ` <span class="text-muted">(trong đó ${c.replaced} số ghi đè)</span>` : ''}</div>
+        ${skipped}
+        ${c.conflict || overwrite ? `<label class="text-sm mt-8" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="cophone-overwrite" ${overwrite ? 'checked' : ''}/> Ghi đè cả số đã lưu khác số trong file</label>` : ''}
+        ${problems.length ? `<details class="mt-8"><summary class="text-sm fw-700" style="cursor:pointer">Xem ${problems.length} dòng cần chú ý</summary><div class="cph-list">${problems.slice(0, 60).map(lineHtml).join('')}${problems.length > 60 ? `<div class="text-sm text-muted">… và ${problems.length - 60} dòng khác</div>` : ''}</div></details>` : ''}
+        ${willSave ? `<details class="mt-8"><summary class="text-sm fw-700" style="cursor:pointer">Xem ${willSave} số sẽ lưu</summary><div class="cph-list">${(res.rows || []).filter((r) => r.status === 'added' || r.status === 'replaced').slice(0, 400).map(lineHtml).join('')}</div></details>` : ''}
+        <button class="btn btn-primary btn-block mt-8" id="cophone-save" ${willSave ? '' : 'disabled'}>Lưu ${willSave} số điện thoại</button>
+      </div>`;
+    out.querySelector('#cophone-overwrite')?.addEventListener('change', async (e) => { overwrite = e.target.checked; await preview(); });
+    out.querySelector('#cophone-save').addEventListener('click', async (e) => {
+      const saveBtn = e.currentTarget;
+      saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu…';
+      try {
+        const done = await S.importCoPhones(items, { overwrite });
+        const n = (done.counts?.added || 0) + (done.counts?.replaced || 0);
+        out.innerHTML = `<div class="card card-pad mt-16" style="background:var(--surface-alt)"><div class="fw-700" id="cophone-done">✅ Đã lưu ${n} số điện thoại người cùng vay cho ${done.customers || 0} khách hàng</div><div class="text-sm text-muted mt-8">Số điện thoại đã vào sổ người cùng vay của từng khách — vào chi tiết khách hàng để tick gửi Zalo OA cho người cùng vay.</div></div>`;
+        toast(`Đã lưu ${n} số điện thoại người cùng vay`, 'success');
+        window.__qtdRedrawCustomers?.();
+      } catch (err) {
+        toast(err.message || 'Có lỗi xảy ra', 'error');
+        saveBtn.disabled = false; saveBtn.textContent = `Lưu ${willSave} số điện thoại`;
+      }
+    });
+  };
+  const preview = async () => {
+    try { draw(await S.previewImportCoPhones(items, { overwrite })); } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+  };
+  input.addEventListener('change', () => { btn.disabled = !input.files[0]; out.innerHTML = ''; });
+  btn.addEventListener('click', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    btn.disabled = true; btn.textContent = 'Đang đọc file…';
+    try {
+      const parsed = parseCoPhoneRows(await readExcelFirstSheet(file));
+      if (!parsed.ok) { toast(parsed.reason, 'error'); return; }
+      if (!parsed.items.length) { toast('File không có dòng nào có Số HĐTD', 'error'); return; }
+      items = parsed.items; overwrite = false;
+      await preview();
+    } catch (err) {
+      toast(err.message || 'Không đọc được file', 'error');
+    } finally { btn.disabled = !input.files[0]; btn.innerHTML = idleHtml; }
+  });
+}
+
 function openImportModal() {
   const close = openModal({
     title: 'Nhập dữ liệu từ Excel',
@@ -1885,6 +1953,13 @@ function openImportModal() {
       </div>
       <button class="btn btn-outline btn-block mt-8" id="btn-upload-file-2" disabled>${icon('upload', 'icon-sm')} Bổ sung file số 2</button>
       <div id="supplement-result"></div>
+      <div class="field mt-16">
+        <label for="file-input-3" class="fw-700 text-sm">File số điện thoại người cùng vay</label>
+        <input type="file" id="file-input-3" accept=".xls,.xlsx"/>
+        <div class="field-hint">File có cột <b>Số HĐTD</b> và <b>SĐT người cùng vay</b>. Khớp theo hợp đồng + tên người cùng vay ghi trên hợp đồng đó; chỉ thêm số vào sổ người cùng vay, không đụng hợp đồng, không tick gửi OA. Có bước xem trước.</div>
+      </div>
+      <button class="btn btn-outline btn-block mt-8" id="btn-upload-file-3" disabled>${icon('upload', 'icon-sm')} Đọc file &amp; xem trước số điện thoại</button>
+      <div id="cophone-result"></div>
       <details class="mt-16">
         <summary class="text-sm fw-700" style="cursor:pointer">Hoặc dán dữ liệu thủ công (copy từ Excel)</summary>
         <div class="field-hint mb-8">Dán tay chỉ thêm/cập nhật — KHÔNG xóa hợp đồng nào khác, khác với tải file.</div>
@@ -1900,6 +1975,7 @@ function openImportModal() {
       const supplementBtn = sheet.querySelector('#btn-upload-file-2');
       const supplementResultEl = sheet.querySelector('#supplement-result');
       sheet.querySelector('#btn-import-history').addEventListener('click', () => openImportHistory({ onChanged: () => window.__qtdRedrawCustomers?.() }));
+      bindCoPhoneImport(sheet);
 
       // Chỉ lo việc nhập + hiện kết quả + thông báo — KHÔNG đụng vào trạng
       // thái nút bấm (nút "Tải lên" và nút "Nhập từ dữ liệu đã dán" tự quản

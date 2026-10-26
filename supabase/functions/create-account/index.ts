@@ -840,6 +840,17 @@ function cleanVnPhone(raw: unknown): string | null {
   const digits = String(raw ?? '').replace(/[\s.\-()]/g, '');
   return /^0\d{9}$/.test(digits) ? digits : null;
 }
+/**
+ * Số điện thoại đọc từ ô trong file Excel: bỏ khoảng trắng/dấu chấm/gạch nối/ngoặc; ô số bị mất số 0 đầu (9 chữ số, không bắt đầu bằng 0) thì thêm lại; +84/84xxxxxxxxx đổi về 0xxxxxxxxx.
+ * Trả '' khi ô trống, null khi sai định dạng (phải đủ 10 số, bắt đầu bằng 0), ngược lại là số đã chuẩn hóa.
+ */
+function phoneFromFile(raw: unknown): string | null {
+  let d = String(raw ?? '').replace(/[\s.\-()]/g, '');
+  if (!d) return '';
+  if (/^\+?84\d{9}$/.test(d)) d = '0' + d.replace(/^\+?84/, '');
+  else if (/^[1-9]\d{8}$/.test(d)) d = '0' + d;
+  return cleanVnPhone(d);
+}
 function samePhone(a: unknown, b: unknown): boolean {
   const n = (v: unknown) => String(v ?? '').replace(/[^\d]/g, '').replace(/^84/, '0');
   return !!n(a) && n(a) === n(b);
@@ -1766,6 +1777,91 @@ Deno.serve(async (req) => {
     await logActivity(caller.id, caller.name || caller.username, caller.username, 'save-main-phone',
       `Nhập số điện thoại cho người vay "**${customer.name || customerId}**" (chưa có số)`);
     return json({ ok: true, phone: clean });
+  }
+
+  // ===== type: 'import-co-phones' — nhập SỐ ĐIỆN THOẠI NGƯỜI CÙNG VAY từ file Excel (docs mục 10.85). Body: { items: [{ row, code, phone }], overwrite?, preview? }.
+  // Mỗi dòng khớp theo SỐ HĐTD (code) → hợp đồng còn dư nợ → khách + TÊN người cùng vay ghi trên hợp đồng đó (heir_name); số được lưu vào sổ người cùng vay của khách
+  // (customers.co_people) giống nút "Nhập số điện thoại" ở chi tiết khách. Chỉ THÊM số (số đã lưu khác số trong file thì giữ nguyên, trừ khi overwrite = true); không xóa gì, không tick gửi OA.
+  // preview = true: chỉ tính và trả kết quả, KHÔNG ghi. Quyền: toàn quyền, hoặc cờ Quản lý User, hoặc cờ Quản lý OA; nhân viên chỉ làm với khách trong Thôn/Xóm được gán. =====
+  if (body.type === 'import-co-phones') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const { data: caller, error: callerErr } = await admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerErr || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const isSuperCaller = caller.role === 'super';
+    if (!(isSuperCaller || caller.can_manage_zalo_oa === true || caller.can_manage_users === true)) return json({ ok: false, reason: 'Bạn không có quyền nhập số điện thoại người cùng vay.' }, 403);
+    const items: any[] = Array.isArray(body.items) ? body.items : [];
+    if (!items.length) return json({ ok: false, reason: 'File không có dòng nào để nhập.' }, 400);
+    if (items.length > 5000) return json({ ok: false, reason: 'File quá nhiều dòng (tối đa 5000 dòng một lần).' }, 400);
+    const previewOnly = body.preview === true;
+    const overwrite = body.overwrite === true;
+    // Hợp đồng theo Số HĐTD (ưu tiên hợp đồng còn dư nợ) + khách của các hợp đồng đó.
+    const codes = [...new Set(items.map((it) => String(it?.code ?? '').trim()).filter(Boolean))];
+    const ctByCode = new Map<string, any>();
+    for (const part of chunkArray(codes, 150)) {
+      const { data, error } = await admin.from('contracts').select('id, code, customer_id, heir_name, balance').in('code', part);
+      if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      for (const c of data || []) {
+        const old = ctByCode.get((c as any).code);
+        if (!old || (!(Number(old.balance) > 0) && Number((c as any).balance) > 0)) ctByCode.set((c as any).code, c);
+      }
+    }
+    const custIds = [...new Set([...ctByCode.values()].map((c: any) => c.customer_id as string))];
+    const custById = new Map<string, any>();
+    for (const part of chunkArray(custIds, 150)) {
+      const { data, error } = await admin.from('customers').select('*').in('id', part);
+      if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+      for (const c of data || []) custById.set((c as any).id, c);
+    }
+    if ([...custById.values()].some((c: any) => !('co_people' in c))) return json({ ok: false, reason: 'Chưa chạy SQL gửi Zalo OA theo từng hợp đồng trên Supabase (docs mục 10.83).' }, 500);
+    const allowedThon: string[] = caller.allowed_thon || [];
+    const allowedXom: string[] = caller.allowed_xom || [];
+    const inScope = (cust: any) => isSuperCaller || allowedThon.includes(cust.thon) || allowedXom.includes(`${cust.thon}||${cust.xom}`);
+    const working = new Map<string, CoEntry[]>(); // sổ người cùng vay đang làm việc của từng khách (cập nhật dần theo từng dòng)
+    const touched = new Set<string>();
+    const counts: Record<string, number> = {};
+    const rows: any[] = [];
+    for (const it of items) {
+      const code = String(it?.code ?? '').trim();
+      if (!code) continue;
+      const row = Number(it?.row) || 0;
+      const bump = (status: string, extra: Record<string, unknown> = {}) => { counts[status] = (counts[status] || 0) + 1; rows.push({ row, code, status, ...extra }); };
+      const phone = phoneFromFile(it?.phone);
+      if (phone === '') { bump('nophone'); continue; }
+      const ct = ctByCode.get(code);
+      if (!ct) { bump('nocontract'); continue; }
+      const cust = custById.get(ct.customer_id);
+      if (!cust) { bump('nocontract'); continue; }
+      if (!inScope(cust)) { bump('noscope', { customer: cust.name }); continue; }
+      if (!(Number(ct.balance) > 0)) { bump('settled', { customer: cust.name }); continue; }
+      const coName = heirOfRow(ct, cust.name);
+      if (!coName) { bump('noheir', { customer: cust.name }); continue; }
+      if (phone === null) { bump('badphone', { customer: cust.name, person: coName }); continue; }
+      if (samePhone(phone, cust.phone)) { bump('samemain', { customer: cust.name, person: coName, phone }); continue; }
+      const people = working.get(cust.id) || mergeCoBooks(cust.co_people, []);
+      working.set(cust.id, people);
+      const entry = people.find((x) => samePerson(x.name, coName));
+      const current = entry ? entry.phone : '';
+      if (current && samePhone(current, phone)) { bump('same', { customer: cust.name, person: coName, phone }); continue; }
+      if (current && !overwrite) { bump('conflict', { customer: cust.name, person: coName, phone, current }); continue; }
+      if (entry) entry.phone = phone; else people.push({ name: coName, phone });
+      touched.add(cust.id);
+      bump(current ? 'replaced' : 'added', { customer: cust.name, person: coName, phone, ...(current ? { current } : {}) });
+    }
+    const updated = [...touched].map((id) => ({ id, people: (working.get(id) || []).map((x) => ({ name: x.name, phone: x.phone })) }));
+    if (!previewOnly && updated.length) {
+      let failed = 0;
+      await mapLimit([...touched], 8, async (id) => {
+        const { error } = await admin.from('customers').update({ co_people: working.get(id) }).eq('id', id);
+        if (error) { failed++; console.error('Lỗi lưu số người cùng vay từ file:', error.message); }
+      });
+      if (failed) return json({ ok: false, reason: `Lưu chưa trọn vẹn: ${failed}/${updated.length} khách bị lỗi — bấm lưu lại (số đã lưu được giữ nguyên).` }, 500);
+      await logActivity(caller.id, caller.name || caller.username, caller.username, 'import-co-phones',
+        `Nhập số điện thoại người cùng vay từ file: lưu **${(counts.added || 0) + (counts.replaced || 0)}** số cho **${updated.length}** khách hàng`);
+    }
+    return json({ ok: true, preview: previewOnly, overwrite, total: rows.length, customers: touched.size, counts, rows: rows.filter((r) => r.status !== 'same' && r.status !== 'nophone').slice(0, 400), updated: previewOnly ? [] : updated });
   }
 
   // Tổng quan "ai đã thêm khách/hợp đồng nào vào gửi tự động" của MỌI người —

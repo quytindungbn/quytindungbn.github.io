@@ -3204,6 +3204,23 @@ revoke all on public.co_people_archive from anon, authenticated;
 grant select, insert, update, delete on public.co_people_archive to service_role;
 ```
 
+
+### 10.85. Nhập số điện thoại người cùng vay từ file Excel (CẦN deploy lại Edge Function create-account; không cần SQL mới)
+
+**Dùng để**: điền hàng loạt số điện thoại người cùng vay (lấy từ file khách hàng của quỹ) thay vì nhập tay từng người ở chi tiết khách hàng.
+
+**File**: bảng Excel (.xls/.xlsx), dòng tiêu đề (trong 15 dòng đầu) có cột **"Số HĐTD"** và cột **"SĐT người cùng vay"** (hoặc "SĐT người thừa kế" / "Số điện thoại người cùng vay"…; chữ hoa/thường, dấu không quan trọng). Các cột khác bỏ qua. File mẫu: `SDT_nguoi_cung_vay.xlsx` — 189 dòng theo đúng thứ tự trong ảnh danh sách hợp đồng, số điện thoại tra từ file KH.xls: cột "Người thừa kế" của danh sách là **mã khách hàng** của người cùng vay → tra `MA_KHACH_HANG` trong KH.xls → lấy `SO_DI_DONG` (mã `0` hoặc để trống = không có người cùng vay).
+
+**Cách dùng**: Khách hàng & Hợp đồng → **Nhập từ Excel** → mục **"File số điện thoại người cùng vay"** → chọn file → **Đọc file & xem trước số điện thoại**. Màn hình hiện: sẽ lưu bao nhiêu số cho bao nhiêu khách, các dòng bỏ qua (kèm lý do), danh sách dòng cần chú ý và danh sách số sẽ lưu — **chưa ghi gì** cho đến khi bấm **Lưu N số điện thoại**. Chạy lại cùng file được (số y hệt thì bỏ qua).
+
+**Khớp thế nào** (máy chủ, type `import-co-phones`): mỗi dòng theo **Số HĐTD** → hợp đồng còn dư nợ → khách của hợp đồng + **tên người cùng vay ghi trên hợp đồng đó** (cột D file số 1, `heir_name`); số điện thoại được lưu vào **sổ người cùng vay** của khách (`customers.co_people`) — y như nút "Nhập số điện thoại" ở chi tiết khách. Số trong file được chuẩn hóa: bỏ khoảng trắng/dấu chấm/gạch nối; ô số bị mất số 0 đầu (9 chữ số) thì thêm lại; `+84…`/`84…` đổi về `0…`; phải đủ **10 số, bắt đầu bằng 0**. Chỉ **thêm** số; không xóa gì, **không tick gửi OA**, không đụng hợp đồng.
+
+**Các dòng bị bỏ qua** (có đếm + hiện lý do): ô SĐT trống · Số HĐTD không có trên web · hợp đồng đã tất toán · hợp đồng chưa ghi tên người cùng vay (hoặc ghi chính người vay) · SĐT sai định dạng · trùng số của người vay · khách ngoài Thôn/Xóm được gán (nhân viên) · **đã lưu số khác** với số trong file → **giữ nguyên số đã lưu**, trừ khi bật ô **"Ghi đè cả số đã lưu khác số trong file"** (xem trước tính lại ngay).
+
+**Quyền**: toàn quyền, hoặc quản trị viên có cờ Quản lý User / Quản lý OA (nhân viên chỉ khách trong Thôn/Xóm được gán). Nút nằm trong cửa sổ Nhập từ Excel (chỉ quản trị viên toàn quyền thấy nút Nhập từ Excel). Quá 5000 dòng một lần thì từ chối. Lưu giữ nguyên lựa chọn gửi OA (`oa`) và các người cùng vay khác trong sổ.
+
+**Việc cần bạn làm**: deploy lại Edge Function **`create-account`**. Không cần chạy SQL mới (dùng cột `co_people` của mục 10.83).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

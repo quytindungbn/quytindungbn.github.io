@@ -1044,6 +1044,26 @@ export async function saveMainPhone(customerId, phone) {
   if (c) c.phone = String(result.phone || phone).replace(/\s/g, '');
   notify();
 }
+/**
+ * Nhập số điện thoại người cùng vay từ file Excel (Edge Function create-account, type 'import-co-phones'; cần quyền Quản lý OA hoặc Quản lý User).
+ * items: [{ row, code, phone }] (Số HĐTD + SĐT người cùng vay); máy chủ khớp theo hợp đồng + tên người cùng vay ghi trên hợp đồng đó. Chỉ thêm số; số đã lưu khác file thì giữ nguyên
+ * trừ khi overwrite = true. previewImportCoPhones chỉ tính (không ghi); importCoPhones ghi thật rồi cập nhật sổ người cùng vay trong bộ nhớ.
+ */
+async function runImportCoPhones(items, { overwrite = false, preview = false } = {}) {
+  const res = await callCreateAccountFunction(getSession()?.sbToken, { type: 'import-co-phones', items, overwrite: !!overwrite, preview: !!preview });
+  if (!res.ok) throw coSaveError(res);
+  return res;
+}
+export function previewImportCoPhones(items, opts = {}) { return runImportCoPhones(items, { ...opts, preview: true }); }
+export async function importCoPhones(items, opts = {}) {
+  const res = await runImportCoPhones(items, { ...opts, preview: false });
+  for (const u of res.updated || []) {
+    const c = getCustomer(u.id);
+    if (c) c.coPeople = (u.people || []).map((x) => ({ name: String(x?.name || ''), phone: String(x?.phone || '') })).filter((x) => x.name);
+  }
+  notify();
+  return res;
+}
 /** Đã đọc cảnh báo "người cùng vay đã đổi" (máy chủ tự xóa dấu này khi khách được thêm lại vào OA) — xóa dấu trong bộ nhớ. */
 export function dismissCoBorrowerChange(customerId) {
   const c = getCustomer(customerId);
