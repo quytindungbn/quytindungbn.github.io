@@ -1584,6 +1584,42 @@ Deno.serve(async (req) => {
     return json({ ok: true, people, contracts: changed });
   }
 
+  // ===== type: 'save-main-phone' — nhập số điện thoại cho NGƯỜI VAY chưa có số (docs mục 10.83): khi bấm tick gửi Zalo OA cho người vay chưa có số thì phải nhập số.
+  // Body: { customerId, phone }. CHỈ khi khách chưa có số (khách đã có số thì sửa ở hồ sơ khách / file Excel, không sửa ở đây). Số: ĐÚNG 10 chữ số, bắt đầu bằng 0,
+  // không trùng số người cùng vay nào. Quyền: toàn quyền, hoặc cờ Quản lý User, hoặc cờ Quản lý OA; nhân viên chỉ làm với khách trong Thôn/Xóm được gán. =====
+  if (body.type === 'save-main-phone') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const { data: caller, error: callerErr } = await admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerErr || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const isSuperCaller = caller.role === 'super';
+    const canOa = isSuperCaller || caller.can_manage_zalo_oa === true;
+    if (!canOa && caller.can_manage_users !== true) return json({ ok: false, reason: 'Bạn không có quyền nhập số điện thoại cho khách hàng.' }, 403);
+    const customerId = String(body.customerId || '').trim();
+    if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+    const { data: customer } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
+    if (!customer) return json({ ok: false, reason: 'Không tìm thấy khách hàng.' }, 404);
+    if (!isSuperCaller) {
+      const allowedThon: string[] = caller.allowed_thon || [];
+      const allowedXom: string[] = caller.allowed_xom || [];
+      if (!(allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`))) {
+        return json({ ok: false, reason: 'Bạn không có quyền với khách hàng này.' }, 403);
+      }
+    }
+    if (String(customer.phone ?? '').trim()) return json({ ok: false, reason: 'Người vay đã có số điện thoại.' });
+    const clean = cleanVnPhone(body.phone);
+    if (!clean) return json({ ok: false, reason: 'Số điện thoại phải đủ 10 số và bắt đầu bằng số 0.' });
+    const coPeople: any[] = Array.isArray(customer.co_people) ? customer.co_people : [];
+    if (coPeople.some((x: any) => samePhone(x?.phone, clean))) return json({ ok: false, reason: 'Trùng số của người cùng vay.' });
+    const { error: upErr } = await admin.from('customers').update({ phone: clean }).eq('id', customerId);
+    if (upErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(caller.id, caller.name || caller.username, caller.username, 'save-main-phone',
+      `Nhập số điện thoại cho người vay "**${customer.name || customerId}**" (chưa có số)`);
+    return json({ ok: true, phone: clean });
+  }
+
   // Tổng quan "ai đã thêm khách/hợp đồng nào vào gửi tự động" của MỌI người —
   // cho trang Quản lý OA hiện đúng nhãn "Báo lãi tự động" cho mọi khách đã có
   // người thêm, đếm tổng, và không cho thêm trùng khách đang do người khác

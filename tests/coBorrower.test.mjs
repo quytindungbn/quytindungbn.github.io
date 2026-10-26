@@ -146,3 +146,13 @@ test('hasOaPhone: chỉ cần người vay hoặc 1 người cùng vay (ghi trê
   // số của người không còn ghi trên hợp đồng nào thì không tính
   assert.ok(!hasOaPhone(cts, { name: 'A', phone: '', coPeople: [{ name: 'NGUYỄN VĂN CŨ', phone: '0988777666' }] }));
 });
+
+test('customerOaSummary.uniform: các hợp đồng đang bật gửi cho cùng những người thì uniform; khác nhau thì không', () => {
+  const cust = { name: 'A', phone: '0912345678', coPeople: [{ name: 'TRẦN THỊ BÍCH', phone: '0988777666' }] };
+  const key = 'trần thị bích';
+  const both = (extra = {}) => ({ heirName: 'TRẦN THỊ BÍCH', oaToMain: true, oaToCo: true, oaCoKey: key, ...extra });
+  assert.equal(customerOaSummary([both(), both()], cust).uniform, true);
+  assert.equal(customerOaSummary([{}, {}], cust).uniform, true);
+  assert.equal(customerOaSummary([both(), { heirName: 'TRẦN THỊ BÍCH' }], cust).uniform, false, '1 hợp đồng gửi cả 2, 1 hợp đồng chỉ người vay');
+  assert.equal(customerOaSummary([both(), both({ oaEnabled: false, oaToCo: false })], cust).uniform, true, 'hợp đồng tắt không tính');
+});

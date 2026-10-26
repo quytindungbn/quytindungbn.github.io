@@ -75,6 +75,7 @@ export function contractOa(contract, customer) {
 /**
  * Tóm tắt gửi Zalo OA của 1 khách qua các hợp đồng (contracts: các hợp đồng còn hiệu lực) — dùng cho Danh sách OA / Gửi tự động:
  *  - mode : 'main' (chỉ người vay) · 'co' (chỉ người cùng vay) · 'both' · 'none' (mọi hợp đồng đã tắt hoặc không còn ai nhận).
+ *  - uniform : mọi hợp đồng đang bật đều gửi cho cùng những người (khác nhau thì Danh sách OA phải hiện theo từng hợp đồng).
  *  - custom : có gì khác mặc định (có người cùng vay nhận, có hợp đồng tắt, hợp đồng bật mà chưa có số nào để gửi, hoặc người vay bị bỏ tick) → mới cần dòng "Gửi tới".
  *  - items : từng hợp đồng + trạng thái, theo thứ tự.
  */
@@ -85,8 +86,10 @@ export function customerOaSummary(contracts, customer) {
   const offCount = items.filter((x) => !x.state.enabled).length;
   const mode = anyMain && anyCo ? 'both' : anyCo ? 'co' : anyMain ? 'main' : 'none';
   const noRecipient = items.some((x) => x.state.enabled && !x.state.recipients.length); // hợp đồng bật nhưng không có số nào để gửi (người vay chưa có số...)
+  const on = items.filter((x) => x.state.enabled);
+  const uniform = on.every((x) => x.state.toMain === on[0].state.toMain && x.state.toCo === on[0].state.toCo); // mọi hợp đồng đang bật gửi cho cùng những người
   const custom = anyCo || offCount > 0 || noRecipient || items.some((x) => x.state.enabled && !x.state.toMain && !x.state.mainLocked);
-  return { items, anyMain, anyCo, offCount, noRecipient, mode, custom };
+  return { items, anyMain, anyCo, offCount, noRecipient, mode, custom, uniform };
 }
 
 /**

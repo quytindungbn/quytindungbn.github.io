@@ -2701,15 +2701,10 @@ a.cd-callbtn:hover { filter: brightness(1.06); }
 .cdo-ck.off { border-color: #d3dcd7; background: #fff; color: #6c7a74; }
 .cdo-ck.off i { background: #fff; border: 1.5px solid #bccbc4; color: transparent; }
 .cdo-ck:has(input:focus-visible) { outline: 2px solid var(--cd-em); outline-offset: 2px; }
-.cdo-ck.lock { font-family: inherit; border-style: dashed; border-color: #d9c68a; background: #fffdf6; color: #8a6a22; }
-.cdo-ck.lock i { background: #efe3b6; color: #8a6a22; border-radius: 50%; }
-.cdo-ck.lock i svg { width: 11px; height: 11px; stroke-width: 2.6; }
-button.cdo-ck.lock:hover { background: #fbf1d0; }
-span.cdo-ck.lock { cursor: not-allowed; }
+.cdo-ck.need { font-family: inherit; }
+button.cdo-ck.need:hover:not(:disabled) { border-color: #0c8a5c; background: #f4faf7; }
+button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cdo-r.is-off .cdo-ck { opacity: .55; cursor: not-allowed; }
-.cdo-note { display: flex; gap: 7px; margin: 11px 0 0; padding: 10px 12px; border-radius: 12px; background: #f4f8f6; font: 500 12px/1.5 var(--lux-sans, inherit); color: #51615a; }
-.cdo-note svg { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--cd-gold); }
-.cdo-note b { color: var(--cd-ink); }
 @media (max-width: 560px) {
   .cdo-r { grid-template-columns: auto minmax(0, 1fr); row-gap: 9px; }
   .cdo-pills { grid-column: 1 / -1; }

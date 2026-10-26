@@ -11,7 +11,7 @@ import { buildVietQrUrl, qrImageSrc, downloadQrImage, shareQrImage, bindMoneyInp
 import { transferContent } from '../../lib/transferContent.js';
 import { interestAsOfForDays, MAX_INTEREST_DAYS } from '../../lib/interestDays.js';
 import { describeCallTime, formatPhoneDisplay } from '../../lib/callHistory.js';
-import { checkCoPhone, sanitizeCoPhoneInput, normPersonName, shortPersonName } from '../../lib/coBorrower.js';
+import { checkCoPhone, sanitizeCoPhoneInput, normPersonName, shortPersonName, samePhone } from '../../lib/coBorrower.js';
 import { buildLoanSummaryText } from '../../lib/loanSummary.js';
 import { printNotice } from '../../lib/printNotices.js';
 import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
@@ -898,7 +898,8 @@ const shortMoney = (n) => {
  */
 function coCardMode(customerId, contracts) {
   const people = S.listCoPeople(customerId);
-  if (people.length >= 2 || contracts.some((ct) => ct.oaEnabled === false)) return 'detail';
+  // Từ 2 hợp đồng trở lên (hoặc từ 2 người cùng vay, hoặc có hợp đồng đã tắt) → hiện "Gửi Zalo OA theo từng hợp đồng"; 1 hợp đồng + 1 người cùng vay → 2 ô tick như cũ.
+  if (contracts.length >= 2 || people.length >= 2 || contracts.some((ct) => ct.oaEnabled === false)) return 'detail';
   return people.length === 1 ? 'simple' : 'none';
 }
 function coCardShown(customerId, contracts, { canOa, canEdit }) {
@@ -940,11 +941,10 @@ function coPersonHtml(p, { canEdit, editing, pending }) {
 /** Một hàng hợp đồng trong phần "Gửi Zalo OA theo từng hợp đồng": công tắc bật/tắt + tick người vay / người cùng vay của hợp đồng đó. */
 function coContractRowHtml(ct, oa) {
   const pill = (kind, label, on, extraCls = '') => `<label class="cdo-ck${extraCls}${on ? '' : ' off'}"><input type="checkbox" data-oa="${kind}" ${on ? 'checked' : ''} ${oa.enabled ? '' : 'disabled'}><i>${icon('check')}</i>${escapeHtml(label)}</label>`;
-  const lock = (label, key) => (key
-    ? `<button type="button" class="cdo-ck lock" data-oa-need="${key}" title="Chưa có số điện thoại — bấm để nhập số"><i>${icon('lock')}</i>${escapeHtml(label)} · chưa có số</button>`
-    : `<span class="cdo-ck lock" title="Chưa có số điện thoại"><i>${icon('lock')}</i>${escapeHtml(label)} · chưa có số</span>`);
-  const main = oa.mainLocked ? lock('Người vay', '') : pill('main', 'Người vay', oa.toMain);
-  const co = oa.coName ? (oa.coLocked ? lock(shortPersonName(oa.coName), escapeHtml(normPersonName(oa.coName))) : pill('co', shortPersonName(oa.coName), oa.toCo, ' co')) : '';
+  // Người chưa có số điện thoại: VẪN có ô tick (chưa tick); bấm vào thì hiện ô nhập số, lưu số xong tự tick (xem [data-oa-need]).
+  const need = (label, key, extraCls = '') => `<button type="button" class="cdo-ck off need${extraCls}" data-oa-need="${key}" title="Chưa có số điện thoại — tick để nhập số" ${oa.enabled ? '' : 'disabled'}><i>${icon('check')}</i>${escapeHtml(label)}</button>`;
+  const main = oa.mainLocked ? need('Người vay', '@main') : pill('main', 'Người vay', oa.toMain);
+  const co = oa.coName ? (oa.coLocked ? need(shortPersonName(oa.coName), escapeHtml(normPersonName(oa.coName)), ' co') : pill('co', shortPersonName(oa.coName), oa.toCo, ' co')) : '';
   return `<div class="cdo-r${oa.enabled ? '' : ' is-off'}" data-ct="${ct.id}">
       <label class="cdo-sw" title="${oa.enabled ? 'Tắt gửi OA cho hợp đồng này' : 'Bật gửi OA cho hợp đồng này'}"><input type="checkbox" data-oa="enabled" ${oa.enabled ? 'checked' : ''} aria-label="Gửi Zalo OA cho hợp đồng ${escapeHtml(ct.code)}"><i></i></label>
       <div class="cdo-code"><b>${escapeHtml(ct.code)}</b><span>Gốc ${shortMoney(ct.balance)}</span></div>
@@ -964,13 +964,27 @@ function coPickHtml(c, contracts) {
   const coOn = !!p.phone && p.contracts.length > 0 && p.contracts.every((ct) => (S.getContractOa(ct.id) || {}).toCo);
   const tile = (key, on, title) => `<label class="cd-pp-tile${on ? ' on' : ''}" data-pp-tick="${key}"><input type="checkbox" ${on ? 'checked' : ''}><i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></label>`;
   const need = (key, title) => `<button type="button" class="cd-pp-tile is-need" data-pp-tick="${key}" aria-label="${title} — cần nhập số điện thoại trước"><i class="cd-pp-box">${icon('check', 'icon-sm')}</i><span><b>${title}</b></span></button>`;
-  const lock = (title) => `<span class="cd-pp-tile is-need" title="Chưa có số điện thoại" aria-disabled="true"><i class="cd-pp-box">${icon('lock', 'icon-sm')}</i><span><b>${title} · chưa có số</b></span></span>`;
   return `<div class="cd-pp-picks">
       <div class="cd-pp-pick-h">Gửi Zalo OA tới</div>
       <div class="cd-pp-pick-row">
-        ${sts.some((st) => st.mainLocked) ? lock('Người vay') : tile('main', mainOn, 'Người vay')}
+        ${sts.some((st) => st.mainLocked) ? need('main', 'Người vay') : tile('main', mainOn, 'Người vay')}
         ${p.phone ? tile('co', coOn, 'Người cùng vay') : need('co', 'Người cùng vay')}
       </div></div>`;
+}
+
+/** Ô nhập số điện thoại cho NGƯỜI VAY chưa có số (mở khi tick gửi OA cho người vay): lưu số xong tự tick. */
+function mainPhoneFormHtml(c) {
+  return `<div class="cd-pp is-editing" data-person="@main">
+      <div class="cd-pp-top">
+        <span class="cd-pp-av" style="background:${colorFor(c.name)}">${escapeHtml(initials(c.name))}</span>
+        <div class="cd-pp-tx"><small>Người vay</small><b>${escapeHtml(c.name)}</b><span class="cd-pp-ph"><i class="is-none">Chưa có số điện thoại</i></span></div>
+      </div>
+      <div class="cd-pp-form" data-person="@main">
+        <label for="pp-phone">Nhập số điện thoại của Người vay để bật gửi Zalo OA</label>
+        <div class="cd-pp-formrow"><input class="cd-pp-in" id="pp-phone" type="tel" inputmode="numeric" maxlength="16" autocomplete="off" value="">
+          <button type="button" class="btn btn-primary btn-sm" data-pp-save>Lưu</button><button type="button" class="btn btn-outline btn-sm" data-pp-cancel>Hủy</button></div>
+      </div>
+    </div>`;
 }
 
 /** Nội dung thẻ: danh sách người cùng vay (+ sửa số) và — nếu có quyền OA — ô chọn người nhận (kiểu simple) hoặc gửi Zalo OA theo từng hợp đồng (kiểu detail). */
@@ -981,15 +995,15 @@ function coCardHtml(c, contracts, { canOa, canEdit, editKey = null, pending = fa
     ? `<div class="cd-pp-warn">${icon('info')}<div><b>Người cùng vay đã đổi</b><span>Hợp đồng nay ghi người cùng vay khác với <b>${escapeHtml(c.coPrevName)}</b>. Khách đã được bỏ khỏi danh sách OA; nhập số của người mới nếu muốn gửi cho họ.</span></div></div>`
     : '';
   const mode = coCardMode(c.id, contracts);
+  const mainForm = canOa && editKey === '@main' ? mainPhoneFormHtml(c) : '';
   const oaRows = canOa && mode === 'detail' ? contracts.map((ct) => coContractRowHtml(ct, S.getContractOa(ct.id))).join('') : '';
   const pickSection = canOa && mode === 'simple' ? coPickHtml(c, contracts) : '';
   const oaSection = canOa && oaRows ? `
     <div class="cdo-sec">${icon('send', 'icon-sm')} Gửi Zalo OA theo từng hợp đồng</div>
-    <div class="cdo-rows">${oaRows}</div>
-    <p class="cdo-note">${icon('info')}<span>Công tắc bên trái <b>bật/tắt cả hợp đồng</b> (tắt thì không gửi và không hiện trong lịch sử gửi). Người cùng vay <b>chỉ hiện ở hợp đồng có tên họ</b>; chưa có số điện thoại thì <b>không tick được</b>.</span></p>` : '';
+    <div class="cdo-rows">${oaRows}</div>` : '';
   const title = people.length ? (canOa ? 'Người cùng vay &amp; Zalo OA' : 'Người cùng vay') : 'Zalo OA theo hợp đồng';
   return `<h3 class="cd-h"><span>${title}</span>${people.length ? `<em>${people.length}</em>` : ''}</h3>
-    ${warn}${peopleHtml}${pickSection}${oaSection}`;
+    ${warn}${peopleHtml}${mainForm}${pickSection}${oaSection}`;
 }
 
 /** Thẻ hợp đồng gọn trong chi tiết khách hàng: vạch màu theo tình trạng, mã + nhãn tình trạng, gốc/lãi bên phải; bấm vào mở chi tiết hợp đồng. */
@@ -1008,9 +1022,9 @@ function contractCardHtml(ct) {
 }
 
 
-export function openCustomerDetail(customerId, { readOnly = false, context = 'customer', showActions = context === 'use' } = {}) {
+export function openCustomerDetail(customerId, { readOnly = false, context = 'customer', showActions = context === 'use', reopen = false } = {}) {
   const c = S.getCustomer(customerId);
-  S.logAdminAction('view-customer', { customerId });
+  if (!reopen) S.logAdminAction('view-customer', { customerId }); // reopen: mở lại sau khi nhập số người vay — không ghi thêm 1 lượt "xem khách hàng" vào Nhật ký
   // Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào danh sách hiển thị nữa.
   const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
   const session = S.getSession();
@@ -1222,21 +1236,37 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           const need = e.target.closest('[data-oa-need]');
           if (need) { ppEditKey = need.dataset.oaNeed; ppPending = { ctId: need.closest('[data-ct]')?.dataset.ct || null }; drawPp(); return; } // chưa có số: phải nhập số mới tick được
           const needTile = e.target.closest('button.cd-pp-tile.is-need[data-pp-tick]');
-          if (needTile) { const p0 = S.listCoPeople(customerId)[0]; if (p0) { ppEditKey = normPersonName(p0.name); ppPending = { all: true }; drawPp(); } return; }
+          if (needTile) {
+            if (needTile.dataset.ppTick === 'main') { ppEditKey = '@main'; ppPending = { all: true }; drawPp(); return; } // người vay chưa có số: nhập số rồi mới tick
+            const p0 = S.listCoPeople(customerId)[0]; if (p0) { ppEditKey = normPersonName(p0.name); ppPending = { all: true }; drawPp(); } return;
+          }
           const edit = e.target.closest('[data-pp-edit]');
           if (edit) { ppEditKey = edit.dataset.ppEdit; ppPending = null; drawPp(); return; }
           if (e.target.closest('[data-pp-cancel]')) { ppEditKey = null; ppPending = null; drawPp(); return; }
           const saveBtn = e.target.closest('[data-pp-save]');
           if (saveBtn) {
             if (ppSaving) return;
-            const person = personOf(ppEditKey);
-            if (!person) { ppEditKey = null; ppPending = null; drawPp(); return; }
+            const isMain = ppEditKey === '@main'; // nhập số cho NGƯỜI VAY chưa có số (bấm tick Người vay)
+            const person = isMain ? null : personOf(ppEditKey);
+            if (!isMain && !person) { ppEditKey = null; ppPending = null; drawPp(); return; }
             const chk = checkCoPhone(ppCard.querySelector('#pp-phone').value);
             if (!chk.ok) { toast(chk.reason, 'error'); return; }
-            if (chk.empty && ppPending) { toast('Nhập số điện thoại để bật gửi Zalo OA cho người cùng vay', 'error'); return; }
-            if (!chk.empty && chk.phone === mainDigits) { toast('Trùng số của người vay', 'error'); return; }
+            if (chk.empty && (isMain || ppPending)) { toast(`Nhập số điện thoại để bật gửi Zalo OA cho ${isMain ? 'người vay' : 'người cùng vay'}`, 'error'); return; }
+            if (isMain && S.listCoPeople(customerId).some((p) => p.phone && samePhone(p.phone, chk.phone))) { toast('Trùng số của người cùng vay', 'error'); return; }
+            if (!isMain && !chk.empty && chk.phone === mainDigits) { toast('Trùng số của người vay', 'error'); return; }
             ppSaving = true; saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu…';
             try {
+              if (isMain) {
+                await S.saveMainPhone(customerId, chk.phone);
+                if (canManageZalo && ppPending) { // người vay mặc định nhận tin ở mọi hợp đồng; chỉ tick lại hợp đồng nào đang bỏ tick
+                  if (ppPending.ctId) { if (!(S.getContractOa(ppPending.ctId) || {}).toMain) await S.setContractOa(ppPending.ctId, { toMain: true }, { optimistic: false }); }
+                  else await runTargets(simpleTargets('main', true) || []);
+                }
+                toast('Đã lưu số điện thoại và bật gửi Zalo OA cho người vay', 'success');
+                ppEditKey = null; ppPending = null;
+                closeFn(); openCustomerDetail(customerId, { readOnly, context, showActions, reopen: true }); // mở lại để đầu hồ sơ hiện số mới + nút Gọi
+                return;
+              }
               await S.saveCoPhone(customerId, person.name, chk.phone);
               const wantTick = !chk.empty && canManageZalo && ppPending && (ppPending.ctId || ppPending.all);
               if (wantTick && ppPending.ctId) await S.setContractOa(ppPending.ctId, { toCo: true }, { optimistic: false });
@@ -1441,7 +1471,8 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = compact ? 'Đang gửi' : `${icon('refresh', 'icon-sm')} Đang gửi...`;
   try {
     const res = await S.sendZaloManual(contractId);
-    const okText = res.sent >= 2 ? 'Đã gửi tin Zalo OA cho người vay và người cùng vay' : res.sentTo === 'co' ? 'Đã gửi tin Zalo OA cho người cùng vay' : 'Đã gửi tin Zalo OA cho khách';
+    // Gửi đúng người theo cài đặt của hợp đồng đó (tick Người vay / Người cùng vay ở chi tiết khách hàng); mặc định chỉ người vay.
+    const okText = res.sent >= 2 ? 'Đã gửi tin Zalo OA cho người vay và người cùng vay' : res.sentTo === 'co' ? 'Đã gửi tin Zalo OA cho người cùng vay' : 'Đã gửi tin Zalo OA cho người vay';
     toast(res.ok ? (res.note ? `${okText}. ${res.note}` : okText) : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error', res.note || /chưa đăng ký Zalo/.test(res.reason || '') ? 7000 : undefined);
     if (res.ok) {
       const sentAt = new Date().toISOString();

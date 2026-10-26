@@ -943,8 +943,9 @@ export function customerOaOverview(customerId) {
   if (!c) return null;
   const sum = customerOaSummary(activeContractsOf(customerId), c);
   const people = listCoPeople(customerId);
-  // detail = cần xem theo TỪNG HỢP ĐỒNG (từ 2 người cùng vay khác nhau, hoặc có hợp đồng đang tắt); ngược lại 1 người cùng vay chung cho mọi hợp đồng → hiển thị như trước.
-  return { ...sum, people, detail: people.length >= 2 || sum.offCount > 0 };
+  // detail = Danh sách OA phải hiện theo TỪNG HỢP ĐỒNG (từ 2 người cùng vay khác nhau, có hợp đồng đang tắt, hoặc các hợp đồng gửi cho người khác nhau);
+  // ngược lại cả khách gửi giống nhau → nhãn gọn như trước.
+  return { ...sum, people, detail: people.length >= 2 || sum.offCount > 0 || !sum.uniform };
 }
 /** Dòng log gửi Zalo có được hiện không: hợp đồng đã TẮT gửi OA thì không hiện lịch sử của nó. */
 export function isZaloLogVisible(log) {
@@ -1027,6 +1028,20 @@ export async function saveCoPhone(customerId, name, phone) {
     const ct = getContract(r.id);
     if (ct) { ct.oaToMain = r.oaToMain !== false; ct.oaToCo = !!r.oaToCo; ct.oaCoKey = r.oaCoKey || null; }
   }
+  notify();
+}
+/**
+ * Nhập số điện thoại cho NGƯỜI VAY chưa có số (Edge Function create-account, type 'save-main-phone'; cần quyền Quản lý OA hoặc Quản lý User; chỉ khi khách chưa có số).
+ * Dùng khi bấm tick gửi Zalo OA cho người vay chưa có số: nhập số xong mới tick được.
+ */
+export async function saveMainPhone(customerId, phone) {
+  const c = getCustomer(customerId);
+  const { result } = await runCoSave(customerId, async () => {
+    const res = await callCreateAccountFunction(getSession()?.sbToken, { type: 'save-main-phone', customerId, phone });
+    if (!res.ok) throw coSaveError(res);
+    return res;
+  });
+  if (c) c.phone = String(result.phone || phone).replace(/\s/g, '');
   notify();
 }
 /** Đã đọc cảnh báo "người cùng vay đã đổi" (máy chủ tự xóa dấu này khi khách được thêm lại vào OA) — xóa dấu trong bộ nhớ. */
