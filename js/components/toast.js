@@ -8,7 +8,7 @@ function ensureWrap() {
   return wrap;
 }
 
-export function toast(message, type = 'default', durationMs = 2200) {
+export function toast(message, type = 'default', durationMs = type === 'error' ? 5500 : 4000) {
   const w = ensureWrap();
   const el = document.createElement('div');
   el.className = `toast ${type === 'success' ? 'toast-success' : type === 'error' ? 'toast-error' : ''}`;
