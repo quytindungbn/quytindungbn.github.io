@@ -157,7 +157,7 @@ function notesAttnRowHtml() {
   return `<button type="button" class="lux-attn-row" id="tile-notes" data-count="${n.count}">
         <span class="mk ${tone}"></span>
         <span class="t"><b>Nhắc việc đến hạn</b><small>${formatNumber(n.customers)} khách hàng${n.late ? ` · ${formatNumber(n.late)} trễ hạn` : ''}</small></span>
-        <span class="v ${tone}">${formatNumber(n.count)}<small>việc</small></span>${LUX_CHEVRON}
+        <span class="v"><b class="lux-bubble" aria-label="${n.count} việc đến hạn">${n.count > 99 ? '99+' : formatNumber(n.count)}</b></span>${LUX_CHEVRON}
       </button>`;
 }
 

@@ -2963,3 +2963,10 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 @media (max-width: 639px) {
   .nt-tplgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+.lux-bubble { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 7px; border-radius: 999px; background: #e0362f; color: #fff; font: 800 13px/1 var(--lux-sans, system-ui, sans-serif); font-style: normal; box-shadow: 0 4px 10px -3px rgba(224, 54, 47, .55); animation: luxBubble 2.4s ease-out infinite; }
+@keyframes luxBubble {
+  0% { box-shadow: 0 0 0 0 rgba(224, 54, 47, .45), 0 4px 10px -3px rgba(224, 54, 47, .55); }
+  70% { box-shadow: 0 0 0 9px rgba(224, 54, 47, 0), 0 4px 10px -3px rgba(224, 54, 47, .55); }
+  100% { box-shadow: 0 0 0 0 rgba(224, 54, 47, 0), 0 4px 10px -3px rgba(224, 54, 47, .55); }
+}
+@media (prefers-reduced-motion: reduce) { .lux-bubble { animation: none; } }

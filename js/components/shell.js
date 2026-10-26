@@ -159,14 +159,10 @@ function totalSupportUnread() {
   return (S.getState()?.chatUnreadCount || 0) + S.countUnreadRequests(session.id);
 }
 
-function dueNotesCount() {
-  const session = S.getSession();
-  return session && session.role === 'admin' ? S.listDueNotes().length : 0;
-}
-
 function unreadBadgeHtml(path, cls = 'nav-badge') {
-  const count = path === '#/admin/ho-tro' ? totalSupportUnread() : path === '#/admin' ? dueNotesCount() : 0;
-  return count ? `<span class="${cls}">${count > 99 ? '99+' : count}</span>` : '';
+  if (path !== '#/admin/ho-tro') return '';
+  const unread = totalSupportUnread();
+  return unread ? `<span class="${cls}">${unread > 99 ? '99+' : unread}</span>` : '';
 }
 
 function renderSidebarNav(nav) {
@@ -275,8 +271,6 @@ export function renderSupportNavBadge() {
   const moreBtn = document.querySelector('#btn-more-bottom[data-support-overflow="true"]');
   if (moreBtn) targets.push(moreBtn);
   targets.forEach((item) => setNavBadge(item, unread));
-  const due = dueNotesCount();
-  document.querySelectorAll('a[data-path="#/admin"]').forEach((item) => setNavBadge(item, due));
 }
 
 export function updateActiveNav(hash) {
