@@ -2696,8 +2696,6 @@ a.cd-callbtn:hover { filter: brightness(1.06); }
 .cdo-ck input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .cdo-ck i { display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 6px; background: #0c8a5c; color: #fff; font-style: normal; flex: none; }
 .cdo-ck i svg { width: 12px; height: 12px; stroke-width: 3.6; }
-.cdo-ck.co { border-color: #e6cf8a; background: #fff8e3; color: #7a5a14; }
-.cdo-ck.co i { background: #c49a2c; }
 .cdo-ck.off { border-color: #d3dcd7; background: #fff; color: #6c7a74; }
 .cdo-ck.off i { background: #fff; border: 1.5px solid #bccbc4; color: transparent; }
 .cdo-ck:has(input:focus-visible) { outline: 2px solid var(--cd-em); outline-offset: 2px; }

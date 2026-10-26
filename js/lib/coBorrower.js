@@ -51,7 +51,8 @@ export function coPhoneOf(people, name) {
  *  - enabled : hợp đồng đang bật gửi OA (tắt thì không gửi gì, không hiện trong lịch sử gửi).
  *  - coName/coPhone : người cùng vay GHI TRÊN HỢP ĐỒNG NÀY và số đã lưu (chưa có số thì coLocked = true, không tick được).
  *  - mainLocked : người vay chưa có số điện thoại → không tick được.
- *  - toCo : người cùng vay nhận tin hợp đồng này — chỉ khi đã tick ĐÚNG người này (oaCoKey khớp tên trên hợp đồng) và có số;
+ *  - toCo : người cùng vay nhận tin hợp đồng này — khi đã tick ĐÚNG người này (oaCoKey khớp tên trên hợp đồng) và có số; HOẶC người vay chưa có số điện thoại thì người cùng vay
+ *           (có số) TỰ ĐỘNG nhận (coAuto = true, tick sẵn, không bỏ tick được trừ khi tắt hợp đồng);
  *  - toMain : người vay nhận tin; luôn còn ít nhất 1 người nhận (người cùng vay không nhận được thì người vay nhận).
  *  - recipients : danh sách số sẽ nhận tin ({ who: 'main'|'co', phone }), trùng số chỉ giữ 1.
  */
@@ -64,12 +65,13 @@ export function contractOa(contract, customer) {
   const mainLocked = !mainPhone;
   const coUsable = !!coName && !!coPhone && !samePhone(coPhone, mainPhone);
   const ticked = contract?.oaToCo === true && !!coName && samePerson(contract?.oaCoKey, coName);
-  const toCo = enabled && ticked && coUsable;
+  const coAuto = coUsable && mainLocked; // người vay chưa có số → người cùng vay có số tự động nhận
+  const toCo = enabled && coUsable && (ticked || mainLocked);
   const toMain = enabled && (contract?.oaToMain !== false || !toCo) && !mainLocked;
   const recipients = [];
   if (toMain) recipients.push({ who: 'main', phone: mainPhone });
   if (toCo) recipients.push({ who: 'co', phone: coPhone });
-  return { enabled, coName, coPhone, coLocked, mainLocked, toCo, toMain, recipients };
+  return { enabled, coName, coPhone, coLocked, mainLocked, coAuto, toCo, toMain, recipients };
 }
 
 /**

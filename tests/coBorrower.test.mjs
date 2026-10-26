@@ -80,8 +80,18 @@ test('contractOa: hợp đồng không ghi người cùng vay thì không có ng
 });
 
 test('contractOa: người vay chưa có số bị khóa; số người cùng vay trùng số người vay thì không gửi 2 lần', () => {
+  // người vay chưa có số + hợp đồng ghi Bích (có số) → Bích TỰ ĐỘNG nhận (tick sẵn)
   const noPhone = contractOa(ct(), { ...CUST, phone: '' });
-  assert.deepEqual([noPhone.mainLocked, noPhone.toMain, noPhone.recipients.length], [true, false, 0]);
+  assert.deepEqual([noPhone.mainLocked, noPhone.toMain, noPhone.toCo, noPhone.coAuto, noPhone.recipients.map((r) => r.who)], [true, false, true, true, ['co']]);
+  // người cùng vay chưa có số / hợp đồng không ghi người cùng vay / số trùng số người vay → không ai nhận
+  assert.deepEqual(contractOa(ct({ heirName: 'LÊ VĂN KHÁNH' }), { ...CUST, phone: '' }).recipients, []);
+  assert.deepEqual(contractOa(ct({ heirName: null }), { ...CUST, phone: '' }).recipients, []);
+  assert.deepEqual(contractOa(ct(), { name: 'A', phone: '', coPeople: [{ name: 'TRẦN THỊ BÍCH', phone: '' }] }).recipients, []);
+  // hợp đồng tắt thì không gửi gì dù người vay chưa có số
+  assert.deepEqual(contractOa(ct({ oaEnabled: false }), { ...CUST, phone: '' }).recipients, []);
+  // người vay CÓ số thì vẫn như cũ: mặc định chỉ người vay, tick mới gửi người cùng vay (coAuto = false)
+  const hasPhone = contractOa(ct(), CUST);
+  assert.deepEqual([hasPhone.coAuto, hasPhone.toCo, hasPhone.recipients.map((r) => r.who)], [false, false, ['main']]);
   const dup = contractOa(ct({ oaToCo: true, oaCoKey: 'trần thị bích' }), { ...CUST, phone: '0988777666' });
   assert.deepEqual(dup.recipients.map((r) => r.who), ['main']);
 });
@@ -97,8 +107,10 @@ test('customerOaSummary: mặc định không cần dòng "Gửi tới"; có ng�
   assert.deepEqual([allOff.mode, allOff.custom], ['none', true]);
   const coOnly = customerOaSummary([ct({ oaToCo: true, oaCoKey: 'trần thị bích', oaToMain: false })], CUST);
   assert.equal(coOnly.mode, 'co');
-  const noPhone = customerOaSummary([ct()], { ...CUST, phone: '' }); // người vay chưa có số, không có ai khác → báo chưa có số để gửi
+  const noPhone = customerOaSummary([ct({ heirName: null })], { ...CUST, phone: '' }); // người vay chưa có số, không có người cùng vay → báo chưa có số để gửi
   assert.deepEqual([noPhone.mode, noPhone.noRecipient, noPhone.custom], ['none', true, true]);
+  const autoCo = customerOaSummary([ct(), ct({ id: 'y' })], { ...CUST, phone: '' }); // người vay chưa có số, người cùng vay có số → tự gửi người cùng vay (cả 2 hợp đồng)
+  assert.deepEqual([autoCo.mode, autoCo.noRecipient, autoCo.custom, autoCo.uniform], ['co', false, true, true]);
 });
 
 test('shortPersonName: tên gọi ngắn là từ cuối, viết hoa chữ đầu', () => {

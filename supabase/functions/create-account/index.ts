@@ -813,14 +813,16 @@ type ZaloRecipient = { who: 'main' | 'co'; phone: string };
  * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG (customer: { name, phone, co_people }):
  *  · hợp đồng tắt gửi OA (oa_enabled = false) → không ai;
  *  · người vay: mặc định có; luôn còn ít nhất 1 người nhận (người cùng vay không nhận được thì người vay nhận);
- *  · người cùng vay: CHỈ người có tên TRÊN HỢP ĐỒNG NÀY, đã được tick đúng người đó (oa_co_key khớp tên hiện tại), đã có số, số không trùng số người vay.
+ *  · người cùng vay: CHỈ người có tên TRÊN HỢP ĐỒNG NÀY, đã có số, số không trùng số người vay, và đã được tick đúng người đó (oa_co_key khớp tên hiện tại)
+ *    HOẶC người vay chưa có số điện thoại (khi đó người cùng vay có số TỰ ĐỘNG nhận — tick sẵn).
  */
 function contractRecipients(ct: any, customer: any): ZaloRecipient[] {
   if (ct?.oa_enabled === false) return [];
   const main = String(customer?.phone ?? '').trim();
   const coName = heirOfRow(ct, customer?.name);
   const coPhone = coName ? coPhoneOfPeople(customer?.co_people, coName) : '';
-  const toCo = ct?.oa_to_co === true && !!coName && samePerson(ct?.oa_co_key, coName) && !!coPhone && !samePhone(coPhone, main);
+  const ticked = ct?.oa_to_co === true && !!coName && samePerson(ct?.oa_co_key, coName);
+  const toCo = !!coName && !!coPhone && !samePhone(coPhone, main) && (ticked || !main);
   const toMain = ct?.oa_to_main !== false || !toCo;
   const out: ZaloRecipient[] = [];
   if (toMain && main) out.push({ who: 'main', phone: main });
@@ -876,13 +878,18 @@ function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWh
     if (noAccountWho.includes('co') && coPerson && samePerson(heirOfRow(ct, cust?.name), coPerson)) { p.oa_to_co = false; p.oa_co_key = null; }
     if (Object.keys(p).length) patches.set(ct.id, p);
   }
+  // Người cùng vay báo "chưa đăng ký Zalo" thì không còn được tự động nhận nữa (kể cả khi người vay chưa có số điện thoại).
+  const coDead = noAccountWho.includes('co') ? coPerson : '';
+  const main = String(cust?.phone ?? '').trim();
   const hasLeft = cts.some((ct) => {
     const a = { ...ct, ...(patches.get(ct.id) || {}) };
     if (a.oa_enabled === false) return false;
     const coName = heirOfRow(a, cust?.name);
     const coPhone = coName ? coPhoneOfPeople(cust?.co_people, coName) : '';
-    const toCo = a.oa_to_co === true && !!coName && samePerson(a.oa_co_key, coName) && !!coPhone && !samePhone(coPhone, cust?.phone);
-    return toCo || (a.oa_to_main !== false && !!String(cust?.phone ?? '').trim());
+    const ticked = a.oa_to_co === true && !!coName && samePerson(a.oa_co_key, coName);
+    const dead = !!coDead && samePerson(coName, coDead);
+    const toCo = !!coName && !!coPhone && !samePhone(coPhone, main) && !dead && (ticked || !main);
+    return toCo || (a.oa_to_main !== false && !!main);
   });
   return { patches, hasLeft };
 }
@@ -1676,7 +1683,11 @@ Deno.serve(async (req) => {
       if (samePhone(coPhone, customer.phone)) return json({ ok: false, reason: 'Số người cùng vay trùng số người vay.' });
     }
     if (!coName) toCo = false;
-    if (enabled && !toMain && !toCo) return json({ ok: false, reason: 'Cần giữ ít nhất 1 người nhận Zalo OA — hoặc tắt hợp đồng này bằng công tắc bên trái.' });
+    // Người vay chưa có số điện thoại: người cùng vay có số TỰ ĐỘNG nhận (tick sẵn, xem contractRecipients) nên vẫn còn người nhận và không bỏ tick được.
+    const coPhoneNow = coName ? coPhoneOfPeople(customer.co_people, coName) : '';
+    const autoCo = !String(customer.phone ?? '').trim() && !!coName && !!coPhoneNow;
+    if (enabled && autoCo && body.toCo === false) return json({ ok: false, reason: 'Người vay chưa có số điện thoại nên phải giữ gửi cho người cùng vay — hoặc tắt hợp đồng này bằng công tắc bên trái.' });
+    if (enabled && !toMain && !toCo && !autoCo) return json({ ok: false, reason: 'Cần giữ ít nhất 1 người nhận Zalo OA — hoặc tắt hợp đồng này bằng công tắc bên trái.' });
     const patch = { oa_enabled: enabled, oa_to_main: toMain, oa_to_co: toCo, oa_co_key: toCo ? normPersonName(coName) : null };
     const { error } = await admin.from('contracts').update(patch).eq('id', contractId);
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);

@@ -721,14 +721,16 @@ function coPhoneOfPeople(people: unknown, name: unknown): string {
 }
 /**
  * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG: hợp đồng tắt gửi OA (oa_enabled = false) → không ai; người vay mặc định có (luôn còn ít nhất 1 người nhận);
- * người cùng vay CHỈ khi có tên TRÊN HỢP ĐỒNG NÀY, đã tick đúng người đó (oa_co_key khớp), đã có số và số không trùng số người vay.
+ * người cùng vay CHỈ khi có tên TRÊN HỢP ĐỒNG NÀY, đã có số, số không trùng số người vay, và đã tick đúng người đó (oa_co_key khớp) HOẶC người vay chưa có số điện thoại
+ * (khi đó người cùng vay có số TỰ ĐỘNG nhận — tick sẵn).
  */
 function contractRecipients(ct: any, customer: ZaloCustomer | undefined): ZaloRecipient[] {
   if (ct?.oa_enabled === false) return [];
   const main = String(customer?.phone ?? '').trim();
   const coName = heirOfRow(ct, customer?.name);
   const coPhone = coName ? coPhoneOfPeople(customer?.co_people, coName) : '';
-  const toCo = ct?.oa_to_co === true && !!coName && samePerson(ct?.oa_co_key, coName) && !!coPhone && !samePhone(coPhone, main);
+  const ticked = ct?.oa_to_co === true && !!coName && samePerson(ct?.oa_co_key, coName);
+  const toCo = !!coName && !!coPhone && !samePhone(coPhone, main) && (ticked || !main);
   const toMain = ct?.oa_to_main !== false || !toCo;
   const out: ZaloRecipient[] = [];
   if (toMain && main) out.push({ who: 'main', phone: main });
@@ -745,13 +747,18 @@ function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWh
     if (noAccountWho.includes('co') && coPerson && samePerson(heirOfRow(ct, cust?.name), coPerson)) { p.oa_to_co = false; p.oa_co_key = null; }
     if (Object.keys(p).length) patches.set(ct.id, p);
   }
+  // Người cùng vay báo "chưa đăng ký Zalo" thì không còn được tự động nhận nữa (kể cả khi người vay chưa có số điện thoại).
+  const coDead = noAccountWho.includes('co') ? coPerson : '';
+  const main = String(cust?.phone ?? '').trim();
   const hasLeft = cts.some((ct) => {
     const a = { ...ct, ...(patches.get(ct.id) || {}) };
     if (a.oa_enabled === false) return false;
     const coName = heirOfRow(a, cust?.name);
     const coPhone = coName ? coPhoneOfPeople(cust?.co_people, coName) : '';
-    const toCo = a.oa_to_co === true && !!coName && samePerson(a.oa_co_key, coName) && !!coPhone && !samePhone(coPhone, cust?.phone);
-    return toCo || (a.oa_to_main !== false && !!String(cust?.phone ?? '').trim());
+    const ticked = a.oa_to_co === true && !!coName && samePerson(a.oa_co_key, coName);
+    const dead = !!coDead && samePerson(coName, coDead);
+    const toCo = !!coName && !!coPhone && !samePhone(coPhone, main) && !dead && (ticked || !main);
+    return toCo || (a.oa_to_main !== false && !!main);
   });
   return { patches, hasLeft };
 }
