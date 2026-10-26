@@ -141,3 +141,13 @@ test('describeFirst báo đã đẩy sang tháng sau khi còn dưới 10 ngày',
   assert.equal(describeFirst({ kind: 'monthly', monthlyDay: 5 }, T).pushed, false);
   assert.equal(describeFirst({ kind: 'monthly', monthlyDay: 15 }, '2026-10-01').pushed, false);
 });
+
+test('hàng tháng: tháng không có ngày đó thì nhắc vào cuối tháng, tháng sau trở lại đúng ngày', () => {
+  assert.equal(nextMonthlyOn(30, '2026-01-30', false), '2026-02-28');
+  assert.equal(nextMonthlyOn(30, '2026-02-28', false), '2026-03-30');
+  assert.equal(nextMonthlyOn(30, '2028-01-30', false), '2028-02-29');
+  assert.equal(nextMonthlyOn(29, '2026-01-29', false), '2026-02-28');
+  assert.equal(firstMonthlyOn(30, '2026-02-05'), '2026-02-28');
+  assert.equal(firstMonthlyOn(30, '2026-01-25'), '2026-02-28');
+  assert.equal(firstMonthlyOn(30, '2026-04-10'), '2026-04-30');
+});
