@@ -1,7 +1,7 @@
 // Người cùng vay (cột D file số 1 → contracts.heir_name) và gửi Zalo OA THEO TỪNG HỢP ĐỒNG (docs mục 10.83).
 //  · Tên người cùng vay lấy tự động từ từng hợp đồng; số điện thoại lưu trong "sổ người cùng vay" của khách (customer.coPeople) —
 //    nhập 1 lần dùng cho mọi hợp đồng có tên người đó.
-//  · Mỗi hợp đồng có công tắc bật/tắt gửi OA + tick Khách vay / Người cùng vay (CHỈ người có tên trong chính hợp đồng đó).
+//  · Mỗi hợp đồng có công tắc bật/tắt gửi OA + tick Người vay / Người cùng vay (CHỈ người có tên trong chính hợp đồng đó).
 // Hàm thuần — dùng chung cho màn hình; Edge Function có bản sao (tests/coBorrower.test.mjs + scratchpad edge test giữ hai bên khớp nhau).
 
 /** Chuẩn hóa tên để so sánh: bỏ khoảng trắng thừa, không phân biệt hoa/thường (giữ nguyên dấu tiếng Việt). */
@@ -21,7 +21,7 @@ export function samePhone(a, b) {
   return !!n(a) && n(a) === n(b);
 }
 
-/** Họ tên người cùng vay ghi trên 1 hợp đồng ('' nếu không ghi, hoặc ghi trùng chính khách vay). */
+/** Họ tên người cùng vay ghi trên 1 hợp đồng ('' nếu không ghi, hoặc ghi trùng chính người vay). */
 export function heirOfContract(contract, customerName) {
   const n = String(contract?.heirName || '').replace(/\s+/g, ' ').trim();
   return !n || samePerson(n, customerName) ? '' : n;
@@ -29,7 +29,7 @@ export function heirOfContract(contract, customerName) {
 
 /**
  * Các tên người cùng vay có trong danh sách hợp đồng (heirName), theo thứ tự hợp đồng, không trùng nhau, bỏ tên trống
- * và tên trùng chính khách vay. Hợp đồng nào thì `contracts` đã được lọc sẵn (thường là các hợp đồng còn dư nợ).
+ * và tên trùng chính người vay. Hợp đồng nào thì `contracts` đã được lọc sẵn (thường là các hợp đồng còn dư nợ).
  */
 export function heirNamesOf(contracts, customerName) {
   const out = [];
@@ -50,9 +50,9 @@ export function coPhoneOf(people, name) {
  * Trạng thái gửi Zalo OA CÓ HIỆU LỰC của 1 hợp đồng (customer: { name, phone, coPeople }):
  *  - enabled : hợp đồng đang bật gửi OA (tắt thì không gửi gì, không hiện trong lịch sử gửi).
  *  - coName/coPhone : người cùng vay GHI TRÊN HỢP ĐỒNG NÀY và số đã lưu (chưa có số thì coLocked = true, không tick được).
- *  - mainLocked : khách vay chưa có số điện thoại → không tick được.
+ *  - mainLocked : người vay chưa có số điện thoại → không tick được.
  *  - toCo : người cùng vay nhận tin hợp đồng này — chỉ khi đã tick ĐÚNG người này (oaCoKey khớp tên trên hợp đồng) và có số;
- *  - toMain : khách vay nhận tin; luôn còn ít nhất 1 người nhận (người cùng vay không nhận được thì khách vay nhận).
+ *  - toMain : người vay nhận tin; luôn còn ít nhất 1 người nhận (người cùng vay không nhận được thì người vay nhận).
  *  - recipients : danh sách số sẽ nhận tin ({ who: 'main'|'co', phone }), trùng số chỉ giữ 1.
  */
 export function contractOa(contract, customer) {
@@ -74,8 +74,8 @@ export function contractOa(contract, customer) {
 
 /**
  * Tóm tắt gửi Zalo OA của 1 khách qua các hợp đồng (contracts: các hợp đồng còn hiệu lực) — dùng cho Danh sách OA / Gửi tự động:
- *  - mode : 'main' (chỉ khách vay) · 'co' (chỉ người cùng vay) · 'both' · 'none' (mọi hợp đồng đã tắt hoặc không còn ai nhận).
- *  - custom : có gì khác mặc định (có người cùng vay nhận, có hợp đồng tắt, hợp đồng bật mà chưa có số nào để gửi, hoặc khách vay bị bỏ tick) → mới cần dòng "Gửi tới".
+ *  - mode : 'main' (chỉ người vay) · 'co' (chỉ người cùng vay) · 'both' · 'none' (mọi hợp đồng đã tắt hoặc không còn ai nhận).
+ *  - custom : có gì khác mặc định (có người cùng vay nhận, có hợp đồng tắt, hợp đồng bật mà chưa có số nào để gửi, hoặc người vay bị bỏ tick) → mới cần dòng "Gửi tới".
  *  - items : từng hợp đồng + trạng thái, theo thứ tự.
  */
 export function customerOaSummary(contracts, customer) {
@@ -84,7 +84,7 @@ export function customerOaSummary(contracts, customer) {
   const anyCo = items.some((x) => x.state.toCo);
   const offCount = items.filter((x) => !x.state.enabled).length;
   const mode = anyMain && anyCo ? 'both' : anyCo ? 'co' : anyMain ? 'main' : 'none';
-  const noRecipient = items.some((x) => x.state.enabled && !x.state.recipients.length); // hợp đồng bật nhưng không có số nào để gửi (khách vay chưa có số...)
+  const noRecipient = items.some((x) => x.state.enabled && !x.state.recipients.length); // hợp đồng bật nhưng không có số nào để gửi (người vay chưa có số...)
   const custom = anyCo || offCount > 0 || noRecipient || items.some((x) => x.state.enabled && !x.state.toMain && !x.state.mainLocked);
   return { items, anyMain, anyCo, offCount, noRecipient, mode, custom };
 }

@@ -1,4 +1,4 @@
--- Gửi Zalo OA THEO TỪNG HỢP ĐỒNG (docs mục 10.83): mỗi hợp đồng có công tắc bật/tắt gửi OA + tick Khách vay / Người cùng vay;
+-- Gửi Zalo OA THEO TỪNG HỢP ĐỒNG (docs mục 10.83): mỗi hợp đồng có công tắc bật/tắt gửi OA + tick Người vay / Người cùng vay;
 -- số điện thoại người cùng vay lưu trong "sổ người cùng vay" của khách (customers.co_people) — nhập 1 lần dùng cho mọi hợp đồng có tên người đó.
 -- Chạy TRƯỚC khi deploy lại create-account + send-due-reminders. Chạy lại nhiều lần được (không ghi đè lựa chọn đã đổi).
 alter table public.customers
@@ -6,7 +6,7 @@ alter table public.customers
 
 alter table public.contracts
   add column if not exists oa_enabled boolean not null default true,      -- false = hợp đồng này KHÔNG gửi OA (tự động, gửi tay) và ẩn khỏi lịch sử gửi
-  add column if not exists oa_to_main boolean not null default true,      -- gửi cho khách vay (số chính)
+  add column if not exists oa_to_main boolean not null default true,      -- gửi cho người vay (số chính)
   add column if not exists oa_to_co boolean not null default false,       -- gửi cho người cùng vay GHI TRÊN HỢP ĐỒNG NÀY (cần có số trong co_people)
   add column if not exists oa_co_key text;                                -- tên người cùng vay (viết thường) mà tick oa_to_co đang áp dụng — đổi người thì tick tự mất hiệu lực
 

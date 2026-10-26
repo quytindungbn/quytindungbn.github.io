@@ -865,7 +865,7 @@ function mapContractRow(row) {
     loanPurpose: row.loan_purpose || null,
     // Người thừa kế/đồng vay (cột D file số 1) — hiện cạnh tên khách ở chi tiết hợp đồng.
     heirName: row.heir_name || null,
-    // Gửi Zalo OA theo từng hợp đồng (docs mục 10.83): công tắc bật/tắt + tick khách vay / người cùng vay; oaCoKey = tên người mà tick người cùng vay đang áp dụng.
+    // Gửi Zalo OA theo từng hợp đồng (docs mục 10.83): công tắc bật/tắt + tick người vay / người cùng vay; oaCoKey = tên người mà tick người cùng vay đang áp dụng.
     oaEnabled: row.oa_enabled !== false, oaToMain: row.oa_to_main !== false, oaToCo: !!row.oa_to_co, oaCoKey: row.oa_co_key || null,
   };
 }
@@ -904,7 +904,7 @@ export async function adminResetCustomerPassword(customerId, customPassword) {
 
 // ------------------------------------------------------------
 // Người cùng vay & gửi Zalo OA THEO TỪNG HỢP ĐỒNG (docs mục 10.83). Tên người cùng vay lấy từ từng hợp đồng còn hiệu lực; số điện thoại lưu
-// trong sổ người cùng vay của khách; mỗi hợp đồng có công tắc bật/tắt + tick khách vay / người cùng vay (CHỈ người có tên trên hợp đồng đó).
+// trong sổ người cùng vay của khách; mỗi hợp đồng có công tắc bật/tắt + tick người vay / người cùng vay (CHỈ người có tên trên hợp đồng đó).
 // Quy tắc "ai nhận tin hợp đồng nào" nằm ở lib/coBorrower.js (contractOa) — máy chủ có bản sao giống hệt và tự kiểm tra lại khi gửi.
 // ------------------------------------------------------------
 function activeContractsOf(customerId) {

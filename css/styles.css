@@ -2361,7 +2361,7 @@ h1, h2, h3, .app-header h1, .modal-head h3, .section-head h2 { letter-spacing: 0
 .oa-chip { display: inline-flex; align-items: center; height: 21px; padding: 0 9px; border-radius: 11px; background: #eef3f0; color: #51615a; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .oa-chip.g { background: #e3f3ef; color: #0b5148; } .oa-chip.b { background: #f6efd9; color: #8a6a22; }
 .oa-chip.co { background: #fbf1d0; color: #7a5a14; }
-/* "Gửi tới": ai đang nhận Zalo OA — xanh = khách vay, vàng = người cùng vay, nét đứt = có người cùng vay nhưng chưa chọn gửi */
+/* "Gửi tới": ai đang nhận Zalo OA — xanh = người vay, vàng = người cùng vay, nét đứt = có người cùng vay nhưng chưa chọn gửi */
 .oa-rcv { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; }
 .oa-rcv-l { font: 700 10px/1 Inter, sans-serif; letter-spacing: .13em; text-transform: uppercase; color: #8a6a22; margin-right: 2px; }
 .oa-rc { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 28px; padding: 4px 12px 4px 5px; border: 1px solid #bfe3d2; border-radius: 15px; background: #eef8f3; color: #0b5148; font: 600 12px/1.2 Inter, sans-serif; }
@@ -2607,7 +2607,7 @@ a.cd-callbtn:hover { filter: brightness(1.06); }
 .cd-tile.is-danger { border-color: #f3d9d5; background: #fffafa; color: #b3372b; }
 .cd-tile.is-danger svg { color: #c94437; }
 .cd-tile.is-danger:hover { border-color: #e8a9a2; background: #ffefed; }
-/* Thẻ Người cùng vay (& Zalo OA): 1 dòng người cùng vay (tên + số + Gọi); ai có quyền OA thêm ô chọn gửi Zalo OA tới khách vay / người cùng vay */
+/* Thẻ Người cùng vay (& Zalo OA): 1 dòng người cùng vay (tên + số + Gọi); ai có quyền OA thêm ô chọn gửi Zalo OA tới người vay / người cùng vay */
 .cd-pp { display: flex; flex-direction: column; border: 1px solid var(--cd-line); border-radius: 15px; background: #fff; overflow: hidden; transition: border-color .15s ease, box-shadow .15s ease; }
 .cd-pp.is-on { border-color: #86cfae; box-shadow: 0 10px 22px -18px rgba(12, 110, 80, .7); }
 .cd-pp.is-empty { background: #f8faf9; border-style: dashed; }
@@ -2712,11 +2712,6 @@ span.cdo-ck.lock { cursor: not-allowed; }
   .cdo-r { grid-template-columns: auto minmax(0, 1fr); row-gap: 9px; }
   .cdo-pills { grid-column: 1 / -1; }
 }
-/* khung "Gửi Zalo OA tới" trong chi tiết hợp đồng */
-.cdo-box { display: flex; flex-direction: column; gap: 9px; }
-.cdo-box-h { font-size: 11px; line-height: 1.3; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a6a22; }
-.cdo-box-pills { display: flex; flex-wrap: wrap; gap: 7px; }
-.cdo-box-off { padding: 10px 12px; border-radius: 12px; background: #f1f4f2; color: #51615a; font-size: 12.5px; line-height: 1.45; font-weight: 600; }
 /* Quản lý OA — danh sách: "Gửi tới" theo từng hợp đồng, người cùng vay viết trên 1 dòng */
 .oa-inline { flex-wrap: wrap; }
 .oa-hc { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 11px; border: 1px solid #bfe3d2; border-radius: 999px; background: #eef8f3; color: #0b5148; font: 600 12px/1.2 Inter, sans-serif; white-space: nowrap; }

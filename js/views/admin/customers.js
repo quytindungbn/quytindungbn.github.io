@@ -880,7 +880,7 @@ function oaTickPatch(st, kind, on) {
 // ------------------------------------------------------------
 // Chi tiết khách hàng — thẻ "Người cùng vay & Zalo OA" (docs mục 10.83). Tên người cùng vay lấy tự động từ từng hợp đồng; số điện thoại lưu trong
 // sổ người cùng vay của khách (đúng 10 số, bắt đầu 0; xóa hết cũng lưu được) — nhập 1 lần dùng cho mọi hợp đồng có tên người đó.
-// Ai có quyền OA thì có thêm phần "Gửi Zalo OA theo từng hợp đồng": mỗi hợp đồng 1 hàng, công tắc bật/tắt cả hợp đồng + tick Khách vay / người cùng vay
+// Ai có quyền OA thì có thêm phần "Gửi Zalo OA theo từng hợp đồng": mỗi hợp đồng 1 hàng, công tắc bật/tắt cả hợp đồng + tick Người vay / người cùng vay
 // (CHỈ người có tên trong chính hợp đồng đó; chưa có số điện thoại thì không tick được). Thẻ chỉ hiện khi khách có người cùng vay, hoặc có từ 2 hợp đồng trở lên.
 // ------------------------------------------------------------
 const shortMoney = (n) => {
@@ -923,13 +923,13 @@ function coPersonHtml(p, { canEdit, editing, pending }) {
     </div>`;
 }
 
-/** Một hàng hợp đồng trong phần "Gửi Zalo OA theo từng hợp đồng": công tắc bật/tắt + tick khách vay / người cùng vay của hợp đồng đó. */
+/** Một hàng hợp đồng trong phần "Gửi Zalo OA theo từng hợp đồng": công tắc bật/tắt + tick người vay / người cùng vay của hợp đồng đó. */
 function coContractRowHtml(ct, oa) {
   const pill = (kind, label, on, extraCls = '') => `<label class="cdo-ck${extraCls}${on ? '' : ' off'}"><input type="checkbox" data-oa="${kind}" ${on ? 'checked' : ''} ${oa.enabled ? '' : 'disabled'}><i>${icon('check')}</i>${escapeHtml(label)}</label>`;
   const lock = (label, key) => (key
     ? `<button type="button" class="cdo-ck lock" data-oa-need="${key}" title="Chưa có số điện thoại — bấm để nhập số"><i>${icon('lock')}</i>${escapeHtml(label)} · chưa có số</button>`
     : `<span class="cdo-ck lock" title="Chưa có số điện thoại"><i>${icon('lock')}</i>${escapeHtml(label)} · chưa có số</span>`);
-  const main = oa.mainLocked ? lock('Khách vay', '') : pill('main', 'Khách vay', oa.toMain);
+  const main = oa.mainLocked ? lock('Người vay', '') : pill('main', 'Người vay', oa.toMain);
   const co = oa.coName ? (oa.coLocked ? lock(shortPersonName(oa.coName), escapeHtml(normPersonName(oa.coName))) : pill('co', shortPersonName(oa.coName), oa.toCo, ' co')) : '';
   return `<div class="cdo-r${oa.enabled ? '' : ' is-off'}" data-ct="${ct.id}">
       <label class="cdo-sw" title="${oa.enabled ? 'Tắt gửi OA cho hợp đồng này' : 'Bật gửi OA cho hợp đồng này'}"><input type="checkbox" data-oa="enabled" ${oa.enabled ? 'checked' : ''} aria-label="Gửi Zalo OA cho hợp đồng ${escapeHtml(ct.code)}"><i></i></label>
@@ -953,25 +953,6 @@ function coCardHtml(c, contracts, { canOa, canEdit, editKey = null, pending = fa
   const title = people.length ? (canOa ? 'Người cùng vay &amp; Zalo OA' : 'Người cùng vay') : 'Zalo OA theo hợp đồng';
   return `<h3 class="cd-h"><span>${title}</span>${people.length ? `<em>${people.length}</em>` : ''}</h3>
     ${warn}${peopleHtml}${oaSection}`;
-}
-
-/** Khung "Gửi Zalo OA tới" trong chi tiết 1 hợp đồng: tick người nhận (giống thẻ ở chi tiết khách hàng) + nút gửi tay; hợp đồng đang tắt thì báo và có nút bật lại. */
-function ctOaBoxHtml(contract, { cooldownDaysLeft, inZaloList, sending }) {
-  const oa = S.getContractOa(contract.id);
-  if (!oa) return '';
-  if (!oa.enabled) {
-    return `<div class="cdo-box"><div class="cdo-box-h">Hợp đồng ${escapeHtml(contract.code)} · gửi Zalo OA</div>
-      <div class="cdo-box-off">${icon('info', 'icon-sm')} Hợp đồng này đang <b>tắt gửi OA</b> — không gửi tự động và không gửi tay.</div>
-      <button type="button" class="btn btn-primary btn-sm btn-block" id="btn-oa-enable">Bật gửi OA cho hợp đồng này</button></div>`;
-  }
-  const pill = (kind, label, on, extraCls = '') => `<label class="cdo-ck${extraCls}${on ? '' : ' off'}"><input type="checkbox" data-oa="${kind}" ${on ? 'checked' : ''}><i>${icon('check')}</i>${escapeHtml(label)}</label>`;
-  const lock = (label) => `<span class="cdo-ck lock" title="Chưa có số điện thoại"><i>${icon('lock')}</i>${escapeHtml(label)} · chưa có số</span>`;
-  const main = oa.mainLocked ? lock('Khách vay') : pill('main', 'Khách vay', oa.toMain);
-  const co = oa.coName ? (oa.coLocked ? lock(shortPersonName(oa.coName)) : pill('co', shortPersonName(oa.coName), oa.toCo, ' co')) : '';
-  const n = oa.recipients.length;
-  return `<div class="cdo-box"><div class="cdo-box-h">Hợp đồng ${escapeHtml(contract.code)} · gửi Zalo OA tới</div>
-    <div class="cdo-box-pills">${main}${co}</div>
-    <button type="button" class="btn btn-outline btn-sm btn-block" id="btn-zalo-manual-ct" ${!inZaloList || cooldownDaysLeft > 0 || !n || sending ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay${n ? ` (${n} người)` : ''}</button></div>`;
 }
 
 /** Thẻ hợp đồng gọn trong chi tiết khách hàng: vạch màu theo tình trạng, mã + nhãn tình trạng, gốc/lãi bên phải; bấm vào mở chi tiết hợp đồng. */
@@ -1133,7 +1114,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           if (chg) { // người cùng vay trong hợp đồng đã đổi từ lần trước: cảnh báo trước khi thêm lại
             confirmDialog({
               title: 'Người cùng vay đã thay đổi',
-              message: `Hợp đồng nay ghi người cùng vay ${chg.names.length ? `là <b>${chg.names.map(escapeHtml).join(', ')}</b>` : 'khác'}, khác với <b>${escapeHtml(chg.prevName)}</b> đã chọn trước đó. Chỉ gửi Zalo OA cho khách vay, hoặc nhập số và tick gửi cho người mới trước khi gửi cho họ. Vẫn thêm khách vào danh sách OA?`,
+              message: `Hợp đồng nay ghi người cùng vay ${chg.names.length ? `là <b>${chg.names.map(escapeHtml).join(', ')}</b>` : 'khác'}, khác với <b>${escapeHtml(chg.prevName)}</b> đã chọn trước đó. Chỉ gửi Zalo OA cho người vay, hoặc nhập số và tick gửi cho người mới trước khi gửi cho họ. Vẫn thêm khách vào danh sách OA?`,
               confirmLabel: 'Vẫn thêm vào OA', onConfirm: doAddZalo,
             });
             return;
@@ -1192,7 +1173,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
             const chk = checkCoPhone(ppCard.querySelector('#pp-phone').value);
             if (!chk.ok) { toast(chk.reason, 'error'); return; }
             if (chk.empty && ppPending) { toast('Nhập số điện thoại để bật gửi Zalo OA cho người cùng vay', 'error'); return; }
-            if (!chk.empty && chk.phone === mainDigits) { toast('Trùng số của khách vay', 'error'); return; }
+            if (!chk.empty && chk.phone === mainDigits) { toast('Trùng số của người vay', 'error'); return; }
             ppSaving = true; saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu…';
             try {
               await S.saveCoPhone(customerId, person.name, chk.phone);
@@ -1281,7 +1262,7 @@ function contractLedgerRow(ct, canManageZalo) {
       ? statusBadge({ badge: 'badge-yellow', label: `Gần đến hạn ${info.days} ngày` })
       : statusBadge({ badge: 'badge-green', label: 'Trong hạn' });
   const oa = canManageZalo ? manualOaState(ct) : null;
-  const oaReason = oa && (!oa.enabled ? 'Hợp đồng này đã tắt gửi OA' : !oa.inZaloList ? 'Khách chưa có trong Danh sách OA' : oa.cooldownDaysLeft > 0 ? `Còn ${oa.cooldownDaysLeft} ngày nữa mới gửi lại được` : manualOaSending.has(ct.id) ? 'Đang gửi OA' : 'Gửi OA cho hợp đồng này');
+  const oaReason = oa && (!oa.inZaloList ? 'Khách chưa có trong Danh sách OA' : oa.cooldownDaysLeft > 0 ? `Còn ${oa.cooldownDaysLeft} ngày nữa mới gửi lại được` : manualOaSending.has(ct.id) ? 'Đang gửi OA' : 'Gửi OA cho hợp đồng này');
   return `
     <div class="customer-ledger-contract ${info.level === 'qua_han' ? 'is-overdue' : info.level === 'gan_den_han' ? 'is-near' : ''}">
       <button type="button" class="customer-ledger-contract-main" data-view-contract="${ct.id}" data-customer-id="${ct.customerId}" aria-label="Xem hợp đồng ${escapeHtml(ct.code)}">
@@ -1293,7 +1274,7 @@ function contractLedgerRow(ct, canManageZalo) {
         <span class="customer-ledger-days"><strong>${interestDays}</strong> ngày</span>
         <span class="customer-ledger-interest">${formatVND(interest)}</span>
       </button>
-      ${oa ? `<button type="button" class="btn btn-outline btn-sm customer-ledger-oa" data-send-oa="${ct.id}" title="${escapeHtml(oaReason)}" aria-label="Gửi OA cho hợp đồng ${escapeHtml(ct.code)}" ${!oa.enabled || !oa.inZaloList || oa.cooldownDaysLeft > 0 || manualOaSending.has(ct.id) ? 'disabled' : ''}>${icon('send', 'icon-sm')}<span>Gửi OA</span></button>` : ''}
+      ${oa ? `<button type="button" class="btn btn-outline btn-sm customer-ledger-oa" data-send-oa="${ct.id}" title="${escapeHtml(oaReason)}" aria-label="Gửi OA cho hợp đồng ${escapeHtml(ct.code)}" ${!oa.inZaloList || oa.cooldownDaysLeft > 0 || manualOaSending.has(ct.id) ? 'disabled' : ''}>${icon('send', 'icon-sm')}<span>Gửi OA</span></button>` : ''}
     </div>`;
 }
 
@@ -1374,7 +1355,7 @@ function manualOaState(contract) {
   const lastZaloSend = recentSentAt && (!lastServerSend || new Date(recentSentAt) > new Date(lastServerSend.sentAt))
     ? { sentAt: recentSentAt, triggeredBy: 'manual' } : lastServerSend;
   const daysSince = lastZaloSend ? daysBetween(new Date(lastZaloSend.sentAt), new Date()) : null;
-  return { inZaloList, lastZaloSend, enabled: contract.oaEnabled !== false, cooldownDaysLeft: daysSince === null ? 0 : Math.max(0, 5 - daysSince) };
+  return { inZaloList, lastZaloSend, cooldownDaysLeft: daysSince === null ? 0 : Math.max(0, 5 - daysSince) };
 }
 
 async function sendManualOa(contractId, button, onSuccess) {
@@ -1386,7 +1367,7 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.innerHTML = compact ? 'Đang gửi' : `${icon('refresh', 'icon-sm')} Đang gửi...`;
   try {
     const res = await S.sendZaloManual(contractId);
-    const okText = res.sent >= 2 ? 'Đã gửi tin Zalo OA cho khách vay và người cùng vay' : res.sentTo === 'co' ? 'Đã gửi tin Zalo OA cho người cùng vay' : 'Đã gửi tin Zalo OA cho khách';
+    const okText = res.sent >= 2 ? 'Đã gửi tin Zalo OA cho người vay và người cùng vay' : res.sentTo === 'co' ? 'Đã gửi tin Zalo OA cho người cùng vay' : 'Đã gửi tin Zalo OA cho khách';
     toast(res.ok ? (res.note ? `${okText}. ${res.note}` : okText) : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error', res.note || /chưa đăng ký Zalo/.test(res.reason || '') ? 7000 : undefined);
     if (res.ok) {
       const sentAt = new Date().toISOString();
@@ -1539,8 +1520,8 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
             <h4>Liên hệ và gửi thông báo</h4>
             ${customer && customer.phone && canPay ? `<a href="${buildSmsLink(customer, contract)}" id="btn-sms-ct" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS cho khách</a>` : ''}
             ${customer && canPay ? `<button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-noti-app-ct">${icon('bell', 'icon-sm')} Thông báo qua ứng dụng</button>` : ''}
-            ${customer && canPay && canManageZalo ? `
-              <div id="ct-oa-box" class="mt-8">${ctOaBoxHtml(contract, { cooldownDaysLeft: zaloCooldownDaysLeft, inZaloList, sending: manualOaSending.has(contract.id) })}</div>
+            ${customer && customer.phone && canPay && canManageZalo ? `
+              <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
               <div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
             ${canPay ? `<div id="zalo-auto-status-ct">${zaloAutoStatusHtml(null)}</div>` : ''}
           </section>
@@ -1749,36 +1730,13 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         if (!customer) return;
         openSendNotificationModal(customer, buildContractNotificationPreset(contract, customer));
       });
-      // Khung "Gửi Zalo OA tới" của hợp đồng: tick khách vay / người cùng vay (của CHÍNH hợp đồng này), nút gửi tay; hợp đồng đã tắt thì có nút bật lại.
-      const oaBox = sheet.querySelector('#ct-oa-box');
+      const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       const zaloHintWrap = sheet.querySelector('#zalo-hint-wrap-ct');
-      if (oaBox) {
-        const drawCtOa = () => {
-          if (!oaBox.isConnected) return;
-          const st = manualOaState(contract);
-          oaBox.innerHTML = ctOaBoxHtml(contract, { cooldownDaysLeft: st.cooldownDaysLeft, inZaloList: st.inZaloList, sending: manualOaSending.has(contract.id) });
-        };
-        const saveOa = (patch) => {
-          const saving = S.setContractOa(contract.id, patch); // cập nhật bộ nhớ ngay, lưu ngầm
-          drawCtOa();
-          saving.then(() => drawCtOa()).catch((err) => { toast(err.message || 'Có lỗi xảy ra', 'error'); drawCtOa(); });
-        };
-        oaBox.addEventListener('change', (e) => {
-          const inp = e.target.closest('input[data-oa]');
-          const st = inp && S.getContractOa(contract.id);
-          if (!st) return;
-          const patch = oaTickPatch(st, inp.dataset.oa, inp.checked);
-          if (!patch) { inp.checked = !inp.checked; toast(OA_MIN_RECIPIENT_MSG, 'error'); return; }
-          saveOa(patch);
-        });
-        oaBox.addEventListener('click', (e) => {
-          if (e.target.closest('#btn-oa-enable')) { saveOa({ enabled: true }); return; }
-          const manualBtn = e.target.closest('#btn-zalo-manual-ct');
-          if (manualBtn) sendManualOa(contract.id, manualBtn, (sentAt) => {
-            if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt, triggeredBy: 'manual' });
-          });
-        });
-      }
+      // Gửi tay: luôn bấm được (khi khách đã ở trong Danh sách OA và qua hạn chờ 5 ngày). Mặc định gửi cho người vay; hợp đồng có cài đặt tùy chỉnh
+      // (tick người cùng vay / bỏ tick người vay ở chi tiết khách hàng) thì gửi đúng như cài đặt — máy chủ tự quyết định người nhận.
+      if (zaloManualBtn) zaloManualBtn.addEventListener('click', () => sendManualOa(contract.id, zaloManualBtn, (sentAt) => {
+        if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt, triggeredBy: 'manual' });
+      }));
       const delBtn = sheet.querySelector('#del-contract');
       if (delBtn) delBtn.addEventListener('click', () => {
         confirmDialog({

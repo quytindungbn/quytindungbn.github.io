@@ -35,7 +35,7 @@ let activeTab = 'oa';
 let filterThon = [];
 let filterXom = [];
 let oaQuery = ''; // ô tìm kiếm tên/SĐT ở tab "Danh sách OA"
-let oaRcv = 'all'; // lọc theo NGƯỜI NHẬN Zalo OA ở tab "Danh sách OA": 'all' | 'main' (chỉ khách vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người)
+let oaRcv = 'all'; // lọc theo NGƯỜI NHẬN Zalo OA ở tab "Danh sách OA": 'all' | 'main' (chỉ người vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người)
 let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
@@ -55,9 +55,9 @@ const OA_TABS = [
 
 // ------------------------------------------------------------
 // "Gửi Zalo tới ai": cấu hình THEO TỪNG HỢP ĐỒNG (chi tiết khách hàng, thẻ "Người cùng vay & Zalo OA", hoặc chi tiết hợp đồng): bật/tắt cả hợp đồng + tick
-// khách vay / người cùng vay (người có tên trong chính hợp đồng đó). Mặc định (mọi hợp đồng bật, chỉ gửi khách vay) thì KHÔNG hiện gì thêm. Có gì khác
+// người vay / người cùng vay (người có tên trong chính hợp đồng đó). Mặc định (mọi hợp đồng bật, chỉ gửi người vay) thì KHÔNG hiện gì thêm. Có gì khác
 // thì có dòng "Gửi tới": 1 hợp đồng — nhãn *Gửi cả 2 người* hoặc chip vàng *Người cùng vay: tên · số* (trên máy tính viết trên 1 dòng); nhiều hợp đồng — mỗi hợp đồng 1 ô nhỏ
-// ("461/26 Khách vay + Bích", "463/26 không gửi").
+// ("461/26 Người vay + Bích", "463/26 không gửi").
 // ------------------------------------------------------------
 function rcvOf(customerId) {
   const ov = S.customerOaOverview(customerId);
@@ -73,7 +73,7 @@ function rcvChipsHtml(customer, { mini = false } = {}) {
     if (!st) return '';
     if (!st.enabled) return `<div class="${cls}"><span class="oa-hc off">Hợp đồng đã tắt gửi OA</span></div>`;
     if (!st.recipients.length) return `<div class="${cls}"><span class="oa-hc warn">Chưa có số điện thoại để gửi Zalo</span></div>`;
-    if (st.toCo && st.toMain) return `<div class="${cls}"><span class="oa-two" title="Gửi Zalo cho cả khách vay và người cùng vay">Gửi cả 2 người</span></div>`;
+    if (st.toCo && st.toMain) return `<div class="${cls}"><span class="oa-two" title="Gửi Zalo cho cả người vay và người cùng vay">Gửi cả 2 người</span></div>`;
     if (st.toCo) {
       const sub = `${escapeHtml(st.coName)}${st.coPhone ? ` · <em>${escapeHtml(st.coPhone)}</em>` : ''}`;
       if (mini) return `<div class="${cls}"><span class="oa-rcv-l">Gửi tới</span><span class="oa-rc is-co"><i>${icon('check', 'icon-sm')}</i><span class="oa-rc-tx"><b>Người cùng vay</b></span></span></div>`;
@@ -87,10 +87,10 @@ function rcvChipsHtml(customer, { mini = false } = {}) {
     if (!st.enabled) return `<span class="oa-hc off">${code} không gửi</span>`;
     if (!st.recipients.length) return `<span class="oa-hc warn">${code} chưa có số để gửi</span>`;
     const co = st.coName ? escapeHtml(shortPersonName(st.coName)) : '';
-    if (st.toCo && st.toMain) return `<span class="oa-hc co">${code} Khách vay + ${co}</span>`;
+    if (st.toCo && st.toMain) return `<span class="oa-hc co">${code} Người vay + ${co}</span>`;
     if (st.toCo) return `<span class="oa-hc co">${code} ${co}</span>`;
-    if (st.coLocked) return `<span class="oa-hc warn">${code} Khách vay <i style="font-style:normal">(${co} chưa có số)</i></span>`;
-    return `<span class="oa-hc">${code} Khách vay</span>`;
+    if (st.coLocked) return `<span class="oa-hc warn">${code} Người vay <i style="font-style:normal">(${co} chưa có số)</i></span>`;
+    return `<span class="oa-hc">${code} Người vay</span>`;
   }).join('');
   return `<div class="${cls} oa-inline"><span class="oa-rcv-l">Gửi tới</span>${chips}</div>`;
 }
@@ -334,7 +334,7 @@ function drawOATab(slot, admin) {
     rseg.style.display = hasCoRows ? '' : 'none';
     if (!hasCoRows) { oaRcv = 'all'; rseg.innerHTML = ''; }
     else {
-      rseg.innerHTML = [['all', 'Tất cả'], ['main', 'Khách vay'], ['co', 'Người cùng vay'], ['both', 'Cả 2 người']]
+      rseg.innerHTML = [['all', 'Tất cả'], ['main', 'Người vay'], ['co', 'Người cùng vay'], ['both', 'Cả 2 người']]
         .map(([k, label]) => `<button type="button" class="${oaRcv === k ? 'on' : ''}" data-rcv="${k}">${label}<em>${rcvCount[k]}</em></button>`).join('');
       rseg.querySelectorAll('[data-rcv]').forEach((b) => b.addEventListener('click', () => { oaRcv = b.dataset.rcv; drawList(); }));
     }
@@ -500,7 +500,7 @@ function openAddCustomerToOAModal(admin, onDone) {
         if (changed.length) {
           confirmDialog({
             title: 'Người cùng vay đã thay đổi',
-            message: `${changed.map((x) => `<b>${escapeHtml(x.c.name)}</b>: ${escapeHtml(x.chg.prevName)} → <b>${x.chg.names.length ? x.chg.names.map(escapeHtml).join(', ') : 'không còn người cùng vay'}</b>`).join('<br>')}<br><br>Khi thêm, Zalo OA chỉ gửi cho khách vay cho đến khi nhập số và tick gửi cho người mới. Vẫn thêm?`,
+            message: `${changed.map((x) => `<b>${escapeHtml(x.c.name)}</b>: ${escapeHtml(x.chg.prevName)} → <b>${x.chg.names.length ? x.chg.names.map(escapeHtml).join(', ') : 'không còn người cùng vay'}</b>`).join('<br>')}<br><br>Khi thêm, Zalo OA chỉ gửi cho người vay cho đến khi nhập số và tick gửi cho người mới. Vẫn thêm?`,
             confirmLabel: 'Vẫn thêm vào OA', onConfirm: doAdd,
           });
           return;
@@ -935,7 +935,7 @@ async function loadOlderLogs(untilMs) {
   }
 }
 
-/** Dòng log gửi cho người cùng vay: so số điện thoại đã gửi với số của người cùng vay GHI TRÊN HỢP ĐỒNG đó — chỉ hiện nhãn khi đúng là người cùng vay (gửi khách vay thì như bình thường, không nhãn). */
+/** Dòng log gửi cho người cùng vay: so số điện thoại đã gửi với số của người cùng vay GHI TRÊN HỢP ĐỒNG đó — chỉ hiện nhãn khi đúng là người cùng vay (gửi người vay thì như bình thường, không nhãn). */
 function logWhoChip(l, customer) {
   if (!customer || !l.phone) return '';
   const st = S.getContractOa(l.contractId);

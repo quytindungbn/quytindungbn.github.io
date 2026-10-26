@@ -709,7 +709,7 @@ function samePhone(a: unknown, b: unknown): boolean {
   const n = (v: unknown) => String(v ?? '').replace(/[^\d]/g, '').replace(/^84/, '0');
   return !!n(a) && n(a) === n(b);
 }
-/** Họ tên người cùng vay ghi trên 1 hợp đồng ('' nếu không ghi, hoặc ghi trùng chính khách vay). */
+/** Họ tên người cùng vay ghi trên 1 hợp đồng ('' nếu không ghi, hoặc ghi trùng chính người vay). */
 function heirOfRow(ct: any, customerName: unknown): string {
   const n = String(ct?.heir_name ?? '').replace(/\s+/g, ' ').trim();
   return !n || samePerson(n, customerName) ? '' : n;
@@ -720,8 +720,8 @@ function coPhoneOfPeople(people: unknown, name: unknown): string {
   return p ? String((p as any).phone ?? '').trim() : '';
 }
 /**
- * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG: hợp đồng tắt gửi OA (oa_enabled = false) → không ai; khách vay mặc định có (luôn còn ít nhất 1 người nhận);
- * người cùng vay CHỈ khi có tên TRÊN HỢP ĐỒNG NÀY, đã tick đúng người đó (oa_co_key khớp), đã có số và số không trùng số khách vay.
+ * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG: hợp đồng tắt gửi OA (oa_enabled = false) → không ai; người vay mặc định có (luôn còn ít nhất 1 người nhận);
+ * người cùng vay CHỈ khi có tên TRÊN HỢP ĐỒNG NÀY, đã tick đúng người đó (oa_co_key khớp), đã có số và số không trùng số người vay.
  */
 function contractRecipients(ct: any, customer: ZaloCustomer | undefined): ZaloRecipient[] {
   if (ct?.oa_enabled === false) return [];
@@ -777,7 +777,7 @@ async function sendZaloToCustomer(opts: {
       const cts = opts.contractsOfCustomer.filter((c) => Number(c.balance) > 0);
       const { patches, hasLeft } = planNoZaloUntick(opts.customer, cts, opts.contractId, noWho);
       if (!hasLeft) {
-        // Không còn hợp đồng nào có người nhận được Zalo → bỏ khách khỏi Danh sách OA + gửi tự động, đặt lại mặc định gửi khách vay.
+        // Không còn hợp đồng nào có người nhận được Zalo → bỏ khách khỏi Danh sách OA + gửi tự động, đặt lại mặc định gửi người vay.
         noZaloCustomerIds.add(opts.customerId);
         await removeCustomerFromZaloLists(opts.customerId);
         const reset = { oa_to_main: true, oa_to_co: false, oa_co_key: null };
