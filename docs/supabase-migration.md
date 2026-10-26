@@ -3146,7 +3146,7 @@ alter table public.customers
   add column if not exists co_people jsonb not null default '[]'::jsonb;  -- [{ "name": "...", "phone": "09..." }] — sổ người cùng vay của khách
 
 alter table public.contracts
-  add column if not exists oa_enabled boolean not null default true,      -- false = hợp đồng này KHÔNG gửi OA (tự động, gửi tay) và ẩn khỏi lịch sử gửi
+  add column if not exists oa_enabled boolean not null default true,      -- false = hợp đồng này KHÔNG gửi OA tự động và ẩn khỏi lịch sử gửi (gửi tay vẫn được, chỉ tới người vay)
   add column if not exists oa_to_main boolean not null default true,      -- gửi cho người vay (số chính)
   add column if not exists oa_to_co boolean not null default false,       -- gửi cho người cùng vay GHI TRÊN HỢP ĐỒNG NÀY (cần có số trong co_people)
   add column if not exists oa_co_key text;                                -- tên người cùng vay (viết thường) mà tick oa_to_co đang áp dụng — đổi người thì tick tự mất hiệu lực
