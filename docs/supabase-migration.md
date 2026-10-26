@@ -3401,6 +3401,13 @@ create policy "admins add note log" on customer_note_log
   );
 ```
 
+### 10.93 Chi tiết hợp đồng — giao diện mới (không cần SQL)
+
+- Cửa sổ chi tiết hợp đồng (`openContractView` trong `js/views/admin/customers.js`, kiểu `.cv-*` ở cuối `css/styles.css`) đổi giao diện cùng phong cách "Chi tiết khách hàng": đầu trang xanh ngọc viền vàng một dòng (số hợp đồng, nhãn tình trạng, tên khách, thanh tiến độ ngày vay → đến hạn), bốn khung số liệu nổi (Dư nợ hiện tại, Gốc đã trả, Lãi cộng dồn + ô ngày, Số ngày lãi) và dòng "Cách tính lãi" nằm trọn một hàng (chữ tự thu nhỏ vừa hàng).
+- Nút **Gọi** ở đầu trang thay cho số điện thoại: người vay và người cùng vay (tên cùng một hàng, mỗi người một nút). Số người cùng vay lấy từ sổ người cùng vay của khách. Ai chưa có số thì tự ẩn nút Gọi của người đó. Bấm Gọi (và bấm số ở dòng SĐT) ghi lượt gọi vào lịch sử cuộc gọi như nút "Gọi ngay" ở chi tiết khách hàng, phân biệt người vay / người cùng vay.
+- Nhãn tình trạng chỉ hiện khi hợp đồng sắp đến hạn hoặc quá hạn (đúng điều kiện cũ của dòng cảnh báo); khung "Liên hệ và gửi thông báo" ẩn khi hợp đồng đã tất toán. Trên điện thoại ẩn dòng nhãn "Cách tính lãi" và nút In giấy báo; nút gửi thông báo nhỏ hơn máy tính.
+- Giữ nguyên mọi chức năng và mã phần tử (`#ct-asof`, `#ct-days`, `#qr-*`, `#btn-*-ct`, `#del-contract`…); không đổi công thức tính lãi.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

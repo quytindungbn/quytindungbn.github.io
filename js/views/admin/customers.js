@@ -12,7 +12,7 @@ import { transferContent } from '../../lib/transferContent.js';
 import { noteCardShellHtml, mountNoteCard } from './customerNotes.js';
 import { interestAsOfForDays, MAX_INTEREST_DAYS } from '../../lib/interestDays.js';
 import { describeCallTime, formatPhoneDisplay } from '../../lib/callHistory.js';
-import { checkCoPhone, sanitizeCoPhoneInput, normPersonName, shortPersonName, samePhone } from '../../lib/coBorrower.js';
+import { checkCoPhone, sanitizeCoPhoneInput, normPersonName, shortPersonName, samePhone, heirOfContract, coPhoneOf } from '../../lib/coBorrower.js';
 import { parseCoPhoneRows, CO_PHONE_STATUS } from '../../lib/coPhoneFile.js';
 import { compareContractsNewestFirst } from '../../lib/contractOrder.js';
 import { buildLoanSummaryText } from '../../lib/loanSummary.js';
@@ -1382,7 +1382,7 @@ function openCopyFallback(text) {
 }
 
 function contractFormulaHtml(contract, days, accrued) {
-  return `${formatVND(contract.balance)} × ${days} ngày × ${contract.interestRate}%<br class="cf-br"> ÷ 365 ngày = <strong>${formatVND(accrued)}</strong>`;
+  return `${formatVND(contract.balance)} × ${days} ngày × ${contract.interestRate}% ÷ 365 ngày = <strong>${formatVND(accrued)}</strong>`;
 }
 
 export function openContractView(customerId, contract, { readOnly = false } = {}) {
@@ -1413,104 +1413,153 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
   };
   const qrUrl = hasBank ? buildVietQrUrl(qrParamsFor(accrued, 0, accrued)) : '';
 
-  const heirName = String(contract.heirName || '').trim();
-  const heirTitle = heirName && customer && heirName.toLowerCase() !== String(customer.name || '').trim().toLowerCase() ? ` và ${escapeHtml(heirName)}` : '';
+  const coName = customer ? heirOfContract(contract, customer.name) : '';
+  const dialOf = (v) => String(v || '').replace(/[^\d+]/g, '');
+  const mainDial = customer ? dialOf(customer.phone) : '';
+  const coDial = coName ? dialOf(coPhoneOf(customer.coPeople, coName)) : '';
+  const callBtn = (who, dial, label) => (dial ? `<a class="cv-call" href="tel:${escapeHtml(dial)}" data-cv-call="${who}" aria-label="${label}" title="${label}">${icon('phone', 'icon-sm')}<span class="t">Gọi</span></a>` : '');
+  const custHtml = !customer ? '' : coName
+    ? `<p class="cv-cust"><span class="nm"><b>${escapeHtml(customer.name)}</b>${callBtn('main', mainDial, 'Gọi người vay')}<i>và</i><b>${escapeHtml(coName)}</b>${callBtn('co', coDial, 'Gọi người cùng vay')}</span></p>`
+    : `<p class="cv-cust"><span class="nm"><b>${escapeHtml(customer.name)}</b></span>${callBtn('main', mainDial, 'Gọi người vay')}</p>`;
 
   const principalNum = Number(contract.principal) || 0;
   const paidText = principalNum > 0 ? formatVND(Math.max(0, principalNum - (Number(contract.balance) || 0))) : '—';
+  const showAlert = canPay && info.source !== 'installment' && info.status !== 'dang_vay';
+  const overdue = info.status === 'qua_han';
+  const chipHtml = showAlert ? `<span class="cv-state ${overdue ? 'is-over' : 'is-soon'}"><i></i><span class="d">${overdue ? `Quá hạn ${info.days} ngày` : `Gần đến hạn · còn ${info.days} ngày`}</span><span class="p">${overdue ? `Quá hạn ${info.days} ngày` : `Còn ${info.days} ngày`}</span></span>` : '';
+  const alertHtml = showAlert ? `<span class="cv-alert ${overdue ? 'is-over' : ''}">${icon('alert', 'icon-sm')}${overdue ? `Đã quá hạn ${info.days} ngày` : `Còn ${info.days} ngày đến hạn thanh toán`}</span>` : '';
+  const termTotal = daysBetween(new Date(contract.disbursedDate), new Date(contract.dueDate));
+  const termPct = !canPay || termTotal <= 0 ? 100 : Math.max(0, Math.min(100, Math.round((daysBetween(new Date(contract.disbursedDate), new Date()) / termTotal) * 100)));
+
+  const zaloShown = !!(customer && customer.phone && canPay && canManageZalo && contract.oaEnabled !== false);
+  const actBtns = [
+    customer && customer.phone && canPay ? `<a href="${buildSmsLink(customer, contract)}" id="btn-sms-ct" class="cv-act">${icon('message')}<span>Nhắn SMS cho khách</span></a>` : '',
+    customer && canPay ? `<button type="button" class="cv-act" id="btn-noti-app-ct">${icon('bell')}<span>Thông báo qua ứng dụng</span></button>` : '',
+    zaloShown ? `<button type="button" class="cv-act" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message')}<span>Gửi tin Zalo OA ngay</span></button>` : '',
+  ].filter(Boolean);
+  const contactHtml = canPay ? `
+            <section class="cv-card cv-c-contact">
+              <h4 class="cv-h">${icon('send')}Liên hệ và gửi thông báo</h4>
+              ${actBtns.length ? `<div class="cv-acts" style="--n:${actBtns.length}">${actBtns.join('')}</div>` : ''}
+              ${zaloShown ? `<div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
+              <div id="zalo-auto-status-ct">${zaloAutoStatusHtml(null)}</div>
+            </section>` : '';
+  const payHtml = `
+            <section class="cv-card cv-c-pay">
+              <h4 class="cv-h">${icon('wallet')}Gửi mã QR để thanh toán</h4>
+              ${hasBank ? `
+                <label class="cv-settle"><span>Tất toán khoản vay</span><input type="checkbox" id="settle-full-cb-ct"/><i class="cv-sw"></i></label>
+                <div class="cv-two">
+                  <div class="cv-fld"><label for="qr-goc-input">Gốc</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
+                  <div class="cv-fld"><label for="qr-lai-input">Lãi</label><input type="text" inputmode="numeric" id="qr-lai-input"/></div>
+                </div>
+                <div class="cv-lock" id="qr-lai-hint" style="display:none">Đã nhập số tiền trả gốc — Lãi tự khóa theo đúng "Lãi đến nay", không sửa tay được. Xóa ô Gốc nếu cần tự chỉnh lại Lãi.</div>
+                <div class="cv-pay">
+                  <div class="cv-total">
+                    <small>Tổng chuyển khoản</small>
+                    <strong id="qr-total-ct">${formatVND(accrued)}</strong>
+                    <div class="cv-btns">
+                      <button type="button" class="cv-btn" id="btn-download-qr-ct">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
+                      <button type="button" class="cv-btn" id="btn-share-qr-ct">${icon('share', 'icon-sm')} Chia sẻ ảnh QR</button>
+                    </div>
+                  </div>
+                  <div class="cv-qr"><img id="qr-img-ct" src="${qrUrl ? qrImageSrc(qrUrl, { compact: true }) : ''}" alt="Mã QR chuyển khoản"/></div>
+                </div>` : `<p class="text-sm text-muted">${canPay ? 'Chưa cấu hình thông tin nhận thanh toán.' : 'Hợp đồng đã tất toán.'}</p>`}
+            </section>`;
 
   const close = openModal({
-
-    title: `Hợp đồng ${escapeHtml(contract.code)}${customer ? ` - ${escapeHtml(customer.name)}${heirTitle}` : ''}<button type="button" class="copy-info-btn" id="btn-copy-loan" title="Sao chép thông tin khoản vay để gửi khách" aria-label="Sao chép thông tin khoản vay để gửi khách">${icon('copy')}</button>`,
-    sheetClass: 'customer-contract-sheet',
+    title: `Hợp đồng ${escapeHtml(contract.code)}`,
+    sheetClass: 'customer-contract-sheet cv-sheet',
     bodyHtml: `
-      <div class="customer-contract-view">
-        <div class="customer-contract-metrics">
-          <div class="customer-contract-metric is-primary ct-balance">
-            <div class="ct-bal-main">
-              <div class="ct-row"><span>DƯ NỢ HIỆN TẠI</span><strong>${formatVND(contract.balance)}</strong></div>
-              <small>Số gốc còn phải trả</small>
-            </div>
-            <div class="ct-paid" title="Gốc đã trả = số tiền vay ban đầu trừ dư nợ hiện tại"><span>GỐC ĐÃ TRẢ</span><strong>${paidText}</strong></div>
-          </div>
-          <div class="customer-contract-metric ct-calc">
-            <div class="ct-row"><span>LÃI CỘNG DỒN</span><strong id="ct-accrued">${formatVND(accrued)}</strong></div>
-            <div class="ct-sub">
-              <span class="ct-sub-lbl"><i class="d">Tính đến</i><i class="p">Đến</i></span>
-              <span class="ct-inp ct-date">
-                <input type="text" id="ct-asof" inputmode="numeric" autocomplete="off" maxlength="10" value="${formatDate(new Date())}" aria-label="Tính lãi đến ngày"/>
-                <button type="button" class="ct-ico-btn" id="ct-cal" aria-label="Chọn ngày trên lịch">${icon('calendar')}</button>
-                <input type="date" class="ct-native" id="ct-asof-native" tabindex="-1" aria-hidden="true"/>
-              </span>
-            </div>
-          </div>
-          <div class="customer-contract-metric ct-calc">
-            <div class="ct-row"><span>SỐ NGÀY LÃI</span><span class="ct-valgrp"><label class="ct-inp ct-days"><input type="text" id="ct-days" inputmode="numeric" autocomplete="off" maxlength="4" value="${interestDays}" aria-label="Số ngày tính lãi"/>${icon('edit')}</label><span class="ct-unit">ngày</span></span></div>
-            <small class="ct-from"><span class="d">Từ kỳ đã trả lãi (${formatDate(interestPaidUntil)})</span><span class="p">Từ ${formatDate(interestPaidUntil)}</span></small>
-          </div>
-          <div class="ct-resetrow" id="ct-resetrow" hidden>Đang tính lãi đến <b id="ct-resetdate"></b> · <button type="button" class="ct-reset" id="ct-reset2">${icon('undo')} Về hôm nay</button></div>
-        </div>
-        <div class="customer-contract-info-grid">
-          <section class="customer-contract-panel customer-contract-details">
-            <h4>Thông tin hợp đồng</h4>
-            <div class="oc-line"><span>Số tiền vay ban đầu</span><b>${formatVND(contract.principal)}</b></div>
-            <div class="oc-line"><span>Ngày vay</span><b>${formatDate(contract.disbursedDate)}</b></div>
-            <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
-            <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
-            <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
-            <div class="oc-line"><span>SĐT</span><b>${customer && customer.phone ? `<a href="tel:${customer.phone.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
-          </section>
-          <div class="customer-contract-side">
-            <section class="customer-contract-panel customer-contract-collateral">
-              <h4>Tài sản bảo đảm</h4>
-              ${collateralName ? `<div class="customer-contract-collateral-value"><span>${collateralName}</span><strong>Giá trị: ${formatVND(Math.max(0, Number(contract.collateralValue) || 0))}</strong></div>` : '<p>Không có tài sản bảo đảm</p>'}
-            </section>
-            <section class="customer-contract-panel customer-contract-calculation">
-              <h4>Cách tính lãi</h4>
-              <div class="customer-contract-formula">${contractFormulaHtml(contract, interestDays, accrued)}</div>
-              ${canPay && info.source !== 'installment' && info.status !== 'dang_vay' ? `<div class="customer-contract-alert ${info.status === 'qua_han' ? 'is-overdue' : ''}">${info.status === 'qua_han' ? `Đã quá hạn ${info.days} ngày` : `Còn ${info.days} ngày đến hạn thanh toán`}</div>` : ''}
-            </section>
-          </div>
-        </div>
-        ${installmentNextBoxHtml(contract, 'installment-next-box-ct')}
-        <div class="customer-contract-actions">
-          <section class="customer-contract-panel">
-            <h4>Liên hệ và gửi thông báo</h4>
-            ${customer && customer.phone && canPay ? `<a href="${buildSmsLink(customer, contract)}" id="btn-sms-ct" class="btn btn-outline btn-sm btn-block mt-8">${icon('message', 'icon-sm')} Nhắn SMS cho khách</a>` : ''}
-            ${customer && canPay ? `<button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-noti-app-ct">${icon('bell', 'icon-sm')} Thông báo qua ứng dụng</button>` : ''}
-            ${customer && customer.phone && canPay && canManageZalo && contract.oaEnabled !== false ? `
-              <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('message', 'icon-sm')} Gửi tin Zalo OA ngay</button>
-              <div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
-            ${canPay ? `<div id="zalo-auto-status-ct">${zaloAutoStatusHtml(null)}</div>` : ''}
-          </section>
-          <section class="customer-contract-panel customer-contract-payment">
-            <h4>Gửi mã QR để thanh toán</h4>
-            ${hasBank ? `
-              <label class="customer-contract-settle"><input type="checkbox" id="settle-full-cb-ct"/> Tất toán khoản vay</label>
-              <div class="grid-2">
-                <div class="field"><label>Gốc</label><input type="text" inputmode="numeric" id="qr-goc-input" placeholder="0"/></div>
-                <div class="field"><label>Lãi</label><input type="text" inputmode="numeric" id="qr-lai-input"/></div>
+      <div class="customer-contract-view cv">
+        <header class="cv-hero ${overdue ? 'is-over' : ''}">
+          <div class="cv-head">
+            <div class="cv-block">
+              <span class="cv-eyebrow">Hợp đồng tín dụng</span>
+              <div class="cv-main ${coName ? 'has-co' : ''}">
+                <h2 class="cv-code"><small>Số</small>${escapeHtml(contract.code)}</h2>
+                ${chipHtml}
+                ${custHtml}
               </div>
-              <div class="field-hint mb-8" id="qr-lai-hint" style="display:none">Đã nhập số tiền trả gốc — Lãi tự khóa theo đúng "Lãi đến nay", không sửa tay được. Xóa ô Gốc nếu cần tự chỉnh lại Lãi.</div>
-              <div class="customer-contract-qr-layout">
-                <div>
-                  <span class="text-sm text-muted">Tổng chuyển khoản</span>
-                  <strong id="qr-total-ct">${formatVND(accrued)}</strong>
-                  <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-download-qr-ct">${icon('download', 'icon-sm')} Tải ảnh mã QR</button>
-                  <button type="button" class="btn btn-outline btn-sm btn-block mt-8" id="btn-share-qr-ct">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
-                </div>
-                <img id="qr-img-ct" src="${qrUrl ? qrImageSrc(qrUrl, { compact: true }) : ''}" alt="Mã QR chuyển khoản"/>
-              </div>` : `<p class="text-sm text-muted">${canPay ? 'Chưa cấu hình thông tin nhận thanh toán.' : 'Hợp đồng đã tất toán.'}</p>`}
-          </section>
+            </div>
+            <div class="cv-tools">
+              <button type="button" class="cv-tbtn" id="btn-copy-loan" title="Sao chép thông tin khoản vay để gửi khách" aria-label="Sao chép thông tin khoản vay để gửi khách">${icon('copy')}</button>
+              <button type="button" class="cv-tbtn cv-close" aria-label="Đóng">${icon('x')}</button>
+            </div>
+          </div>
+          <div class="cv-term">
+            <div class="t"><span class="e">Ngày vay</span><span class="d">${formatDate(contract.disbursedDate)}</span></div>
+            <div class="cv-prog" style="--p:${termPct}%"><b></b><i></i></div>
+            <div class="t"><span class="e">Đến hạn</span><span class="d">${formatDate(contract.dueDate)}</span></div>
+          </div>
+        </header>
+        <section class="cv-strip">
+          <div class="cv-cells">
+            <div class="cv-cell">
+              <div class="cv-lbl">DƯ NỢ HIỆN TẠI</div>
+              <strong class="cv-val">${formatVND(contract.balance)}</strong>
+              <div class="cv-note">Số gốc còn phải trả</div>
+            </div>
+            <div class="cv-cell" title="Gốc đã trả = số tiền vay ban đầu trừ dư nợ hiện tại">
+              <div class="cv-lbl">GỐC ĐÃ TRẢ</div>
+              <strong class="cv-val sm">${paidText}</strong>
+            </div>
+            <div class="cv-cell">
+              <div class="cv-lbl">LÃI CỘNG DỒN</div>
+              <strong class="cv-val gold" id="ct-accrued">${formatVND(accrued)}</strong>
+              <div class="cv-row"><span class="d">Tính đến</span><span class="p">Đến</span>
+                <span class="cv-inp">
+                  <input type="text" id="ct-asof" inputmode="numeric" autocomplete="off" maxlength="10" value="${formatDate(new Date())}" aria-label="Tính lãi đến ngày"/>
+                  <button type="button" class="cv-ico" id="ct-cal" aria-label="Chọn ngày trên lịch">${icon('calendar')}</button>
+                  <input type="date" class="cv-native" id="ct-asof-native" tabindex="-1" aria-hidden="true"/>
+                </span>
+              </div>
+            </div>
+            <div class="cv-cell">
+              <div class="cv-lbl">SỐ NGÀY LÃI</div>
+              <div class="cv-row days"><label class="cv-inp is-days"><input type="text" id="ct-days" inputmode="numeric" autocomplete="off" maxlength="4" value="${interestDays}" aria-label="Số ngày tính lãi"/>${icon('edit')}</label><span class="unit">ngày</span></div>
+              <div class="cv-note"><span class="d">Từ kỳ đã trả lãi (${formatDate(interestPaidUntil)})</span><span class="p">Từ ${formatDate(interestPaidUntil)}</span></div>
+            </div>
+          </div>
+          <div class="cv-reset" id="ct-resetrow" hidden>Đang tính lãi đến <b id="ct-resetdate"></b> · <button type="button" class="cv-reset-btn" id="ct-reset2">${icon('undo')} Về hôm nay</button></div>
+          <div class="cv-formula"><span class="lbl">Cách tính lãi</span><span class="cv-fx">${contractFormulaHtml(contract, interestDays, accrued)}</span>${alertHtml}</div>
+        </section>
+        <div class="cv-body">
+          ${installmentNextBoxHtml(contract, 'installment-next-box-ct')}
+          <div class="cv-grid">
+            <div class="cv-col">
+              <section class="cv-card cv-c-info">
+                <h4 class="cv-h">${icon('landmark')}Thông tin hợp đồng</h4>
+                <div class="oc-line"><span>Số tiền vay ban đầu</span><b>${formatVND(contract.principal)}</b></div>
+                <div class="oc-line"><span>Ngày vay</span><b>${formatDate(contract.disbursedDate)}</b></div>
+                <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
+                <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
+                <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
+                <div class="oc-line"><span>SĐT</span><b>${mainDial ? `<a class="cv-tel" href="tel:${escapeHtml(mainDial)}" data-cv-call="main">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
+              </section>${contactHtml}
+            </div>
+            <div class="cv-col">
+              <section class="cv-card cv-c-asset">
+                <h4 class="cv-h">${icon('shieldCheck')}Tài sản bảo đảm</h4>
+                ${collateralName ? `<div class="cv-asset"><span class="ic">${icon('landmark')}</span><span class="t">${collateralName}</span><span class="v">Giá trị: ${formatVND(Math.max(0, Number(contract.collateralValue) || 0))}</span></div>` : '<p class="cv-none">Không có tài sản bảo đảm</p>'}
+              </section>${payHtml}
+            </div>
+          </div>
+          ${readOnly ? '' : `<div class="cv-foot"><button type="button" class="cv-del" id="del-contract">${icon('trash', 'icon-sm')} Xóa hợp đồng</button></div>`}
         </div>
       </div>
     `,
-    footHtml: readOnly ? '' : `<button class="btn btn-danger-outline btn-block" id="del-contract">${icon('trash', 'icon-sm')} Xóa hợp đồng</button>`,
     onMount(sheet, closeFn) {
-
-      const closeBtn = sheet.querySelector('.modal-head [data-close]');
-      if (customer && closeBtn && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-        closeBtn.insertAdjacentHTML('beforebegin', `<button type="button" class="notice-print-btn" id="btn-print-notice" aria-haspopup="menu" aria-expanded="false" title="In giấy báo">${icon('printer')}<span>In giấy báo</span>${icon('chevronDown')}</button>`);
+      const closeBtn = sheet.querySelector('.cv-close');
+      closeBtn.addEventListener('click', closeFn);
+      sheet.addEventListener('click', (e) => {
+        const call = e.target.closest('[data-cv-call]');
+        if (!call || !customer) return;
+        if (call.dataset.cvCall === 'co') S.logCall(customer.id, coPhoneOf(customer.coPeople, coName), 'co', coName);
+        else S.logCall(customer.id, customer.phone);
+      });
+      if (customer && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+        closeBtn.insertAdjacentHTML('beforebegin', `<button type="button" class="cv-tbtn txt cv-print" id="btn-print-notice" aria-haspopup="menu" aria-expanded="false" title="In giấy báo">${icon('printer')}<span>In giấy báo</span>${icon('chevronDown')}</button>`);
         const printBtn = sheet.querySelector('#btn-print-notice');
         printBtn.addEventListener('click', () => {
           if (printBtn.classList.contains('is-open')) { closeContractNoticeMenu?.(); return; }
@@ -1578,7 +1627,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
       const nativeDate = sheet.querySelector('#ct-asof-native');
       const daysInput = sheet.querySelector('#ct-days');
       const calBtn = sheet.querySelector('#ct-cal');
-      const formulaEl = sheet.querySelector('.customer-contract-formula');
+      const formulaEl = sheet.querySelector('.cv-fx');
       const resetRow = sheet.querySelector('#ct-resetrow');
       const resetRowDate = sheet.querySelector('#ct-resetdate');
       if (accruedEl && asOfInput && daysInput) {
@@ -1601,7 +1650,7 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           if (from !== 'days') { daysInput.value = String(days); sizeDays(); }
           accruedEl.textContent = formatVND(accrued);
           fitOneLine(accruedEl);
-          if (formulaEl) formulaEl.innerHTML = contractFormulaHtml(contract, days, accrued);
+          if (formulaEl) { formulaEl.innerHTML = contractFormulaHtml(contract, days, accrued); fitOneLine(formulaEl); }
           const edited = daysBetween(today, asOf) !== 0;
           if (resetRow) resetRow.hidden = !edited;
           if (resetRowDate) resetRowDate.textContent = formatDate(asOf);
@@ -1615,14 +1664,14 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
           const masked = maskViDate(asOfInput.value);
           if (masked !== asOfInput.value) asOfInput.value = masked;
           const parsed = parseViDate(masked);
-          asOfInput.closest('.ct-inp').classList.toggle('is-invalid', masked.length === 10 && !parsed);
+          asOfInput.closest('.cv-inp').classList.toggle('is-invalid', masked.length === 10 && !parsed);
           if (!parsed) return;
           const fixed = clamp(parsed);
           asOf = fixed;
           render(fixed.getTime() === parsed.getTime() ? 'date' : undefined);
         });
         asOfInput.addEventListener('focus', () => { if (!coarse) asOfInput.select(); });
-        asOfInput.addEventListener('blur', () => { asOfInput.closest('.ct-inp').classList.remove('is-invalid'); asOfInput.value = formatDate(asOf); });
+        asOfInput.addEventListener('blur', () => { asOfInput.closest('.cv-inp').classList.remove('is-invalid'); asOfInput.value = formatDate(asOf); });
         daysInput.addEventListener('input', () => {
           const digits = daysInput.value.replace(/\D/g, '').slice(0, 4);
           let n = digits === '' ? null : Math.min(MAX_INTEREST_DAYS, Number(digits));
@@ -1670,11 +1719,11 @@ export function openContractView(customerId, contract, { readOnly = false } = {}
         sizeDays();
       }
 
-      const moneyEls = [...sheet.querySelectorAll('.customer-contract-metrics strong')];
+      const moneyEls = [...sheet.querySelectorAll('.cv-cells .cv-val'), ...sheet.querySelectorAll('.cv-fx')];
       const fitMoney = () => moneyEls.forEach((el) => fitOneLine(el));
       fitMoney();
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitMoney);
-      if (typeof ResizeObserver === 'function') new ResizeObserver(fitMoney).observe(sheet.querySelector('.customer-contract-metrics'));
+      if (typeof ResizeObserver === 'function') new ResizeObserver(fitMoney).observe(sheet.querySelector('.cv-cells'));
       const notiBtn = sheet.querySelector('#btn-noti-app-ct');
       if (notiBtn) notiBtn.addEventListener('click', () => {
         if (!customer) return;
