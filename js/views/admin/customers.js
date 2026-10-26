@@ -13,6 +13,7 @@ import { interestAsOfForDays, MAX_INTEREST_DAYS } from '../../lib/interestDays.j
 import { describeCallTime, formatPhoneDisplay } from '../../lib/callHistory.js';
 import { checkCoPhone, sanitizeCoPhoneInput, normPersonName, shortPersonName, samePhone } from '../../lib/coBorrower.js';
 import { parseCoPhoneRows, CO_PHONE_STATUS } from '../../lib/coPhoneFile.js';
+import { compareContractsNewestFirst } from '../../lib/contractOrder.js';
 import { buildLoanSummaryText } from '../../lib/loanSummary.js';
 import { printNotice } from '../../lib/printNotices.js';
 import { openImportPreview, openImportHistory, importSummaryHtml, importDetailsHtml, bindImportDetails } from './importReview.js';
@@ -373,7 +374,8 @@ export function render(contentEl, filterEl) {
     // hiển thị & sắp xếp. Hợp đồng đã tất toán (dư nợ = 0) KHÔNG đưa vào
     // danh sách hiển thị nữa — bỏ hẳn ngay từ đây.
     let enriched = list.map((c) => {
-      const contracts = S.listContractsByCustomer(c.id).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
+      // Hợp đồng của 1 khách: mới nhất trước (ngày vay mới nhất → số thứ tự HĐTD lớn nhất; "461/26" thì 461 là số thứ tự, 26 chỉ là năm).
+      const contracts = S.listContractsByCustomer(c.id).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan').sort(compareContractsNewestFirst);
       const totalBalance = contracts.reduce((s, ct) => s + (ct.balance || 0), 0);
       const totalInterest = contracts.reduce((s, ct) => s + S.accruedInterest(ct), 0);
       // Xét CẢ ngày đáo hạn hợp đồng gốc LẪN "Kỳ tới" của phân kỳ trả nợ (nếu
@@ -421,6 +423,9 @@ export function render(contentEl, filterEl) {
       const [field, dir] = sortMode.split('-');
       const key = field === 'principal' ? 'totalBalance' : 'totalInterest';
       enriched.sort((a, b) => (dir === 'asc' ? a[key] - b[key] : b[key] - a[key]));
+    } else {
+      // Mặc định (mới vào trang): khách có hợp đồng MỚI NHẤT lên đầu — theo ngày vay mới nhất, cùng ngày thì số thứ tự HĐTD lớn hơn (xem lib/contractOrder.js).
+      enriched.sort((a, b) => compareContractsNewestFirst(a.contracts[0], b.contracts[0]));
     }
     const totalContracts = enriched.reduce((s, e) => s + e.contracts.length, 0);
     const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);

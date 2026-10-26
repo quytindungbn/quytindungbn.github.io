@@ -3221,6 +3221,15 @@ grant select, insert, update, delete on public.co_people_archive to service_role
 
 **Việc cần bạn làm**: deploy lại Edge Function **`create-account`**. Không cần chạy SQL mới (dùng cột `co_people` của mục 10.83).
 
+### 10.86. Giao diện: thanh Tìm kiếm + nút Tạo User, thứ tự mới nhất trước, ô lọc "Chưa có người nhận" (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy Edge Function)
+
+- **Quản lý User**: ô tìm kiếm và nút **Tạo User** nằm chung 1 hàng (cùng kiểu trang Quản lý OA), phần còn lại của trang giữ nguyên như cũ.
+- **Khách hàng & Hợp đồng — thứ tự mặc định**: hợp đồng mới nhất lên trước. Xếp theo **ngày vay** mới nhất; cùng ngày vay thì theo **số thứ tự HĐTD** lớn hơn.
+  Số HĐTD dạng `461/26`: `461` là số thứ tự (khóa chính), `26` chỉ là năm (chỉ xét sau cùng). Khách nào có hợp đồng mới nhất thì lên đầu danh sách; trong 1 khách các
+  hợp đồng cũng xếp mới → cũ (`js/lib/contractOrder.js`). Các kiểu sắp xếp khác (Gốc/Lãi, Quá hạn, Gần đến hạn) giữ nguyên.
+- **Quản lý OA → Danh sách OA**: ô lọc người nhận có thêm **Chưa có người nhận** (mọi hợp đồng đã tắt gửi OA, chưa có số nào để gửi, hoặc khách hết hợp đồng đang vay) để các ô
+  *Người vay + Người cùng vay + Cả 2 người + Chưa có người nhận* cộng lại đúng bằng *Tất cả*. Khách hết hợp đồng có nhãn "Không còn hợp đồng đang vay".
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

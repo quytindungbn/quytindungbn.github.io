@@ -35,7 +35,7 @@ let activeTab = 'oa';
 let filterThon = [];
 let filterXom = [];
 let oaQuery = ''; // ô tìm kiếm tên/SĐT ở tab "Danh sách OA"
-let oaRcv = 'all'; // lọc theo NGƯỜI NHẬN Zalo OA ở tab "Danh sách OA": 'all' | 'main' (chỉ người vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người)
+let oaRcv = 'all'; // lọc theo NGƯỜI NHẬN Zalo OA ở tab "Danh sách OA": 'all' | 'main' (chỉ người vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người) | 'none' (chưa có ai nhận)
 let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
@@ -65,8 +65,9 @@ function rcvOf(customerId) {
 }
 function rcvChipsHtml(customer, { mini = false } = {}) {
   const { ov } = rcvOf(customer.id);
-  if (!ov || !ov.custom) return ''; // mặc định: như bình thường, không hiện thêm gì
   const cls = `oa-rcv${mini ? ' is-mini' : ''}`;
+  if (ov && !ov.items.length) return `<div class="${cls}"><span class="oa-hc warn">Không còn hợp đồng đang vay — không có ai nhận Zalo</span></div>`;
+  if (!ov || !ov.custom) return ''; // mặc định: như bình thường, không hiện thêm gì
   const items = ov.items;
   if (!ov.detail) {
     // Cùng 1 người cùng vay cho mọi hợp đồng (hoặc không có): như trước — 1 nhãn chung cho cả khách.
@@ -329,12 +330,14 @@ function drawOATab(slot, admin) {
     const rcvCount = { all: rows.length, main: 0, co: 0, both: 0, none: 0 };
     for (const x of rows) rcvCount[rcvOf(x.customer.id).mode]++;
     const rseg = slot.querySelector('#oa-rseg');
-    // Chưa có khách nào gửi cho người cùng vay thì ẩn cả ô lọc này (danh sách như bình thường).
-    const hasCoRows = rcvCount.co + rcvCount.both > 0;
+    // Chưa có khách nào gửi cho người cùng vay (và không ai thiếu người nhận) thì ẩn cả ô lọc này (danh sách như bình thường).
+    // "Chưa có người nhận" (mọi hợp đồng tắt gửi OA / chưa có số nào để gửi / hết hợp đồng): hiện riêng để các ô cộng lại đủ bằng "Tất cả".
+    const hasCoRows = rcvCount.co + rcvCount.both + rcvCount.none > 0;
     rseg.style.display = hasCoRows ? '' : 'none';
     if (!hasCoRows) { oaRcv = 'all'; rseg.innerHTML = ''; }
     else {
-      rseg.innerHTML = [['all', 'Tất cả'], ['main', 'Người vay'], ['co', 'Người cùng vay'], ['both', 'Cả 2 người']]
+      if (oaRcv === 'none' && !rcvCount.none) oaRcv = 'all';
+      rseg.innerHTML = [['all', 'Tất cả'], ['main', 'Người vay'], ['co', 'Người cùng vay'], ['both', 'Cả 2 người'], ...(rcvCount.none ? [['none', 'Chưa có người nhận']] : [])]
         .map(([k, label]) => `<button type="button" class="${oaRcv === k ? 'on' : ''}" data-rcv="${k}">${label}<em>${rcvCount[k]}</em></button>`).join('');
       rseg.querySelectorAll('[data-rcv]').forEach((b) => b.addEventListener('click', () => { oaRcv = b.dataset.rcv; drawList(); }));
     }

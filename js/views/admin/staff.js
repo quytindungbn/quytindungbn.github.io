@@ -28,11 +28,24 @@ let query = '';
 export function render(contentEl, filterEl) {
   filterRole = 'all';
   query = '';
-  // Ô tìm kiếm nằm ở filterEl (không bị vẽ lại cùng danh sách) để không mất
-  // focus/con trỏ mỗi khi gõ — giống cách trang Khách hàng & Hợp đồng làm.
-  filterEl.innerHTML = `<div style="padding:10px 14px 0">${searchBoxHtml('search-input', 'Tìm theo tên, CCCD, SĐT, tên đăng nhập...', '')}</div>`;
-  bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(contentEl); });
+  buildFrame(contentEl);
   draw(contentEl);
+}
+
+/**
+ * Khung cố định của trang: số liệu (#us-top) · hàng "ô tìm kiếm + nút Tạo User" (cùng kiểu trang Quản lý OA) · thanh lọc + danh sách (#us-body).
+ * Hàng tìm kiếm nằm NGOÀI phần được vẽ lại (draw) nên gõ chữ không bị mất focus/con trỏ — giống cách trang Khách hàng & Hợp đồng làm.
+ */
+function buildFrame(contentEl) {
+  contentEl.innerHTML = `
+    <div id="us-top"></div>
+    <div class="oa-tool mb-16">
+      <div class="oa-search">${searchBoxHtml('search-input', 'Tìm tên, CCCD, SĐT...', query)}</div>
+      <button type="button" class="oa-add us-add" id="btn-add-user" title="Tạo User" aria-label="Tạo User">${icon('userPlus')}<span>Tạo User</span></button>
+    </div>
+    <div id="us-body"></div>`;
+  bindSearchBox(contentEl, 'search-input', (v) => { query = v; draw(contentEl); });
+  contentEl.querySelector('#btn-add-user').addEventListener('click', () => openCreateUserModal(S.thonXomTree(), contentEl));
 }
 
 /**
@@ -74,7 +87,8 @@ function draw(contentEl) {
       : data.name.toLowerCase().includes(q) || data.username.toLowerCase().includes(q));
   }
 
-  contentEl.innerHTML = `
+  if (!contentEl.querySelector('#us-body')) buildFrame(contentEl); // chưa từng render() ở trang này
+  contentEl.querySelector('#us-top').innerHTML = `
     <div class="grid-4 mb-16">
       <div class="stat-tile c-blue">
         <div class="stat-label">Use đã tạo</div>
@@ -96,12 +110,8 @@ function draw(contentEl) {
         <div class="stat-value">${formatNumber(pushOnCount)}</div>
         <div class="stat-trend">/ ${formatNumber(loggedInCount)} đã đăng nhập</div>
       </div>
-    </div>
-
-    <div class="card card-pad mb-16">
-      <button class="btn btn-primary btn-block" id="btn-add-user">${icon('plus', 'icon-sm')} Tạo User</button>
-    </div>
-
+    </div>`;
+  contentEl.querySelector('#us-body').innerHTML = `
     <div class="chip-row mb-16">
       <button class="chip ${filterRole === 'all' ? 'active' : ''}" data-role="all">Tất cả</button>
       <button class="chip ${filterRole === 'use' ? 'active' : ''}" data-role="use">Use (khách hàng)</button>
@@ -118,7 +128,6 @@ function draw(contentEl) {
   contentEl.querySelectorAll('[data-role]').forEach((btn) => {
     btn.addEventListener('click', () => { filterRole = btn.dataset.role; draw(contentEl); });
   });
-  contentEl.querySelector('#btn-add-user').addEventListener('click', () => openCreateUserModal(tree, contentEl));
   contentEl.querySelectorAll('[data-open-use]').forEach((row) => {
     row.addEventListener('click', () => openCustomerDetail(row.dataset.openUse, { readOnly: false, context: 'use' }));
   });
