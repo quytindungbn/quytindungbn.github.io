@@ -2819,10 +2819,13 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .lg-bar { grid-template-columns: minmax(0, 1fr) 210px 210px; }
   .lg-search { grid-column: auto; }
 }
-.lg-filters { display: flex; flex-wrap: wrap; gap: 12px 26px; margin: 0 0 12px; }
-.lg-fl { min-width: 0; }
-.lg-fl-t { display: block; font: 700 11px Inter, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #8a6a22; }
-.lg-seg.oa-rseg { margin: 6px 0 0; }
+.lg-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 14px; }
+.lg-filters button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; height: 42px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 13px; background: #fff; color: #0b5148; font: 700 13.5px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; white-space: nowrap; cursor: pointer; transition: background .15s, border-color .15s; }
+.lg-filters button em { min-width: 22px; height: 20px; padding: 0 6px; border-radius: 10px; background: #eef3f0; color: #51615a; font: 700 11.5px/20px Inter, sans-serif; font-style: normal; text-align: center; }
+.lg-filters button.on { border-color: #0c4a3f; background: linear-gradient(180deg, #14806f, #0c4a3f); color: #fff; box-shadow: 0 5px 12px -5px rgba(12, 74, 63, .6); }
+.lg-filters button.on em { background: rgba(255, 255, 255, .22); color: #fff; }
+@media (max-width: 380px) { .lg-filters button { font-size: 12.5px; gap: 5px; padding: 0 4px; } }
+@media (min-width: 760px) { .lg-filters { max-width: 520px; } }
 .lg-day { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .lg-day em { font: 600 11.5px Inter, sans-serif; letter-spacing: 0; text-transform: none; font-style: normal; color: var(--text-muted); }
 .lg-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; padding: 13px 2px; border-bottom: 1px solid var(--border); }

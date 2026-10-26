@@ -39,7 +39,6 @@ let filterXom = [];
 let oaQuery = ''; // ô tìm kiếm tên/SĐT ở tab "Danh sách OA"
 let oaRcv = 'all'; // lọc theo NGƯỜI NHẬN Zalo OA ở tab "Danh sách OA": 'all' | 'main' (chỉ người vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người)
 let logStatusFilter = 'all'; // 'all' | 'success' | 'error'
-let logRcvFilter = 'all'; // lọc lịch sử theo NGƯỜI NHẬN của lần gửi: 'all' | 'main' (chỉ người vay) | 'co' (chỉ người cùng vay) | 'both' (cả 2 người) | 'other' (số không còn trong hồ sơ)
 let logFromDate = ''; // yyyy-mm-dd, rỗng = không giới hạn
 let logToDate = '';
 let logQuery = ''; // ô tìm kiếm ở tab Lịch sử gửi: tên khách, số HĐTD, số điện thoại (người vay / người cùng vay), tên người cùng vay
@@ -162,7 +161,7 @@ function openAutoBreakdownModal() {
 
 /** Reset mọi bộ lọc/tab về mặc định — chỉ gọi từ app.js lúc đổi người đang đăng nhập, xem ghi chú y hệt trong customers.js. */
 export function resetFilters() {
-  activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; oaRcv = 'all'; logStatusFilter = 'all'; logRcvFilter = 'all'; logFromDate = ''; logToDate = ''; logQuery = '';
+  activeTab = 'oa'; filterThon = []; filterXom = []; oaQuery = ''; oaRcv = 'all'; logStatusFilter = 'all'; logFromDate = ''; logToDate = ''; logQuery = '';
   extraLogs = []; logCoveredFrom = null; logViewFrom = null;
 }
 
@@ -954,7 +953,7 @@ const LOG_WHO_ORDER = { main: 0, co: 1, other: 2 };
 
 /**
  * Gộp các dòng log thành TỪNG LẦN GỬI (xem lib/sendLogGroups.js): gửi cho cả người vay lẫn người cùng vay là 1 lần gửi = 1 dòng, liệt kê từng người nhận.
- * allOk = mọi người nhận đều thành công; partial = có người nhận được, có người lỗi; mode = ai nhận: 'main' | 'co' | 'both' | 'other'.
+ * allOk = mọi người nhận đều thành công; partial = có người nhận được, có người lỗi;
  */
 function buildLogItems(logs) {
   return groupSendLogs(logs).map((g) => {
@@ -963,8 +962,7 @@ function buildLogItems(logs) {
     const contract = first.contractId ? S.getContract(first.contractId) : null;
     const recips = g.logs.map((l) => ({ l, rc: logRecipient(l.phone, customer, contract) })).sort((a, b) => LOG_WHO_ORDER[a.rc.who] - LOG_WHO_ORDER[b.rc.who]);
     const okN = recips.filter((r) => r.l.status === 'success').length;
-    const hasMain = recips.some((r) => r.rc.who === 'main'), hasCo = recips.some((r) => r.rc.who === 'co');
-    return { id: first.id, time: g.time, first, customer, contract, recips, allOk: okN === recips.length, partial: okN > 0 && okN < recips.length, mode: hasMain && hasCo ? 'both' : hasMain ? 'main' : hasCo ? 'co' : 'other' };
+    return { id: first.id, time: g.time, first, customer, contract, recips, allOk: okN === recips.length, partial: okN > 0 && okN < recips.length };
   });
 }
 
@@ -1042,26 +1040,19 @@ function drawLogTab(slot) {
     if (logToDate) base = base.filter((l) => new Date(l.sentAt) <= new Date(`${logToDate}T23:59:59`));
     let items = buildLogItems(base); // mỗi phần tử = 1 LẦN GỬI (gửi cho cả 2 người vẫn là 1)
     if (logQuery.trim()) items = items.filter(logMatchesQuery(logQuery)); // tìm theo ô tìm kiếm trước, rồi mới đếm các nút lọc
-    // Số đếm từng nút lọc tính theo bộ lọc CÒN LẠI (đang chọn "Lỗi" thì số Người vay/Người cùng vay là của các lần lỗi) nên khớp với danh sách bên dưới.
+    // Số trên 3 nút trạng thái tính theo ô tìm kiếm + khoảng ngày đang chọn nên khớp danh sách bên dưới.
     // "Lỗi" = có ít nhất 1 người nhận bị lỗi; "Thành công" = mọi người nhận đều thành công.
-    const byRcv = (x) => logRcvFilter === 'all' || x.mode === logRcvFilter;
-    const byStatus = (x) => logStatusFilter === 'all' || (logStatusFilter === 'success' ? x.allOk : !x.allOk);
-    const statusCnt = { all: 0, success: 0, error: 0 }, rcvCnt = { all: 0, main: 0, co: 0, both: 0, other: 0 };
-    for (const x of items) {
-      if (byRcv(x)) { statusCnt.all++; statusCnt[x.allOk ? 'success' : 'error']++; }
-      if (byStatus(x)) { rcvCnt.all++; rcvCnt[x.mode]++; }
-    }
-    if ((logRcvFilter === 'other' || logRcvFilter === 'both') && !rcvCnt[logRcvFilter]) logRcvFilter = 'all';
-    const rows = items.filter((x) => byStatus(x) && byRcv(x));
-    const hasFilter = logStatusFilter !== 'all' || logRcvFilter !== 'all' || logFromDate || logToDate || logQuery.trim();
+    const statusCnt = { all: items.length, success: items.filter((x) => x.allOk).length };
+    statusCnt.error = items.length - statusCnt.success;
+    const rows = items.filter((x) => logStatusFilter === 'all' || (logStatusFilter === 'success' ? x.allOk : !x.allOk));
+    const hasFilter = logStatusFilter !== 'all' || logFromDate || logToDate || logQuery.trim();
     // Nút "Xem thêm" (khi không chọn "Từ ngày"): còn log cũ hơn để tải thì hiện nút, hết thì báo đã hiện toàn bộ.
     const canLoadMore = fromMs === null && logCoveredFrom !== -Infinity;
     const moreHtml = fromMs !== null ? '' : (canLoadMore
       ? '<button type="button" class="btn btn-outline btn-block mt-8" id="log-more">Xem thêm lịch sử cũ hơn</button>'
       : '<div class="text-sm text-muted" style="text-align:center;padding:12px 4px">Đã hiển thị toàn bộ lịch sử gửi tin.</div>');
-    const seg = (group, list) => `<div class="oa-rseg lg-seg" role="group" aria-label="${group.label}">${list.map(([k, label, n]) => `<button type="button" class="${group.cur === k ? 'on' : ''}" data-lg-${group.key}="${k}">${label}<em>${n}</em></button>`).join('')}</div>`;
-    const statusSeg = seg({ key: 'status', cur: logStatusFilter, label: 'Lọc theo trạng thái' }, [['all', 'Tất cả', statusCnt.all], ['success', 'Thành công', statusCnt.success], ['error', 'Lỗi', statusCnt.error]]);
-    const rcvSeg = seg({ key: 'rcv', cur: logRcvFilter, label: 'Lọc theo người nhận' }, [['all', 'Mọi người nhận', rcvCnt.all], ['main', 'Người vay', rcvCnt.main], ['co', 'Người cùng vay', rcvCnt.co], ...(rcvCnt.both ? [['both', 'Cả 2 người', rcvCnt.both]] : []), ...(rcvCnt.other ? [['other', 'Số khác', rcvCnt.other]] : [])]);
+    const statusSeg = [['all', 'Tất cả', statusCnt.all], ['success', 'Thành công', statusCnt.success], ['error', 'Lỗi', statusCnt.error]]
+      .map(([k, label, n]) => `<button type="button" class="${logStatusFilter === k ? 'on' : ''}" data-lg-status="${k}">${label}<em>${n}</em></button>`).join('');
     const successCount = rows.filter((x) => x.allOk).length;
     const errorCount = rows.length - successCount;
     // Gom theo ngày (kèm số lần gửi trong ngày) để mỗi ngày có 1 tiêu đề riêng.
@@ -1074,20 +1065,16 @@ function drawLogTab(slot) {
     }
     const dayLabel = ({ k, d }) => `${k === todayKey ? 'Hôm nay · ' : k === yesterdayKey ? 'Hôm qua · ' : ''}${formatDate(d)}`;
     slot.querySelector('#log-list').innerHTML = `
-      <div class="lg-filters">
-        <div class="lg-fl"><span class="lg-fl-t">Trạng thái</span>${statusSeg}</div>
-        <div class="lg-fl"><span class="lg-fl-t">Người nhận</span>${rcvSeg}</div>
-      </div>
+      <div class="lg-filters" role="group" aria-label="Lọc theo trạng thái">${statusSeg}</div>
       <div class="card card-pad mb-16 lg-card">
       <div class="oa-sec-h"><h2>Lịch sử gửi tin</h2></div>
       <div class="text-sm text-muted mb-8">${rows.length} lần gửi${hasFilter ? ' (đã lọc)' : ''}${fromMs === null ? (logViewFrom === null ? ' trong 1 tháng gần nhất' : (logCoveredFrom === -Infinity && viewFromMs <= 0 ? ' (toàn bộ lịch sử)' : ` từ ${formatDate(new Date(viewFromMs))} đến nay`)) : ''} · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
       ${rows.length ? days.map((g) => `<div class="oa-day lg-day"><span>${dayLabel(g)}</span><em>${g.items.length} lần</em></div>${g.items.map(logRowHtml).join('')}`).join('')
-        : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt bộ lọc trạng thái, người nhận hoặc thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
+        : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt từ khóa, bộ lọc trạng thái hoặc thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
       ${moreHtml}
       </div>
     `;
     slot.querySelectorAll('[data-lg-status]').forEach((b) => b.addEventListener('click', () => { logStatusFilter = b.dataset.lgStatus; drawList(); }));
-    slot.querySelectorAll('[data-lg-rcv]').forEach((b) => b.addEventListener('click', () => { logRcvFilter = b.dataset.lgRcv; drawList(); }));
     const moreBtn = slot.querySelector('#log-more');
     if (moreBtn) {
       moreBtn.addEventListener('click', async () => {

@@ -3241,7 +3241,7 @@ grant select, insert, update, delete on public.co_people_archive to service_role
   Gửi lại cùng 1 số (thử lại sau lỗi) vẫn là lần gửi riêng.
 - Người nhận được tra bằng cách so số đã gửi với số người vay, người cùng vay ghi trên hợp đồng đó, rồi sổ người cùng vay của khách (`logRecipient` trong `js/lib/coBorrower.js`); không khớp ai → *Số khác*.
 - Một lần gửi cho 2 người mà kết quả khác nhau: biểu tượng cảnh báo vàng, mỗi chip có ✓/✕, dòng lỗi ghi rõ người lỗi. "Lỗi" tính cả lần gửi có người nhận bị lỗi. Ô *Thành công* đầu trang đếm theo lần gửi.
-- Bộ lọc **Trạng thái** (có số đếm) + **Người nhận**: Mọi người nhận / Người vay / Người cùng vay / Cả 2 người / Số khác — số đếm tính theo bộ lọc còn lại nên luôn khớp danh sách.
+- Bộ lọc **Trạng thái** gồm 3 nút đều nhau Tất cả / Thành công / Lỗi (kèm số đếm theo ô tìm kiếm + khoảng ngày); vừa khung điện thoại. Đã bỏ lọc theo người nhận cho đỡ rối — người nhận vẫn hiện ở từng dòng và tìm được bằng ô tìm kiếm.
 
 ### 10.88. "Đã gửi Zalo ... gần nhất" lưu mãi theo hợp đồng + ô tìm kiếm ở Lịch sử gửi (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy Edge Function)
 
