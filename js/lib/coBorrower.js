@@ -103,6 +103,20 @@ export function hasOaPhone(contracts, customer) {
   return heirNamesOf(contracts, customer?.name).some((n) => !!coPhoneOf(customer?.coPeople, n));
 }
 
+/**
+ * Một lần gửi Zalo (dòng lịch sử gửi tin) đã gửi cho AI: so số điện thoại đã gửi với số người vay, rồi với người cùng vay GHI TRÊN HỢP ĐỒNG đó, rồi với cả sổ người
+ * cùng vay của khách (hợp đồng đã đổi người cùng vay vẫn tra ra được). Trả { who: 'main' | 'co' | 'other', name, phone }; 'other' = số không còn trong hồ sơ khách.
+ */
+export function logRecipient(logPhone, customer, contract) {
+  const phone = String(logPhone || '').trim();
+  if (!phone || !customer) return { who: 'other', name: '', phone };
+  if (samePhone(phone, customer.phone)) return { who: 'main', name: customer.name || '', phone };
+  const st = contract ? contractOa(contract, customer) : null;
+  if (st && st.coName && st.coPhone && samePhone(phone, st.coPhone)) return { who: 'co', name: st.coName, phone };
+  const p = (customer.coPeople || []).find((x) => x && x.phone && samePhone(phone, x.phone));
+  return p ? { who: 'co', name: p.name || '', phone } : { who: 'other', name: '', phone };
+}
+
 /** Tên gọi ngắn của 1 người (từ cuối họ tên, viết hoa chữ đầu): "TRẦN THỊ BÍCH" → "Bích". */
 export function shortPersonName(name) {
   const words = String(name || '').trim().split(/\s+/).filter(Boolean);

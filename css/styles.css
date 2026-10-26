@@ -1883,7 +1883,7 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 .lux-root, .lux-period { --lux-display: var(--font-serif); }
 h1, h2, h3,
 .app-header h1, .modal-head h3, .section-head h2, .login-card h1, .login-card h2,
-.sidebar-brand strong, .row-title, .customer-ledger-name,
+.sidebar-brand strong, .row-title, .customer-ledger-name, .lg-name,
 .stat-tile .stat-value, .lux-num, .lux-trio b, .lux-attn-row .t b, .lux-leg .t b,
 .customer-contract-metric strong, .composition-total strong, .bs-donut > div {
   font-family: var(--font-serif);
@@ -2806,3 +2806,54 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .oa-add.us-add { width: auto; padding: 0 16px 0 13px; gap: 8px; grid-auto-flow: column; place-items: center; font: 700 14px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; white-space: nowrap; }
 .oa-add.us-add .icon { width: 20px; height: 20px; }
 @media (max-width: 380px) { .oa-add.us-add span { display: none; } .oa-add.us-add { width: 48px; padding: 0; } }
+
+/* Quản lý OA → Lịch sử gửi tin: mỗi lần gửi 1 dòng — trạng thái · khách + hợp đồng · GỬI TỚI AI (người vay / người cùng vay + số) · loại tin · giờ (docs mục 10.87) */
+.lg-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0 0 12px; max-width: 520px; }
+.lg-date { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.lg-date span { font: 700 11px Inter, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #8a6a22; }
+.lg-date input { width: 100%; min-width: 0; height: 42px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: #fff; color: #0b3b33; font: 600 14px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.lg-date input:focus { outline: 2px solid #14806f; outline-offset: 1px; border-color: transparent; }
+.lg-filters { display: flex; flex-wrap: wrap; gap: 12px 26px; margin: 0 0 12px; }
+.lg-fl { min-width: 0; }
+.lg-fl-t { display: block; font: 700 11px Inter, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #8a6a22; }
+.lg-seg.oa-rseg { margin: 6px 0 0; }
+.lg-day { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.lg-day em { font: 600 11.5px Inter, sans-serif; letter-spacing: 0; text-transform: none; font-style: normal; color: var(--text-muted); }
+.lg-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; padding: 13px 2px; border-bottom: 1px solid var(--border); }
+.lg-row:last-of-type { border-bottom: 0; }
+.lg-st { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; }
+.lg-row.is-ok .lg-st { background: #e3f3ef; color: #16803c; }
+.lg-row.is-err .lg-st { background: #fdeceb; color: #b4261f; }
+.lg-row.is-part .lg-st { background: #fff4d2; color: #8a6a22; }
+.lg-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lg-who { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; min-width: 0; }
+.lg-name { font-size: 14.5px; font-weight: 700; color: #0b3b33; overflow-wrap: anywhere; }
+.lg-code { font: 700 12.5px Inter, sans-serif; color: #8a6a22; letter-spacing: .02em; }
+.lg-to { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; min-width: 0; }
+.lg-to-l { font: 700 10.5px Inter, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); }
+.lg-rc { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 6px; min-height: 26px; max-width: 100%; padding: 2px 11px 2px 5px; border-radius: 14px; font: 600 12.5px Inter, sans-serif; }
+.lg-rc b, .lg-rc em { white-space: nowrap; }
+.lg-rc i { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .75); }
+.lg-rc i svg { width: 12px; height: 12px; }
+.lg-rc b { font-weight: 700; }
+.lg-rc em { font-style: normal; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .02em; opacity: .85; }
+.lg-rc.is-main { background: #e3f3ef; color: #0b5148; }
+.lg-rc.is-co { background: #fbf1d0; color: #7a5a14; }
+.lg-rc.is-other { background: #eef3f0; color: #51615a; }
+.lg-mk { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; margin-left: 2px; }
+.lg-mk svg { width: 10px; height: 10px; stroke-width: 3; }
+.lg-mk.is-ok { background: #16803c; color: #fff; }
+.lg-mk.is-err { background: #b4261f; color: #fff; }
+.lg-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.lg-err { display: flex; align-items: flex-start; gap: 6px; padding: 6px 10px; border-radius: 10px; background: #fdeceb; color: #b4261f; font: 600 12.5px/1.4 Inter, sans-serif; }
+.lg-err svg { flex: none; margin-top: 1px; }
+.lg-err b { font-weight: 700; }
+.lg-time { font: 700 14px Inter, sans-serif; font-variant-numeric: tabular-nums; color: #0b3b33; padding-top: 7px; }
+@media (min-width: 760px) {
+  .lg-row { column-gap: 16px; align-items: center; padding: 12px 4px; }
+  .lg-main { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(320px, 2fr) 172px; align-items: center; gap: 4px 20px; }
+  .lg-meta { justify-content: flex-end; }
+  .lg-err { grid-column: 1 / -1; }
+  .lg-time { padding-top: 0; font-size: 14.5px; }
+}
+@media (max-width: 480px) { .lg-name { font-size: 14px; } .lg-rc { font-size: 12px; } }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normPersonName, samePerson, samePhone, heirOfContract, heirNamesOf, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, shortPersonName, checkCoPhone, sanitizeCoPhoneInput } from '../js/lib/coBorrower.js';
+import { normPersonName, samePerson, samePhone, heirOfContract, heirNamesOf, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, shortPersonName, checkCoPhone, sanitizeCoPhoneInput, logRecipient } from '../js/lib/coBorrower.js';
 
 test('so sánh tên: bỏ qua hoa/thường và khoảng trắng thừa, giữ dấu', () => {
   assert.equal(normPersonName('  Trần   Văn  Bình '), 'trần văn bình');
@@ -167,4 +167,22 @@ test('customerOaSummary.uniform: các hợp đồng đang bật gửi cho cùng 
   assert.equal(customerOaSummary([{}, {}], cust).uniform, true);
   assert.equal(customerOaSummary([both(), { heirName: 'TRẦN THỊ BÍCH' }], cust).uniform, false, '1 hợp đồng gửi cả 2, 1 hợp đồng chỉ người vay');
   assert.equal(customerOaSummary([both(), both({ oaEnabled: false, oaToCo: false })], cust).uniform, true, 'hợp đồng tắt không tính');
+});
+
+test('logRecipient: lần gửi đã gửi cho ai — người vay / người cùng vay (theo hợp đồng, rồi theo sổ) / số khác', () => {
+  const customer = { name: 'LÂM VĂN THU', phone: '0910000000', coPeople: [{ name: 'TRẦN THỊ BÍCH', phone: '0988777666' }, { name: 'Lê Văn Khánh', phone: '0905222333' }] };
+  const contract = { heirName: 'trần thị bích' };
+  assert.deepEqual(logRecipient('0910 000 000', customer, contract), { who: 'main', name: 'LÂM VĂN THU', phone: '0910 000 000' });
+  assert.deepEqual(logRecipient('+84910000000', customer, contract).who, 'main');
+  assert.deepEqual(logRecipient('0988777666', customer, contract), { who: 'co', name: 'trần thị bích', phone: '0988777666' });
+  // hợp đồng nay ghi người khác: vẫn tra ra người cùng vay cũ theo sổ người cùng vay của khách
+  assert.deepEqual(logRecipient('0905222333', customer, contract), { who: 'co', name: 'Lê Văn Khánh', phone: '0905222333' });
+  // số không còn trong hồ sơ; không có số; không còn khách
+  assert.deepEqual(logRecipient('0933444555', customer, contract), { who: 'other', name: '', phone: '0933444555' });
+  assert.equal(logRecipient('', customer, contract).who, 'other');
+  assert.equal(logRecipient(null, customer, contract).phone, '');
+  assert.deepEqual(logRecipient('0910000000', null, null), { who: 'other', name: '', phone: '0910000000' });
+  // không có hợp đồng (log cũ): vẫn nhận ra người vay và người trong sổ
+  assert.equal(logRecipient('0910000000', customer, null).who, 'main');
+  assert.equal(logRecipient('0988777666', customer, null).who, 'co');
 });

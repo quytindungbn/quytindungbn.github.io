@@ -3234,6 +3234,15 @@ grant select, insert, update, delete on public.co_people_archive to service_role
   (hiện "chưa thêm", và không thêm lại được — cùng quy tắc chặn thêm ở mục 10.84). Dòng trong máy chủ (`zalo_customers`) **không bị xóa** — khi khách có số điện thoại trở lại thì tự hiện lại
   (`oaListable` trong `js/state.js`). Gửi tự động trên máy chủ vốn đã bỏ qua khách không có người nhận nên không gửi nhầm.
 
+### 10.87. Lịch sử gửi tin: hiện gửi cho AI, gộp lần gửi cho 2 người thành 1 dòng (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy Edge Function)
+
+- Quản lý OA → **Lịch sử gửi**: mỗi dòng là 1 **lần gửi** — trạng thái · khách + số hợp đồng · **Gửi tới** (từng người nhận: *Người vay* / *Người cùng vay · tên* / *Số khác*, kèm số điện thoại đã gửi) · Tự động/Gửi tay + Báo lãi/Đến hạn · giờ.
+  Máy chủ vẫn ghi mỗi người nhận 1 dòng `zalo_send_log`; màn hình gộp lại (`js/lib/sendLogGroups.js`): cùng khách + hợp đồng + loại tin + cách gửi (tự động / gửi tay + người bấm), cách nhau tối đa 2 phút, gửi tới số khác nhau → 1 lần gửi.
+  Gửi lại cùng 1 số (thử lại sau lỗi) vẫn là lần gửi riêng.
+- Người nhận được tra bằng cách so số đã gửi với số người vay, người cùng vay ghi trên hợp đồng đó, rồi sổ người cùng vay của khách (`logRecipient` trong `js/lib/coBorrower.js`); không khớp ai → *Số khác*.
+- Một lần gửi cho 2 người mà kết quả khác nhau: biểu tượng cảnh báo vàng, mỗi chip có ✓/✕, dòng lỗi ghi rõ người lỗi. "Lỗi" tính cả lần gửi có người nhận bị lỗi. Ô *Thành công* đầu trang đếm theo lần gửi.
+- Bộ lọc **Trạng thái** (có số đếm) + **Người nhận**: Mọi người nhận / Người vay / Người cùng vay / Cả 2 người / Số khác — số đếm tính theo bộ lọc còn lại nên luôn khớp danh sách.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

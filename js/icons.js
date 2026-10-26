@@ -5,6 +5,7 @@ const PATHS = {
   warehouse: '<path d="M3 9 12 4l9 5v10a1 1 0 0 1-1 1h-2v-7H8v7H4a1 1 0 0 1-1-1Z"/><path d="M14 20v-4a2 2 0 0 0-4 0v4"/>',
   cart: '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2l2.3 11.6a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 2-1.6L21 7H6"/>',
   receipt: '<path d="M6 3h12v17l-2.5-1.5L13 20l-2.5-1.5L8 20l-2.5-1.5L6 20V3Z"/><path d="M9 8h6M9 12h6"/>',
+  user: '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/>',
   users: '<circle cx="9" cy="8" r="3.2"/><path d="M2.5 19.5c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"/><circle cx="17.5" cy="8.5" r="2.6"/><path d="M15.8 13.7c2.9.4 5.2 2.6 5.2 5.8"/>',
   dashboard: '<rect x="3" y="3" width="7" height="9" rx="1.6"/><rect x="14" y="3" width="7" height="5" rx="1.6"/><rect x="14" y="12" width="7" height="9" rx="1.6"/><rect x="3" y="16" width="7" height="5" rx="1.6"/>',
   chart: '<path d="M4 20V10M11 20V4M18 20v-7"/><path d="M2 20h20"/>',
