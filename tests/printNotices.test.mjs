@@ -33,12 +33,16 @@ test('hai mẫu in dùng đúng hợp đồng, địa chỉ và khoản phải t
     assert.match(html, /Hợp đồng tín dụng số 020\/26/);
     assert.match(html, /CÁN BỘ TÍN DỤNG/);
     assert.match(html, /\(Ký, đóng dấu\)/);
+    assert.match(html, /<strong>GIÁM ĐỐC<\/strong>/);
+    assert.doesNotMatch(html, /ĐẠI DIỆN QUỸ/);
+    assert.match(html, /<section class="statement[^"]*">[\s\S]*<div class="line words"><strong>Bằng chữ:[\s\S]*<\/section>/);
     assert.doesNotMatch(html, /nếu phát hành/);
   }
   assert.match(interest, /Lãi tạm tính đến ngày 12\/10\/2026/);
   assert.match(interest, /918\.000 ₫/);
   assert.match(interest, /Bằng chữ: <em>Chín trăm mười tám nghìn đồng chẵn\.<\/em>/);
   assert.doesNotMatch(interest, /Lãi tính từ ngày/);
+  assert.doesNotMatch(interest, /thông báo cho ông\/bà số tiền lãi phải thanh toán/);
   assert.match(interest, /Đề nghị ông\/bà thanh toán lãi phát sinh cho Quỹ tín dụng nhân dân Bình Nguyên trước <strong>ngày 16 tháng 10 năm 2026<\/strong>/);
   assert.match(interest, /xem xét thu hồi nợ trước hạn khi đủ điều kiện/);
   assert.doesNotMatch(interest, /chịu hoàn toàn trước pháp luật/);

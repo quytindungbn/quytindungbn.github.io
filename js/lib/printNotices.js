@@ -104,13 +104,12 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
       <div class="line"><span>Nợ gốc còn phải trả</span><i></i><strong>${h(formatVND(loanBalance))}</strong></div>
       <div class="line"><span>Lãi tạm tính đến ngày ${h(date)}</span><i></i><strong>${h(formatVND(accrued))}</strong></div>
       <div class="line total"><span>Tổng gốc và lãi tạm tính</span><i></i><strong>${h(formatVND(amount))}</strong></div>
-    </section>
-    <p class="words"><strong>Bằng chữ: <em>${h(amountInWords(amount))}.</em></strong></p>` : `
-    <p>${orgName} thông báo cho ông/bà số tiền lãi phải thanh toán cho Quỹ tín dụng là:</p>
+      <div class="line words"><strong>Bằng chữ: <em>${h(amountInWords(amount))}.</em></strong></div>
+    </section>` : `
     <section class="statement single">
       <div class="line total"><span>Lãi tạm tính đến ngày ${h(date)}</span><i></i><strong>${h(formatVND(accrued))}</strong></div>
-    </section>
-    <p class="words"><strong>Bằng chữ: <em>${h(amountInWords(accrued))}.</em></strong></p>`;
+      <div class="line words"><strong>Bằng chữ: <em>${h(amountInWords(accrued))}.</em></strong></div>
+    </section>`;
   const body = type === 'due' ? `
     <p>Yêu cầu ông/bà trước ${deadline} phải thanh toán gốc và lãi phát sinh theo hợp đồng tín dụng đã cam kết cho Quỹ tín dụng Nhân dân Bình Nguyên.</p>
     <p>Quá thời hạn nêu trên, khoản vay sẽ bị chuyển sang nợ quá hạn, đồng thời Ông/Bà phải chịu lãi suất quá hạn, các khoản phí phạt phát sinh và các biện pháp xử lý theo quy định của pháp luật và điều lệ của Quỹ. Mọi hậu quả phát sinh do việc chậm trễ thanh toán, Ông/Bà hoàn toàn chịu trách nhiệm.</p>
@@ -141,11 +140,10 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
       .contract>div{padding:0 3.5mm;border-left:.4pt solid #cfcfcf}.contract>div:first-child{padding-left:0;border-left:0}
       .contract span{display:block;font-size:8.8pt;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-bottom:.8mm}.contract strong{font-weight:700;font-size:11.5pt;white-space:nowrap}
       main{text-align:justify}p{margin:0 0 3.6mm;text-wrap:pretty}
-      .statement.single{border-top:.5pt solid var(--rule)}
       .statement{margin:0 0 3.4mm}
-      .line{display:flex;justify-content:space-between;align-items:baseline;gap:6mm;padding:2mm 0;border-bottom:.4pt solid #cfcfcf;font-size:11pt}.line i{display:none}.line strong{font-weight:700}
-      .line.total{border-bottom:1pt double var(--ink);padding:2.8mm 0 2.6mm;font-weight:700}.line.total strong{font-size:14.5pt}
-      .words{margin:0 0 5mm;font-size:10.8pt}
+      .line{display:flex;justify-content:space-between;align-items:baseline;gap:6mm;padding:1.3mm 0;line-height:1.35;border-bottom:.4pt solid #cfcfcf;font-size:11pt}.line i{display:none}.line strong{font-weight:700}
+      .line.total{padding:1.7mm 0 1.5mm;font-weight:700}.line.total strong{font-size:14pt}
+      .line.words{display:block;border-bottom:1pt double var(--ink);padding:1.5mm 0 1.7mm;font-size:10.8pt;text-align:left}
       .sign{display:grid;grid-template-columns:1fr 1fr;margin-top:8mm;text-align:center;break-inside:avoid}
       .sign strong{display:block;font:700 10.5pt ${SERIF};letter-spacing:.1em;text-transform:uppercase}.sign small{display:block;font-style:italic;font-size:10pt;color:var(--mut);margin-top:.6mm}
       .sign div{height:36mm}
@@ -157,7 +155,7 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
       <div class="to"><div class="who">Kính gửi: Ông/Bà ${name}</div><div class="addr">Địa chỉ: ${address}</div></div>
       <section class="contract">${contractRows}</section>
       <main>${amountRows}${body}</main>
-      <footer class="sign"><div><strong>CÁN BỘ TÍN DỤNG</strong><small>(Ký, ghi rõ họ tên)</small></div><div><strong>ĐẠI DIỆN QUỸ</strong><small>(Ký, đóng dấu)</small></div></footer>
+      <footer class="sign"><div><strong>CÁN BỘ TÍN DỤNG</strong><small>(Ký, ghi rõ họ tên)</small></div><div><strong>GIÁM ĐỐC</strong><small>(Ký, đóng dấu)</small></div></footer>
     </article></body></html>`;
 }
 
