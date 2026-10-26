@@ -92,7 +92,7 @@ function currentAdmin() {
 
 let ledgerDrawToken = 0;
 const LEDGER_FIRST_CHUNK = 30;
-const LEDGER_NEXT_CHUNK = 80;
+const LEDGER_NEXT_CHUNK = 30;
 
 export function render(contentEl, filterEl) {
   const admin = currentAdmin();
@@ -378,31 +378,38 @@ export function render(contentEl, filterEl) {
     const totalContracts = enriched.reduce((s, e) => s + e.contracts.length, 0);
     const totalAmount = enriched.reduce((s, e) => s + e.totalBalance, 0);
 
+    const groupHtmls = enriched.map((g) => customerLedgerGroupsHtml([g], canManageZalo));
+    const sig = `${canManageZalo}|${isStaff}|${totalContracts}|${totalAmount}|${groupHtmls.join('')}`;
+    const shownWrap = contentEl.querySelector('.customer-ledger-wrap');
+    if (shownWrap && shownWrap.__sig === sig) return;
     const drawToken = ++ledgerDrawToken;
     const progressive = window.scrollY < 40 && enriched.length > LEDGER_FIRST_CHUNK;
     const firstGroups = progressive ? enriched.slice(0, LEDGER_FIRST_CHUNK) : enriched;
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
-      ${enriched.length ? customerLedgerHtml(firstGroups, canManageZalo, { framed: true }) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
+      ${enriched.length ? customerLedgerHtml(firstGroups, canManageZalo, { framed: true, groupsHtml: groupHtmls.slice(0, firstGroups.length).join('') }) : emptyState({ iconName: 'users', title: 'Không có khách hàng phù hợp', message: isStaff ? 'Chưa có khách hàng nào ở địa bàn bạn được xem.' : 'Dùng "Nhập từ Excel" hoặc "Tạo tài khoản khách hàng" để bắt đầu.' })}
       ${enriched.length ? `<nav class="customer-page-jump" aria-label="Di chuyển trong danh sách khách hàng">
         <button type="button" data-jump="top" title="Lên đầu trang" aria-label="Lên đầu trang">↑</button>
         <button type="button" data-jump="bottom" title="Xuống cuối trang" aria-label="Xuống cuối trang">↓</button>
       </nav>` : ''}
     `;
 
+    const drawnWrap = contentEl.querySelector('.customer-ledger-wrap');
+    if (drawnWrap) drawnWrap.__sig = sig;
     const filterSumEl = filterEl.querySelector('.filter-sum');
     if (filterSumEl) filterSumEl.innerHTML = `${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong>`;
     bindCustomerLedger(contentEl, { readOnly: isStaff });
 
-    let restGroups = progressive ? enriched.slice(LEDGER_FIRST_CHUNK) : [];
+    let restGroups = progressive ? groupHtmls.slice(LEDGER_FIRST_CHUNK) : [];
     const ledgerEl = contentEl.querySelector('.customer-ledger');
-    const appendNextChunk = () => {
+    const appendNextChunk = (force) => {
       if (!restGroups.length || drawToken !== ledgerDrawToken || !ledgerEl?.isConnected) { restGroups = []; return; }
-      ledgerEl.insertAdjacentHTML('beforeend', customerLedgerGroupsHtml(restGroups.slice(0, LEDGER_NEXT_CHUNK), canManageZalo));
+      if (force !== true && navigator.scheduling && navigator.scheduling.isInputPending && navigator.scheduling.isInputPending()) { setTimeout(() => requestAnimationFrame(appendNextChunk), 80); return; }
+      ledgerEl.insertAdjacentHTML('beforeend', restGroups.slice(0, LEDGER_NEXT_CHUNK).join(''));
       restGroups = restGroups.slice(LEDGER_NEXT_CHUNK);
       if (restGroups.length) requestAnimationFrame(appendNextChunk);
     };
-    const appendAllNow = () => { while (restGroups.length) appendNextChunk(); };
+    const appendAllNow = () => { while (restGroups.length) appendNextChunk(true); };
     if (restGroups.length) requestAnimationFrame(appendNextChunk);
     contentEl.querySelectorAll('.customer-page-jump [data-jump]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -443,7 +450,7 @@ export function customerLedgerGroupsHtml(groups, canManageZalo) {
       }).join('');
 }
 
-export function customerLedgerHtml(groups, canManageZalo, { framed = false } = {}) {
+export function customerLedgerHtml(groups, canManageZalo, { framed = false, groupsHtml = null } = {}) {
   return `<div class="customer-ledger-wrap ${framed ? 'is-framed' : ''} ${canManageZalo ? 'has-oa-actions' : ''}">
     <div class="customer-ledger-heading">
       <div class="customer-ledger-columns" aria-hidden="true">
@@ -455,7 +462,7 @@ export function customerLedgerHtml(groups, canManageZalo, { framed = false } = {
       </div>
     </div>
     <div class="customer-ledger">
-      ${customerLedgerGroupsHtml(groups, canManageZalo)}
+      ${groupsHtml ?? customerLedgerGroupsHtml(groups, canManageZalo)}
     </div>
   </div>`;
 }

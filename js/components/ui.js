@@ -7,7 +7,7 @@ export function searchBoxHtml(id, placeholder, value = '') {
   return `
     <div class="search-box mb-8">
       ${icon('search', 'icon-sm')}
-      <input id="${id}" placeholder="${placeholder}" value="${value}"/>
+      <input id="${id}" placeholder="${placeholder}" value="${value}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search"/>
       <button type="button" class="search-clear-btn" id="${id}-clear" style="display:${value ? 'flex' : 'none'}" title="Xóa">${icon('x', 'icon-sm')}</button>
     </div>`;
 }

@@ -3280,6 +3280,12 @@ alter table zalo_send_log add column if not exists recipient_name text;
 - Trùng với khách khác thì máy chủ trước giờ không chặn nên không cần deploy; chỉ trường hợp trùng số người vay của chính khách mới cần deploy lại `create-account`.
 - Ô nhập số cho **người vay** (khi chưa có số) và nhập từ file Excel (bỏ qua dòng trùng số người vay) giữ nguyên như cũ.
 
+### 10.91. Khách hàng & Hợp đồng: bấm ô tìm kiếm đỡ khựng (chỉ cập nhật web)
+
+- Mỗi lần dữ liệu tải xong (mở trang, quay lại ứng dụng...) màn hình trước đây **vẽ lại cả danh sách** dù không có gì đổi — vừa vào trang là bị vẽ 2 lần, bấm ô tìm kiếm đúng lúc đó thì bàn phím phải chờ. Nay `draw()` dựng sẵn mã HTML từng khách rồi so với lần vẽ trước (`customer-ledger-wrap.__sig`): **giống hệt thì không đụng tới màn hình**; có đổi (số dư, hợp đồng, từ khóa tìm...) thì vẽ lại như cũ.
+- Danh sách dài nạp dần theo đợt nhỏ hơn (30 khách/đợt thay vì 80) và **nhường chỗ cho thao tác đang chờ** (`navigator.scheduling.isInputPending`) — chạm vào ô tìm kiếm không phải chờ hết đợt nạp.
+- Ô tìm kiếm dùng chung (`searchBoxHtml`) tắt gợi ý tự điền / tự sửa / kiểm tra chính tả và đặt phím Enter là "Tìm" cho bàn phím hiện nhanh, không gạch chân tên người.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
