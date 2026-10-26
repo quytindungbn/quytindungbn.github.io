@@ -11,7 +11,7 @@
 // ============================================================
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { describeOrgPatch } from './lib/activityLabels.js';
-import { heirNamesOf } from './lib/coBorrower.js';
+import { heirNamesOf, heirOfContract, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary } from './lib/coBorrower.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
 import { clearDeviceCaches } from './lib/kvCache.js';
@@ -839,9 +839,9 @@ function mapCustomerRow(row) {
     lockedUntil: row.locked_until ? new Date(row.locked_until).getTime() : null,
     lastLoginAt: row.last_login_at || null,
     isOnline: !!row.is_online,
-    // Người cùng vay (tên lấy từ hợp đồng, lưu theo khách) + số điện thoại + chọn nhận Zalo OA; coPrevName = tên người cũ khi vừa bị đổi.
-    coName: row.co_name || '', coPhone: row.co_phone || '', coPrevName: row.co_prev_name || '',
-    zaloToMain: row.zalo_to_main !== false, zaloToCo: !!row.zalo_to_co,
+    // Sổ người cùng vay của khách (số điện thoại theo tên — nhập 1 lần dùng cho mọi hợp đồng có tên người đó); coPrevName = tên người cũ khi vừa bị đổi.
+    coPeople: Array.isArray(row.co_people) ? row.co_people.map((x) => ({ name: String(x?.name || ''), phone: String(x?.phone || '') })).filter((x) => x.name) : [],
+    coPrevName: row.co_prev_name || '',
     createdAt: row.created_at,
   };
 }
@@ -865,6 +865,8 @@ function mapContractRow(row) {
     loanPurpose: row.loan_purpose || null,
     // Người thừa kế/đồng vay (cột D file số 1) — hiện cạnh tên khách ở chi tiết hợp đồng.
     heirName: row.heir_name || null,
+    // Gửi Zalo OA theo từng hợp đồng (docs mục 10.83): công tắc bật/tắt + tick khách vay / người cùng vay; oaCoKey = tên người mà tick người cùng vay đang áp dụng.
+    oaEnabled: row.oa_enabled !== false, oaToMain: row.oa_to_main !== false, oaToCo: !!row.oa_to_co, oaCoKey: row.oa_co_key || null,
   };
 }
 
@@ -900,74 +902,122 @@ export async function adminResetCustomerPassword(customerId, customPassword) {
   return res.tempPassword;
 }
 
-/**
- * Người cùng vay của 1 khách: tên đã lưu theo khách, nếu chưa lưu thì lấy từ cột người cùng vay của các hợp đồng còn dư nợ.
- * toCo chỉ có nghĩa khi đã có số điện thoại; luôn có ít nhất 1 người nhận Zalo OA (mặc định chỉ khách vay).
- */
-export function getCoBorrower(customerId) {
-  const c = getCustomer(customerId);
-  if (!c) return null;
-  const heirs = heirNamesOf(listContractsByCustomer(customerId).filter((ct) => effectiveContractStatus(ct) !== 'da_tat_toan'), c.name);
-  const name = c.coName || heirs[0] || '';
-  const phone = name ? (c.coPhone || '') : '';
-  const toCo = !!name && !!phone && !!c.zaloToCo;
-  return { name, phone, toCo, toMain: toCo ? c.zaloToMain !== false : true, prevName: c.coPrevName || '' };
+// ------------------------------------------------------------
+// Người cùng vay & gửi Zalo OA THEO TỪNG HỢP ĐỒNG (docs mục 10.83). Tên người cùng vay lấy từ từng hợp đồng còn hiệu lực; số điện thoại lưu
+// trong sổ người cùng vay của khách; mỗi hợp đồng có công tắc bật/tắt + tick khách vay / người cùng vay (CHỈ người có tên trên hợp đồng đó).
+// Quy tắc "ai nhận tin hợp đồng nào" nằm ở lib/coBorrower.js (contractOa) — máy chủ có bản sao giống hệt và tự kiểm tra lại khi gửi.
+// ------------------------------------------------------------
+function activeContractsOf(customerId) {
+  return listContractsByCustomer(customerId).filter((ct) => effectiveContractStatus(ct) !== 'da_tat_toan');
 }
-/**
- * Lưu số điện thoại và/hoặc lựa chọn nhận Zalo OA ({ phone?, toMain?, toCo? }) của người cùng vay — ghi lên máy chủ
- * (Edge Function create-account, type 'save-co-borrower'; cần quyền Quản lý OA hoặc Quản lý User) rồi cập nhật bộ nhớ.
- */
-export async function saveCoBorrower(customerId, patch, { optimistic = false } = {}) {
+/** Những người cùng vay của 1 khách: mỗi người 1 dòng — tên (như ghi trên hợp đồng), số đã lưu, và các hợp đồng còn hiệu lực có tên người đó. */
+export function listCoPeople(customerId) {
   const c = getCustomer(customerId);
-  const snap = c ? { zaloToMain: c.zaloToMain, zaloToCo: c.zaloToCo } : null;
-  // optimistic: tick/bỏ tick người nhận cập nhật bộ nhớ NGAY (phần chạy trước await đầu tiên), màn hình vẽ lại liền không phải chờ máy chủ;
-  // các lần lưu nối đuôi nhau theo đúng thứ tự bấm; lỗi thì chỉ trả lại đúng phần mình đã đổi.
-  if (optimistic && c) {
-    if (patch.toMain !== undefined) c.zaloToMain = !!patch.toMain;
-    if (patch.toCo !== undefined) c.zaloToCo = !!patch.toCo;
-    notify();
-  }
+  if (!c) return [];
+  const cts = activeContractsOf(customerId);
+  return heirNamesOf(cts, c.name).map((name) => ({
+    name, phone: coPhoneOf(c.coPeople, name),
+    contracts: cts.filter((ct) => samePerson(heirOfContract(ct, c.name), name)),
+  }));
+}
+/** Trạng thái gửi Zalo OA có hiệu lực của 1 hợp đồng (xem contractOa ở lib/coBorrower.js). */
+export function getContractOa(contractId) {
+  const ct = getContract(contractId);
+  const c = ct && getCustomer(ct.customerId);
+  return ct && c ? contractOa(ct, c) : null;
+}
+/** Tóm tắt gửi Zalo OA của 1 khách qua các hợp đồng còn hiệu lực (xem customerOaSummary ở lib/coBorrower.js). */
+export function customerOaOverview(customerId) {
+  const c = getCustomer(customerId);
+  return c ? customerOaSummary(activeContractsOf(customerId), c) : null;
+}
+/** Dòng log gửi Zalo có được hiện không: hợp đồng đã TẮT gửi OA thì không hiện lịch sử của nó. */
+export function isZaloLogVisible(log) {
+  const ct = getContract(log?.contractId);
+  return !(ct && ct.oaEnabled === false);
+}
+/** Khách vừa bị đổi người cùng vay (hợp đồng mới ghi người khác): tên cũ + các tên đang có trên hợp đồng, để cảnh báo trước khi thêm lại vào OA. */
+export function coChangeInfo(customerId) {
+  const c = getCustomer(customerId);
+  if (!c || !c.coPrevName) return null;
+  return { prevName: c.coPrevName, names: heirNamesOf(activeContractsOf(customerId), c.name) };
+}
+
+const coSaveQueue = new Map(); // customerId → { tail, pending }: hàng đợi lưu cấu hình gửi OA / số người cùng vay theo từng khách
+function coSaveError(res) {
+  const reason = String(res.reason || '');
+  return new Error(/Thiếu hoặc sai "type"/.test(reason) ? 'Máy chủ chưa cập nhật để lưu cấu hình gửi OA — cần deploy lại Edge Function create-account (docs mục 10.83).' : (reason || 'Không lưu được, thử lại sau.'));
+}
+/** Chạy `job` nối đuôi các lần lưu trước của cùng khách (đúng thứ tự bấm); trả { result, last } với last = không còn lần lưu nào chờ phía sau. */
+async function runCoSave(customerId, job) {
   const q = coSaveQueue.get(customerId) || { tail: Promise.resolve(), pending: 0 };
   coSaveQueue.set(customerId, q);
   q.pending++;
-  const run = q.tail.catch(() => {}).then(async () => {
-    const session = getSession();
-    const res = await callCreateAccountFunction(session?.sbToken, { type: 'save-co-borrower', customerId, ...patch });
-    if (!res.ok) {
-      const reason = String(res.reason || '');
-      throw new Error(/Thiếu hoặc sai "type"/.test(reason) ? 'Máy chủ chưa cập nhật để lưu người cùng vay — cần deploy lại Edge Function create-account (docs mục 10.82).' : (reason || 'Không lưu được người cùng vay.'));
-    }
-    return res;
-  });
+  const run = q.tail.catch(() => {}).then(job);
   q.tail = run;
+  try { const result = await run; return { result, last: q.pending === 1 }; }
+  finally { q.pending--; if (!q.pending) coSaveQueue.delete(customerId); }
+}
+
+/**
+ * Đổi cấu hình gửi Zalo OA của 1 hợp đồng: { enabled?, toMain?, toCo? } (Edge Function create-account, type 'save-contract-oa';
+ * cần quyền Quản lý OA). Mặc định cập nhật bộ nhớ NGAY (màn hình vẽ lại liền, không chờ máy chủ) rồi lưu ngầm; lỗi thì chỉ trả lại đúng phần mình đã đổi.
+ */
+export async function setContractOa(contractId, patch, { optimistic = true } = {}) {
+  const ct = getContract(contractId);
+  if (!ct) throw new Error('Không tìm thấy hợp đồng.');
+  const c = getCustomer(ct.customerId);
+  const snap = { oaEnabled: ct.oaEnabled, oaToMain: ct.oaToMain, oaToCo: ct.oaToCo, oaCoKey: ct.oaCoKey };
+  if (optimistic) {
+    if (patch.enabled !== undefined) ct.oaEnabled = !!patch.enabled;
+    if (patch.toMain !== undefined) ct.oaToMain = !!patch.toMain;
+    if (patch.toCo !== undefined) { ct.oaToCo = !!patch.toCo; ct.oaCoKey = patch.toCo ? normPersonName(heirOfContract(ct, c?.name)) : null; }
+    notify();
+  }
   try {
-    const res = await run;
-    // Còn lần lưu khác đang chờ phía sau thì giữ trạng thái tạm của nó, không ghi đè bằng kết quả cũ này.
-    if (c && res.co && q.pending === 1) {
-      c.coName = res.co.name || '';
-      c.coPhone = res.co.phone || '';
-      c.coPrevName = res.co.prevName || '';
-      c.zaloToMain = res.co.toMain !== false;
-      c.zaloToCo = !!res.co.toCo;
+    const { result, last } = await runCoSave(ct.customerId, async () => {
+      const res = await callCreateAccountFunction(getSession()?.sbToken, { type: 'save-contract-oa', contractId, ...patch });
+      if (!res.ok) throw coSaveError(res);
+      return res;
+    });
+    if (last && result.contract) {
+      ct.oaEnabled = result.contract.oaEnabled !== false; ct.oaToMain = result.contract.oaToMain !== false;
+      ct.oaToCo = !!result.contract.oaToCo; ct.oaCoKey = result.contract.oaCoKey || null;
     }
     notify();
   } catch (err) {
-    if (optimistic && c && snap) {
-      if (patch.toMain !== undefined) c.zaloToMain = snap.zaloToMain;
-      if (patch.toCo !== undefined) c.zaloToCo = snap.zaloToCo;
+    if (optimistic) {
+      if (patch.enabled !== undefined) ct.oaEnabled = snap.oaEnabled;
+      if (patch.toMain !== undefined) ct.oaToMain = snap.oaToMain;
+      if (patch.toCo !== undefined) { ct.oaToCo = snap.oaToCo; ct.oaCoKey = snap.oaCoKey; }
       notify();
     }
     throw err;
-  } finally {
-    q.pending--;
-    if (!q.pending) coSaveQueue.delete(customerId);
   }
 }
-const coSaveQueue = new Map(); // customerId → { tail, pending }: hàng đợi lưu người cùng vay theo từng khách
+
+/**
+ * Lưu (hoặc xóa, khi để trống) số điện thoại của 1 người cùng vay trong sổ người cùng vay của khách (Edge Function create-account,
+ * type 'save-co-phone'; cần quyền Quản lý OA hoặc Quản lý User). Xóa số thì tick gửi OA của người đó ở mọi hợp đồng tự bỏ.
+ */
+export async function saveCoPhone(customerId, name, phone) {
+  const c = getCustomer(customerId);
+  const { result } = await runCoSave(customerId, async () => {
+    const res = await callCreateAccountFunction(getSession()?.sbToken, { type: 'save-co-phone', customerId, name, phone });
+    if (!res.ok) throw coSaveError(res);
+    return res;
+  });
+  if (c && Array.isArray(result.people)) c.coPeople = result.people.map((x) => ({ name: String(x?.name || ''), phone: String(x?.phone || '') })).filter((x) => x.name);
+  for (const r of result.contracts || []) {
+    const ct = getContract(r.id);
+    if (ct) { ct.oaToMain = r.oaToMain !== false; ct.oaToCo = !!r.oaToCo; ct.oaCoKey = r.oaCoKey || null; }
+  }
+  notify();
+}
 /** Đã đọc cảnh báo "người cùng vay đã đổi" (máy chủ tự xóa dấu này khi khách được thêm lại vào OA) — xóa dấu trong bộ nhớ. */
 export function dismissCoBorrowerChange(customerId) {
   const c = getCustomer(customerId);
-  if (c && c.coPrevName) { c.coPrevName = ''; c.zaloToMain = true; c.zaloToCo = false; notify(); } // máy chủ cũng đặt lại: thêm lại vào OA thì mặc định gửi theo khách vay
+  if (c && c.coPrevName) { c.coPrevName = ''; notify(); }
 }
 
 /**
@@ -2641,14 +2691,14 @@ export async function loadCallsForCustomer(customerId) {
   } catch { return false; }
 }
 /** Ghi nhận ngay 1 lần bấm Gọi (hiện luôn trong lịch sử, không chờ mạng), lưu lên máy chủ ngầm — không chặn việc mở ứng dụng gọi điện. */
-export function logCall(customerId, phone, callee = 'main') {
+export function logCall(customerId, phone, callee = 'main', coName = '') {
   const session = getSession();
   if (!session || session.role !== 'admin') return null;
   const admin = getAdmin(session.id);
   const row = { id: genId('call'), customer_id: customerId, admin_id: session.id, admin_name: (admin && admin.name) || 'Quản trị viên', phone: String(phone || ''), ...(callee === 'co' ? { callee: 'co' } : {}) };
   const entry = mapCallLogRow({ ...row, created_at: new Date().toISOString() });
   (state.callLogs = state.callLogs || []).push(entry);
-  logAdminAction('call-customer', { customerId, ...(callee === 'co' ? { callee: 'co' } : {}) }); // ghi cả vào Nhật ký sử dụng (server tự tra tên + số điện thoại khách)
+  logAdminAction('call-customer', { customerId, ...(callee === 'co' ? { callee: 'co', coName: String(coName || '') } : {}) }); // ghi cả vào Nhật ký sử dụng (server tự tra tên + số điện thoại khách)
   try { getSupabaseClient(session.sbToken).from('call_log').insert(row).then(() => {}, () => {}); } catch { /* chưa lưu được thì thôi — lần gọi vẫn hiện trong phiên này */ }
   return entry;
 }

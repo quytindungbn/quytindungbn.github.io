@@ -695,49 +695,100 @@ async function sendZaloTemplate(opts: {
   return { ok: status === 'success', noAccount };
 }
 
-// ---------- Người nhận Zalo OA: khách vay và/hoặc người cùng vay (xem docs mục 10.82; cùng logic với create-account) ----------
-type ZaloCustomer = { name: string; phone: string; co_phone?: string | null; zalo_to_main?: boolean | null; zalo_to_co?: boolean | null };
+// ---------- Người nhận Zalo OA THEO TỪNG HỢP ĐỒNG (xem docs mục 10.83; cùng logic với create-account) ----------
+type ZaloCustomer = { name: string; phone: string; co_people?: unknown };
 type ZaloRecipient = { who: 'main' | 'co'; phone: string };
-/** Những số sẽ nhận tin: mặc định chỉ số chính; luôn còn ít nhất 1 người; người cùng vay chỉ khi đã có số + được chọn. */
-function zaloRecipientsOf(c: ZaloCustomer | undefined): ZaloRecipient[] {
-  const main = String(c?.phone ?? '').trim();
-  const co = String(c?.co_phone ?? '').trim();
-  const toCo = c?.zalo_to_co === true && !!co;
-  const toMain = c?.zalo_to_main !== false || !toCo;
-  const out: ZaloRecipient[] = [];
-  if (toMain && main) out.push({ who: 'main', phone: main });
-  if (toCo) out.push({ who: 'co', phone: co });
-  return out;
+function normPersonName(name: unknown): string {
+  return String(name ?? '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+function samePerson(a: unknown, b: unknown): boolean {
+  const x = normPersonName(a);
+  return !!x && x === normPersonName(b);
+}
+function samePhone(a: unknown, b: unknown): boolean {
+  const n = (v: unknown) => String(v ?? '').replace(/[^\d]/g, '').replace(/^84/, '0');
+  return !!n(a) && n(a) === n(b);
+}
+/** Họ tên người cùng vay ghi trên 1 hợp đồng ('' nếu không ghi, hoặc ghi trùng chính khách vay). */
+function heirOfRow(ct: any, customerName: unknown): string {
+  const n = String(ct?.heir_name ?? '').replace(/\s+/g, ' ').trim();
+  return !n || samePerson(n, customerName) ? '' : n;
+}
+/** Số điện thoại đã lưu của 1 người trong sổ người cùng vay (customers.co_people = [{ name, phone }]); không phân biệt hoa/thường; chưa có thì ''. */
+function coPhoneOfPeople(people: unknown, name: unknown): string {
+  const p = (Array.isArray(people) ? people : []).find((x: any) => samePerson(x?.name, name));
+  return p ? String((p as any).phone ?? '').trim() : '';
 }
 /**
- * Gửi tin mẫu cho tất cả người nhận đã chọn của 1 khách (1 hoặc 2 số), mỗi số ghi 1 dòng log. Trả về true nếu ÍT NHẤT 1 số gửi được.
- * Người nào báo "chưa đăng ký Zalo" (-118) thì TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA); khi không còn người
- * nào nhận được Zalo (số duy nhất lỗi, cả 2 người cùng lỗi, hoặc người cuối cùng còn lại lỗi) thì tự bỏ khách khỏi OA.
+ * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG: hợp đồng tắt gửi OA (oa_enabled = false) → không ai; khách vay mặc định có (luôn còn ít nhất 1 người nhận);
+ * người cùng vay CHỈ khi có tên TRÊN HỢP ĐỒNG NÀY, đã tick đúng người đó (oa_co_key khớp), đã có số và số không trùng số khách vay.
+ */
+function contractRecipients(ct: any, customer: ZaloCustomer | undefined): ZaloRecipient[] {
+  if (ct?.oa_enabled === false) return [];
+  const main = String(customer?.phone ?? '').trim();
+  const coName = heirOfRow(ct, customer?.name);
+  const coPhone = coName ? coPhoneOfPeople(customer?.co_people, coName) : '';
+  const toCo = ct?.oa_to_co === true && !!coName && samePerson(ct?.oa_co_key, coName) && !!coPhone && !samePhone(coPhone, main);
+  const toMain = ct?.oa_to_main !== false || !toCo;
+  const out: ZaloRecipient[] = [];
+  if (toMain && main) out.push({ who: 'main', phone: main });
+  if (toCo) out.push({ who: 'co', phone: coPhone });
+  return out;
+}
+/** Kế hoạch tự bỏ tick khi người nhận báo "chưa đăng ký Zalo" — bản sao của planNoZaloUntick ở create-account (xem giải thích ở đó). */
+function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWho: Array<'main' | 'co'>): { patches: Map<string, Record<string, unknown>>; hasLeft: boolean } {
+  const coPerson = heirOfRow(cts.find((c) => c.id === contractId), cust?.name);
+  const patches = new Map<string, Record<string, unknown>>();
+  for (const ct of cts) {
+    const p: Record<string, unknown> = {};
+    if (noAccountWho.includes('main')) p.oa_to_main = false;
+    if (noAccountWho.includes('co') && coPerson && samePerson(heirOfRow(ct, cust?.name), coPerson)) { p.oa_to_co = false; p.oa_co_key = null; }
+    if (Object.keys(p).length) patches.set(ct.id, p);
+  }
+  const hasLeft = cts.some((ct) => {
+    const a = { ...ct, ...(patches.get(ct.id) || {}) };
+    if (a.oa_enabled === false) return false;
+    const coName = heirOfRow(a, cust?.name);
+    const coPhone = coName ? coPhoneOfPeople(cust?.co_people, coName) : '';
+    const toCo = a.oa_to_co === true && !!coName && samePerson(a.oa_co_key, coName) && !!coPhone && !samePhone(coPhone, cust?.phone);
+    return toCo || (a.oa_to_main !== false && !!String(cust?.phone ?? '').trim());
+  });
+  return { patches, hasLeft };
+}
+/**
+ * Gửi tin mẫu cho tất cả người nhận của 1 HỢP ĐỒNG (1 hoặc 2 số), mỗi số ghi 1 dòng log. Trả về true nếu ÍT NHẤT 1 số gửi được.
+ * Người nào báo "chưa đăng ký Zalo" (-118) thì TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA); khi không còn hợp đồng nào của
+ * khách có người nhận được Zalo thì tự bỏ khách khỏi OA. `contractsOfCustomer` là các hợp đồng đã tải của khách (cập nhật luôn trong bộ nhớ để
+ * các hợp đồng sau của cùng khách trong lượt chạy này không gửi lại vào số vừa bị bỏ tick).
  */
 async function sendZaloToCustomer(opts: {
-  accessToken: string; customer: ZaloCustomer; templateId: string; templateData: Record<string, string>;
+  accessToken: string; customer: ZaloCustomer; contract: any; contractsOfCustomer: any[]; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string;
 }): Promise<boolean> {
-  const recipients = zaloRecipientsOf(opts.customer);
+  const recipients = contractRecipients(opts.contract, opts.customer);
   if (!recipients.length) return false;
   const results = await Promise.all(recipients.map((r) => sendZaloTemplate({
     accessToken: opts.accessToken, phone: r.phone, templateId: opts.templateId, templateData: opts.templateData,
     contractId: opts.contractId, customerId: opts.customerId, kind: opts.kind, deferNoAccount: true,
   })));
-  const noAcc = recipients.filter((_, i) => results[i].noAccount);
-  if (noAcc.length) {
+  const noWho = recipients.filter((_, i) => results[i].noAccount).map((r) => r.who);
+  if (noWho.length) {
     try {
-      const remaining = recipients.filter((r) => !noAcc.some((x) => x.who === r.who));
-      if (!remaining.length) {
-        // Không còn người nào nhận được Zalo → bỏ khách khỏi Danh sách OA + gửi tự động, đặt lại mặc định gửi khách vay.
+      const cts = opts.contractsOfCustomer.filter((c) => Number(c.balance) > 0);
+      const { patches, hasLeft } = planNoZaloUntick(opts.customer, cts, opts.contractId, noWho);
+      if (!hasLeft) {
+        // Không còn hợp đồng nào có người nhận được Zalo → bỏ khách khỏi Danh sách OA + gửi tự động, đặt lại mặc định gửi khách vay.
         noZaloCustomerIds.add(opts.customerId);
         await removeCustomerFromZaloLists(opts.customerId);
-        await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', opts.customerId);
+        const reset = { oa_to_main: true, oa_to_co: false, oa_co_key: null };
+        await admin.from('contracts').update(reset).eq('customer_id', opts.customerId);
+        for (const ct of opts.contractsOfCustomer) Object.assign(ct, reset);
       } else {
-        const patch: Record<string, unknown> = {};
-        if (noAcc.some((r) => r.who === 'co')) patch.zalo_to_co = false;
-        if (noAcc.some((r) => r.who === 'main')) patch.zalo_to_main = false;
-        await admin.from('customers').update(patch).eq('id', opts.customerId);
+        for (const [id, p] of patches) {
+          await admin.from('contracts').update(p).eq('id', id);
+          const ct = opts.contractsOfCustomer.find((c) => c.id === id);
+          if (ct) Object.assign(ct, p);
+        }
       }
     } catch (e) {
       console.error('Lỗi tự bỏ tick gửi OA người không có Zalo:', e);
@@ -856,13 +907,16 @@ Deno.serve(async (req) => {
   if (ctErr) return new Response(JSON.stringify({ ok: false, reason: ctErr.message }), { status: 500 });
 
   // Cần thêm tên + SĐT khách hàng để gửi Zalo (bảng contracts không có sẵn 2 cột này).
-  // Lấy cả số người cùng vay + lựa chọn người nhận Zalo OA; chưa chạy SQL (thiếu cột) thì tự lùi về chỉ tên + SĐT như cũ.
-  let customersRes = await admin.from('customers').select('id, name, phone, co_phone, zalo_to_main, zalo_to_co');
+  // Lấy cả sổ người cùng vay (số điện thoại theo tên); chưa chạy SQL (thiếu cột) thì tự lùi về chỉ tên + SĐT như cũ.
+  let customersRes = await admin.from('customers').select('id, name, phone, co_people');
   if (customersRes.error) customersRes = await admin.from('customers').select('id, name, phone');
   const customersData = customersRes.data;
   const customerMap = new Map<string, ZaloCustomer>(
-    (customersData || []).map((c: any) => [c.id, { name: c.name, phone: c.phone, co_phone: c.co_phone ?? null, zalo_to_main: c.zalo_to_main ?? null, zalo_to_co: c.zalo_to_co ?? null }])
+    (customersData || []).map((c: any) => [c.id, { name: c.name, phone: c.phone, co_people: c.co_people ?? null }])
   );
+  // Các hợp đồng của từng khách (để cập nhật cấu hình gửi OA ngay trong bộ nhớ khi có người báo chưa đăng ký Zalo).
+  const contractsByCustomer = new Map<string, any[]>();
+  for (const c of contracts || []) contractsByCustomer.set((c as any).customer_id, [...(contractsByCustomer.get((c as any).customer_id) || []), c]);
 
   // Chỉ tốn 1 lần làm mới token/lượt chạy (không phải mỗi hợp đồng 1 lần) —
   // và CHỈ làm khi đã cấu hình ÍT NHẤT 1 trong 2 mẫu (mục Quản lý OA > Cấu
@@ -947,9 +1001,9 @@ Deno.serve(async (req) => {
         const picked = pickZaloTemplate(ct, now, orgRow);
         if (picked) {
           const customer = customerMap.get(ct.customer_id);
-          if (customer && zaloRecipientsOf(customer).length && !noZaloCustomerIds.has(ct.customer_id) && await shouldSendAutoZalo(ct.id, 'zalo_lai_hang_thang')) {
+          if (customer && contractRecipients(ct, customer).length && !noZaloCustomerIds.has(ct.customer_id) && await shouldSendAutoZalo(ct.id, 'zalo_lai_hang_thang')) {
             const zaloOk = await sendZaloToCustomer({
-              accessToken: zaloAccessToken, customer, templateId: picked.templateId,
+              accessToken: zaloAccessToken, customer, contract: ct, contractsOfCustomer: contractsByCustomer.get(ct.customer_id) || [ct], templateId: picked.templateId,
               templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
               contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_auto',
             });
@@ -975,9 +1029,9 @@ Deno.serve(async (req) => {
         const picked = pickZaloTemplate(ct, now, orgRow);
         if (picked) {
           const customer = customerMap.get(ct.customer_id);
-          if (customer && zaloRecipientsOf(customer).length && !noZaloCustomerIds.has(ct.customer_id) && await shouldSendAutoZalo(ct.id, 'zalo_lai_ngay_cu_the')) {
+          if (customer && contractRecipients(ct, customer).length && !noZaloCustomerIds.has(ct.customer_id) && await shouldSendAutoZalo(ct.id, 'zalo_lai_ngay_cu_the')) {
             const zaloOk = await sendZaloToCustomer({
-              accessToken: zaloAccessToken, customer, templateId: picked.templateId,
+              accessToken: zaloAccessToken, customer, contract: ct, contractsOfCustomer: contractsByCustomer.get(ct.customer_id) || [ct], templateId: picked.templateId,
               templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
               contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_custom_day',
             });

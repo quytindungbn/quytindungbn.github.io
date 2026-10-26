@@ -2665,6 +2665,77 @@ a.cd-callbtn:hover { filter: brightness(1.06); }
 .cd-pp-warn b { font-weight: 700; color: #4f3b09; }
 .cd-callee { flex: none; display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 2px 8px 2px 6px; border: 1px solid var(--cd-gold2); border-radius: 999px; background: #fffbef; color: #8a6a22; font: 700 10.5px/1.4 var(--lux-sans, inherit); font-style: normal; white-space: nowrap; }
 .cd-callee svg { width: 12px; height: 12px; }
+/* Gửi Zalo OA theo từng hợp đồng (docs mục 10.83): người cùng vay chưa có số = hàng vàng nhạt; mỗi hợp đồng 1 hàng có công tắc + tick từng người. */
+.cd-pp.is-need { background: #fffdf6; border-color: #ecd9a0; }
+.cd-pp + .cd-pp { margin-top: 8px; }
+.cdo-sec { display: flex; align-items: center; gap: 8px; margin: 16px 0 9px; font: 700 10.5px/1 var(--lux-sans, inherit); letter-spacing: .14em; text-transform: uppercase; color: var(--cd-gold); }
+.cdo-sec:first-child { margin-top: 0; }
+.cdo-sec svg { width: 14px; height: 14px; }
+.cdo-sec::after { content: ""; flex: 1; height: 1px; background: var(--cd-line); }
+.cdo-rows { display: flex; flex-direction: column; gap: 8px; }
+.cdo-r { position: relative; display: grid; grid-template-columns: auto 84px minmax(0, 1fr); align-items: center; gap: 9px; padding: 10px 12px 10px 16px; border: 1px solid #86cfae; border-radius: 15px; background: linear-gradient(180deg, #fff, #fbfefc); overflow: hidden; }
+.cdo-r::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #0c8a5c; }
+.cdo-r.is-off { border-color: var(--cd-line); background: #f6f8f7; }
+.cdo-r.is-off::before { background: #bccbc4; }
+.cdo-code { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cdo-code b { font: 800 15px/1.1 var(--lux-sans, inherit); color: var(--cd-ink); font-variant-numeric: tabular-nums; }
+.cdo-code span { font: 500 11.5px/1.2 var(--lux-sans, inherit); color: var(--cd-mut); white-space: nowrap; }
+.cdo-r.is-off .cdo-code b { color: #7d8b85; }
+.cdo-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
+.cdo-off { font: 700 12px/1 var(--lux-sans, inherit); color: #7d8b85; margin-right: 4px; }
+.cdo-sw { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+.cdo-sw input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.cdo-sw i { position: relative; width: 42px; height: 25px; border-radius: 999px; background: #cdd8d2; flex: none; transition: background .15s; }
+.cdo-sw i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 19px; height: 19px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .28); transition: left .15s; }
+.cdo-sw input:checked + i { background: #0c8a5c; }
+.cdo-sw input:checked + i::after { left: 20px; }
+.cdo-sw input:focus-visible + i { outline: 2px solid var(--cd-em); outline-offset: 2px; }
+.cdo-ck { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 4px 13px 4px 6px; border: 1px solid #bfe3d2; border-radius: 999px; background: #eef8f3; color: #0b5148; font: 700 12.5px/1 var(--lux-sans, inherit); cursor: pointer; }
+.cdo-ck input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.cdo-ck i { display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 6px; background: #0c8a5c; color: #fff; font-style: normal; flex: none; }
+.cdo-ck i svg { width: 12px; height: 12px; stroke-width: 3.6; }
+.cdo-ck.co { border-color: #e6cf8a; background: #fff8e3; color: #7a5a14; }
+.cdo-ck.co i { background: #c49a2c; }
+.cdo-ck.off { border-color: #d3dcd7; background: #fff; color: #6c7a74; }
+.cdo-ck.off i { background: #fff; border: 1.5px solid #bccbc4; color: transparent; }
+.cdo-ck:has(input:focus-visible) { outline: 2px solid var(--cd-em); outline-offset: 2px; }
+.cdo-ck.lock { font-family: inherit; border-style: dashed; border-color: #d9c68a; background: #fffdf6; color: #8a6a22; }
+.cdo-ck.lock i { background: #efe3b6; color: #8a6a22; border-radius: 50%; }
+.cdo-ck.lock i svg { width: 11px; height: 11px; stroke-width: 2.6; }
+button.cdo-ck.lock:hover { background: #fbf1d0; }
+span.cdo-ck.lock { cursor: not-allowed; }
+.cdo-r.is-off .cdo-ck { opacity: .55; cursor: not-allowed; }
+.cdo-note { display: flex; gap: 7px; margin: 11px 0 0; padding: 10px 12px; border-radius: 12px; background: #f4f8f6; font: 500 12px/1.5 var(--lux-sans, inherit); color: #51615a; }
+.cdo-note svg { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--cd-gold); }
+.cdo-note b { color: var(--cd-ink); }
+@media (max-width: 560px) {
+  .cdo-r { grid-template-columns: auto minmax(0, 1fr); row-gap: 9px; }
+  .cdo-pills { grid-column: 1 / -1; }
+}
+/* khung "Gửi Zalo OA tới" trong chi tiết hợp đồng */
+.cdo-box { display: flex; flex-direction: column; gap: 9px; }
+.cdo-box-h { font-size: 11px; line-height: 1.3; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a6a22; }
+.cdo-box-pills { display: flex; flex-wrap: wrap; gap: 7px; }
+.cdo-box-off { padding: 10px 12px; border-radius: 12px; background: #f1f4f2; color: #51615a; font-size: 12.5px; line-height: 1.45; font-weight: 600; }
+/* Quản lý OA — danh sách: "Gửi tới" theo từng hợp đồng, người cùng vay viết trên 1 dòng */
+.oa-inline { flex-wrap: wrap; }
+.oa-hc { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 11px; border: 1px solid #bfe3d2; border-radius: 999px; background: #eef8f3; color: #0b5148; font: 600 12px/1.2 Inter, sans-serif; white-space: nowrap; }
+.oa-hc b { font-weight: 800; color: #14352d; font-variant-numeric: tabular-nums; }
+.oa-hc.co { border-color: #e6cf8a; background: #fff8e3; color: #7a5a14; }
+.oa-hc.off { border-style: dashed; border-color: #d3dcd7; background: #fff; color: #7d8b85; }
+.oa-hc.warn { border-style: dashed; border-color: #d9c68a; background: #fffdf6; color: #8a6a22; }
+.oa-line-rc { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 3px 13px 3px 5px; border: 1px solid #e6cf8a; border-radius: 999px; background: #fff8e3; color: #7a5a14; font: 600 12.5px/1.2 Inter, sans-serif; white-space: nowrap; }
+.oa-line-rc i { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 50%; background: #c49a2c; color: #fff; font-style: normal; }
+.oa-line-rc i svg { width: 11px; height: 11px; stroke-width: 3.4; }
+.oa-line-rc b { font-weight: 800; }
+.oa-line-rc em { font-style: normal; font-variant-numeric: tabular-nums; color: #14352d; }
+.oa-line-rc.warn { border-style: dashed; border-color: #d9c68a; background: #fffdf6; }
+.oa-line-rc.warn i { background: #d9c68a; }
+@media (max-width: 700px) {
+  .oa-line-rc { flex: 1 1 100%; white-space: normal; align-items: flex-start; border-radius: 16px; padding: 5px 12px 5px 6px; }
+  .oa-line-rc > span { display: block; line-height: 1.4; }
+  .oa-hc { white-space: normal; }
+}
 @media (max-width: 639px) {
   /* Điện thoại: gọn lại — các khung xếp theo thứ tự dùng nhiều: Thao tác ngay dưới thanh Gọi, rồi Hợp đồng, Lịch sử cuộc gọi */
   .cd-cols { display: flex; flex-direction: column; gap: 10px; padding: 12px; }

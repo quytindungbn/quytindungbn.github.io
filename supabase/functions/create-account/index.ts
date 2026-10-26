@@ -772,7 +772,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
 }
-// ---------- Người cùng vay (cột D file số 1 → contracts.heir_name; xem docs mục 10.82) ----------
+// ---------- Người cùng vay & gửi Zalo OA THEO TỪNG HỢP ĐỒNG (cột D file số 1 → contracts.heir_name; xem docs mục 10.83) ----------
 // Bản sao của js/lib/coBorrower.js (có kiểm thử ở tests/coBorrower.test.mjs) — sửa 1 nơi thì sửa cả nơi kia.
 function normPersonName(name: unknown): string {
   return String(name ?? '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -781,34 +781,42 @@ function samePerson(a: unknown, b: unknown): boolean {
   const x = normPersonName(a);
   return !!x && x === normPersonName(b);
 }
+/** Họ tên người cùng vay ghi trên 1 hợp đồng ('' nếu không ghi, hoặc ghi trùng chính khách vay). */
+function heirOfRow(ct: any, customerName: unknown): string {
+  const n = String(ct?.heir_name ?? '').replace(/\s+/g, ' ').trim();
+  return !n || samePerson(n, customerName) ? '' : n;
+}
 /** Các tên người cùng vay trong danh sách hợp đồng (heir_name), không trùng nhau, bỏ tên trống và tên trùng chính khách vay. */
 function heirNamesOfRows(contracts: any[], customerName: string): string[] {
   const out: string[] = [];
   for (const ct of contracts || []) {
-    const n = String(ct?.heir_name ?? '').replace(/\s+/g, ' ').trim();
-    if (!n || samePerson(n, customerName)) continue;
-    if (!out.some((x) => samePerson(x, n))) out.push(n);
+    const n = heirOfRow(ct, customerName);
+    if (n && !out.some((x) => samePerson(x, n))) out.push(n);
   }
   return out;
 }
-/** none = hợp đồng không ghi người cùng vay (giữ nguyên) · fill = chưa lưu ai → lưu · keep = đúng tên đã lưu → giữ như cũ · replace = khác tên → thay người mới. */
-function reconcileCoBorrower(savedName: unknown, heirNames: string[]): { action: 'none' | 'fill' | 'keep' | 'replace'; name: string; prev?: string } {
-  const names = heirNames || [];
-  if (!names.length) return { action: 'none', name: String(savedName ?? '') };
-  if (!String(savedName ?? '').trim()) return { action: 'fill', name: names[0] };
-  if (names.some((n) => samePerson(n, savedName))) return { action: 'keep', name: String(savedName) };
-  return { action: 'replace', name: names[0], prev: String(savedName) };
+/** Số điện thoại đã lưu của 1 người trong sổ người cùng vay (customers.co_people = [{ name, phone }]); không phân biệt hoa/thường; chưa có thì ''. */
+function coPhoneOfPeople(people: unknown, name: unknown): string {
+  const p = (Array.isArray(people) ? people : []).find((x: any) => samePerson(x?.name, name));
+  return p ? String((p as any).phone ?? '').trim() : '';
 }
 type ZaloRecipient = { who: 'main' | 'co'; phone: string };
-/** Những số sẽ nhận tin Zalo OA của 1 khách: mặc định chỉ số chính; luôn còn ít nhất 1 người; người cùng vay chỉ khi đã có số + được chọn. */
-function zaloRecipientsOf(c: any): ZaloRecipient[] {
-  const main = String(c?.phone ?? '').trim();
-  const co = String(c?.co_phone ?? '').trim();
-  const toCo = c?.zalo_to_co === true && !!co;
-  const toMain = c?.zalo_to_main !== false || !toCo;
+/**
+ * Những số sẽ nhận tin Zalo OA của 1 HỢP ĐỒNG (customer: { name, phone, co_people }):
+ *  · hợp đồng tắt gửi OA (oa_enabled = false) → không ai;
+ *  · khách vay: mặc định có; luôn còn ít nhất 1 người nhận (người cùng vay không nhận được thì khách vay nhận);
+ *  · người cùng vay: CHỈ người có tên TRÊN HỢP ĐỒNG NÀY, đã được tick đúng người đó (oa_co_key khớp tên hiện tại), đã có số, số không trùng số khách vay.
+ */
+function contractRecipients(ct: any, customer: any): ZaloRecipient[] {
+  if (ct?.oa_enabled === false) return [];
+  const main = String(customer?.phone ?? '').trim();
+  const coName = heirOfRow(ct, customer?.name);
+  const coPhone = coName ? coPhoneOfPeople(customer?.co_people, coName) : '';
+  const toCo = ct?.oa_to_co === true && !!coName && samePerson(ct?.oa_co_key, coName) && !!coPhone && !samePhone(coPhone, main);
+  const toMain = ct?.oa_to_main !== false || !toCo;
   const out: ZaloRecipient[] = [];
   if (toMain && main) out.push({ who: 'main', phone: main });
-  if (toCo) out.push({ who: 'co', phone: co });
+  if (toCo) out.push({ who: 'co', phone: coPhone });
   return out;
 }
 /** Số điện thoại hợp lệ (0xxxxxxxxx hoặc +84/84…, 9–11 chữ số sau đầu số) → chuỗi chỉ gồm chữ số/dấu +; sai thì null — y hệt kiểm tra ở màn hình. */
@@ -822,77 +830,110 @@ function samePhone(a: unknown, b: unknown): boolean {
   return !!n(a) && n(a) === n(b);
 }
 /**
- * Khách được thêm vào Danh sách OA (lại) khi người cùng vay vừa đổi: xóa dấu "người cùng vay vừa đổi" (cảnh báo đã được xem) và
- * MẶC ĐỊNH gửi theo khách vay (bỏ tick người cùng vay). Chỉ đụng tới khách đang có dấu đó. Lỗi/thiếu cột thì bỏ qua.
+ * Khách được thêm vào Danh sách OA (lại) khi người cùng vay vừa đổi: xóa dấu "người cùng vay vừa đổi" (cảnh báo đã được xem).
+ * Chỉ đụng tới khách đang có dấu đó. Lỗi/thiếu cột thì bỏ qua.
  */
 async function clearCoPrevName(customerId: string): Promise<void> {
-  try { await admin.from('customers').update({ co_prev_name: null, zalo_to_main: true, zalo_to_co: false }).eq('id', customerId).not('co_prev_name', 'is', null); } catch { /* bỏ qua */ }
+  try { await admin.from('customers').update({ co_prev_name: null }).eq('id', customerId).not('co_prev_name', 'is', null); } catch { /* bỏ qua */ }
 }
 /**
- * Người nhận báo "chưa đăng ký Zalo" (-118) khi gửi: TỰ BỎ TICK gửi OA của đúng người đó (khách vẫn ở trong danh sách OA, người còn lại vẫn nhận).
- * Khi KHÔNG CÒN người nào nhận được Zalo (số duy nhất lỗi, cả 2 người cùng lỗi, hoặc người cuối cùng còn lại lỗi) thì TỰ BỎ KHÁCH KHỎI Danh sách OA
- * + mọi lựa chọn gửi tự động, đặt lại mặc định gửi khách vay. Trả về những người bị bỏ tick và khách có bị bỏ khỏi OA không.
+ * Kế hoạch tự bỏ tick khi người nhận báo "chưa đăng ký Zalo" (-118) lúc gửi tin của hợp đồng `contractId` (cust: { name, phone, co_people }; cts: các hợp đồng còn dư nợ của khách):
+ *  · patches: hợp đồng nào cần đổi gì — khách vay: bỏ tick ở MỌI hợp đồng của khách; người cùng vay: bỏ tick ở mọi hợp đồng ghi tên người đó;
+ *  · hasLeft: sau khi bỏ tick còn hợp đồng nào có người nhận được không (đếm theo tick thật sự, không tính quy tắc "luôn còn khách vay" để khỏi gửi mãi vào số không có Zalo).
  */
-async function applyNoZaloResults(customerId: string, recipients: ZaloRecipient[], noAccountWho: Array<'main' | 'co'>): Promise<{ unticked: Array<'main' | 'co'>; removed: boolean }> {
+function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWho: Array<'main' | 'co'>): { patches: Map<string, Record<string, unknown>>; hasLeft: boolean } {
+  const coPerson = heirOfRow(cts.find((c) => c.id === contractId), cust?.name);
+  const patches = new Map<string, Record<string, unknown>>();
+  for (const ct of cts) {
+    const p: Record<string, unknown> = {};
+    if (noAccountWho.includes('main')) p.oa_to_main = false;
+    if (noAccountWho.includes('co') && coPerson && samePerson(heirOfRow(ct, cust?.name), coPerson)) { p.oa_to_co = false; p.oa_co_key = null; }
+    if (Object.keys(p).length) patches.set(ct.id, p);
+  }
+  const hasLeft = cts.some((ct) => {
+    const a = { ...ct, ...(patches.get(ct.id) || {}) };
+    if (a.oa_enabled === false) return false;
+    const coName = heirOfRow(a, cust?.name);
+    const coPhone = coName ? coPhoneOfPeople(cust?.co_people, coName) : '';
+    const toCo = a.oa_to_co === true && !!coName && samePerson(a.oa_co_key, coName) && !!coPhone && !samePhone(coPhone, cust?.phone);
+    return toCo || (a.oa_to_main !== false && !!String(cust?.phone ?? '').trim());
+  });
+  return { patches, hasLeft };
+}
+/**
+ * Người nhận báo "chưa đăng ký Zalo" (-118) khi gửi tin của hợp đồng `contractId`: TỰ BỎ TICK gửi OA của đúng người đó (xem planNoZaloUntick) — người còn lại vẫn nhận.
+ * Khi KHÔNG CÒN hợp đồng nào của khách có người nhận được thì TỰ BỎ KHÁCH KHỎI Danh sách OA + gửi tự động và đặt lại mặc định
+ * (mọi hợp đồng gửi khách vay). Trả về những người bị bỏ tick và khách có bị bỏ khỏi OA không.
+ */
+async function applyNoZaloResults(customerId: string, contractId: string, noAccountWho: Array<'main' | 'co'>): Promise<{ unticked: Array<'main' | 'co'>; removed: boolean }> {
   if (!noAccountWho.length) return { unticked: [], removed: false };
   try {
-    const remaining = recipients.filter((r) => !noAccountWho.includes(r.who));
-    if (!remaining.length) {
+    const { data: custRows } = await admin.from('customers').select('name, phone, co_people').eq('id', customerId);
+    const cust = (custRows || [])[0];
+    const { data: ctRows } = await admin.from('contracts').select('*').eq('customer_id', customerId).gt('balance', 0);
+    if (!cust) return { unticked: noAccountWho, removed: false };
+    const { patches, hasLeft } = planNoZaloUntick(cust, ctRows || [], contractId, noAccountWho);
+    if (!hasLeft) {
       await removeCustomerFromZaloLists(customerId);
-      await admin.from('customers').update({ zalo_to_main: true, zalo_to_co: false }).eq('id', customerId);
+      await admin.from('contracts').update({ oa_to_main: true, oa_to_co: false, oa_co_key: null }).eq('customer_id', customerId);
       return { unticked: noAccountWho, removed: true };
     }
-    const patch: Record<string, unknown> = {};
-    if (noAccountWho.includes('co')) patch.zalo_to_co = false;
-    if (noAccountWho.includes('main')) patch.zalo_to_main = false;
-    await admin.from('customers').update(patch).eq('id', customerId);
+    for (const [id, p] of patches) await admin.from('contracts').update(p).eq('id', id);
   } catch (e) {
     console.error('Lỗi tự bỏ tick gửi OA người không có Zalo:', e);
   }
   return { unticked: noAccountWho, removed: false };
 }
 /**
- * Sau khi nhập file: đối chiếu người cùng vay (cột D) của các khách vừa nhập với người đã lưu theo khách —
- *  · đúng họ tên → giữ nguyên (số điện thoại + lựa chọn gửi Zalo OA như cũ);
- *  · chưa lưu ai → lưu tên trong hợp đồng;
- *  · khác tên → thay người mới, xóa số cũ, đặt lại chỉ gửi khách vay, ghi tên cũ (co_prev_name) để cảnh báo khi thêm lại,
- *    và BỎ khách khỏi Danh sách OA + gửi tự động.
+ * Sau khi nhập file: hợp đồng nào đang tick gửi cho 1 người cùng vay (oa_to_co) mà TÊN GHI TRÊN HỢP ĐỒNG nay đã đổi sang người khác (hoặc bị xóa)
+ * thì tick mất hiệu lực — bỏ tick người cùng vay (hợp đồng về gửi khách vay), ghi tên người cũ (co_prev_name) để cảnh báo khi thêm lại,
+ * và BỎ khách khỏi Danh sách OA + gửi tự động. Số điện thoại của người cũ vẫn giữ trong sổ người cùng vay (không còn hợp đồng nào ghi tên họ thì
+ * không hiện, không gửi). Hợp đồng không đổi người thì giữ nguyên mọi lựa chọn.
  * KHÔNG BAO GIỜ làm hỏng lần nhập: chưa chạy SQL (thiếu cột) hoặc lỗi gì thì bỏ qua.
  */
 async function reconcileCoBorrowersAfterImport(customerIds: string[]): Promise<{ changes: { name: string; prev: string; now: string }[]; filled: number; skipped?: string }> {
   const out = { changes: [] as { name: string; prev: string; now: string }[], filled: 0 };
   if (!customerIds.length) return out;
   try {
-    const custRows: any[] = [];
+    const custById = new Map<string, any>();
     for (const part of chunkArray(customerIds, 150)) {
-      const { data, error } = await admin.from('customers').select('id, name, co_name').in('id', part);
-      if (error) return { ...out, skipped: 'chưa chạy SQL cột người cùng vay' };
-      custRows.push(...(data || []));
+      const { data, error } = await admin.from('customers').select('id, name, co_people').in('id', part);
+      if (error) return { ...out, skipped: 'chưa chạy SQL gửi OA theo hợp đồng' };
+      for (const c of data || []) custById.set((c as any).id, c);
     }
-    const ctByCustomer = new Map<string, any[]>();
+    const ctRows: any[] = [];
     for (const part of chunkArray(customerIds, 150)) {
-      const { data, error } = await admin.from('contracts').select('customer_id, heir_name').in('customer_id', part).gt('balance', 0);
+      const { data, error } = await admin.from('contracts').select('id, customer_id, heir_name, oa_to_co, oa_co_key').in('customer_id', part).gt('balance', 0);
       if (error) return { ...out, skipped: error.message };
-      for (const r of data || []) ctByCustomer.set((r as any).customer_id, [...(ctByCustomer.get((r as any).customer_id) || []), r]);
+      ctRows.push(...(data || []));
     }
-    const toRemoveFromOa: string[] = [];
-    const updates: { id: string; patch: Record<string, unknown> }[] = [];
-    for (const c of custRows) {
-      const rec = reconcileCoBorrower(c.co_name, heirNamesOfRows(ctByCustomer.get(c.id) || [], c.name));
-      if (rec.action === 'fill') {
-        updates.push({ id: c.id, patch: { co_name: rec.name } });
-        out.filled++;
-      } else if (rec.action === 'replace') {
-        updates.push({ id: c.id, patch: { co_name: rec.name, co_prev_name: rec.prev, co_phone: null, zalo_to_main: true, zalo_to_co: false } });
-        toRemoveFromOa.push(c.id);
-        out.changes.push({ name: c.name || '', prev: rec.prev || '', now: rec.name });
+    const toRemoveFromOa = new Set<string>();
+    const prevByCustomer = new Map<string, string>();
+    const ctUpdates: string[] = [];
+    for (const ct of ctRows) {
+      if (ct.oa_to_co !== true) continue;
+      const cust = custById.get(ct.customer_id);
+      if (!cust) continue;
+      const now = heirOfRow(ct, cust.name);
+      if (now && samePerson(ct.oa_co_key, now)) continue; // vẫn đúng người đã tick
+      ctUpdates.push(ct.id);
+      toRemoveFromOa.add(ct.customer_id);
+      if (!prevByCustomer.has(ct.customer_id)) {
+        const saved = (Array.isArray(cust.co_people) ? cust.co_people : []).find((x: any) => samePerson(x?.name, ct.oa_co_key));
+        const prev = String(saved?.name || ct.oa_co_key || '');
+        prevByCustomer.set(ct.customer_id, prev);
+        out.changes.push({ name: cust.name || '', prev, now: now || '(không còn ghi người cùng vay)' });
       }
     }
-    await mapLimit(updates, 8, async (u) => {
-      const { error } = await admin.from('customers').update(u.patch).eq('id', u.id);
-      if (error) console.error('Lỗi cập nhật người cùng vay:', error.message);
+    await mapLimit(ctUpdates, 8, async (id) => {
+      const { error } = await admin.from('contracts').update({ oa_to_co: false, oa_co_key: null, oa_to_main: true }).eq('id', id);
+      if (error) console.error('Lỗi cập nhật tick người cùng vay sau khi nhập:', error.message);
     });
-    for (const part of chunkArray(toRemoveFromOa, 150)) {
+    await mapLimit([...prevByCustomer], 8, async ([customerId, prev]) => {
+      const { error } = await admin.from('customers').update({ co_prev_name: prev }).eq('id', customerId);
+      if (error) console.error('Lỗi ghi người cùng vay cũ:', error.message);
+    });
+    for (const part of chunkArray([...toRemoveFromOa], 150)) {
       await admin.from('zalo_auto_send_list').delete().in('customer_id', part);
       await admin.from('zalo_customers').delete().in('customer_id', part);
     }
@@ -1332,10 +1373,13 @@ Deno.serve(async (req) => {
       // Bấm "Gọi" cho 1 khách (ở danh sách hoặc trong hồ sơ) — server tự tra tên + số điện thoại THẬT của khách, không tin mô tả từ client.
       const customerId = String(body.customerId || '').trim();
       if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
-      let { data: cust, error: custErr } = await admin.from('customers').select('name, phone, co_name, co_phone').eq('id', customerId).maybeSingle();
-      if (custErr) ({ data: cust } = await admin.from('customers').select('name, phone').eq('id', customerId).maybeSingle()); // chưa chạy SQL cột người cùng vay
+      let { data: cust, error: custErr } = await admin.from('customers').select('name, phone, co_people').eq('id', customerId).maybeSingle();
+      if (custErr) ({ data: cust } = await admin.from('customers').select('name, phone').eq('id', customerId).maybeSingle()); // chưa chạy SQL sổ người cùng vay
       if (body.callee === 'co') {
-        await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'call-customer', `Bấm gọi người cùng vay "**${(cust as any)?.co_name || 'người cùng vay'}**" của khách hàng "**${cust?.name || customerId}**"${(cust as any)?.co_phone ? ` (số **${(cust as any).co_phone}**)` : ''}`);
+        // Người cùng vay: tên do màn hình gửi lên, số điện thoại tra trong sổ người cùng vay của khách (không tin số từ client).
+        const coName = String(body.coName || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        const coPhone = coName ? coPhoneOfPeople((cust as any)?.co_people, coName) : '';
+        await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'call-customer', `Bấm gọi người cùng vay "**${coName || 'người cùng vay'}**" của khách hàng "**${cust?.name || customerId}**"${coPhone ? ` (số **${coPhone}**)` : ''}`);
         return json({ ok: true });
       }
       await logActivity(selfAdmin.id, actorName, selfAdmin.username, 'call-customer', `Bấm gọi khách hàng "**${cust?.name || customerId}**"${cust?.phone ? ` (số **${cust.phone}**)` : ''}`);
@@ -1419,11 +1463,59 @@ Deno.serve(async (req) => {
     return json({ ok: true, sentCount });
   }
 
-  // ===== type: 'save-co-borrower' — lưu số điện thoại + lựa chọn nhận Zalo OA của NGƯỜI CÙNG VAY (tên lấy từ hợp đồng, lưu theo khách).
-  // Body: { customerId, phone?, toMain?, toCo? }. Nhập/sửa SỐ ĐIỆN THOẠI: toàn quyền, hoặc có cờ Quản lý User, hoặc có cờ Quản lý OA.
-  // Đổi NGƯỜI NHẬN Zalo OA (toMain/toCo): toàn quyền hoặc có cờ Quản lý OA. Nhân viên chỉ làm được với khách trong Thôn/Xóm được gán.
-  // Luôn còn ít nhất 1 người nhận; bật gửi cho người cùng vay thì BẮT BUỘC đã có số điện thoại. =====
-  if (body.type === 'save-co-borrower') {
+  // ===== type: 'save-contract-oa' — đổi cấu hình gửi Zalo OA của 1 HỢP ĐỒNG (docs mục 10.83). Body: { contractId, enabled?, toMain?, toCo? }.
+  // enabled = công tắc bật/tắt cả hợp đồng (tắt: không gửi tự động, không gửi tay, ẩn khỏi lịch sử gửi); toMain = gửi khách vay; toCo = gửi người cùng vay
+  // GHI TRÊN HỢP ĐỒNG NÀY (bắt buộc người đó đã có số trong sổ người cùng vay của khách). Hợp đồng đang bật phải còn ít nhất 1 người nhận.
+  // Quyền: toàn quyền hoặc có cờ Quản lý OA; nhân viên chỉ làm được với khách trong Thôn/Xóm được gán. =====
+  if (body.type === 'save-contract-oa') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const { data: caller, error: callerErr } = await admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerErr || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const isSuperCaller = caller.role === 'super';
+    if (!(isSuperCaller || caller.can_manage_zalo_oa === true)) return json({ ok: false, reason: 'Chỉ quản trị viên có quyền Quản lý OA mới đổi được cấu hình gửi Zalo OA.' }, 403);
+    const contractId = String(body.contractId || '').trim();
+    if (!contractId) return json({ ok: false, reason: 'Thiếu mã hợp đồng.' }, 400);
+    const { data: ct } = await admin.from('contracts').select('*').eq('id', contractId).maybeSingle();
+    if (!ct) return json({ ok: false, reason: 'Không tìm thấy hợp đồng.' }, 404);
+    if (!('oa_enabled' in ct)) return json({ ok: false, reason: 'Chưa chạy SQL gửi Zalo OA theo từng hợp đồng trên Supabase (docs mục 10.83).' }, 500);
+    const { data: customer } = await admin.from('customers').select('*').eq('id', ct.customer_id).maybeSingle();
+    if (!customer) return json({ ok: false, reason: 'Không tìm thấy khách hàng.' }, 404);
+    if (!isSuperCaller) {
+      const allowedThon: string[] = caller.allowed_thon || [];
+      const allowedXom: string[] = caller.allowed_xom || [];
+      if (!(allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`))) {
+        return json({ ok: false, reason: 'Bạn không có quyền với khách hàng này.' }, 403);
+      }
+    }
+    const coName = heirOfRow(ct, customer.name);
+    const enabled = body.enabled !== undefined ? body.enabled === true : ct.oa_enabled !== false;
+    const toMain = body.toMain !== undefined ? body.toMain === true : ct.oa_to_main !== false;
+    let toCo = body.toCo !== undefined ? body.toCo === true : (ct.oa_to_co === true && !!coName && samePerson(ct.oa_co_key, coName));
+    if (body.toMain === true && !String(customer.phone ?? '').trim()) return json({ ok: false, reason: 'Khách vay chưa có số điện thoại.' });
+    if (body.toCo === true) {
+      if (!coName) return json({ ok: false, reason: 'Hợp đồng này không ghi người cùng vay.' });
+      const coPhone = coPhoneOfPeople(customer.co_people, coName);
+      if (!coPhone) return json({ ok: false, reason: `Cần nhập số điện thoại của ${coName} trước khi bật gửi Zalo OA.` });
+      if (samePhone(coPhone, customer.phone)) return json({ ok: false, reason: 'Số người cùng vay trùng số khách vay.' });
+    }
+    if (!coName) toCo = false;
+    if (enabled && !toMain && !toCo) return json({ ok: false, reason: 'Cần giữ ít nhất 1 người nhận Zalo OA — hoặc tắt hợp đồng này bằng công tắc bên trái.' });
+    const patch = { oa_enabled: enabled, oa_to_main: toMain, oa_to_co: toCo, oa_co_key: toCo ? normPersonName(coName) : null };
+    const { error } = await admin.from('contracts').update(patch).eq('id', contractId);
+    if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    const sendTo = !enabled ? 'tắt gửi OA' : toMain && toCo ? 'khách vay và người cùng vay' : toCo ? 'chỉ người cùng vay' : 'chỉ khách vay';
+    await logActivity(caller.id, caller.name || caller.username, caller.username, 'save-contract-oa',
+      `Gửi Zalo OA hợp đồng "**${ct.code || contractId}**" của khách hàng "**${customer.name || ct.customer_id}**": ${sendTo}`);
+    return json({ ok: true, contract: { id: contractId, oaEnabled: enabled, oaToMain: toMain, oaToCo: toCo, oaCoKey: patch.oa_co_key } });
+  }
+
+  // ===== type: 'save-co-phone' — lưu (hoặc xóa, khi để trống) số điện thoại của 1 NGƯỜI CÙNG VAY trong sổ người cùng vay của khách (docs mục 10.83).
+  // Body: { customerId, name, phone }. Người đó phải đang có tên trên 1 hợp đồng còn dư nợ của khách. Quyền: toàn quyền, hoặc có cờ Quản lý User, hoặc có cờ Quản lý OA;
+  // nhân viên chỉ làm được với khách trong Thôn/Xóm được gán. Xóa số thì tick gửi OA của người đó ở mọi hợp đồng tự bỏ (hợp đồng về gửi khách vay). =====
+  if (body.type === 'save-co-phone') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
     const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
@@ -1434,7 +1526,8 @@ Deno.serve(async (req) => {
     const canOa = isSuperCaller || caller.can_manage_zalo_oa === true;
     if (!canOa && caller.can_manage_users !== true) return json({ ok: false, reason: 'Bạn không có quyền sửa thông tin người cùng vay.' }, 403);
     const customerId = String(body.customerId || '').trim();
-    if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+    const personName = String(body.name || '').replace(/\s+/g, ' ').trim();
+    if (!customerId || !personName) return json({ ok: false, reason: 'Thiếu thông tin người cùng vay.' }, 400);
     const { data: customer } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
     if (!customer) return json({ ok: false, reason: 'Không tìm thấy khách hàng.' }, 404);
     if (!isSuperCaller) {
@@ -1444,40 +1537,36 @@ Deno.serve(async (req) => {
         return json({ ok: false, reason: 'Bạn không có quyền với khách hàng này.' }, 403);
       }
     }
-    if (!('co_name' in customer)) return json({ ok: false, reason: 'Chưa chạy SQL thêm cột người cùng vay trên Supabase (docs mục 10.82).' }, 500);
-    const { data: heirRows } = await admin.from('contracts').select('heir_name').eq('customer_id', customerId).gt('balance', 0);
-    const coName = String(customer.co_name || '').trim() || heirNamesOfRows(heirRows || [], customer.name || '')[0] || '';
-    if (!coName) return json({ ok: false, reason: 'Hợp đồng của khách này chưa ghi người cùng vay.' });
-    const patch: Record<string, unknown> = {};
-    if (!String(customer.co_name || '').trim()) patch.co_name = coName;
-    let coPhone: string = String(customer.co_phone || '');
-    if (body.phone !== undefined) {
-      const raw = String(body.phone ?? '').trim();
-      if (!raw) { coPhone = ''; patch.co_phone = null; }
-      else {
-        const clean = cleanVnPhone(raw);
-        if (!clean) return json({ ok: false, reason: 'Số điện thoại phải đủ 10 số và bắt đầu bằng số 0.' });
-        if (samePhone(clean, customer.phone)) return json({ ok: false, reason: 'Trùng số của khách vay.' });
-        coPhone = clean; patch.co_phone = clean;
+    if (!('co_people' in customer)) return json({ ok: false, reason: 'Chưa chạy SQL gửi Zalo OA theo từng hợp đồng trên Supabase (docs mục 10.83).' }, 500);
+    const { data: ctRows } = await admin.from('contracts').select('id, heir_name, oa_to_co, oa_co_key').eq('customer_id', customerId).gt('balance', 0);
+    const named = (ctRows || []).filter((c: any) => samePerson(heirOfRow(c, customer.name), personName));
+    if (!named.length) return json({ ok: false, reason: `Hợp đồng của khách này không ghi người cùng vay "${personName}".` });
+    const raw = String(body.phone ?? '').trim();
+    let phone = '';
+    if (raw) {
+      const clean = cleanVnPhone(raw);
+      if (!clean) return json({ ok: false, reason: 'Số điện thoại phải đủ 10 số và bắt đầu bằng số 0.' });
+      if (samePhone(clean, customer.phone)) return json({ ok: false, reason: 'Trùng số của khách vay.' });
+      phone = clean;
+    }
+    const people: { name: string; phone: string }[] = (Array.isArray(customer.co_people) ? customer.co_people : [])
+      .map((x: any) => ({ name: String(x?.name ?? ''), phone: String(x?.phone ?? '') })).filter((x: any) => x.name);
+    const idx = people.findIndex((x) => samePerson(x.name, personName));
+    if (idx >= 0) people[idx] = { name: people[idx].name, phone };
+    else people.push({ name: String((named[0] as any).heir_name || personName).replace(/\s+/g, ' ').trim(), phone });
+    const { error: upErr } = await admin.from('customers').update({ co_people: people }).eq('id', customerId);
+    if (upErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    const changed: { id: string; oaToMain: boolean; oaToCo: boolean; oaCoKey: string | null }[] = [];
+    if (!phone) {
+      for (const c of named as any[]) {
+        if (c.oa_to_co !== true) continue;
+        await admin.from('contracts').update({ oa_to_co: false, oa_co_key: null, oa_to_main: true }).eq('id', c.id);
+        changed.push({ id: c.id, oaToMain: true, oaToCo: false, oaCoKey: null });
       }
     }
-    const touchesRecipients = body.toMain !== undefined || body.toCo !== undefined;
-    if (touchesRecipients && !canOa) return json({ ok: false, reason: 'Chỉ quản trị viên có quyền Quản lý OA mới đổi được người nhận Zalo OA.' }, 403);
-    let toMain = body.toMain !== undefined ? body.toMain === true : customer.zalo_to_main !== false;
-    const toCoWanted = body.toCo !== undefined ? body.toCo === true : customer.zalo_to_co === true;
-    const toCo = toCoWanted && !!coPhone;
-    if (body.toCo === true && !coPhone) return json({ ok: false, reason: 'Cần nhập số điện thoại của người cùng vay trước khi bật gửi Zalo OA.' });
-    // Xóa số của người cùng vay đang là người nhận duy nhất: về mặc định gửi cho khách vay (luôn còn ít nhất 1 người nhận).
-    if (!toMain && !toCo && body.phone !== undefined && !coPhone && body.toMain === undefined) toMain = true;
-    if (!toMain && !toCo) return json({ ok: false, reason: 'Cần giữ ít nhất 1 người nhận Zalo OA.' });
-    if (touchesRecipients || patch.co_phone !== undefined) { patch.zalo_to_main = toMain; patch.zalo_to_co = toCo; }
-    if (Object.keys(patch).length) {
-      const { error } = await admin.from('customers').update(patch).eq('id', customerId);
-      if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
-      await logActivity(caller.id, caller.name || caller.username, caller.username, 'save-co-borrower',
-        `Cập nhật người cùng vay "**${coName}**" của khách hàng "**${customer.name || customerId}**"${touchesRecipients ? ` — gửi Zalo OA: ${toMain && toCo ? 'cả 2 người' : toCo ? 'chỉ người cùng vay' : 'chỉ khách vay'}` : ''}`);
-    }
-    return json({ ok: true, co: { name: coName, phone: coPhone, prevName: String(customer.co_prev_name || ''), toMain, toCo } });
+    await logActivity(caller.id, caller.name || caller.username, caller.username, 'save-co-phone',
+      `${phone ? 'Lưu' : 'Xóa'} số điện thoại người cùng vay "**${personName}**" của khách hàng "**${customer.name || customerId}**"`);
+    return json({ ok: true, people, contracts: changed });
   }
 
   // Tổng quan "ai đã thêm khách/hợp đồng nào vào gửi tự động" của MỌI người —
@@ -1653,6 +1742,7 @@ Deno.serve(async (req) => {
       }
       const scope = await checkContractInScope(contractId);
       if (!scope.ok) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
+      if (scope.contract.oa_enabled === false) return json({ ok: false, reason: 'Hợp đồng này đang tắt gửi OA — bật lại ở chi tiết khách hàng (mục Gửi Zalo OA theo từng hợp đồng) rồi mới thêm vào gửi tự động.' });
       // MỖI KHÁCH HÀNG chỉ MỘT người được thêm vào gửi tự động (kể cả quản trị
       // toàn quyền): đã có người khác thêm bất kỳ hợp đồng nào của khách này
       // thì chặn, kèm tên người đã thêm. Cùng một người thì được thêm tiếp các
@@ -1793,9 +1883,11 @@ Deno.serve(async (req) => {
         const inScope = allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`);
         if (!inScope) return json({ ok: false, reason: 'Không tìm thấy hợp đồng hoặc bạn không có quyền với hợp đồng này.' }, 403);
       }
-      // Người nhận: mặc định chỉ số chính; khách đã nhập số người cùng vay + chọn gửi thì gửi riêng số đó hoặc cả 2 số.
-      const recipients = zaloRecipientsOf(customer);
-      if (!recipients.length) return json({ ok: false, reason: 'Khách hàng này chưa có số điện thoại.' });
+      // Người nhận theo cấu hình CỦA HỢP ĐỒNG NÀY (docs mục 10.83): hợp đồng tắt gửi OA thì không gửi; khách vay (nếu tick) + người cùng vay CÓ TÊN TRONG hợp đồng này
+      // (đã có số + đã tick). Người cùng vay của hợp đồng khác không bao giờ nhận tin của hợp đồng này.
+      if (contract.oa_enabled === false) return json({ ok: false, reason: 'Hợp đồng này đang tắt gửi OA — bật lại ở chi tiết khách hàng hoặc chi tiết hợp đồng trước khi gửi.' });
+      const recipients = contractRecipients(contract, customer);
+      if (!recipients.length) return json({ ok: false, reason: 'Hợp đồng này chưa có người nhận Zalo OA nào có số điện thoại.' });
 
       // PHẢI đã có sẵn trong Tầng 1 "Danh sách OA" mới gửi tay được — KHÔNG
       // còn tự thêm ngầm lúc gửi như trước nữa (đổi theo yêu cầu: admin phải
@@ -1859,7 +1951,7 @@ Deno.serve(async (req) => {
       const sentCount = results.filter((r) => r.ok).length;
       const failedRecipients = recipients.map((r, i) => ({ who: r.who, res: results[i] })).filter((x) => !x.res.ok);
       // Người nào báo "chưa đăng ký Zalo" thì tự bỏ tick gửi OA của người đó (xem applyNoZaloResults).
-      const { unticked, removed } = await applyNoZaloResults(customer.id, recipients, failedRecipients.filter((x) => x.res.noAccount).map((x) => x.who));
+      const { unticked, removed } = await applyNoZaloResults(customer.id, contractId, failedRecipients.filter((x) => x.res.noAccount).map((x) => x.who));
       const untickNote = removed ? ' Không còn số nào có Zalo — đã tự bỏ khách khỏi danh sách OA.'
         : unticked.length ? ` Đã tự bỏ tích gửi OA cho ${unticked.map((w) => (w === 'co' ? 'người cùng vay' : 'khách vay')).join(' và ')}.` : '';
       const result: { ok: boolean; reason?: string } = sentCount

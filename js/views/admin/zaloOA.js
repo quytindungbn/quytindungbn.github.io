@@ -22,6 +22,7 @@ import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { formatDateTime, formatDate, formatVND, colorFor, initials, escapeHtml } from '../../utils.js';
 import { openCustomerDetail, openContractView } from './customers.js';
+import { samePhone, shortPersonName } from '../../lib/coBorrower.js';
 
 const AUTO_SEND_SECTIONS = [
   { kind: 'lai_hang_thang_auto', title: 'Báo lãi tự động hàng tháng' },
@@ -53,23 +54,45 @@ const OA_TABS = [
 ];
 
 // ------------------------------------------------------------
-// "Gửi Zalo tới ai": mỗi khách có thể nhận tin ở số khách vay, số người cùng vay hoặc cả 2 (chọn ở chi tiết khách hàng, thẻ
-// "Người cùng vay & Zalo OA"). Chỉ gửi khách vay (mặc định) thì KHÔNG hiện gì thêm; chỉ khi gửi cho người cùng vay hoặc cả 2 người
-// mới có dòng "Gửi tới" — chip vàng *Người cùng vay* (kèm họ tên + SĐT), hoặc 1 nhãn *Gửi cả 2 người*.
+// "Gửi Zalo tới ai": cấu hình THEO TỪNG HỢP ĐỒNG (chi tiết khách hàng, thẻ "Người cùng vay & Zalo OA", hoặc chi tiết hợp đồng): bật/tắt cả hợp đồng + tick
+// khách vay / người cùng vay (người có tên trong chính hợp đồng đó). Mặc định (mọi hợp đồng bật, chỉ gửi khách vay) thì KHÔNG hiện gì thêm. Có gì khác
+// thì có dòng "Gửi tới": 1 hợp đồng — nhãn *Gửi cả 2 người* hoặc chip vàng *Người cùng vay: tên · số* (trên máy tính viết trên 1 dòng); nhiều hợp đồng — mỗi hợp đồng 1 ô nhỏ
+// ("461/26 Khách vay + Bích", "463/26 không gửi").
 // ------------------------------------------------------------
 function rcvOf(customerId) {
-  const co = S.getCoBorrower(customerId);
-  const toCo = !!co && !!co.name && co.toCo;
-  const toMain = !co || !toCo || co.toMain;
-  return { co, toMain, toCo, mode: toCo ? (toMain ? 'both' : 'co') : 'main' };
+  const ov = S.customerOaOverview(customerId);
+  return { ov, mode: ov ? ov.mode : 'main' };
 }
 function rcvChipsHtml(customer, { mini = false } = {}) {
-  const { co, toMain, toCo } = rcvOf(customer.id);
-  if (!toCo) return ''; // chỉ gửi khách vay: như bình thường, không hiện thêm gì
+  const { ov } = rcvOf(customer.id);
+  if (!ov || !ov.custom) return ''; // mặc định: như bình thường, không hiện thêm gì
   const cls = `oa-rcv${mini ? ' is-mini' : ''}`;
-  if (toMain) return `<div class="${cls}"><span class="oa-two" title="Gửi Zalo cho cả khách vay và người cùng vay">Gửi cả 2 người</span></div>`;
-  const sub = co && co.name ? `${escapeHtml(co.name)}${co.phone ? ` · <em>${escapeHtml(co.phone)}</em>` : ''}` : '';
-  return `<div class="${cls}"><span class="oa-rcv-l">Gửi tới</span><span class="oa-rc is-co"><i>${icon('check', 'icon-sm')}</i><span class="oa-rc-tx"><b>Người cùng vay</b>${!mini && sub ? `<small>${sub}</small>` : ''}</span></span></div>`;
+  const items = ov.items;
+  if (items.length <= 1) {
+    const st = items[0] && items[0].state;
+    if (!st) return '';
+    if (!st.enabled) return `<div class="${cls}"><span class="oa-hc off">Hợp đồng đã tắt gửi OA</span></div>`;
+    if (!st.recipients.length) return `<div class="${cls}"><span class="oa-hc warn">Chưa có số điện thoại để gửi Zalo</span></div>`;
+    if (st.toCo && st.toMain) return `<div class="${cls}"><span class="oa-two" title="Gửi Zalo cho cả khách vay và người cùng vay">Gửi cả 2 người</span></div>`;
+    if (st.toCo) {
+      const sub = `${escapeHtml(st.coName)}${st.coPhone ? ` · <em>${escapeHtml(st.coPhone)}</em>` : ''}`;
+      if (mini) return `<div class="${cls}"><span class="oa-rcv-l">Gửi tới</span><span class="oa-rc is-co"><i>${icon('check', 'icon-sm')}</i><span class="oa-rc-tx"><b>Người cùng vay</b></span></span></div>`;
+      return `<div class="${cls}"><span class="oa-rcv-l">Gửi tới</span><span class="oa-line-rc"><i>${icon('check', 'icon-sm')}</i><span><b>Người cùng vay:</b> ${sub}</span></span></div>`;
+    }
+    return '';
+  }
+  // Nhiều hợp đồng: mỗi hợp đồng 1 ô nhỏ cho biết hợp đồng đó gửi ai.
+  const chips = items.map(({ contract, state: st }) => {
+    const code = `<b>${escapeHtml(contract.code)}</b>`;
+    if (!st.enabled) return `<span class="oa-hc off">${code} không gửi</span>`;
+    if (!st.recipients.length) return `<span class="oa-hc warn">${code} chưa có số để gửi</span>`;
+    const co = st.coName ? escapeHtml(shortPersonName(st.coName)) : '';
+    if (st.toCo && st.toMain) return `<span class="oa-hc co">${code} Khách vay + ${co}</span>`;
+    if (st.toCo) return `<span class="oa-hc co">${code} ${co}</span>`;
+    if (st.coLocked) return `<span class="oa-hc warn">${code} Khách vay <i style="font-style:normal">(${co} chưa có số)</i></span>`;
+    return `<span class="oa-hc">${code} Khách vay</span>`;
+  }).join('');
+  return `<div class="${cls} oa-inline"><span class="oa-rcv-l">Gửi tới</span>${chips}</div>`;
 }
 
 /**
@@ -82,7 +105,7 @@ function summaryHtml(isSuper) {
   if (!org.zaloTemplateDueId) missing.push('“Đến hạn/Quá hạn”');
   if (!org.zaloTemplateInterestId) missing.push('“Báo lãi”');
   const since = Date.now() - 30 * 86400000;
-  const recent = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= since);
+  const recent = S.listZaloSendLog().filter((l) => new Date(l.sentAt).getTime() >= since && S.isZaloLogVisible(l));
   const ok = recent.filter((l) => l.status === 'success').length;
   // Tổng hợp đồng đang gửi tự động của TẤT CẢ nhân viên (ai có quyền quản lý OA cũng thấy cùng một con số); bấm vào ô để xem từng người bao nhiêu.
   const autoCount = S.summarizeZaloAutoByOwner().total;
@@ -303,7 +326,7 @@ function drawOATab(slot, admin) {
       rows = rows.filter((x) => x.customer.name.toLowerCase().includes(q) || (x.customer.phone || '').includes(q));
     }
     // Ô lọc "Người nhận": đếm theo danh sách đang xem (đã lọc Thôn/Xóm + tìm kiếm), bấm để chỉ xem khách gửi cho đúng nhóm đó.
-    const rcvCount = { all: rows.length, main: 0, co: 0, both: 0 };
+    const rcvCount = { all: rows.length, main: 0, co: 0, both: 0, none: 0 };
     for (const x of rows) rcvCount[rcvOf(x.customer.id).mode]++;
     const rseg = slot.querySelector('#oa-rseg');
     // Chưa có khách nào gửi cho người cùng vay thì ẩn cả ô lọc này (danh sách như bình thường).
@@ -437,7 +460,7 @@ function openAddCustomerToOAModal(admin, onDone) {
             <div class="row-main">
               <div class="row-title" style="font-size:13.5px">${c.name}</div>
               <div class="row-sub">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
-              ${S.getCoBorrower(c.id)?.prevName ? '<div class="oa-warn-tag">Người cùng vay đã đổi — cần xem lại</div>' : ''}
+              ${c.coPrevName ? '<div class="oa-warn-tag">Người cùng vay đã đổi — cần xem lại</div>' : ''}
             </div>
             <b style="font-size:13px;white-space:nowrap;flex-shrink:0">${c.phone}</b>
           </div>
@@ -473,11 +496,11 @@ function openAddCustomerToOAModal(admin, onDone) {
           if (onDone) onDone();
         };
         // Khách có người cùng vay vừa đổi (đã bị bỏ khỏi OA vì hợp đồng mới ghi người khác): cảnh báo trước khi thêm lại.
-        const changed = ids.map((id) => ({ c: S.getCustomer(id), co: S.getCoBorrower(id) })).filter((x) => x.c && x.co && x.co.prevName);
+        const changed = ids.map((id) => ({ c: S.getCustomer(id), chg: S.coChangeInfo(id) })).filter((x) => x.c && x.chg);
         if (changed.length) {
           confirmDialog({
             title: 'Người cùng vay đã thay đổi',
-            message: `${changed.map((x) => `<b>${escapeHtml(x.c.name)}</b>: ${escapeHtml(x.co.prevName)} → <b>${escapeHtml(x.co.name)}</b>`).join('<br>')}<br><br>Số điện thoại cũ của người cùng vay đã bị xóa. Khi thêm, Zalo OA chỉ gửi cho khách vay cho đến khi nhập số của người mới. Vẫn thêm?`,
+            message: `${changed.map((x) => `<b>${escapeHtml(x.c.name)}</b>: ${escapeHtml(x.chg.prevName)} → <b>${x.chg.names.length ? x.chg.names.map(escapeHtml).join(', ') : 'không còn người cùng vay'}</b>`).join('<br>')}<br><br>Khi thêm, Zalo OA chỉ gửi cho khách vay cho đến khi nhập số và tick gửi cho người mới. Vẫn thêm?`,
             confirmLabel: 'Vẫn thêm vào OA', onConfirm: doAdd,
           });
           return;
@@ -582,7 +605,7 @@ function autoSendRowHtml(kind, r, customer, contract) {
             <button class="icon-btn oa-del" data-remove="${r.id}" title="Bỏ khỏi danh sách" aria-label="Bỏ khỏi danh sách gửi tự động" style="width:30px;height:30px;flex-shrink:0">${icon('trash', 'icon-sm')}</button>
           </span>
         </div>
-        ${rcvChipsHtml(customer, { mini: true })}
+        ${rcvChipsHtml(customer, { mini: true })}${contract.oaEnabled === false ? '<div class="oa-rcv is-mini"><span class="oa-hc off">Hợp đồng đã tắt gửi OA — không gửi</span></div>' : ''}
       </div>
     </div>
   `;
@@ -912,13 +935,13 @@ async function loadOlderLogs(untilMs) {
   }
 }
 
-/** Dòng log gửi cho người cùng vay: so số điện thoại đã gửi với số người cùng vay — chỉ hiện nhãn khi đúng là người cùng vay (gửi khách vay thì như bình thường, không nhãn). */
+/** Dòng log gửi cho người cùng vay: so số điện thoại đã gửi với số của người cùng vay GHI TRÊN HỢP ĐỒNG đó — chỉ hiện nhãn khi đúng là người cùng vay (gửi khách vay thì như bình thường, không nhãn). */
 function logWhoChip(l, customer) {
   if (!customer || !l.phone) return '';
-  const norm = (v) => String(v || '').replace(/[^\d]/g, '').replace(/^84/, '0');
-  const co = S.getCoBorrower(customer.id);
-  if (co && co.phone && norm(l.phone) === norm(co.phone)) return `<span class="oa-chip co">Người cùng vay</span>`;
-  return '';
+  const st = S.getContractOa(l.contractId);
+  let name = st && st.coName && st.coPhone && samePhone(l.phone, st.coPhone) ? st.coName : '';
+  if (!name) name = ((customer.coPeople || []).find((x) => x.phone && samePhone(l.phone, x.phone)) || {}).name || ''; // hợp đồng đã đổi người: tra theo sổ người cùng vay
+  return name ? `<span class="oa-chip co">Người cùng vay · ${escapeHtml(shortPersonName(name))}</span>` : '';
 }
 
 function drawLogTab(slot) {
@@ -960,7 +983,7 @@ function drawLogTab(slot) {
       return;
     }
     const viewFromMs = fromMs !== null ? fromMs : (logViewFrom !== null ? logViewFrom : Date.now() - 30 * 86400000);
-    let logs = allLoadedLogs().filter((l) => logTime(l) >= viewFromMs);
+    let logs = allLoadedLogs().filter((l) => logTime(l) >= viewFromMs && S.isZaloLogVisible(l)); // hợp đồng đã tắt gửi OA: không hiện lịch sử của nó
     if (logStatusFilter !== 'all') logs = logs.filter((l) => l.status === logStatusFilter);
     if (logToDate) logs = logs.filter((l) => new Date(l.sentAt) <= new Date(`${logToDate}T23:59:59`));
     const successCount = logs.filter((l) => l.status === 'success').length;

@@ -3073,7 +3073,7 @@ Khung **Thao tác** trong chi tiết khách hàng (`openCustomerDetail()` trong 
 
 **Việc cần bạn làm**: deploy lại **`create-account`** (file MỚI NHẤT). Chưa deploy thì giao diện đã ẩn nút Xóa Use cho người không đủ quyền, chỉ là máy chủ chưa chặn gọi trực tiếp.
 
-### 10.82. Người cùng vay: lưu theo khách, gửi Zalo OA cho 1 hoặc 2 người (BẮT BUỘC chạy SQL, rồi deploy lại CẢ 2 Edge Function)
+### 10.82. Người cùng vay: lưu theo khách, gửi Zalo OA cho 1 hoặc 2 người (BẮT BUỘC chạy SQL, rồi deploy lại CẢ 2 Edge Function) — phần lưu/gửi đã được mục 10.83 thay thế
 
 **Người cùng vay** = cột D file số 1 (`contracts.heir_name`, mục 10.56). Tên lấy TỰ ĐỘNG từ hợp đồng và được LƯU THEO KHÁCH HÀNG (Use) cùng số điện thoại + lựa chọn nhận tin Zalo OA.
 
@@ -3108,6 +3108,64 @@ alter table public.customers
 
 -- Nhãn "Người cùng vay" trong lịch sử cuộc gọi (call_log tạo ở docs mục 10.79; chưa tạo thì dòng này tự bỏ qua).
 alter table if exists public.call_log add column if not exists callee text;
+```
+
+### 10.83. Gửi Zalo OA THEO TỪNG HỢP ĐỒNG: bật/tắt từng hợp đồng, người cùng vay chỉ nhận tin hợp đồng có tên mình (BẮT BUỘC chạy SQL, rồi deploy lại CẢ 2 Edge Function)
+
+Thay cách lưu "1 người cùng vay / khách" của mục 10.82 (các cột `co_name`, `co_phone`, `zalo_to_main`, `zalo_to_co` trên `customers` không còn được dùng — để nguyên, không xóa). Lý do: khách có 2 hợp đồng, mỗi hợp đồng 1 người cùng vay khác nhau thì trước đây chỉ nhớ được 1 người và tin của hợp đồng này có thể gửi nhầm cho người của hợp đồng kia.
+
+**Cách lưu**
+- `customers.co_people` (jsonb): sổ người cùng vay của khách — `[{ "name": "TRẦN THỊ BÍCH", "phone": "0988777666" }]`. Số điện thoại nhập **1 lần** dùng cho mọi hợp đồng có tên người đó (tìm theo tên, **không phân biệt hoa/thường và khoảng trắng thừa**; dấu tiếng Việt vẫn phải đúng).
+- `contracts.oa_enabled` (công tắc bật/tắt cả hợp đồng), `oa_to_main` (gửi khách vay), `oa_to_co` (gửi người cùng vay **ghi trên hợp đồng này**), `oa_co_key` (tên người mà tick `oa_to_co` đang áp dụng, viết thường — hợp đồng đổi sang người khác thì tick tự mất hiệu lực).
+- Dữ liệu cũ (mục 10.82) được SQL chuyển sang: người cùng vay cũ vào sổ, và lựa chọn gửi cũ được áp cho các hợp đồng ghi đúng người đó.
+
+**Quy tắc "ai nhận tin của hợp đồng nào"** (cùng một hàm ở màn hình `contractOa()` — `js/lib/coBorrower.js` — và ở máy chủ `contractRecipients()`; có bài kiểm thử so khớp 2 bản trên hàng trăm tổ hợp):
+- Hợp đồng **tắt** (`oa_enabled = false`) → không gửi tự động, không gửi tay, **ẩn khỏi Lịch sử gửi** (và khỏi số "Thành công 30 ngày"); thêm vào gửi tự động bị chặn kèm lý do.
+- **Khách vay**: mặc định có; luôn còn ít nhất 1 người nhận (người cùng vay không nhận được thì khách vay nhận). Khách vay chưa có số điện thoại thì không tick được.
+- **Người cùng vay**: CHỈ người có tên **trên hợp đồng đó**, đã được tick đúng người đó (`oa_co_key` khớp), đã có số, số không trùng số khách vay. Người của hợp đồng khác **không bao giờ** nhận tin hợp đồng này. Chưa có số → **không tick được** (ô khóa vàng "Khánh · chưa có số", bấm vào để nhập số; nhập xong tự tick cho đúng hợp đồng vừa bấm).
+- Máy chủ tự tính lại người nhận mỗi lần gửi (gửi tay `send-zalo-manual`, gửi tự động `send-due-reminders`), không tin màn hình.
+
+**Giao diện**
+- **Chi tiết khách hàng** — thẻ "Người cùng vay & Zalo OA": danh sách người cùng vay (tên, số điện thoại sửa/xóa được, nút Gọi — ghi cả tên người được gọi vào lịch sử + Nhật ký) và phần **"Gửi Zalo OA theo từng hợp đồng"**: mỗi hợp đồng 1 hàng gồm công tắc bật/tắt, mã + gốc, ô tick Khách vay và người cùng vay của hợp đồng đó (hợp đồng ghi người khác thì không có ô của họ). Tick/bật/tắt cập nhật ngay trên màn hình rồi lưu ngầm (các lần bấm nối đuôi theo đúng thứ tự, lỗi thì trả lại như cũ). Thẻ chỉ hiện khi khách có người cùng vay, hoặc có quyền OA và khách từ 2 hợp đồng trở lên (để tắt/bật từng hợp đồng). Tài khoản chỉ có quyền Quản lý User: thấy người cùng vay + sửa số, không có phần gửi OA. Xóa hết số rồi Lưu vẫn được (tick của người đó ở mọi hợp đồng tự bỏ, hợp đồng về gửi khách vay).
+- **Chi tiết hợp đồng** — khung "Hợp đồng … · gửi Zalo OA tới": tick người nhận của chính hợp đồng này, nút "Gửi tin Zalo OA ngay (n người)"; hợp đồng đang tắt thì báo và có nút "Bật gửi OA cho hợp đồng này". Nút Gửi OA ở danh sách hợp đồng của khách bị khóa khi hợp đồng tắt.
+- **Quản lý OA**: Danh sách OA chỉ có dòng "Gửi tới" khi khác mặc định — 1 hợp đồng: "Gửi cả 2 người" hoặc chip "Người cùng vay: tên · số" (máy tính viết trên 1 dòng); nhiều hợp đồng: mỗi hợp đồng 1 ô ("461/26 Khách vay + Bích", "462/26 Khách vay (Khánh chưa có số)", "463/26 không gửi"). Lịch sử gửi ghi nhãn "Người cùng vay · Bích" và **không hiện** hợp đồng đã tắt; tab Gửi tự động đánh dấu hợp đồng đã tắt.
+
+**Đối chiếu mỗi lần nhập file** (`reconcileCoBorrowersAfterImport()`, không bao giờ làm hỏng lần nhập; thiếu cột thì tự bỏ qua): hợp đồng nào đang tick người cùng vay mà tên ghi trên hợp đồng đã đổi sang người khác (hoặc bị xóa) → bỏ tick, về gửi khách vay, ghi tên cũ vào `co_prev_name`, **bỏ khách khỏi Danh sách OA + gửi tự động** và cảnh báo khi thêm lại. Số của người cũ vẫn giữ trong sổ (không còn hợp đồng nào ghi tên họ thì không hiện, không gửi).
+
+**Người báo "chưa đăng ký Zalo" (-118)**: bỏ tick đúng người đó — người cùng vay: ở mọi hợp đồng ghi tên họ; khách vay: ở mọi hợp đồng — người còn lại vẫn nhận; khi không còn hợp đồng nào có người nhận được thì bỏ khách khỏi OA như trước.
+
+**Máy chủ** (`create-account`): type mới `save-contract-oa` ({ contractId, enabled?, toMain?, toCo? } — quyền Quản lý OA; kiểm tra Thôn/Xóm với nhân viên; bật gửi người cùng vay phải đã có số; hợp đồng đang bật phải còn ít nhất 1 người nhận) và `save-co-phone` ({ customerId, name, phone } — Quản lý OA hoặc Quản lý User; người đó phải có tên trên 1 hợp đồng còn dư nợ của khách). Type cũ `save-co-borrower` đã bỏ. `send-zalo-manual` dùng người nhận của đúng hợp đồng (tắt thì từ chối). `send-due-reminders` dùng cùng quy tắc, bỏ qua hợp đồng tắt. Nhật ký ghi `save-contract-oa` / `save-co-phone`.
+
+**Việc cần bạn làm — THEO THỨ TỰ**: (1) chạy SQL dưới đây (SQL Editor, chạy lại nhiều lần được, không ghi đè lựa chọn đã đổi; file `supabase/migrations/20261026_oa_per_contract.sql`); (2) deploy lại **`create-account`** và **`send-due-reminders`**. Làm xong 2 việc này thì dùng được; trước đó giao diện mới hiện thông báo "Chưa chạy SQL / cần deploy lại" khi bấm lưu, gửi OA vẫn chạy như cũ.
+
+```sql
+-- Gửi Zalo OA THEO TỪNG HỢP ĐỒNG (docs mục 10.83): mỗi hợp đồng có công tắc bật/tắt gửi OA + tick Khách vay / Người cùng vay;
+-- số điện thoại người cùng vay lưu trong "sổ người cùng vay" của khách (customers.co_people) — nhập 1 lần dùng cho mọi hợp đồng có tên người đó.
+-- Chạy TRƯỚC khi deploy lại create-account + send-due-reminders. Chạy lại nhiều lần được (không ghi đè lựa chọn đã đổi).
+alter table public.customers
+  add column if not exists co_people jsonb not null default '[]'::jsonb;  -- [{ "name": "...", "phone": "09..." }] — sổ người cùng vay của khách
+
+alter table public.contracts
+  add column if not exists oa_enabled boolean not null default true,      -- false = hợp đồng này KHÔNG gửi OA (tự động, gửi tay) và ẩn khỏi lịch sử gửi
+  add column if not exists oa_to_main boolean not null default true,      -- gửi cho khách vay (số chính)
+  add column if not exists oa_to_co boolean not null default false,       -- gửi cho người cùng vay GHI TRÊN HỢP ĐỒNG NÀY (cần có số trong co_people)
+  add column if not exists oa_co_key text;                                -- tên người cùng vay (viết thường) mà tick oa_to_co đang áp dụng — đổi người thì tick tự mất hiệu lực
+
+-- Chuyển dữ liệu cũ (mục 10.82: 1 người cùng vay / khách) sang cách lưu mới.
+update public.customers
+   set co_people = jsonb_build_array(jsonb_build_object('name', btrim(co_name), 'phone', coalesce(btrim(co_phone), '')))
+ where co_people = '[]'::jsonb and coalesce(btrim(co_name), '') <> '';
+
+update public.contracts ct
+   set oa_to_main = coalesce(c.zalo_to_main, true),
+       oa_to_co = true,
+       oa_co_key = lower(regexp_replace(btrim(ct.heir_name), '\s+', ' ', 'g'))
+  from public.customers c
+ where c.id = ct.customer_id
+   and coalesce(c.zalo_to_co, false) and coalesce(btrim(c.co_phone), '') <> ''
+   and ct.heir_name is not null
+   and lower(regexp_replace(btrim(ct.heir_name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(c.co_name), '\s+', ' ', 'g'))
+   and ct.oa_co_key is null;
 ```
 
 ---
