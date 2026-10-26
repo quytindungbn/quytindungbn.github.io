@@ -3,14 +3,14 @@ import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { emptyState } from '../../components/ui.js';
 import { icon } from '../../icons.js';
-import { escapeHtml, formatVND, formatNumber, formatCompact, initials, colorFor } from '../../utils.js';
+import { escapeHtml, formatVND, formatNumber, formatCompact, initials, colorFor, maskViDate, parseViDate, toDateInputValue } from '../../utils.js';
+import { caretAfterDigits } from '../../lib/dateInput.js';
 import {
   todayIso, isoOf, noteState, pillLabel, repeatLabel, sortNotes, summarize, dayMonthTile, formatVnDate, describeFirst, NOTE_MAX_LEN,
 } from '../../lib/customerNotes.js';
 
 const ic = (n) => icon(n, 'icon-sm');
 const SNOOZE_DAYS = [1, 3, 7];
-const QUICK_DAYS = [3, 7, 10, 15, 30];
 const TEMPLATES = {
   monthly: { kind: 'monthly', text: 'Thu gốc hàng tháng', label: 'Trả gốc hàng tháng', icon: 'refresh' },
   after: { kind: 'after', text: '', label: 'Hẹn trả sau … ngày', icon: 'clock', afterDays: 7 },
@@ -276,18 +276,24 @@ export function openDueNotesModal({ onOpenCustomer, onChange } = {}) {
   });
 }
 
-function planHtml(f, today) {
+function amountFieldHtml(f) {
+  const label = f.kind === 'monthly' ? 'Số tiền cần thu' : 'Số tiền hẹn trả';
+  const holder = f.kind === 'monthly' ? '0' : 'Không bắt buộc';
+  return `<div class="nt-f"><label class="nt-lb" for="nf-amount">${label}</label><div class="nt-box"><input id="nf-amount" type="text" inputmode="numeric" autocomplete="off" placeholder="${holder}" value="${f.amount ? formatNumber(Number(f.amount)) : ''}"><i>₫</i></div></div>`;
+}
+
+function dateText(iso) { return iso ? iso.split('-').reverse().join('/') : ''; }
+
+function planHtml(f) {
   if (f.kind === 'none') return '';
-  const amountLabel = f.kind === 'monthly' ? 'Số tiền cần thu' : 'Số tiền khách hẹn trả <small>(không bắt buộc)</small>';
-  const amount = `<div class="nt-f"><span class="nt-lb">${amountLabel}</span><label class="nt-in"><input id="nf-amount" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="${f.amount ? formatNumber(Number(f.amount)) : ''}"><em>₫</em></label></div>`;
   if (f.kind === 'after') {
-    const custom = !QUICK_DAYS.includes(Number(f.afterDays)) || f.customDays;
-    return `<div class="nt-f"><span class="nt-lb">Hẹn sau bao nhiêu ngày</span><div class="nt-quick">${QUICK_DAYS.map((d) => `<button type="button" class="${!custom && Number(f.afterDays) === d ? 'on' : ''}" data-nf-days="${d}">${d}</button>`).join('')}<button type="button" class="${custom ? 'on' : ''}" data-nf-days="custom">Khác…</button></div>${custom ? `<label class="nt-in nt-days"><input id="nf-days" type="text" inputmode="numeric" autocomplete="off" placeholder="Số ngày" value="${f.afterDays || ''}"><em>ngày</em></label>` : ''}</div>${amount}`;
+    return `<div class="nt-two"><div class="nt-f"><label class="nt-lb" for="nf-days">Hẹn sau</label><div class="nt-box nt-step"><button type="button" class="nt-stp" data-nf-step="-1" aria-label="Bớt 1 ngày">−</button><input id="nf-days" type="text" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="0" value="${f.afterDays || ''}"><i>ngày</i><button type="button" class="nt-stp" data-nf-step="1" aria-label="Thêm 1 ngày">+</button></div></div>${amountFieldHtml(f)}</div>`;
   }
   if (f.kind === 'date') {
-    return `<div class="nt-f"><span class="nt-lb">Ngày nhắc</span><input id="nf-date" class="nt-inp" type="date" min="${today}" value="${f.date || ''}"></div>${amount}`;
+    const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    return `<div class="nt-two"><div class="nt-f"><label class="nt-lb" for="nf-date">Ngày nhắc</label><div class="nt-box"><input id="nf-date" type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="dd/mm/yyyy" value="${dateText(f.date)}"${coarse ? ' readonly' : ''}><button type="button" class="nt-cal" id="nf-cal" aria-label="Chọn ngày trên lịch">${ic('calendar')}</button><input type="date" id="nf-date-native" tabindex="-1" aria-hidden="true"></div></div>${amountFieldHtml(f)}</div>`;
   }
-  return `<div class="nt-two"><div class="nt-f"><span class="nt-lb">Ngày trong tháng</span><label class="nt-in"><input id="nf-mday" type="text" inputmode="numeric" autocomplete="off" placeholder="VD: 5" value="${f.monthlyDay || ''}"><em>hàng tháng</em></label></div>${amount}</div>`;
+  return `<div class="nt-two"><div class="nt-f"><label class="nt-lb" for="nf-mday">Ngày trong tháng</label><div class="nt-box"><input id="nf-mday" type="text" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="VD: 5" value="${f.monthlyDay || ''}"><i>/ tháng</i></div></div>${amountFieldHtml(f)}</div>`;
 }
 
 function whenHtml(f, today) {
@@ -312,8 +318,8 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
   const today = todayIso();
   const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan' || (note && note.contractId === ct.id));
   const f = note
-    ? { tpl: note.kind === 'monthly' ? 'monthly' : note.kind === 'after' ? 'after' : 'plain', text: note.text, contractId: note.contractId, kind: note.kind, afterDays: note.afterDays, date: note.kind === 'date' ? note.remindOn : '', monthlyDay: note.monthlyDay, amount: note.amount ? String(note.amount) : '', visibility: note.visibility, customDays: false }
-    : { tpl: 'plain', text: '', contractId: null, kind: 'none', afterDays: null, date: '', monthlyDay: null, amount: '', visibility: 'all', customDays: false };
+    ? { tpl: note.kind === 'monthly' ? 'monthly' : note.kind === 'after' ? 'after' : 'plain', text: note.text, contractId: note.contractId, kind: note.kind, afterDays: note.afterDays, date: note.kind === 'date' ? note.remindOn : '', monthlyDay: note.monthlyDay, amount: note.amount ? String(note.amount) : '', visibility: note.visibility }
+    : { tpl: 'plain', text: '', contractId: null, kind: 'none', afterDays: null, date: '', monthlyDay: null, amount: '', visibility: 'all' };
   let autoText = '';
   const tplHtml = () => Object.entries(TEMPLATES).map(([id, t]) => `<button type="button" class="${f.tpl === id ? 'on' : ''}" data-nf-tpl="${id}">${ic(t.icon)}${t.label}</button>`).join('');
   const ctHtml = () => `<button type="button" class="${f.contractId ? '' : 'on'}" data-nf-ct="">Cả khách hàng</button>${contracts.map((ct) => `<button type="button" class="${f.contractId === ct.id ? 'on' : ''}" data-nf-ct="${ct.id}">HĐ ${escapeHtml(ct.code)}</button>`).join('')}`;
@@ -328,7 +334,7 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
       <div class="nt-f"><label class="nt-lb" for="nf-text">Nội dung ghi chú</label><textarea id="nf-text" class="nt-ta" rows="3" maxlength="${NOTE_MAX_LEN}" placeholder="VD: Khách trả gốc 2 triệu mỗi tháng">${escapeHtml(f.text)}</textarea><small class="nt-cnt" id="nf-cnt"></small></div>
       <div class="nt-f"><span class="nt-lb">Gắn với</span><div class="nt-tpl" id="nf-ct">${ctHtml()}</div></div>
       <div class="nt-f"><span class="nt-lb">Kiểu nhắc</span><div class="nt-seg" id="nf-kind">${kindHtml()}</div></div>
-      <div id="nf-plan">${planHtml(f, today)}</div>
+      <div id="nf-plan">${planHtml(f)}</div>
       <div id="nf-when">${whenHtml(f, today)}</div>
       <div class="nt-f"><span class="nt-lb">Ai thấy ghi chú</span><div class="nt-who" id="nf-who">${whoHtml()}</div></div>
       <p class="nt-err" id="nf-err" hidden></p>
@@ -341,7 +347,7 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
       const err = q('#nf-err');
       const refreshCnt = () => { cnt.textContent = `${text.value.length} / ${NOTE_MAX_LEN} ký tự`; };
       const refreshWhen = () => { q('#nf-when').innerHTML = whenHtml(f, today); };
-      const refreshPlan = () => { q('#nf-plan').innerHTML = planHtml(f, today); refreshWhen(); };
+      const refreshPlan = () => { q('#nf-plan').innerHTML = planHtml(f); refreshWhen(); };
       const showErr = (msg) => { err.textContent = msg || ''; err.hidden = !msg; };
       refreshCnt();
       text.addEventListener('input', () => { f.text = text.value; refreshCnt(); showErr(''); });
@@ -352,7 +358,6 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
         f.kind = t.kind;
         if (t.afterDays && (f.kind !== 'after' || !f.afterDays)) f.afterDays = t.afterDays;
         if (t.afterDays && id === 'call') f.afterDays = t.afterDays;
-        f.customDays = false;
         if (!text.value.trim() || text.value === autoText) { text.value = t.text; autoText = t.text; f.text = t.text; refreshCnt(); }
         q('#nf-tpl').innerHTML = tplHtml();
         q('#nf-kind').innerHTML = kindHtml();
@@ -369,18 +374,20 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
           f.kind = kind.dataset.nfKind;
           f.tpl = f.kind === 'monthly' ? 'monthly' : f.kind === 'after' ? 'after' : 'plain';
           if (f.kind === 'after' && !f.afterDays) f.afterDays = 7;
-          f.customDays = false;
           q('#nf-tpl').innerHTML = tplHtml();
           q('#nf-kind').innerHTML = kindHtml();
           refreshPlan();
           return;
         }
-        const days = t.closest('[data-nf-days]');
-        if (days) {
-          if (days.dataset.nfDays === 'custom') { f.customDays = true; refreshPlan(); q('#nf-days')?.focus(); }
-          else { f.customDays = false; f.afterDays = Number(days.dataset.nfDays); refreshPlan(); }
+        const step = t.closest('[data-nf-step]');
+        if (step) {
+          const n = Math.min(365, Math.max(1, (Number(f.afterDays) || 0) + Number(step.dataset.nfStep)));
+          f.afterDays = n;
+          q('#nf-days').value = String(n);
+          refreshWhen();
           return;
         }
+        if (t.closest('#nf-cal') || (t.id === 'nf-date' && t.readOnly)) { openCalendar(); return; }
         const who = t.closest('[data-nf-who]');
         if (who) { f.visibility = who.dataset.nfWho; q('#nf-who').innerHTML = whoHtml(); }
       });
@@ -393,8 +400,33 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
           refreshWhen();
         } else if (t.id === 'nf-days') { f.afterDays = t.value.replace(/\D/g, '').slice(0, 3); refreshWhen(); }
         else if (t.id === 'nf-mday') { f.monthlyDay = t.value.replace(/\D/g, '').slice(0, 2); refreshWhen(); }
-        else if (t.id === 'nf-date') { f.date = t.value; refreshWhen(); }
+        else if (t.id === 'nf-date') {
+          const before = t.value, selStart = t.selectionStart ?? before.length;
+          const next = maskViDate(before);
+          if (next !== before) {
+            t.value = next;
+            const pos = caretAfterDigits(next, before.slice(0, selStart).replace(/\D/g, '').length);
+            try { t.setSelectionRange(pos, pos); } catch {  }
+          }
+          const dt = parseViDate(next);
+          f.date = dt ? toDateInputValue(dt) : '';
+          refreshWhen();
+        }
       });
+      sheet.addEventListener('change', (e) => {
+        if (e.target.id !== 'nf-date-native' || !e.target.value) return;
+        f.date = e.target.value;
+        q('#nf-date').value = dateText(f.date);
+        refreshWhen();
+      });
+      const openCalendar = () => {
+        const native = q('#nf-date-native');
+        if (!native) return;
+        native.value = f.date || today;
+        if (typeof native.showPicker === 'function') { try { native.showPicker(); return; } catch {  } }
+        native.focus();
+        native.click();
+      };
       const save = q('#nf-save');
       const submit = async () => {
         showErr('');

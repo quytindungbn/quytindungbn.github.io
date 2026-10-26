@@ -942,6 +942,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
   const coShown = coCardShown(customerId, contracts, { canOa: canManageZalo, canEdit: canManageZalo || canManageUse });
 
   const chip = (on, text, extra = '') => `<span class="cd-chip ${on ? 'on' : 'off'}" ${extra}><i></i>${text}</span>`;
+  const wideLayout = typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 760px)').matches;
   const close = openModal({
     title: '',
     sheetClass: 'customer-detail-sheet cd-sheet',
@@ -961,7 +962,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       <div class="cd-callbar" id="cd-callbar">${callBarHtml(calls, dialPhone, c)}</div>
       <div class="cd-cols">
         <div class="cd-col-main">
-          ${noteCardShellHtml()}
+          ${wideLayout ? '' : noteCardShellHtml()}
           ${coShown ? `<section class="cd-card cd-pp-card" id="cd-pp-card">${coCardHtml(c, contracts, { canOa: canManageZalo, canEdit: canManageZalo || canManageUse })}</section>` : ''}
           <section class="cd-card" id="cd-calls-card">${callCardHtml(calls, { myId })}</section>
         </div>
@@ -970,6 +971,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
             <h3 class="cd-h"><span>Hợp đồng</span><em>${contracts.length}</em></h3>
             <div id="contract-list" class="cd-contracts">${contracts.map((ct) => contractCardHtml(ct)).join('') || '<p class="cd-empty-note">Chưa có hợp đồng — nhập từ Excel để thêm.</p>'}</div>
           </section>
+          ${wideLayout ? noteCardShellHtml() : ''}
           ${hasActions ? `<section class="cd-card cd-actions">
             <h3 class="cd-h"><span>Thao tác</span></h3>
             <div class="cd-btns" style="--n:${actionTiles.length}">${actionTiles.join('')}</div>
