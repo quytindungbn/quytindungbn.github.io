@@ -1312,10 +1312,13 @@ export async function sendManualNotification(customerId, title, body) {
 // Xem trang "Quản lý OA" (js/views/admin/zaloOA.js) và
 // docs/supabase-migration.md mục 10. Cần quyền canManageZaloOA (hoặc super).
 // ------------------------------------------------------------
+// Khách CHƯA CÓ SỐ ĐIỆN THOẠI nào để gửi Zalo (người vay chưa có số và người cùng vay cũng chưa có số — xem oaAddBlockReason) tự ra khỏi Danh sách OA:
+// không hiện ở danh sách/số đếm, và ở chi tiết khách hàng hiện "chưa thêm". Dòng trong máy chủ KHÔNG bị xóa — có số điện thoại lại thì tự hiện lại.
+function oaListable(customerId) { return !oaAddBlockReason(customerId); }
 export function isZaloCustomer(customerId) {
-  return (state.zaloCustomers || []).some((r) => r.customerId === customerId);
+  return (state.zaloCustomers || []).some((r) => r.customerId === customerId) && oaListable(customerId);
 }
-export function listZaloCustomers() { return state.zaloCustomers || []; }
+export function listZaloCustomers() { return (state.zaloCustomers || []).filter((r) => oaListable(r.customerId)); }
 /** Hợp đồng này đã có trong danh sách gửi tự động CỦA CHÍNH MÌNH chưa (1 hợp đồng chỉ ở được 1 trong 2 mục) — trả về dòng nếu có, null nếu chưa. */
 export function findZaloAutoSend(contractId) {
   return listZaloAutoSend().find((r) => r.contractId === contractId) || null;

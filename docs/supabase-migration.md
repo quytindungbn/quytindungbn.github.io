@@ -3227,8 +3227,11 @@ grant select, insert, update, delete on public.co_people_archive to service_role
 - **Khách hàng & Hợp đồng — thứ tự mặc định**: hợp đồng mới nhất lên trước. Xếp theo **ngày vay** mới nhất; cùng ngày vay thì theo **số thứ tự HĐTD** lớn hơn.
   Số HĐTD dạng `461/26`: `461` là số thứ tự (khóa chính), `26` chỉ là năm (chỉ xét sau cùng). Khách nào có hợp đồng mới nhất thì lên đầu danh sách; trong 1 khách các
   hợp đồng cũng xếp mới → cũ (`js/lib/contractOrder.js`). Các kiểu sắp xếp khác (Gốc/Lãi, Quá hạn, Gần đến hạn) giữ nguyên.
-- **Quản lý OA → Danh sách OA**: ô lọc người nhận có thêm **Chưa có người nhận** (mọi hợp đồng đã tắt gửi OA, chưa có số nào để gửi, hoặc khách hết hợp đồng đang vay) để các ô
-  *Người vay + Người cùng vay + Cả 2 người + Chưa có người nhận* cộng lại đúng bằng *Tất cả*. Khách hết hợp đồng có nhãn "Không còn hợp đồng đang vay".
+- **Quản lý OA → Danh sách OA**: không có nhóm "chưa có người nhận" — khách chưa chọn người nhận (hoặc mọi hợp đồng đang tắt) mặc định tính là **Người vay**, nên các ô lọc
+  *Người vay + Người cùng vay + Cả 2 người* luôn cộng lại đúng bằng *Tất cả*.
+- **Khách chưa có số điện thoại nào để gửi** (người vay chưa có số và người cùng vay cũng chưa có số) **tự ra khỏi Danh sách OA**: không hiện ở danh sách, số đếm và chi tiết khách hàng
+  (hiện "chưa thêm", và không thêm lại được — cùng quy tắc chặn thêm ở mục 10.84). Dòng trong máy chủ (`zalo_customers`) **không bị xóa** — khi khách có số điện thoại trở lại thì tự hiện lại
+  (`oaListable` trong `js/state.js`). Gửi tự động trên máy chủ vốn đã bỏ qua khách không có người nhận nên không gửi nhầm.
 
 ---
 
