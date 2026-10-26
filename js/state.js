@@ -2,6 +2,7 @@ import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } fr
 import { describeOrgPatch } from './lib/activityLabels.js';
 import { heirNamesOf, heirOfContract, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, phoneHolders } from './lib/coBorrower.js';
 import { interestDaysBetween } from './lib/interestDays.js';
+import { validateDraft, planChanged, firstRemindOn, nextAfterDone, addDaysIso, todayIso, isDue } from './lib/customerNotes.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
 import { clearDeviceCaches } from './lib/kvCache.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
@@ -75,6 +76,8 @@ function migrateState() {
   if (!Array.isArray(state.zaloAutoSendList)) state.zaloAutoSendList = [];
   if (!Array.isArray(state.zaloAutoOverview)) state.zaloAutoOverview = [];
   if (!Array.isArray(state.zaloSendLog)) state.zaloSendLog = [];
+  if (!Array.isArray(state.customerNotes)) state.customerNotes = [];
+  if (!Array.isArray(state.customerNoteLog)) state.customerNoteLog = [];
   if (typeof state.chatUnreadCount !== 'number') state.chatUnreadCount = 0;
   if (!Array.isArray(state.monthlySnapshots)) state.monthlySnapshots = [];
 }
@@ -1947,6 +1950,209 @@ export function logCall(customerId, phone, callee = 'main', coName = '') {
   return entry;
 }
 
+function mapNoteRow(row) {
+  return {
+    id: row.id, customerId: row.customer_id, contractId: row.contract_id || null, text: row.body || '',
+    kind: row.kind || 'none', afterDays: row.after_days ?? null, monthlyDay: row.monthly_day ?? null,
+    remindOn: row.remind_on || null, amount: row.amount == null ? null : Number(row.amount),
+    visibility: row.visibility === 'me' ? 'me' : 'all', status: row.status === 'done' ? 'done' : 'open',
+    createdBy: row.created_by || null, createdByName: row.created_by_name || '', createdAt: row.created_at,
+    updatedAt: row.updated_at || row.created_at, doneBy: row.done_by || null, doneByName: row.done_by_name || '', doneAt: row.done_at || null,
+  };
+}
+
+function mapNoteLogRow(row) {
+  return { id: row.id, noteId: row.note_id, customerId: row.customer_id, contractId: row.contract_id || null, action: row.action, text: row.body || '', dueOn: row.due_on || null, amount: row.amount == null ? null : Number(row.amount), byId: row.by_id || null, byName: row.by_name || '', createdAt: row.created_at };
+}
+
+function noteFailure(error) {
+  const code = String(error?.code || '');
+  const msg = String(error?.message || '');
+  if (code === '42P01' || code === 'PGRST205' || /customer_notes|customer_note_log/.test(msg)) return { ok: false, reason: 'Chưa tạo bảng ghi chú trên máy chủ. Cần chạy SQL ghi chú (docs mục 10.92).' };
+  return { ok: false, reason: 'Không lưu được ghi chú, thử lại.' };
+}
+
+function adminSeesCustomer(adminId, customerId) {
+  const c = getCustomer(customerId);
+  const a = getAdmin(adminId);
+  if (!c || !a) return false;
+  if (a.role !== 'staff') return true;
+  return (a.allowedThon || []).includes(c.thon) || (a.allowedXom || []).includes(xomKey(c.thon, c.xom));
+}
+
+function noteVisible(n, sessionId) { return n.visibility === 'all' || n.createdBy === sessionId; }
+
+export function noteView(n) {
+  if (n.status === 'open' && n.contractId) {
+    const ct = getContract(n.contractId);
+    if (ct && effectiveContractStatus(ct) === 'da_tat_toan') return { ...n, remindOn: null, kind: 'none', settled: true };
+  }
+  return n;
+}
+
+export function listNotesByCustomer(customerId) {
+  const sid = state.session?.id;
+  return (state.customerNotes || []).filter((n) => n.customerId === customerId && noteVisible(n, sid)).map(noteView);
+}
+
+export function listNoteLogByCustomer(customerId) {
+  const sid = state.session?.id;
+  const visible = new Set((state.customerNotes || []).filter((n) => n.customerId === customerId && noteVisible(n, sid)).map((n) => n.id));
+  return (state.customerNoteLog || []).filter((l) => l.customerId === customerId && visible.has(l.noteId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+export function listDueNotes(today = todayIso()) {
+  const session = state.session;
+  if (!session || session.role !== 'admin') return [];
+  return (state.customerNotes || [])
+    .filter((n) => n.status === 'open' && noteVisible(n, session.id) && adminSeesCustomer(session.id, n.customerId))
+    .map(noteView)
+    .filter((n) => isDue(n, today));
+}
+
+export async function loadNotesForCustomer(customerId) {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return false;
+  try {
+    const sb = getSupabaseClient(session.sbToken);
+    const [notes, logs] = await Promise.all([
+      sb.from('customer_notes').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(300),
+      sb.from('customer_note_log').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(100),
+    ]);
+    if (notes.error) return false;
+    state.customerNotes = (state.customerNotes || []).filter((n) => n.customerId !== customerId).concat((notes.data || []).map(mapNoteRow));
+    if (!logs.error) state.customerNoteLog = (state.customerNoteLog || []).filter((l) => l.customerId !== customerId).concat((logs.data || []).map(mapNoteLogRow));
+    return true;
+  } catch { return false; }
+}
+
+let openNotesLoadedAt = 0;
+
+export async function loadOpenNotes({ force = false } = {}) {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return false;
+  if (!force && Date.now() - openNotesLoadedAt < 8000) return false;
+  openNotesLoadedAt = Date.now();
+  try {
+    const sb = getSupabaseClient(session.sbToken);
+    const { data, error } = await sb.from('customer_notes').select('*').eq('status', 'open').order('remind_on', { ascending: true, nullsFirst: false }).limit(2000);
+    if (error) return false;
+    const fresh = (data || []).map(mapNoteRow);
+    const ids = new Set(fresh.map((n) => n.id));
+    state.customerNotes = (state.customerNotes || []).filter((n) => n.status === 'done' && !ids.has(n.id)).concat(fresh);
+    return true;
+  } catch { return false; }
+}
+
+export async function saveNote(draft, id = null) {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return { ok: false, reason: 'Chỉ quản trị viên được ghi chú.' };
+  const v = validateDraft(draft);
+  if (!v.ok) return v;
+  const customer = getCustomer(draft.customerId);
+  if (!customer || !adminSeesCustomer(session.id, customer.id)) return { ok: false, reason: 'Không tìm thấy khách hàng.' };
+  const { clean } = v;
+  const today = todayIso();
+  const admin = getAdmin(session.id);
+  const nowIso = new Date().toISOString();
+  const sb = getSupabaseClient(session.sbToken);
+  const plan = { kind: clean.kind, afterDays: clean.afterDays, monthlyDay: clean.monthlyDay, date: clean.date };
+  try {
+    if (!id) {
+      const row = {
+        id: genId('nt'), customer_id: customer.id, contract_id: clean.contractId, body: clean.text, kind: clean.kind,
+        after_days: clean.afterDays, monthly_day: clean.monthlyDay, remind_on: firstRemindOn(plan, today), amount: clean.amount,
+        visibility: clean.visibility, status: 'open', created_by: session.id, created_by_name: (admin && admin.name) || 'Quản trị viên',
+      };
+      const { error } = await sb.from('customer_notes').insert(row);
+      if (error) return noteFailure(error);
+      const note = mapNoteRow({ ...row, created_at: nowIso, updated_at: nowIso });
+      (state.customerNotes = state.customerNotes || []).push(note);
+      notify();
+      logUiAction('note-add', `Thêm ghi chú nhắc việc cho khách hàng "${customer.name}"`);
+      return { ok: true, note };
+    }
+    const old = (state.customerNotes || []).find((n) => n.id === id);
+    if (!old) return { ok: false, reason: 'Không tìm thấy ghi chú.' };
+    const patch = {
+      contract_id: clean.contractId, body: clean.text, kind: clean.kind, after_days: clean.afterDays, monthly_day: clean.monthlyDay,
+      remind_on: planChanged(old, clean) ? firstRemindOn(plan, today) : old.remindOn, amount: clean.amount, visibility: clean.visibility, updated_at: nowIso,
+    };
+    const { data, error } = await sb.from('customer_notes').update(patch).eq('id', id).select('id');
+    if (error) return noteFailure(error);
+    if (!data || !data.length) return { ok: false, reason: 'Bạn không có quyền sửa ghi chú này.' };
+    Object.assign(old, mapNoteRow({ ...noteToRowShape(old), ...patch }));
+    notify();
+    logUiAction('note-edit', `Sửa ghi chú nhắc việc của khách hàng "${customer.name}"`);
+    return { ok: true, note: old };
+  } catch { return { ok: false, reason: 'Không lưu được ghi chú, thử lại.' }; }
+}
+
+function noteToRowShape(n) {
+  return {
+    id: n.id, customer_id: n.customerId, contract_id: n.contractId, body: n.text, kind: n.kind, after_days: n.afterDays, monthly_day: n.monthlyDay,
+    remind_on: n.remindOn, amount: n.amount, visibility: n.visibility, status: n.status, created_by: n.createdBy, created_by_name: n.createdByName,
+    created_at: n.createdAt, updated_at: n.updatedAt, done_by: n.doneBy, done_by_name: n.doneByName, done_at: n.doneAt,
+  };
+}
+
+async function writeNoteEvent(note, action, patch, logExtra = {}) {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return { ok: false, reason: 'Chỉ quản trị viên được thao tác.' };
+  const admin = getAdmin(session.id);
+  const sb = getSupabaseClient(session.sbToken);
+  const nowIso = new Date().toISOString();
+  try {
+    const { data, error } = await sb.from('customer_notes').update({ ...patch, updated_at: nowIso }).eq('id', note.id).select('id');
+    if (error) return noteFailure(error);
+    if (!data || !data.length) return { ok: false, reason: 'Bạn không có quyền thao tác ghi chú này.' };
+    const logRow = { id: genId('nl'), note_id: note.id, customer_id: note.customerId, contract_id: note.contractId, action, body: note.text, due_on: note.remindOn, amount: note.amount, by_id: session.id, by_name: (admin && admin.name) || 'Quản trị viên', ...logExtra };
+    Object.assign(note, mapNoteRow({ ...noteToRowShape(note), ...patch, updated_at: nowIso }));
+    (state.customerNoteLog = state.customerNoteLog || []).push(mapNoteLogRow({ ...logRow, created_at: nowIso }));
+    notify();
+    sb.from('customer_note_log').insert(logRow).then(() => {}, () => {});
+    return { ok: true, note };
+  } catch { return { ok: false, reason: 'Không lưu được, thử lại.' }; }
+}
+
+export async function completeNote(id) {
+  const note = (state.customerNotes || []).find((n) => n.id === id);
+  if (!note || note.status !== 'open' || !note.remindOn) return { ok: false, reason: 'Không tìm thấy việc cần làm.' };
+  const session = getSession();
+  const admin = session ? getAdmin(session.id) : null;
+  const next = nextAfterDone(note, todayIso());
+  const nowIso = new Date().toISOString();
+  const patch = next ? { remind_on: next } : { status: 'done', done_by: session?.id || null, done_by_name: (admin && admin.name) || 'Quản trị viên', done_at: nowIso };
+  const res = await writeNoteEvent(note, 'done', patch);
+  if (res.ok) logUiAction('note-done', `Hoàn thành nhắc việc của khách hàng "${getCustomer(note.customerId)?.name || ''}"`);
+  return res;
+}
+
+export async function snoozeNote(id, days) {
+  const note = (state.customerNotes || []).find((n) => n.id === id);
+  const n = Number(days);
+  if (!note || note.status !== 'open' || !Number.isInteger(n) || n < 1 || n > 365) return { ok: false, reason: 'Không hoãn được.' };
+  const res = await writeNoteEvent(note, 'snooze', { remind_on: addDaysIso(todayIso(), n) });
+  if (res.ok) logUiAction('note-snooze', `Hoãn nhắc việc ${n} ngày của khách hàng "${getCustomer(note.customerId)?.name || ''}"`);
+  return res;
+}
+
+export async function deleteNote(id) {
+  const session = getSession();
+  const note = (state.customerNotes || []).find((n) => n.id === id);
+  if (!session || session.role !== 'admin' || !note) return { ok: false, reason: 'Không tìm thấy ghi chú.' };
+  try {
+    const { data, error } = await getSupabaseClient(session.sbToken).from('customer_notes').delete().eq('id', id).select('id');
+    if (error) return noteFailure(error);
+    if (!data || !data.length) return { ok: false, reason: 'Chỉ người tạo hoặc quản trị toàn quyền được xóa ghi chú.' };
+    state.customerNotes = state.customerNotes.filter((n) => n.id !== id);
+    state.customerNoteLog = (state.customerNoteLog || []).filter((l) => l.noteId !== id);
+    notify();
+    logUiAction('note-delete', `Xóa ghi chú nhắc việc của khách hàng "${getCustomer(note.customerId)?.name || ''}"`);
+    return { ok: true };
+  } catch { return { ok: false, reason: 'Không xóa được, thử lại.' }; }
+}
+
 export function logAdminAction(action, extra = {}) {
   const session = getSession();
   if (!session || session.role !== 'admin') return;
@@ -2056,5 +2262,5 @@ async function seedDemoData() {
     },
   ];
 
-  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloCustomers: [], zaloAutoSendList: [], zaloAutoOverview: [], zaloSendLog: [], callLogs: [], chatUnreadCount: 0 };
+  state = { org, admins, customers, contracts, requests, session: null, pushSubscribedCustomerIds: [], zaloCustomers: [], zaloAutoSendList: [], zaloAutoOverview: [], zaloSendLog: [], callLogs: [], customerNotes: [], customerNoteLog: [], chatUnreadCount: 0 };
 }

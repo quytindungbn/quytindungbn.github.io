@@ -9,6 +9,7 @@ import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../l
 import { isSupplementReportRows, parseSupplementReportRows } from '../../lib/xlsxLite.js';
 import { buildVietQrUrl, qrImageSrc, downloadQrImage, shareQrImage, bindMoneyInput } from '../contractDetail.js';
 import { transferContent } from '../../lib/transferContent.js';
+import { noteCardShellHtml, mountNoteCard } from './customerNotes.js';
 import { interestAsOfForDays, MAX_INTEREST_DAYS } from '../../lib/interestDays.js';
 import { describeCallTime, formatPhoneDisplay } from '../../lib/callHistory.js';
 import { checkCoPhone, sanitizeCoPhoneInput, normPersonName, shortPersonName, samePhone } from '../../lib/coBorrower.js';
@@ -960,6 +961,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       <div class="cd-callbar" id="cd-callbar">${callBarHtml(calls, dialPhone, c)}</div>
       <div class="cd-cols">
         <div class="cd-col-main">
+          ${noteCardShellHtml()}
           ${coShown ? `<section class="cd-card cd-pp-card" id="cd-pp-card">${coCardHtml(c, contracts, { canOa: canManageZalo, canEdit: canManageZalo || canManageUse })}</section>` : ''}
           <section class="cd-card" id="cd-calls-card">${callCardHtml(calls, { myId })}</section>
         </div>
@@ -977,6 +979,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
     `,
     onMount(sheet, closeFn) {
       sheet.querySelector('[data-cd-close]').addEventListener('click', closeFn);
+      mountNoteCard(sheet, customerId);
 
       const copyPhone = async (btn) => {
         if (!dialPhone) return;

@@ -3286,6 +3286,119 @@ alter table zalo_send_log add column if not exists recipient_name text;
 - Danh sách dài nạp dần theo đợt nhỏ hơn (30 khách/đợt thay vì 80) và **nhường chỗ cho thao tác đang chờ** (`navigator.scheduling.isInputPending`) — chạm vào ô tìm kiếm không phải chờ hết đợt nạp.
 - Ô tìm kiếm dùng chung (`searchBoxHtml`) tắt gợi ý tự điền / tự sửa / kiểm tra chính tả và đặt phím Enter là "Tìm" cho bàn phím hiện nhanh, không gạch chân tên người.
 
+### 10.92. Ghi chú & nhắc việc theo khách hàng (BẮT BUỘC chạy SQL; không cần deploy Edge Function)
+
+Mỗi khách có thẻ **Ghi chú & nhắc việc** trong hồ sơ (cột trái, trên cùng): thu gọn mặc định, chỉ hiện số việc; nút vàng **＋ Ghi chú** để thêm; bấm vào thẻ mới mở danh sách (tab *Cần làm / Ghi chú / Đã xong*), bấm từng dòng mới hiện chi tiết + nút xử lý.
+
+- **Kiểu nhắc** (cột `kind`): `none` (ghi chú thường), `after` (hẹn sau N ngày, 1–365), `date` (ngày cụ thể), `monthly` (hàng tháng vào ngày D, 1–31; tháng ngắn hơn lấy ngày cuối tháng). Ngày nhắc kế tiếp lưu ở `remind_on`. Mẫu nhanh: *Trả gốc hàng tháng*, *Hẹn trả sau … ngày*, *Hẹn gọi lại*, *Ghi chú thường*. Có thể kèm số tiền (`amount`) và gắn với 1 hợp đồng (`contract_id`).
+- **Đến hạn** = ngày nhắc ≤ hôm nay (giờ máy). Việc đến hạn hiện ở **Tổng quan → Cần chú ý → "Nhắc việc đến hạn"** (dòng đầu, chỉ hiện khi có việc; đỏ nếu có việc trễ). Bấm vào mở danh sách theo từng khách, ghi chú đổ ra sẵn với nút **Đã thu/Đã xử lý · Hoãn (1/3/7 ngày) · Sửa**, mỗi khách có **Gọi** và **Mở hồ sơ**.
+- **Đã thu / Đã xử lý**: việc một lần → `status='done'` (ghi `done_by`, `done_at`); việc hàng tháng → ngày nhắc nhảy sang kỳ kế tiếp (sau cả hôm nay lẫn ngày đang nhắc), vẫn mở. Mỗi lần *hoàn thành / hoãn* ghi 1 dòng vào `customer_note_log` (tab *Đã xong* đọc từ đây). Nút này chỉ đánh dấu nhắc việc, KHÔNG đụng vào dư nợ/lãi của hợp đồng.
+- Ghi chú gắn hợp đồng đã tất toán thì tự ngừng nhắc (hiện như ghi chú thường).
+- **Ai thấy**: `visibility='all'` — mọi quản trị viên thấy khách đó (nhân viên chỉ thấy khách thuộc địa bàn mình, nhờ RLS bảng `customers`); `visibility='me'` — chỉ người tạo. Mọi quản trị viên/nhân viên thêm, sửa, hoàn thành, hoãn được; xóa: người tạo hoặc quản trị toàn quyền. Thao tác ghi vào Nhật ký (`ui-note-add/edit/done/snooze/delete`, không ghi nội dung ghi chú).
+- Lõi tính ngày ở `js/lib/customerNotes.js` (kiểm thử `tests/customerNotes.test.mjs`); dữ liệu ở `js/state.js` (`loadNotesForCustomer`, `loadOpenNotes` — tải lại tối đa 8 giây/lần ở Tổng quan, `saveNote`, `completeNote`, `snoozeNote`, `deleteNote`, `listDueNotes`); giao diện ở `js/views/admin/customerNotes.js`.
+
+**Việc cần bạn làm**: chạy đoạn SQL sau trong Supabase Dashboard → SQL Editor (chạy lại nhiều lần được). Chưa chạy thì app vẫn dùng bình thường; bấm lưu ghi chú sẽ báo "Chưa tạo bảng ghi chú trên máy chủ".
+
+```sql
+-- Ghi chú & nhắc việc theo khách hàng (docs mục 10.92). An toàn chạy lại nhiều lần.
+create table if not exists customer_notes (
+  id text primary key,
+  customer_id text not null references customers(id) on delete cascade,
+  contract_id text references contracts(id) on delete set null,
+  body text not null check (char_length(body) between 1 and 300),
+  kind text not null default 'none' check (kind in ('none', 'after', 'date', 'monthly')),
+  after_days int check (after_days between 1 and 365),
+  monthly_day int check (monthly_day between 1 and 31),
+  remind_on date,
+  amount bigint check (amount >= 0),
+  visibility text not null default 'all' check (visibility in ('all', 'me')),
+  status text not null default 'open' check (status in ('open', 'done')),
+  created_by text references admins(id) on delete set null,
+  created_by_name text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  done_by text references admins(id) on delete set null,
+  done_by_name text,
+  done_at timestamptz
+);
+create index if not exists customer_notes_customer_idx on customer_notes (customer_id, status);
+create index if not exists customer_notes_due_idx on customer_notes (status, remind_on);
+
+create table if not exists customer_note_log (
+  id text primary key,
+  note_id text not null references customer_notes(id) on delete cascade,
+  customer_id text not null references customers(id) on delete cascade,
+  contract_id text,
+  action text not null check (action in ('done', 'snooze')),
+  body text not null default '',
+  due_on date,
+  amount bigint,
+  by_id text references admins(id) on delete set null,
+  by_name text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists customer_note_log_customer_idx on customer_note_log (customer_id, created_at desc);
+
+alter table customer_notes enable row level security;
+alter table customer_note_log enable row level security;
+grant select, insert, update, delete on customer_notes to anon, authenticated, service_role;
+grant select, insert on customer_note_log to anon, authenticated, service_role;
+
+drop policy if exists "admins read notes" on customer_notes;
+create policy "admins read notes" on customer_notes
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and (visibility = 'all' or created_by = (auth.jwt() ->> 'row_id'))
+    and exists (select 1 from customers c where c.id = customer_notes.customer_id)
+  );
+
+drop policy if exists "admins add notes" on customer_notes;
+create policy "admins add notes" on customer_notes
+  for insert with check (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and created_by = (auth.jwt() ->> 'row_id')
+    and exists (select 1 from customers c where c.id = customer_notes.customer_id)
+  );
+
+drop policy if exists "admins update notes" on customer_notes;
+create policy "admins update notes" on customer_notes
+  for update using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and (visibility = 'all' or created_by = (auth.jwt() ->> 'row_id'))
+    and exists (select 1 from customers c where c.id = customer_notes.customer_id)
+  ) with check (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and (visibility = 'all' or created_by = (auth.jwt() ->> 'row_id'))
+    and exists (select 1 from customers c where c.id = customer_notes.customer_id)
+  );
+
+drop policy if exists "owner or super delete notes" on customer_notes;
+create policy "owner or super delete notes" on customer_notes
+  for delete using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (select 1 from customers c where c.id = customer_notes.customer_id)
+    and (
+      created_by = (auth.jwt() ->> 'row_id')
+      or exists (select 1 from admins a where a.id = (auth.jwt() ->> 'row_id') and a.role = 'super')
+    )
+  );
+
+drop policy if exists "admins read note log" on customer_note_log;
+create policy "admins read note log" on customer_note_log
+  for select using (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and exists (select 1 from customer_notes n where n.id = customer_note_log.note_id)
+  );
+
+drop policy if exists "admins add note log" on customer_note_log;
+create policy "admins add note log" on customer_note_log
+  for insert with check (
+    (auth.jwt() ->> 'app_role') = 'admin'
+    and by_id = (auth.jwt() ->> 'row_id')
+    and exists (select 1 from customer_notes n where n.id = customer_note_log.note_id)
+  );
+```
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

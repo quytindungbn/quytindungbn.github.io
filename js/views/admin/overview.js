@@ -7,7 +7,8 @@ import { formatVND, formatDate, formatNumber, formatDateTime, initials, colorFor
 import { readExcelFirstSheet, rowsToTsv, remapReportTemplateRows } from '../../lib/excelLite.js';
 import { isSupplementReportRows } from '../../lib/xlsxLite.js';
 import { monthlyTrendLineChartSvg, compositionDonutHtml } from '../../components/charts.js';
-import { openContractView, customerLedgerHtml, bindCustomerLedger } from './customers.js';
+import { openContractView, openCustomerDetail, customerLedgerHtml, bindCustomerLedger } from './customers.js';
+import { openDueNotesModal, dueNotesSummary } from './customerNotes.js';
 import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
 import { icon } from '../../icons.js';
 
@@ -149,12 +150,40 @@ function heroInnerHtml(m, ctx) {
 
 const ATTN_TITLE = '<h3 class="lux-h lux-attn-title"><span>Cần chú ý</span></h3>';
 
+function notesAttnRowHtml() {
+  const n = dueNotesSummary();
+  if (!n.count) return '';
+  const tone = n.late ? 'red' : 'gold';
+  return `<button type="button" class="lux-attn-row" id="tile-notes" data-count="${n.count}">
+        <span class="mk ${tone}"></span>
+        <span class="t"><b>Nhắc việc đến hạn</b><small>${formatNumber(n.customers)} khách hàng${n.late ? ` · ${formatNumber(n.late)} trễ hạn` : ''}</small></span>
+        <span class="v ${tone}">${formatNumber(n.count)}<small>việc</small></span>${LUX_CHEVRON}
+      </button>`;
+}
+
+function redrawAttention(root) {
+  const slot = root.querySelector('#attention-slot');
+  if (!slot) return;
+  const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
+  const m = months.find((x) => x.yearMonth === selectedDashboardMonth) || months[months.length - 1];
+  const ctx = { live: computeLiveOverview(), dashboardData: { months, prevMonthOf, yearStartOf } };
+  slot.innerHTML = attentionInnerHtml(m, ctx);
+  bindAttention(root, m, ctx.live);
+}
+
+function loadNotesIntoAttention(root) {
+  S.loadOpenNotes().then((ok) => {
+    const shown = Number(root.querySelector('#tile-notes')?.dataset.count || 0);
+    if (ok && root.isConnected && dueNotesSummary().count !== shown) redrawAttention(root);
+  });
+}
+
 function attentionInnerHtml(m, ctx) {
   if (isCurrentMonth(m)) {
     const L = ctx.live;
     const overdueMoney = compactVnd(L.overdueTotal);
     const nearDueMoney = compactVnd(L.nearDueTotal);
-    return `${ATTN_TITLE}
+    return `${ATTN_TITLE}${notesAttnRowHtml()}
       <button type="button" class="lux-attn-row" id="tile-overdue">
         <span class="mk red"></span>
         <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(L.overdue.length)} hợp đồng</small></span>
@@ -193,6 +222,10 @@ function attentionInnerHtml(m, ctx) {
 function bindAttention(root, m, live) {
   const { isStaff } = currentRoles();
   const useLive = isCurrentMonth(m);
+  root.querySelector('#tile-notes')?.addEventListener('click', () => openDueNotesModal({
+    onOpenCustomer: (id) => openCustomerDetail(id, { readOnly: isStaff }),
+    onChange: () => redrawAttention(root),
+  }));
   root.querySelector('#tile-overdue')?.addEventListener('click', () => {
     if (useLive) openContractListModal('Hợp đồng quá hạn', live.overdue, isStaff, 'var(--danger)');
     else openSnapshotAttentionModal(m, 'qua_han');
@@ -278,6 +311,7 @@ export function render(contentEl) {
   `;
 
   bindAttention(contentEl, dashboardMonth, ctx.live);
+  loadNotesIntoAttention(contentEl);
 
   bindNhomNoClicks(contentEl);
   bindProvisionDetails(contentEl);
