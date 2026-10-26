@@ -111,13 +111,16 @@ function cardInnerHtml(customerId, ui) {
         <button type="button" role="tab" class="${ui.tab === 'done' ? 'on' : ''}" data-nt-tab="done">Đã xong <em>${doneLogs.length}</em></button>
       </div><div class="nq-list">${list.join('') || `<p class="nq-empty">${emptyText}</p>`}</div></div>`
     : '';
-  return `<div class="nr-bar" role="button" tabindex="0" aria-expanded="${ui.expanded}" data-nt-toggle>
-      <span class="nq-ic">${icon('bell')}</span>
-      <span class="nr-tt"><span class="nr-tx">Ghi chú &amp; nhắc việc</span>${sum.total ? `<em>${sum.total}</em>` : ''}</span>
+  const due = sum.late + sum.today;
+  return `<div class="nr-bar">
+      <button type="button" class="nr-main" data-nt-toggle aria-expanded="${ui.expanded}">
+        <span class="nq-ic">${icon('bell')}</span>
+        <span class="nr-tt"><span class="nr-tx">Ghi chú &amp; nhắc việc</span>${due ? `<em class="is-due" title="${due} việc đến hạn">${due > 99 ? '99+' : due}</em>` : sum.total ? `<em>${sum.total}</em>` : ''}</span>
+      </button>
       <button type="button" class="nr-add" data-nt-add>${ic('plus')}Ghi chú</button>
-      <span class="nq-chev">${ic('chevronDown')}</span>
+      <button type="button" class="nq-chev" data-nt-toggle aria-label="${ui.expanded ? 'Thu gọn' : 'Mở danh sách'}">${ic('chevronDown')}</button>
     </div>
-    <div class="nr-sum">${chips || '<span class="nr-none">Chưa có ghi chú. Bấm “+ Ghi chú” để thêm.</span>'}</div>
+    <div class="nr-sum" data-nt-toggle>${chips || '<span class="nr-none">Chưa có ghi chú</span>'}</div>
     ${body}`;
 }
 
@@ -168,7 +171,7 @@ export function mountNoteCard(sheet, customerId) {
   host.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const t = e.target;
-    if (t.matches('[data-nt-toggle], [data-nt-row]')) { e.preventDefault(); t.click(); }
+    if (t.matches('[data-nt-row]')) { e.preventDefault(); t.click(); }
   });
   draw();
   S.loadNotesForCustomer(customerId).then((ok) => { if (ok && host.isConnected) { ui.tab = null; draw(); } });
@@ -330,7 +333,7 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
     sheetClass: 'nt-sheet nt-scope',
     bodyHtml: `<form class="nt-form" id="nf" novalidate>
       <div class="nt-cust"><span class="av" style="background:${colorFor(customer.id)}">${escapeHtml(initials(customer.name))}</span><div><b>${escapeHtml(customer.name)}</b><small>CCCD ${escapeHtml(customer.cccd || '')}${contracts.length ? ` · ${contracts.length} hợp đồng` : ''}</small></div></div>
-      <div class="nt-f"><span class="nt-lb">Mẫu nhanh</span><div class="nt-tpl" id="nf-tpl">${tplHtml()}</div></div>
+      <div class="nt-f"><span class="nt-lb">Mẫu nhanh</span><div class="nt-tplgrid" id="nf-tpl">${tplHtml()}</div></div>
       <div class="nt-f"><label class="nt-lb" for="nf-text">Nội dung ghi chú</label><textarea id="nf-text" class="nt-ta" rows="3" maxlength="${NOTE_MAX_LEN}" placeholder="VD: Khách trả gốc 2 triệu mỗi tháng">${escapeHtml(f.text)}</textarea><small class="nt-cnt" id="nf-cnt"></small></div>
       <div class="nt-f"><span class="nt-lb">Gắn với</span><div class="nt-tpl" id="nf-ct">${ctHtml()}</div></div>
       <div class="nt-f"><span class="nt-lb">Kiểu nhắc</span><div class="nt-seg" id="nf-kind">${kindHtml()}</div></div>

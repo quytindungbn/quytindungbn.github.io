@@ -161,6 +161,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   document.getElementById('brand-name').textContent = S.getOrg().shortName;
   renderSidebarProfile();
   renderSupportNavBadge();
+  if (session.role === 'admin') S.loadOpenNotes().then((ok) => { if (ok) renderSupportNavBadge(); });
 
   const headerEl = document.getElementById('app-header');
   const filterEl = document.getElementById('filter-slot');

@@ -159,10 +159,14 @@ function totalSupportUnread() {
   return (S.getState()?.chatUnreadCount || 0) + S.countUnreadRequests(session.id);
 }
 
+function dueNotesCount() {
+  const session = S.getSession();
+  return session && session.role === 'admin' ? S.listDueNotes().length : 0;
+}
+
 function unreadBadgeHtml(path, cls = 'nav-badge') {
-  if (path !== '#/admin/ho-tro') return '';
-  const unread = totalSupportUnread();
-  return unread ? `<span class="${cls}">${unread > 99 ? '99+' : unread}</span>` : '';
+  const count = path === '#/admin/ho-tro' ? totalSupportUnread() : path === '#/admin' ? dueNotesCount() : 0;
+  return count ? `<span class="${cls}">${count > 99 ? '99+' : count}</span>` : '';
 }
 
 function renderSidebarNav(nav) {
@@ -257,18 +261,22 @@ export function renderChatFab(session) {
   btn.innerHTML = `${icon('message', 'icon-sm')}${unread ? `<span class="fab-badge">${unread > 9 ? '9+' : unread}</span>` : ''}`;
 }
 
+function setNavBadge(item, count) {
+  const cls = item.closest('#bottom-nav') ? 'bottom-nav-badge' : 'nav-badge';
+  let badge = item.querySelector(`.${cls}`);
+  if (!count) { if (badge) badge.remove(); return; }
+  if (!badge) { badge = document.createElement('span'); badge.className = cls; item.appendChild(badge); }
+  badge.textContent = count > 99 ? '99+' : String(count);
+}
+
 export function renderSupportNavBadge() {
   const unread = totalSupportUnread();
   const targets = [...document.querySelectorAll('a[data-path="#/admin/ho-tro"]')];
   const moreBtn = document.querySelector('#btn-more-bottom[data-support-overflow="true"]');
   if (moreBtn) targets.push(moreBtn);
-  targets.forEach((item) => {
-    const cls = item.closest('#bottom-nav') ? 'bottom-nav-badge' : 'nav-badge';
-    let badge = item.querySelector(`.${cls}`);
-    if (!unread) { if (badge) badge.remove(); return; }
-    if (!badge) { badge = document.createElement('span'); badge.className = cls; item.appendChild(badge); }
-    badge.textContent = unread > 99 ? '99+' : String(unread);
-  });
+  targets.forEach((item) => setNavBadge(item, unread));
+  const due = dueNotesCount();
+  document.querySelectorAll('a[data-path="#/admin"]').forEach((item) => setNavBadge(item, due));
 }
 
 export function updateActiveNav(hash) {

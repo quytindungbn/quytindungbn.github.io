@@ -428,18 +428,21 @@ export function render(contentEl, filterEl) {
   }
   draw();
   window.__qtdRedrawCustomers = draw;
+  S.loadOpenNotes().then((ok) => { if (ok && contentEl.isConnected) draw(); });
 }
 
 export function customerLedgerGroupsHtml(groups, canManageZalo) {
+  const dueCounts = S.dueNoteCounts();
   return groups.map(({ c, contracts, totalBalance }) => {
         const location = [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn';
         const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
+        const dueCount = dueCounts.get(c.id) || 0;
         return `<section class="customer-ledger-group" style="--g-n:${contracts.length}">
           <div class="customer-ledger-person">
-            <button type="button" class="customer-ledger-person-main" data-id="${c.id}" aria-label="Xem khách hàng ${escapeHtml(c.name)}">
-              <span class="customer-ledger-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}</span>
+            <button type="button" class="customer-ledger-person-main" data-id="${c.id}" aria-label="Xem khách hàng ${escapeHtml(c.name)}${dueCount ? `, có ${dueCount} việc đến hạn` : ''}">
+              <span class="customer-ledger-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}${dueCount ? `<b class="cl-due">${dueCount > 9 ? '9+' : dueCount}</b>` : ''}</span>
               <span class="customer-ledger-identity">
-                <span class="customer-ledger-name">${escapeHtml(c.name)}</span>
+                <span class="customer-ledger-name">${escapeHtml(c.name)}${dueCount ? `<b class="cl-due cl-due-n">${dueCount > 9 ? '9+' : dueCount}</b>` : ''}</span>
                 <span class="customer-ledger-address">${escapeHtml(location)}</span>
               </span>
               ${contracts.length > 1 ? `<span class="customer-ledger-total">Tổng dư nợ: <strong>${formatVND(totalBalance)}</strong></span>` : ''}
