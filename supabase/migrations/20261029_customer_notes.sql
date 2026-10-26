@@ -6,7 +6,7 @@ create table if not exists customer_notes (
   body text not null check (char_length(body) between 1 and 300),
   kind text not null default 'none' check (kind in ('none', 'after', 'date', 'monthly')),
   after_days int check (after_days between 1 and 365),
-  monthly_day int check (monthly_day between 1 and 31),
+  monthly_day int check (monthly_day between 1 and 30),
   remind_on date,
   amount bigint check (amount >= 0),
   visibility text not null default 'all' check (visibility in ('all', 'me')),

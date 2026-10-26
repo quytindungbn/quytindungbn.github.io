@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   nextMonthlyOn, firstRemindOn, nextAfterDone, noteState, isDue, pillLabel, repeatLabel,
-  sortNotes, summarize, describeFirst, validateDraft, planChanged, addDaysIso, diffDays, weekdayVi, formatVnDate, isIsoDate,
+  sortNotes, summarize, describeFirst, validateDraft, planChanged, addDaysIso, diffDays, weekdayVi, formatVnDate, isIsoDate, firstMonthlyOn,
 } from '../js/lib/customerNotes.js';
 
 const T = '2026-10-26';
@@ -36,13 +36,14 @@ test('firstRemindOn: sau N ngày, ngày cụ thể, hàng tháng, không nhắc'
   assert.equal(firstRemindOn({ kind: 'date', date: '2026-12-01' }, T), '2026-12-01');
   assert.equal(firstRemindOn({ kind: 'date', date: 'abc' }, T), null);
   assert.equal(firstRemindOn({ kind: 'monthly', monthlyDay: 5 }, T), '2026-11-05');
-  assert.equal(firstRemindOn({ kind: 'monthly', monthlyDay: 32 }, T), null);
+  assert.equal(firstRemindOn({ kind: 'monthly', monthlyDay: 31 }, T), null);
+  assert.equal(firstRemindOn({ kind: 'monthly', monthlyDay: 0 }, T), null);
   assert.equal(firstRemindOn({ kind: 'none' }, T), null);
 });
 
 test('describeFirst: ví dụ trả gốc hàng tháng ngày 5 và hẹn 15 ngày', () => {
-  assert.deepEqual(describeFirst({ kind: 'monthly', monthlyDay: 5 }, T), { iso: '2026-11-05', text: 'Thứ Năm, 05/11/2026', inDays: 10 });
-  assert.deepEqual(describeFirst({ kind: 'after', afterDays: 15 }, T), { iso: '2026-11-10', text: 'Thứ Ba, 10/11/2026', inDays: 15 });
+  assert.deepEqual(describeFirst({ kind: 'monthly', monthlyDay: 5 }, T), { iso: '2026-11-05', text: 'Thứ Năm, 05/11/2026', inDays: 10, pushed: false });
+  assert.deepEqual(describeFirst({ kind: 'after', afterDays: 15 }, T), { iso: '2026-11-10', text: 'Thứ Ba, 10/11/2026', inDays: 15, pushed: false });
   assert.equal(describeFirst({ kind: 'none' }, T), null);
 });
 
@@ -94,6 +95,8 @@ test('validateDraft: nội dung bắt buộc, kiểu nhắc đủ tham số, s�
   assert.equal(validateDraft({ text: 'a', kind: 'after', afterDays: 0 }).ok, false);
   assert.equal(validateDraft({ text: 'a', kind: 'date', date: '' }).ok, false);
   assert.equal(validateDraft({ text: 'a', kind: 'monthly', monthlyDay: 40 }).ok, false);
+  assert.equal(validateDraft({ text: 'a', kind: 'monthly', monthlyDay: 31 }).ok, false);
+  assert.equal(validateDraft({ text: 'a', kind: 'monthly', monthlyDay: 30 }).ok, true);
   const r = validateDraft({ text: '  Khách   trả gốc  ', kind: 'monthly', monthlyDay: '5', amount: '2.000.000', contractId: 'ct1', visibility: 'me' });
   assert.equal(r.ok, true);
   assert.deepEqual(r.clean, { text: 'Khách trả gốc', kind: 'monthly', afterDays: null, monthlyDay: 5, date: null, amount: 2000000, contractId: 'ct1', visibility: 'me' });
@@ -109,4 +112,32 @@ test('planChanged: chỉ tính lại ngày nhắc khi đổi kiểu hoặc thôn
   assert.equal(planChanged(note, { kind: 'monthly', monthlyDay: 5 }), true);
   assert.equal(planChanged({ kind: 'date', remindOn: '2026-12-01' }, { kind: 'date', date: '2026-12-01' }), false);
   assert.equal(planChanged({ kind: 'monthly', monthlyDay: 5 }, { kind: 'monthly', monthlyDay: 6 }), true);
+});
+
+test('hàng tháng: ngày nhắc đầu tiên còn dưới 10 ngày thì sang tháng sau (hôm nay 26/10)', () => {
+  assert.equal(firstMonthlyOn(26, T), '2026-11-26');
+  assert.equal(firstMonthlyOn(27, T), '2026-11-27');
+  assert.equal(firstMonthlyOn(28, T), '2026-11-28');
+  assert.equal(firstMonthlyOn(30, T), '2026-11-30');
+  assert.equal(firstMonthlyOn(4, T), '2026-12-04');
+  assert.equal(firstMonthlyOn(5, T), '2026-11-05');
+  assert.equal(firstMonthlyOn(6, T), '2026-11-06');
+  assert.equal(firstMonthlyOn(1, T), '2026-12-01');
+});
+
+test('hàng tháng: từ 10 ngày trở lên vẫn trong tháng này', () => {
+  assert.equal(firstMonthlyOn(15, '2026-10-01'), '2026-10-15');
+  assert.equal(firstMonthlyOn(11, '2026-10-01'), '2026-10-11');
+  assert.equal(firstMonthlyOn(10, '2026-10-01'), '2026-11-10');
+  assert.equal(firstMonthlyOn(9, '2026-10-01'), '2026-11-09');
+  assert.equal(firstMonthlyOn(5, '2026-10-01'), '2026-11-05');
+  assert.equal(firstMonthlyOn(3, '2026-12-28'), '2027-02-03');
+  assert.equal(firstMonthlyOn(30, '2026-02-01'), '2026-02-28');
+});
+
+test('describeFirst báo đã đẩy sang tháng sau khi còn dưới 10 ngày', () => {
+  assert.equal(describeFirst({ kind: 'monthly', monthlyDay: 26 }, T).pushed, true);
+  assert.equal(describeFirst({ kind: 'monthly', monthlyDay: 26 }, T).iso, '2026-11-26');
+  assert.equal(describeFirst({ kind: 'monthly', monthlyDay: 5 }, T).pushed, false);
+  assert.equal(describeFirst({ kind: 'monthly', monthlyDay: 15 }, '2026-10-01').pushed, false);
 });

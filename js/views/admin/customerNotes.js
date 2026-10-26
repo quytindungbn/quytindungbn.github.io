@@ -6,11 +6,11 @@ import { icon } from '../../icons.js';
 import { escapeHtml, formatVND, formatNumber, formatCompact, initials, colorFor, maskViDate, parseViDate, toDateInputValue } from '../../utils.js';
 import { caretAfterDigits } from '../../lib/dateInput.js';
 import {
-  todayIso, isoOf, noteState, pillLabel, repeatLabel, sortNotes, summarize, dayMonthTile, formatVnDate, describeFirst, NOTE_MAX_LEN,
+  todayIso, isoOf, noteState, pillLabel, repeatLabel, sortNotes, summarize, dayMonthTile, formatVnDate, weekdayVi, addDaysIso, describeFirst, NOTE_MAX_LEN, MONTHLY_MAX_DAY,
 } from '../../lib/customerNotes.js';
 
 const ic = (n) => icon(n, 'icon-sm');
-const SNOOZE_DAYS = [1, 3, 7];
+const SNOOZE_DEFAULT = '3';
 const TEMPLATES = {
   monthly: { kind: 'monthly', text: 'Thu gốc hàng tháng', label: 'Trả gốc hàng tháng', icon: 'refresh' },
   after: { kind: 'after', text: '', label: 'Hẹn trả sau … ngày', icon: 'clock', afterDays: 7 },
@@ -27,6 +27,40 @@ const KIND_BUTTONS = [
 function contractCodeOf(note) {
   const ct = note.contractId ? S.getContract(note.contractId) : null;
   return ct ? ct.code : '';
+}
+
+function snoozeDays(ui) {
+  const n = Number(ui.snoozeDays);
+  return Number.isInteger(n) && n >= 1 && n <= 365 ? n : null;
+}
+
+function snoozeHint(ui) {
+  const d = snoozeDays(ui);
+  if (!d) return 'Nhập số ngày từ 1 đến 365';
+  const iso = addDaysIso(todayIso(), d);
+  return `Nhắc lại vào ${weekdayVi(iso)}, ${formatVnDate(iso)}`;
+}
+
+function refreshSnooze(root, ui) {
+  const hint = root.querySelector('[data-nt-snz-hint]');
+  if (hint) hint.textContent = snoozeHint(ui);
+}
+
+function onSnoozeInput(root, ui, e) {
+  const inp = e.target.closest ? e.target.closest('[data-nt-snz-input]') : null;
+  if (!inp) return;
+  const digits = inp.value.replace(/\D/g, '').slice(0, 3);
+  if (digits !== inp.value) inp.value = digits;
+  ui.snoozeDays = digits;
+  refreshSnooze(root, ui);
+}
+
+function stepSnooze(root, ui, step) {
+  const n = Math.min(365, Math.max(1, (Number(ui.snoozeDays) || 0) + step));
+  ui.snoozeDays = String(n);
+  const inp = root.querySelector('[data-nt-snz-input]');
+  if (inp) inp.value = ui.snoozeDays;
+  refreshSnooze(root, ui);
 }
 
 function tileHtml(note) {
@@ -56,7 +90,7 @@ function okLabel(note) { return note.amount ? 'Đã thu' : 'Đã xử lý'; }
 function actionsHtml(note, ui) {
   if (!note.remindOn) return `<div class="nt-acts"><button type="button" class="nt-btn" data-nt-edit="${note.id}">${ic('edit')}Sửa</button></div>`;
   if (ui.snoozeId === note.id) {
-    return `<div class="nt-acts nt-snz"><span>Hoãn thêm:</span>${SNOOZE_DAYS.map((d) => `<button type="button" class="nt-btn" data-nt-days="${d}" data-nt-id="${note.id}">${d} ngày</button>`).join('')}<button type="button" class="nt-btn more" data-nt-snooze-cancel aria-label="Hủy">${ic('x')}</button></div>`;
+    return `<div class="nt-snz"><div class="nt-snzrow"><div class="nt-box nt-step nt-snzbox"><button type="button" class="nt-stp" data-nt-snz-step="-1" aria-label="Bớt 1 ngày">−</button><input type="text" inputmode="numeric" autocomplete="off" maxlength="3" data-nt-snz-input value="${ui.snoozeDays || ''}" aria-label="Số ngày hoãn"><i>ngày</i><button type="button" class="nt-stp" data-nt-snz-step="1" aria-label="Thêm 1 ngày">+</button></div><button type="button" class="nt-btn ok" data-nt-snz-ok="${note.id}">Hoãn</button><button type="button" class="nt-btn more" data-nt-snooze-cancel aria-label="Hủy">${ic('x')}</button></div><p class="nt-snzhint" data-nt-snz-hint>${snoozeHint(ui)}</p></div>`;
   }
   return `<div class="nt-acts"><button type="button" class="nt-btn ok" data-nt-done="${note.id}">${ic('check')}${okLabel(note)}</button><button type="button" class="nt-btn" data-nt-snooze="${note.id}">${ic('clock')}Hoãn</button><button type="button" class="nt-btn" data-nt-edit="${note.id}">${ic('edit')}Sửa</button></div>`;
 }
@@ -131,7 +165,7 @@ export function noteCardShellHtml() {
 export function mountNoteCard(sheet, customerId) {
   const host = sheet.querySelector('#nt-card');
   if (!host) return;
-  const ui = { expanded: false, tab: null, openId: null, snoozeId: null };
+  const ui = { expanded: false, tab: null, openId: null, snoozeId: null, snoozeDays: SNOOZE_DEFAULT };
   let busy = false;
   const draw = () => {
     host.classList.toggle('is-open', ui.expanded);
@@ -157,10 +191,17 @@ export function mountNoteCard(sheet, customerId) {
     if (tab) { ui.tab = tab.dataset.ntTab; ui.openId = null; ui.snoozeId = null; draw(); return; }
     const done = t.closest('[data-nt-done]');
     if (done) { run(S.completeNote(done.dataset.ntDone), 'Đã ghi nhận hoàn thành.'); return; }
-    const days = t.closest('[data-nt-days]');
-    if (days) { run(S.snoozeNote(days.dataset.ntId, Number(days.dataset.ntDays)), `Đã hoãn ${days.dataset.ntDays} ngày.`); return; }
+    const stp = t.closest('[data-nt-snz-step]');
+    if (stp) { stepSnooze(host, ui, Number(stp.dataset.ntSnzStep)); return; }
+    const snzOk = t.closest('[data-nt-snz-ok]');
+    if (snzOk) {
+      const d = snoozeDays(ui);
+      if (!d) { toast('Nhập số ngày từ 1 đến 365.', 'error'); return; }
+      run(S.snoozeNote(snzOk.dataset.ntSnzOk, d), `Đã hoãn ${d} ngày.`);
+      return;
+    }
     const snooze = t.closest('[data-nt-snooze]');
-    if (snooze) { ui.snoozeId = snooze.dataset.ntSnooze; draw(); return; }
+    if (snooze) { ui.snoozeId = snooze.dataset.ntSnooze; ui.snoozeDays = ui.snoozeDays || SNOOZE_DEFAULT; draw(); host.querySelector('[data-nt-snz-input]')?.select(); return; }
     if (t.closest('[data-nt-snooze-cancel]')) { ui.snoozeId = null; draw(); return; }
     const edit = t.closest('[data-nt-edit]');
     if (edit) { const note = S.listNotesByCustomer(customerId).find((n) => n.id === edit.dataset.ntEdit); if (note) openNoteForm({ customerId, note, onSaved: afterSave, onDeleted: () => { ui.openId = null; draw(); } }); return; }
@@ -168,7 +209,9 @@ export function mountNoteCard(sheet, customerId) {
     if (row) { ui.openId = ui.openId === row.dataset.ntRow ? null : row.dataset.ntRow; ui.snoozeId = null; draw(); return; }
     if (t.closest('[data-nt-toggle]')) { ui.expanded = !ui.expanded; draw(); }
   });
+  host.addEventListener('input', (e) => onSnoozeInput(host, ui, e));
   host.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('[data-nt-snz-input]')) { e.preventDefault(); host.querySelector('[data-nt-snz-ok]')?.click(); return; }
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const t = e.target;
     if (t.matches('[data-nt-row]')) { e.preventDefault(); t.click(); }
@@ -233,7 +276,7 @@ function dueBodyHtml(ui) {
 }
 
 export function openDueNotesModal({ onOpenCustomer, onChange } = {}) {
-  const ui = { snoozeId: null };
+  const ui = { snoozeId: null, snoozeDays: SNOOZE_DEFAULT };
   let busy = false;
   openModal({
     title: `Nhắc việc đến hạn (${S.listDueNotes().length})`,
@@ -256,6 +299,10 @@ export function openDueNotesModal({ onOpenCustomer, onChange } = {}) {
         draw();
         if (onChange) onChange();
       };
+      body.addEventListener('input', (e) => onSnoozeInput(body, ui, e));
+      body.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.matches('[data-nt-snz-input]')) { e.preventDefault(); body.querySelector('[data-nt-snz-ok]')?.click(); }
+      });
       body.addEventListener('click', (e) => {
         const t = e.target;
         const call = t.closest('[data-nt-call]');
@@ -264,10 +311,17 @@ export function openDueNotesModal({ onOpenCustomer, onChange } = {}) {
         if (open) { closeFn(); if (onOpenCustomer) onOpenCustomer(open.dataset.ntOpen); return; }
         const done = t.closest('[data-nt-done]');
         if (done) { run(S.completeNote(done.dataset.ntDone), 'Đã ghi nhận hoàn thành.'); return; }
-        const days = t.closest('[data-nt-days]');
-        if (days) { run(S.snoozeNote(days.dataset.ntId, Number(days.dataset.ntDays)), `Đã hoãn ${days.dataset.ntDays} ngày.`); return; }
+        const stp = t.closest('[data-nt-snz-step]');
+        if (stp) { stepSnooze(body, ui, Number(stp.dataset.ntSnzStep)); return; }
+        const snzOk = t.closest('[data-nt-snz-ok]');
+        if (snzOk) {
+          const d = snoozeDays(ui);
+          if (!d) { toast('Nhập số ngày từ 1 đến 365.', 'error'); return; }
+          run(S.snoozeNote(snzOk.dataset.ntSnzOk, d), `Đã hoãn ${d} ngày.`);
+          return;
+        }
         const snooze = t.closest('[data-nt-snooze]');
-        if (snooze) { ui.snoozeId = snooze.dataset.ntSnooze; draw(); return; }
+        if (snooze) { ui.snoozeId = snooze.dataset.ntSnooze; ui.snoozeDays = ui.snoozeDays || SNOOZE_DEFAULT; draw(); body.querySelector('[data-nt-snz-input]')?.select(); return; }
         if (t.closest('[data-nt-snooze-cancel]')) { ui.snoozeId = null; draw(); return; }
         const edit = t.closest('[data-nt-edit]');
         if (edit) {
@@ -304,12 +358,12 @@ function whenHtml(f, today) {
   const plan = { kind: f.kind, afterDays: f.afterDays, monthlyDay: f.monthlyDay, date: f.date };
   const d = describeFirst(plan, today);
   if (!d) {
-    const hint = f.kind === 'after' ? 'Nhập số ngày từ 1 đến 365.' : f.kind === 'date' ? 'Chọn ngày nhắc.' : 'Nhập ngày trong tháng từ 1 đến 31.';
+    const hint = f.kind === 'after' ? 'Nhập số ngày từ 1 đến 365.' : f.kind === 'date' ? 'Chọn ngày nhắc.' : 'Nhập ngày trong tháng từ 1 đến 30.';
     return `<div class="nt-when is-empty">${icon('bell')}<div><b>Chưa đủ thông tin để nhắc</b><span>${hint}</span></div></div>`;
   }
   const amount = f.amount ? `, ${f.kind === 'monthly' ? 'thu' : 'hẹn trả'} ${formatVND(Number(f.amount))}` : '';
   let line;
-  if (f.kind === 'monthly') line = `Sau đó mỗi tháng vào ngày ${f.monthlyDay}${amount}; ${f.contractId ? 'tự dừng khi hợp đồng tất toán' : 'dừng khi bạn xóa ghi chú'}.`;
+  if (f.kind === 'monthly') line = `${d.pushed ? `Ngày ${f.monthlyDay} còn dưới 10 ngày nên kỳ đầu tiên tính từ tháng sau. ` : ''}Sau đó mỗi tháng vào ngày ${f.monthlyDay}${amount}; ${f.contractId ? 'tự dừng khi hợp đồng tất toán' : 'dừng khi bạn xóa ghi chú'}.`;
   else if (f.kind === 'after') line = `Còn ${d.inDays} ngày kể từ hôm nay (${formatVnDate(today)}). Hiện ở mục Cần chú ý khi đến hạn${amount}.`;
   else line = `Đến ngày đó sẽ hiện ở mục Cần chú ý${amount}.`;
   return `<div class="nt-when">${icon('bell')}<div><b>${f.kind === 'monthly' ? 'Nhắc lần đầu' : 'Nhắc vào'}: ${d.text}</b><span>${line}</span></div></div>`;
@@ -402,7 +456,13 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
           t.value = digits ? formatNumber(Number(digits)) : '';
           refreshWhen();
         } else if (t.id === 'nf-days') { f.afterDays = t.value.replace(/\D/g, '').slice(0, 3); refreshWhen(); }
-        else if (t.id === 'nf-mday') { f.monthlyDay = t.value.replace(/\D/g, '').slice(0, 2); refreshWhen(); }
+        else if (t.id === 'nf-mday') {
+          let v = t.value.replace(/\D/g, '').slice(0, 2);
+          if (Number(v) > MONTHLY_MAX_DAY) v = String(MONTHLY_MAX_DAY);
+          if (v !== t.value) t.value = v;
+          f.monthlyDay = v;
+          refreshWhen();
+        }
         else if (t.id === 'nf-date') {
           const before = t.value, selStart = t.selectionStart ?? before.length;
           const next = maskViDate(before);

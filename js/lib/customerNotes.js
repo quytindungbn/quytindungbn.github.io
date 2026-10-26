@@ -1,5 +1,7 @@
 export const NOTE_KINDS = ['none', 'after', 'date', 'monthly'];
 export const NOTE_MAX_LEN = 300;
+export const MONTHLY_MIN_GAP = 10;
+export const MONTHLY_MAX_DAY = 30;
 const WEEKDAYS = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 const RANK = { late: 0, today: 1, soon: 2, plain: 3, done: 4 };
 
@@ -40,6 +42,11 @@ function toInt(v, min, max) {
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 }
 
+export function firstMonthlyOn(day, today) {
+  const near = nextMonthlyOn(day, today, true);
+  return diffDays(today, near) < MONTHLY_MIN_GAP ? nextMonthlyOn(day, near, false) : near;
+}
+
 export function firstRemindOn(plan, today) {
   if (plan.kind === 'after') {
     const n = toInt(plan.afterDays, 1, 365);
@@ -47,15 +54,15 @@ export function firstRemindOn(plan, today) {
   }
   if (plan.kind === 'date') return isIsoDate(plan.date) ? plan.date : null;
   if (plan.kind === 'monthly') {
-    const d = toInt(plan.monthlyDay, 1, 31);
-    return d === null ? null : nextMonthlyOn(d, today, true);
+    const d = toInt(plan.monthlyDay, 1, MONTHLY_MAX_DAY);
+    return d === null ? null : firstMonthlyOn(d, today);
   }
   return null;
 }
 
 export function nextAfterDone(note, today) {
   if (note.kind !== 'monthly') return null;
-  const day = toInt(note.monthlyDay, 1, 31);
+  const day = toInt(note.monthlyDay, 1, MONTHLY_MAX_DAY);
   if (day === null) return null;
   const base = note.remindOn && note.remindOn > today ? note.remindOn : today;
   return nextMonthlyOn(day, base, false);
@@ -113,7 +120,8 @@ export function summarize(notes, today) {
 export function describeFirst(plan, today) {
   const iso = firstRemindOn(plan, today);
   if (!iso) return null;
-  return { iso, text: `${weekdayVi(iso)}, ${formatVnDate(iso)}`, inDays: diffDays(today, iso) };
+  const pushed = plan.kind === 'monthly' && iso !== nextMonthlyOn(toInt(plan.monthlyDay, 1, MONTHLY_MAX_DAY), today, true);
+  return { iso, text: `${weekdayVi(iso)}, ${formatVnDate(iso)}`, inDays: diffDays(today, iso), pushed };
 }
 
 export function validateDraft(draft) {
@@ -131,8 +139,8 @@ export function validateDraft(draft) {
     clean.date = draft.date;
   }
   if (kind === 'monthly') {
-    clean.monthlyDay = toInt(draft.monthlyDay, 1, 31);
-    if (clean.monthlyDay === null) return { ok: false, reason: 'Ngày trong tháng từ 1 đến 31.' };
+    clean.monthlyDay = toInt(draft.monthlyDay, 1, MONTHLY_MAX_DAY);
+    if (clean.monthlyDay === null) return { ok: false, reason: 'Ngày trong tháng từ 1 đến 30.' };
   }
   const rawAmount = String(draft.amount ?? '').replace(/[^\d]/g, '');
   if (rawAmount) {

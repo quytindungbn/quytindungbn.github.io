@@ -3290,9 +3290,9 @@ alter table zalo_send_log add column if not exists recipient_name text;
 
 Mỗi khách có thẻ **Ghi chú & nhắc việc** trong hồ sơ (cột trái, trên cùng): thu gọn mặc định, chỉ hiện số việc; nút vàng **＋ Ghi chú** để thêm; bấm vào thẻ mới mở danh sách (tab *Cần làm / Ghi chú / Đã xong*), bấm từng dòng mới hiện chi tiết + nút xử lý.
 
-- **Kiểu nhắc** (cột `kind`): `none` (ghi chú thường), `after` (hẹn sau N ngày, 1–365), `date` (ngày cụ thể), `monthly` (hàng tháng vào ngày D, 1–31; tháng ngắn hơn lấy ngày cuối tháng). Ngày nhắc kế tiếp lưu ở `remind_on`. Mẫu nhanh: *Trả gốc hàng tháng*, *Hẹn trả sau … ngày*, *Hẹn gọi lại*, *Ghi chú thường*. Có thể kèm số tiền (`amount`) và gắn với 1 hợp đồng (`contract_id`).
+- **Kiểu nhắc** (cột `kind`): `none` (ghi chú thường), `after` (hẹn sau N ngày, 1–365), `date` (ngày cụ thể), `monthly` (hàng tháng vào ngày D, chỉ cho **1–30** vì ngày 31 ít tháng có; tháng ngắn hơn như tháng 2 lấy ngày cuối tháng). **Kỳ nhắc đầu tiên**: nếu ngày D gần nhất còn **dưới 10 ngày** (kể cả hôm nay) thì tính từ **tháng sau** — ví dụ hôm nay 26, chọn ngày 26/27/28 → nhắc 26/27/28 tháng sau; từ 10 ngày trở lên mới nhắc trong tháng này. Ngày nhắc kế tiếp lưu ở `remind_on`. Mẫu nhanh: *Trả gốc hàng tháng*, *Hẹn trả sau … ngày*, *Hẹn gọi lại*, *Ghi chú thường*. Có thể kèm số tiền (`amount`) và gắn với 1 hợp đồng (`contract_id`).
 - **Đến hạn** = ngày nhắc ≤ hôm nay (giờ máy). Việc đến hạn hiện ở **Tổng quan → Cần chú ý → "Nhắc việc đến hạn"** (dòng đầu, chỉ hiện khi có việc; đỏ nếu có việc trễ). Bấm vào mở danh sách theo từng khách, ghi chú đổ ra sẵn với nút **Đã thu/Đã xử lý · Hoãn (1/3/7 ngày) · Sửa**, mỗi khách có **Gọi** và **Mở hồ sơ**.
-- **Đã thu / Đã xử lý**: việc một lần → `status='done'` (ghi `done_by`, `done_at`); việc hàng tháng → ngày nhắc nhảy sang kỳ kế tiếp (sau cả hôm nay lẫn ngày đang nhắc), vẫn mở. Mỗi lần *hoàn thành / hoãn* ghi 1 dòng vào `customer_note_log` (tab *Đã xong* đọc từ đây). Nút này chỉ đánh dấu nhắc việc, KHÔNG đụng vào dư nợ/lãi của hợp đồng.
+- **Đã thu / Đã xử lý**: việc một lần → `status='done'` (ghi `done_by`, `done_at`); việc hàng tháng → ngày nhắc nhảy sang kỳ kế tiếp (nút **Hoãn** hiện ô tự nhập số ngày 1–365, kèm dòng "Nhắc lại vào …"; Enter = Hoãn) (sau cả hôm nay lẫn ngày đang nhắc), vẫn mở. Mỗi lần *hoàn thành / hoãn* ghi 1 dòng vào `customer_note_log` (tab *Đã xong* đọc từ đây). Nút này chỉ đánh dấu nhắc việc, KHÔNG đụng vào dư nợ/lãi của hợp đồng.
 - Ghi chú gắn hợp đồng đã tất toán thì tự ngừng nhắc (hiện như ghi chú thường).
 - **Ai thấy**: `visibility='all'` — mọi quản trị viên thấy khách đó (nhân viên chỉ thấy khách thuộc địa bàn mình, nhờ RLS bảng `customers`); `visibility='me'` — chỉ người tạo. Mọi quản trị viên/nhân viên thêm, sửa, hoàn thành, hoãn được; xóa: người tạo hoặc quản trị toàn quyền. Thao tác ghi vào Nhật ký (`ui-note-add/edit/done/snooze/delete`, không ghi nội dung ghi chú).
 - **Chấm đỏ có số**: khi có việc đến hạn (trễ hoặc hôm nay) hiện số đỏ như tin nhắn ở 3 chỗ — ngay khung **Nhắc việc đến hạn** ở Cần chú ý (menu Tổng quan KHÔNG có chấm), góc ảnh đại diện khách trong **Khách hàng & Hợp đồng** (điện thoại: ngay cạnh tên), số cạnh tiêu đề thẻ Ghi chú (đỏ khi có việc đến hạn, xanh đậm khi chỉ có ghi chú/việc sắp tới), và dòng **Nhắc việc đến hạn** ở Cần chú ý. App tải danh sách việc đang mở (`loadOpenNotes`, tối đa 8 giây/lần, các màn hình dùng chung 1 lần tải) mỗi khi vẽ lại màn hình.
@@ -3310,7 +3310,7 @@ create table if not exists customer_notes (
   body text not null check (char_length(body) between 1 and 300),
   kind text not null default 'none' check (kind in ('none', 'after', 'date', 'monthly')),
   after_days int check (after_days between 1 and 365),
-  monthly_day int check (monthly_day between 1 and 31),
+  monthly_day int check (monthly_day between 1 and 30),
   remind_on date,
   amount bigint check (amount >= 0),
   visibility text not null default 'all' check (visibility in ('all', 'me')),
