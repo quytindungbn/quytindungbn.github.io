@@ -334,7 +334,7 @@ export function openNoteForm({ customerId, note = null, onSaved, onDeleted }) {
     bodyHtml: `<form class="nt-form" id="nf" novalidate>
       <div class="nt-cust"><span class="av" style="background:${colorFor(customer.id)}">${escapeHtml(initials(customer.name))}</span><div><b>${escapeHtml(customer.name)}</b><small>CCCD ${escapeHtml(customer.cccd || '')}${contracts.length ? ` · ${contracts.length} hợp đồng` : ''}</small></div></div>
       <div class="nt-f"><span class="nt-lb">Mẫu nhanh</span><div class="nt-tplgrid" id="nf-tpl">${tplHtml()}</div></div>
-      <div class="nt-f"><label class="nt-lb" for="nf-text">Nội dung ghi chú</label><textarea id="nf-text" class="nt-ta" rows="3" maxlength="${NOTE_MAX_LEN}" placeholder="VD: Khách trả gốc 2 triệu mỗi tháng">${escapeHtml(f.text)}</textarea><small class="nt-cnt" id="nf-cnt"></small></div>
+      <div class="nt-f"><label class="nt-lb" for="nf-text">Nội dung ghi chú</label><textarea id="nf-text" class="nt-ta" rows="2" maxlength="${NOTE_MAX_LEN}" placeholder="VD: Khách trả gốc 2 triệu mỗi tháng">${escapeHtml(f.text)}</textarea><small class="nt-cnt" id="nf-cnt"></small></div>
       <div class="nt-f"><span class="nt-lb">Gắn với</span><div class="nt-tpl" id="nf-ct">${ctHtml()}</div></div>
       <div class="nt-f"><span class="nt-lb">Kiểu nhắc</span><div class="nt-seg" id="nf-kind">${kindHtml()}</div></div>
       <div id="nf-plan">${planHtml(f)}</div>
