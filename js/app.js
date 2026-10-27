@@ -179,6 +179,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   const returningToBalanceSheet = path === balanceSheetPath && lastRoutePath !== balanceSheetPath;
   if (scrollTop && !returningToBalanceSheet) window.scrollTo(0, 0);
 
+  headerEl.classList.remove('cw-off'); contentEl.classList.remove('cw-on');
   if (match.view.renderHeader) match.view.renderHeader(headerEl, match.params);
   match.view.render(contentEl, filterEl, match.params, query);
   if (returningToBalanceSheet) requestAnimationFrame(() => {

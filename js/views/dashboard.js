@@ -1,11 +1,24 @@
 import * as S from '../state.js';
 import { icon } from '../icons.js';
 import { pageHeader } from '../components/shell.js';
-import { orderStatusBadge, emptyState } from '../components/ui.js';
-import { formatVND, formatDate } from '../utils.js';
+import { formatVND, formatDate, escapeHtml } from '../utils.js';
+import { CW_ORN, cwChip, cwTermPercent, cwTopHtml } from '../components/customerHero.js';
 
 export function renderHeader(headerEl) {
+  headerEl.classList.add('cw-off');
   headerEl.innerHTML = pageHeader({ title: 'Trang chủ' });
+}
+
+function contractCardHtml(c, info) {
+  const settled = info.status === 'da_tat_toan';
+  return `
+      <a href="#/hop-dong/${c.id}" class="cw-card">
+        <div class="cw-ch"><h3>Hợp đồng ${escapeHtml(c.code)}</h3>${cwChip(info)}</div>
+        <div class="cw-lbl">Dư nợ hiện tại</div><div class="cw-big">${formatVND(c.balance)}</div>
+        <div class="cw-line" style="--p:${cwTermPercent(c, settled)}%"><b></b><i></i></div>
+        <div class="cw-g3"><div><small>Số tiền vay</small><b>${formatVND(c.principal)}</b></div><div><small>Ngày vay</small><b>${formatDate(c.disbursedDate)}</b></div><div><small>Ngày đến hạn</small><b>${formatDate(c.dueDate)}</b></div></div>
+        <div class="cw-cf"><span>Xem chi tiết →</span></div>
+      </a>`;
 }
 
 export function render(contentEl) {
@@ -20,47 +33,32 @@ export function render(contentEl) {
     .map((c) => ({ c, info: S.contractStatusInfo(c) }))
     .sort((a, b) => RANK[a.info.status] - RANK[b.info.status] || a.info.days - b.info.days);
 
+  const showDebt = active.length !== 1;
+  const hotline = String(org.hotline || '').trim();
+  const dial = hotline.replace(/[^\d+]/g, '');
+
+  contentEl.classList.add('cw-on');
   contentEl.innerHTML = `
-    ${org.bannerEnabled ? `
-    <div class="card card-pad mb-16" style="background:linear-gradient(120deg, var(--color-primary), #1a9484);color:#fff;border:none">
-      <div class="fw-700" style="font-size:15px">${org.bannerTitle}</div>
-      <div class="text-sm mt-4" style="opacity:.92">${org.bannerText}</div>
-    </div>` : ''}
-
-    <div class="card card-pad mb-16">
-      <div class="text-sm text-muted">Xin chào,</div>
-      <div class="fw-700" style="font-size:17px;margin-bottom:14px">${customer.name}</div>
-      ${active.length !== 1 ? `<div class="stat-tile c-blue" style="max-width:340px">
-        <div class="stat-icon">${icon('wallet', 'icon-sm')}</div>
-        <div class="stat-label">Tổng dư nợ hiện tại (${active.length} hợp đồng)</div>
-        <div class="stat-value">${formatVND(total)}</div>
-      </div>` : ''}
+  <div class="cw"><div class="cw-wrap">
+    <header class="cw-hero${showDebt ? '' : ' nd'}">
+      ${cwTopHtml(org, customer)}
+      <div class="cw-hi"><small>Xin chào,</small><b>${escapeHtml(customer.name)}</b>${CW_ORN}</div>
+    </header>
+    <div class="cw-kpi${showDebt ? '' : ' nd'}">
+      ${showDebt ? `<div class="cw-debt"><div class="l">Tổng dư nợ hiện tại (${active.length} hợp đồng)</div><strong>${formatVND(total)}</strong></div>` : ''}
+      <div class="cw-quick">
+        <a class="cw-qt" href="#/yeu-cau-tu-van"><span class="ico">${icon('plus')}</span><span class="t">Yêu cầu vay mới</span></a>
+        ${hotline ? `<a class="cw-qt" href="tel:${escapeHtml(dial)}"><span class="ico">${icon('phone')}</span><span class="t"><small>Hotline</small>${escapeHtml(hotline)}</span></a>` : ''}
+      </div>
     </div>
-
-    <div class="section-head">
-      <h2>Hợp đồng vay của bạn</h2>
-      <a href="#/yeu-cau-tu-van" class="link-more">${icon('plus', 'icon-sm')} Yêu cầu vay mới</a>
-    </div>
-
-    ${contracts.length ? contracts.map(({ c, info }) => `
-      <a href="#/hop-dong/${c.id}" class="card order-card" style="display:block;cursor:pointer">
-        <div class="oc-top">
-          <span class="oc-code">Hợp đồng ${c.code}</span>
-          <span class="badge ${info.badge}">${info.label}</span>
-        </div>
-        <div class="oc-line"><span>Số tiền vay</span><b>${formatVND(c.principal)}</b></div>
-        <div class="oc-line"><span>Dư nợ hiện tại</span><b>${formatVND(c.balance)}</b></div>
-        <div class="oc-line"><span>Ngày vay</span><b>${formatDate(c.disbursedDate)}</b></div>
-        <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(c.dueDate)}</b></div>
-        <div class="oc-foot"><span class="link-more">Xem chi tiết →</span></div>
-      </a>`
-    ).join('') : `<div class="card card-pad">${emptyState({ iconName: 'landmark', title: 'Chưa có hợp đồng vay', message: 'Bạn hiện chưa có hợp đồng vay nào tại quỹ tín dụng.' })}</div>`}
-
-    <div class="card card-pad mt-16">
-      <div class="section-head"><h2>Liên hệ hỗ trợ</h2></div>
-      <div class="fw-700 mb-10" style="font-size:14px;text-align:right">${org.name}</div>
-      <div class="oc-line"><span>Hotline</span><b><a href="tel:${org.hotline.replace(/\s/g, '')}" style="color:var(--color-primary)">${icon('phone', 'icon-sm')} ${org.hotline}</a></b></div>
-      <div class="oc-line"><span>Địa chỉ</span><b>${org.address}</b></div>
-    </div>
-  `;
+    ${org.bannerEnabled ? `<div class="cw-banner"><b>${escapeHtml(org.bannerTitle)}</b><span>${escapeHtml(org.bannerText)}</span></div>` : ''}
+    <div class="cw-sec"><h2>Hợp đồng vay của bạn</h2>${CW_ORN}</div>
+    ${contracts.length
+    ? `<div class="cw-list">${contracts.map(({ c, info }) => contractCardHtml(c, info)).join('')}</div>`
+    : `<div class="cw-empty"><b>Chưa có hợp đồng vay</b>Bạn hiện chưa có hợp đồng vay nào tại quỹ tín dụng.</div>`}
+    <section class="cw-sup"><h2>Liên hệ hỗ trợ</h2><p class="org">${escapeHtml(org.name)}</p>${CW_ORN}
+      <div class="cw-sr"><span class="ic">${icon('phone')}</span><span class="g"><span class="k">Hotline</span><span class="v">${escapeHtml(hotline)}</span></span>${hotline ? `<a class="cw-call" href="tel:${escapeHtml(dial)}">${icon('phone')}Gọi</a>` : ''}</div>
+      <div class="cw-sr"><span class="ic">${icon('mapPin')}</span><span class="g"><span class="k">Địa chỉ</span><span class="v">${escapeHtml(org.address)}</span></span></div>
+    </section>
+  </div></div>`;
 }

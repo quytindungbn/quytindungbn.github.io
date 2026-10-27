@@ -3418,6 +3418,12 @@ create policy "admins add note log" on customer_note_log
 - Chi tiết hợp đồng trên máy tính: "Tài sản bảo đảm" nằm dưới "Thông tin hợp đồng" (cột trái); "Liên hệ và gửi thông báo" lên đầu cột phải, "Gửi mã QR" ngay dưới (điện thoại giữ thứ tự cũ). Khung gọn hơn: giãn dòng và lề giảm, ô SMS / Thông báo / Zalo thấp còn khoảng 63px, dòng tài sản chữ nhỏ (nhãn "GIÁ TRỊ" nhỏ phía trên số tiền). Dòng "Đã thêm vào gửi tự động N tháng" in đậm xanh đậm. Đầu trang: khách chỉ 1 người thì tên nằm sát trái và nút Gọi ngay sau tên (như khi có người cùng vay).
 - Khung "Thông tin hợp đồng": dưới dòng SĐT thêm dòng "SĐT người cùng vay" (nút sao chép + số bấm để gọi, ghi lượt gọi người cùng vay), chỉ hiện khi người cùng vay có số.
 
+### 10.95 Giao diện khách hàng mới (Mẫu 3) — không cần SQL
+
+- Khách đăng nhập (điện thoại và máy tính): **Trang chủ**, **Chi tiết hợp đồng** và cửa sổ **Thanh toán** đổi sang giao diện cùng theme quản trị (`js/views/dashboard.js`, `js/views/contractDetail.js`, `js/components/customerHero.js`; CSS khối `.cw-*` cuối `css/styles.css`). Chữ nội dung, mã phần tử (`#btn-thanh-toan`, `#qr-img`, `#btn-download-qr`, `#btn-share-qr`, `#principal-input`…) và logic thanh toán / QR giữ nguyên.
+- Trang chủ máy tính: một hàng 3 ô nằm vắt qua đáy đầu trang (Tổng dư nợ hiện tại rộng nhất, Yêu cầu vay mới, Hotline); khách chỉ có 1 hợp đồng đang vay thì không hiện ô Tổng dư nợ như trước. Khung Liên hệ hỗ trợ chia 2 cột trên máy tính.
+- Đầu trang cũ (`#app-header`) bị ẩn ở 2 trang này bằng lớp `cw-off`, trang Tài khoản và Yêu cầu tư vấn giữ giao diện cũ. Nút mũi tên quay lại nằm trong đầu trang mới.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

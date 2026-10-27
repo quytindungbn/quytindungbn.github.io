@@ -1,21 +1,24 @@
 import * as S from '../state.js';
 import { icon } from '../icons.js';
 import { pageHeader, bindHeaderActions } from '../components/shell.js';
-import { statusBadge, installmentNextBoxHtml, bindInstallmentNextBox } from '../components/ui.js';
+import { installmentNextBoxHtml, bindInstallmentNextBox } from '../components/ui.js';
+import { cwChip, cwTermPercent } from '../components/customerHero.js';
 import { openModal } from '../components/modal.js';
-import { formatVND, formatDate, formatNumber, stripDiacritics, debounce } from '../utils.js';
+import { formatVND, formatDate, formatNumber, stripDiacritics, debounce, escapeHtml } from '../utils.js';
 import { toast } from '../components/toast.js';
 import { drawVietQrCard, drawVietQrCompact } from '../lib/vietQrLocal.js';
 import { transferContent } from '../lib/transferContent.js';
 
 export function renderHeader(headerEl) {
+  headerEl.classList.add('cw-off');
   headerEl.innerHTML = pageHeader({ title: 'Chi tiết hợp đồng', back: true });
   bindHeaderActions(headerEl, { back: () => history.back() });
 }
 
 export function render(contentEl, filterEl, params) {
   const contract = S.getContract(params.id);
-  if (!contract) { contentEl.innerHTML = `<div class="card card-pad"><p>Không tìm thấy hợp đồng.</p></div>`; return; }
+  contentEl.classList.add('cw-on');
+  if (!contract) { contentEl.innerHTML = `<div class="cw"><div class="cw-empty"><b>Không tìm thấy hợp đồng.</b><a href="#/">Về trang chủ</a></div></div>`; return; }
   const customer = S.getCustomer(contract.customerId);
 
   const info = S.contractStatusInfo(contract);
@@ -23,49 +26,56 @@ export function render(contentEl, filterEl, params) {
   const interestDays = S.interestDaysAccrued(contract);
   const accrued = S.accruedInterest(contract);
   const canPay = S.effectiveContractStatus(contract) !== 'da_tat_toan';
+  const row = (label, value) => `<div class="cw-sl"><span>${label}</span><em></em><b>${value}</b></div>`;
+  const alertHtml = canPay && info.source !== 'installment'
+    ? (info.status === 'qua_han' ? `<span class="al bad">${icon('alert', 'icon-sm')}Hợp đồng đã quá hạn ${info.days} ngày</span>`
+      : info.status === 'gan_den_han' ? `<span class="al">${icon('alert', 'icon-sm')}Còn ${info.days} ngày đến hạn thanh toán</span>`
+        : `<span class="al mut">Còn ${info.days} ngày đến hạn thanh toán</span>`)
+    : '';
 
   contentEl.innerHTML = `
-    <div class="card card-pad mb-16">
-      <div class="flex justify-between items-center mb-10">
-        <span class="fw-700" style="font-size:15px">Hợp đồng ${contract.code}</span>
-        ${statusBadge(info)}
+  <div class="cw"><div class="cw-wrap">
+    <header class="cw-hero d">
+      <div class="cw-top"><span style="display:flex;align-items:center;gap:12px"><button type="button" class="cw-back" id="btn-back-cw" aria-label="Quay lại">${icon('arrowLeft')}</button><span class="cw-eb">Chi tiết hợp đồng</span></span></div>
+      <div class="row2">
+        <div><h1 class="cw-code">Hợp đồng ${escapeHtml(contract.code)}</h1>${cwChip(info)}</div>
+        <div>
+          <div class="cw-amt"><small>Dư nợ hiện tại</small><strong class="foil">${formatVND(contract.balance)}</strong></div>
+          <div class="cw-line" style="--p:${cwTermPercent(contract, !canPay)}%"><b></b><i></i></div>
+          <div class="cw-dates"><span>Ngày giải ngân<b>${formatDate(contract.disbursedDate)}</b></span><span>Ngày đến hạn<b>${formatDate(contract.dueDate)}</b></span></div>
+        </div>
       </div>
-      <div class="oc-line"><span>Số tiền vay ban đầu</span><b>${formatVND(contract.principal)}</b></div>
-      <div class="oc-line"><span>Dư nợ hiện tại</span><b style="color:var(--color-primary)">${formatVND(contract.balance)}</b></div>
-      <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
-      <div class="oc-line"><span>Ngày giải ngân</span><b>${formatDate(contract.disbursedDate)}</b></div>
-      <div class="oc-line"><span>Ngày đến hạn</span><b>${formatDate(contract.dueDate)}</b></div>
-      <div class="oc-line"><span>Đã trả lãi đến ngày</span><b>${formatDate(interestPaidUntil)}</b></div>
-      ${installmentNextBoxHtml(contract)}
-      ${canPay ? `
-      <div class="oc-line" style="padding-top:8px;border-top:1px dashed var(--border);margin-top:6px">
-        <span class="fw-700">Lãi đến nay</span>
-        <b style="color:var(--warning)">${formatVND(accrued)}</b>
+    </header>
+    <div class="cw-split">
+      <div>
+        <section class="cw-statement">
+          ${row('Số tiền vay ban đầu', formatVND(contract.principal))}
+          ${row('Lãi suất', `${contract.interestRate}%/năm`)}
+          ${row('Ngày giải ngân', formatDate(contract.disbursedDate))}
+          ${row('Ngày đến hạn', formatDate(contract.dueDate))}
+          ${row('Đã trả lãi đến ngày', formatDate(interestPaidUntil))}
+        </section>
+        <div class="cw-inst">${installmentNextBoxHtml(contract)}</div>
       </div>
-      <div class="field-hint">(${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%/năm ÷ 365)</div>
-      ` : ''}
-      ${canPay && info.source !== 'installment' ? `
-      <div class="field-hint ${info.status === 'qua_han' ? 'text-danger' : ''}" style="${info.status === 'gan_den_han' ? 'color:var(--warning)' : ''}margin-top:8px;font-size:13px">
-        ${info.status === 'qua_han' ? `${icon('alert', 'icon-sm')} Hợp đồng đã quá hạn ${info.days} ngày`
-          : info.status === 'gan_den_han' ? `${icon('alert', 'icon-sm')} Còn ${info.days} ngày đến hạn thanh toán`
-          : `Còn ${info.days} ngày đến hạn thanh toán`}
-      </div>` : ''}
+      <div>
+        ${canPay ? `
+        <section class="cw-intp">
+          <div class="row"><span>Lãi đến nay</span><strong>${formatVND(accrued)}</strong></div>
+          <p>(${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%/năm ÷ 365)</p>
+          ${alertHtml}
+        </section>` : ''}
+        <div class="cw-act">
+          ${canPay ? `<button type="button" class="cw-btn pri" id="btn-thanh-toan">${icon('wallet', 'icon-sm')} Thanh toán</button>` : ''}
+          <a href="#/yeu-cau-tu-van?hop_dong=${contract.code}" class="cw-btn sec">${icon('phone', 'icon-sm')} Liên hệ tư vấn về hợp đồng này</a>
+        </div>
+        ${canPay ? `<div class="cw-note">${icon('alert', 'icon-sm')}<span>Khi đã thanh toán, vui lòng chờ đợi một thời gian sẽ được cập nhật thông tin (không chuyển khoản lại lần nữa).</span></div>` : ''}
+      </div>
     </div>
-
-    ${canPay ? `<button class="btn btn-primary btn-block mb-10" id="btn-thanh-toan">${icon('wallet', 'icon-sm')} Thanh toán</button>` : ''}
-
-    <a href="#/yeu-cau-tu-van?hop_dong=${contract.code}" class="btn btn-outline btn-block">
-      ${icon('phone', 'icon-sm')} Liên hệ tư vấn về hợp đồng này
-    </a>
-
-    ${canPay ? `
-    <div class="card card-pad mt-16 text-sm text-danger fw-700" style="text-align:center">
-      ${icon('alert', 'icon-sm')} Khi đã thanh toán, vui lòng chờ đợi một thời gian sẽ được cập nhật thông tin (không chuyển khoản lại lần nữa).
-    </div>` : ''}
-  `;
+  </div></div>`;
 
   const btnPay = contentEl.querySelector('#btn-thanh-toan');
   if (btnPay) btnPay.addEventListener('click', () => openPaymentModal(contract, customer, accrued));
+  contentEl.querySelector('#btn-back-cw').addEventListener('click', () => history.back());
   bindInstallmentNextBox(contentEl, contract);
 }
 
@@ -255,6 +265,7 @@ function openPaymentModal(contract, customer, accrued) {
 
   const close = openModal({
     title: 'Thanh toán khoản vay',
+    sheetClass: 'cw-paysheet',
     bodyHtml: `<div id="pay-body"></div>`,
     onMount(sheet) {
       const body = sheet.querySelector('#pay-body');
