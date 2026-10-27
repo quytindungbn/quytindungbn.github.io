@@ -3424,6 +3424,10 @@ create policy "admins add note log" on customer_note_log
 - Trang chủ máy tính: một hàng 3 ô nằm vắt qua đáy đầu trang (Tổng dư nợ hiện tại rộng nhất, Yêu cầu vay mới, Hotline); khách chỉ có 1 hợp đồng đang vay thì không hiện ô Tổng dư nợ như trước. Khung Liên hệ hỗ trợ chia 2 cột trên máy tính.
 - Đầu trang cũ (`#app-header`) bị ẩn ở 2 trang này bằng lớp `cw-off`, trang Tài khoản và Yêu cầu tư vấn giữ giao diện cũ. Nút mũi tên quay lại nằm trong đầu trang mới.
 
+### 10.96 Lịch sử gửi tin: số lần thành công / lỗi theo từng ngày (không cần SQL)
+
+- Tab "Lịch sử gửi tin" (`js/views/admin/zaloOA.js`): tiêu đề mỗi ngày ghi thêm "N lần · X thành công · Y lỗi" (xanh = thành công, đỏ = lỗi, xám khi bằng 0). Tính theo từng lần gửi như 3 nút trạng thái; lần gửi được cho một người nhưng lỗi với người còn lại tính là lỗi. Số theo đúng các dòng đang hiện (đang lọc "Lỗi" thì ngày chỉ còn số lỗi).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

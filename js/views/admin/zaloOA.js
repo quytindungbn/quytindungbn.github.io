@@ -955,7 +955,7 @@ function drawLogTab(slot) {
       <div class="card card-pad mb-16 lg-card">
       <div class="oa-sec-h"><h2>Lịch sử gửi tin</h2></div>
       <div class="text-sm text-muted mb-8">${rows.length} lần gửi${hasFilter ? ' (đã lọc)' : ''}${fromMs === null ? (logViewFrom === null ? ' trong 1 tháng gần nhất' : (logCoveredFrom === -Infinity && viewFromMs <= 0 ? ' (toàn bộ lịch sử)' : ` từ ${formatDate(new Date(viewFromMs))} đến nay`)) : ''} · <b style="color:var(--success)">${successCount} thành công</b> · <b style="color:var(--danger)">${errorCount} lỗi</b></div>
-      ${rows.length ? days.map((g) => `<div class="oa-day lg-day"><span>${dayLabel(g)}</span><em>${g.items.length} lần</em></div>${g.items.map(logRowHtml).join('')}`).join('')
+      ${rows.length ? days.map((g) => { const ok = g.items.filter((x) => x.allOk).length, bad = g.items.length - ok; return `<div class="oa-day lg-day"><span>${dayLabel(g)}</span><em>${g.items.length} lần<i class="lg-dc ${ok ? 'is-ok' : 'is-zero'}">${ok} thành công</i><i class="lg-dc ${bad ? 'is-err' : 'is-zero'}">${bad} lỗi</i></em></div>${g.items.map(logRowHtml).join('')}`; }).join('')
         : emptyState({ iconName: 'message', title: 'Không có lần gửi nào phù hợp', message: hasFilter ? 'Thử bỏ bớt từ khóa, bộ lọc trạng thái hoặc thời gian.' : 'Log sẽ hiện ở đây sau khi hệ thống gửi tin Zalo (tự động hoặc gửi tay).' })}
       ${moreHtml}
       </div>
