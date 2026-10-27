@@ -3421,12 +3421,22 @@ create policy "admins add note log" on customer_note_log
 ### 10.95 Giao diện khách hàng mới (Mẫu 3) — không cần SQL
 
 - Khách đăng nhập (điện thoại và máy tính): **Trang chủ**, **Chi tiết hợp đồng** và cửa sổ **Thanh toán** đổi sang giao diện cùng theme quản trị (`js/views/dashboard.js`, `js/views/contractDetail.js`, `js/components/customerHero.js`; CSS khối `.cw-*` cuối `css/styles.css`). Chữ nội dung, mã phần tử (`#btn-thanh-toan`, `#qr-img`, `#btn-download-qr`, `#btn-share-qr`, `#principal-input`…) và logic thanh toán / QR giữ nguyên.
-- Trang chủ máy tính: một hàng 3 ô nằm vắt qua đáy đầu trang (Tổng dư nợ hiện tại rộng nhất, Yêu cầu vay mới, Hotline); khách chỉ có 1 hợp đồng đang vay thì không hiện ô Tổng dư nợ như trước. Khung Liên hệ hỗ trợ chia 2 cột trên máy tính.
+- Trang chủ máy tính: các ô nằm vắt qua đáy đầu trang; bố cục đã được cân đối lại ở mục 10.97.
 - Đầu trang cũ (`#app-header`) bị ẩn ở 2 trang này bằng lớp `cw-off`, trang Tài khoản và Yêu cầu tư vấn giữ giao diện cũ. Nút mũi tên quay lại nằm trong đầu trang mới.
 
 ### 10.96 Lịch sử gửi tin: số lần thành công / lỗi theo từng ngày (không cần SQL)
 
 - Tab "Lịch sử gửi tin" (`js/views/admin/zaloOA.js`): tiêu đề mỗi ngày ghi thêm "N lần · X thành công · Y lỗi" (xanh = thành công, đỏ = lỗi, xám khi bằng 0). Tính theo từng lần gửi như 3 nút trạng thái; lần gửi được cho một người nhưng lỗi với người còn lại tính là lỗi. Số theo đúng các dòng đang hiện (đang lọc "Lỗi" thì ngày chỉ còn số lỗi).
+
+### 10.97 Cân đối lại khung giao diện khách hàng + font khung "Thông tin hợp đồng" (không cần SQL)
+
+- Máy tính: nội dung khách tối đa 980px và căn giữa (`.cw-wrap`), đầu trang gọn hơn. Trang chủ dùng lưới `.cw-main` (hai kiểu `.one` / `.multi`), điện thoại xếp dọc như cũ.
+- Khách có đúng **1 hợp đồng** (`.cw-main.one`): thẻ hợp đồng (`.cw-feat`) nổi lên đầu trang thay cho ô Tổng dư nợ và bỏ tiêu đề "Hợp đồng vay của bạn"; máy tính: bên phải là ô "Yêu cầu vay mới" và khung Liên hệ hỗ trợ (ô Hotline riêng ẩn vì khung hỗ trợ đã có số + nút Gọi).
+- Khách **nhiều hợp đồng** (`.cw-main.multi`): ô Tổng dư nợ bên trái, "Yêu cầu vay mới" + "Hotline" thành 2 ô thấp xếp chồng bên phải; thẻ hợp đồng 2 cột; Liên hệ hỗ trợ thành 1 hàng (màn rộng từ 1180px) hoặc 2 hàng. Khách có nhiều hợp đồng nhưng chỉ 1 đang vay (còn lại đã tất toán) vẫn không hiện ô Tổng dư nợ (`.nd`), 2 ô nhỏ nằm cạnh nhau.
+- Chi tiết hợp đồng (máy tính): 2 cột cân nhau. Cột trái: bảng thông tin + nút "Liên hệ tư vấn"; cột phải: "Lãi đến nay" + "Thanh toán" + ghi chú đỏ. Điện thoại giữ thứ tự cũ (nhờ `order`, hai cột `.cw-c1` / `.cw-c2` là `display: contents`).
+- Cửa sổ Thanh toán (máy tính): rộng 800px, 2 cột (nhập tiền / nút tải + chia sẻ ở trái, ảnh QR ở phải, lớp `.pay-qr`); điện thoại giữ 1 cột. Logic thanh toán / QR không đổi.
+- Hotline để trống thì ẩn dòng Hotline trong khung hỗ trợ, ô "Yêu cầu vay mới" chiếm cả hàng.
+- Chi tiết hợp đồng (admin): khung "Thông tin hợp đồng" (`.cv-c-info`) dùng chữ có chân của theme (`--font-serif`, đậm vừa 16px) cho số liệu và số điện thoại; nhãn giữ Inter xám.
 
 ---
 

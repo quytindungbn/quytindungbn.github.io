@@ -47,7 +47,7 @@ export function render(contentEl, filterEl, params) {
       </div>
     </header>
     <div class="cw-split">
-      <div>
+      <div class="cw-c1">
         <section class="cw-statement">
           ${row('Số tiền vay ban đầu', formatVND(contract.principal))}
           ${row('Lãi suất', `${contract.interestRate}%/năm`)}
@@ -56,19 +56,17 @@ export function render(contentEl, filterEl, params) {
           ${row('Đã trả lãi đến ngày', formatDate(interestPaidUntil))}
         </section>
         <div class="cw-inst">${installmentNextBoxHtml(contract)}</div>
+        <div class="cw-act a2"><a href="#/yeu-cau-tu-van?hop_dong=${contract.code}" class="cw-btn sec">${icon('phone', 'icon-sm')} Liên hệ tư vấn về hợp đồng này</a></div>
       </div>
-      <div>
+      <div class="cw-c2">
         ${canPay ? `
         <section class="cw-intp">
           <div class="row"><span>Lãi đến nay</span><strong>${formatVND(accrued)}</strong></div>
           <p>(${formatVND(contract.balance)} × ${interestDays} ngày × ${contract.interestRate}%/năm ÷ 365)</p>
           ${alertHtml}
-        </section>` : ''}
-        <div class="cw-act">
-          ${canPay ? `<button type="button" class="cw-btn pri" id="btn-thanh-toan">${icon('wallet', 'icon-sm')} Thanh toán</button>` : ''}
-          <a href="#/yeu-cau-tu-van?hop_dong=${contract.code}" class="cw-btn sec">${icon('phone', 'icon-sm')} Liên hệ tư vấn về hợp đồng này</a>
-        </div>
-        ${canPay ? `<div class="cw-note">${icon('alert', 'icon-sm')}<span>Khi đã thanh toán, vui lòng chờ đợi một thời gian sẽ được cập nhật thông tin (không chuyển khoản lại lần nữa).</span></div>` : ''}
+        </section>
+        <div class="cw-act a1"><button type="button" class="cw-btn pri" id="btn-thanh-toan">${icon('wallet', 'icon-sm')} Thanh toán</button></div>
+        <div class="cw-note">${icon('alert', 'icon-sm')}<span>Khi đã thanh toán, vui lòng chờ đợi một thời gian sẽ được cập nhật thông tin (không chuyển khoản lại lần nữa).</span></div>` : ''}
       </div>
     </div>
   </div></div>`;
@@ -336,7 +334,7 @@ function openPaymentModal(contract, customer, accrued) {
           </div>
           `}
           ${hasBank ? `
-            <div style="text-align:center">
+            <div class="pay-qr" style="text-align:center">
               <button type="button" class="btn btn-outline btn-block btn-qr-pay mb-8" id="btn-download-qr">${icon('download', 'icon-sm')} Tải mã QR này để thực hiện thanh toán</button>
               <img id="qr-img" alt="Mã QR chuyển khoản" style="max-width:320px;width:100%;border:1px solid var(--border);border-radius:12px"/>
               <button type="button" class="btn btn-outline btn-block mt-8" id="btn-share-qr">${icon('wallet', 'icon-sm')} Chia sẻ ảnh QR</button>
