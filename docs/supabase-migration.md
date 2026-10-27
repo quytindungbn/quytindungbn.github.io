@@ -3438,6 +3438,7 @@ create policy "admins add note log" on customer_note_log
 - Hotline để trống thì ẩn dòng Hotline trong khung hỗ trợ, ô "Yêu cầu vay mới" chiếm cả hàng.
 - Bảng thông tin ở chi tiết hợp đồng (khách): bỏ dòng chấm nối giữa nhãn và số liệu, nhãn nằm trái, số liệu nằm phải.
 - Chi tiết hợp đồng (admin): khung "Thông tin hợp đồng" (`.cv-c-info`) dùng chữ có chân của theme (`--font-serif`, đậm vừa 16px) cho số liệu và số điện thoại; nhãn giữ Inter xám.
+- Chi tiết hợp đồng (admin), 4 ô số liệu (`.cv-cells`): số tiền của các ô cùng một hàng (cùng cỡ chữ, "Gốc đã trả" không còn nhỏ hơn "Dư nợ"), dòng ghi chú / ô ngày ("Đến [ngày]", "Từ [ngày]") cũng cùng một hàng — hai biến `--cv-vh` (hàng số liệu) và `--cv-nh` (hàng ghi chú) dùng chung cho mọi ô, cả điện thoại (2x2) lẫn máy tính (4 ô). Nhãn "Gốc" / "Lãi" trong khung "Gửi mã QR để thanh toán" đậm hơn (800).
 
 ---
 
