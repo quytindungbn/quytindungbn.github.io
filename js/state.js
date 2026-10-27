@@ -920,11 +920,36 @@ export function findZaloAutoSend(contractId) {
   return listZaloAutoSend().find((r) => r.contractId === contractId) || null;
 }
 
-export async function getZaloAutoSendStatus(contractId) {
-  const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'get-zalo-auto-send-status', contractId });
-  if (!res.ok) throw new Error(res.reason || 'Không kiểm tra được trạng thái gửi tự động.');
-  return { enabled: res.enabled === true, intervalMonths: Number(res.intervalMonths) || 1 };
+const AUTO_STATUS_TTL_MS = 5 * 60 * 1000;
+const autoStatusCache = new Map();
+const autoStatusAsking = new Map();
+let autoStatusGen = 0;
+function dropAutoStatusCache() { autoStatusGen += 1; autoStatusCache.clear(); autoStatusAsking.clear(); }
+
+// Suy từ dữ liệu đã tải, không gọi máy chủ: null = chưa biết, final=false = nên hỏi lại ngầm.
+export function peekZaloAutoSendStatus(contractId) {
+  const row = (state.zaloAutoSendList || []).find((r) => r.contractId === contractId);
+  if (row) return { enabled: true, intervalMonths: row.intervalMonths || 1, final: true };
+  const hit = autoStatusCache.get(contractId);
+  if (hit && Date.now() - hit.at < AUTO_STATUS_TTL_MS) return { ...hit.status, final: true };
+  if (!hasZaloAutoOverview()) return null;
+  if (listZaloAutoOverview().some((r) => r.contractId === contractId)) return { enabled: true, intervalMonths: null, final: false };
+  return { enabled: false, intervalMonths: null, final: isSuperAdmin(state.session.id) };
+}
+
+export function getZaloAutoSendStatus(contractId) {
+  const hit = autoStatusCache.get(contractId);
+  if (hit && Date.now() - hit.at < AUTO_STATUS_TTL_MS) return Promise.resolve({ ...hit.status });
+  if (autoStatusAsking.has(contractId)) return autoStatusAsking.get(contractId);
+  const gen = autoStatusGen;
+  const ask = callCreateAccountFunction(getSession()?.sbToken, { type: 'get-zalo-auto-send-status', contractId }).then((res) => {
+    if (!res.ok) throw new Error(res.reason || 'Không kiểm tra được trạng thái gửi tự động.');
+    const status = { enabled: res.enabled === true, intervalMonths: Number(res.intervalMonths) || 1 };
+    if (gen === autoStatusGen) autoStatusCache.set(contractId, { at: Date.now(), status });
+    return status;
+  }).finally(() => { if (autoStatusAsking.get(contractId) === ask) autoStatusAsking.delete(contractId); });
+  autoStatusAsking.set(contractId, ask);
+  return ask;
 }
 
 function isOwnAutoRow(r) {
@@ -1035,6 +1060,7 @@ export async function removeZaloCustomer(customerId) {
 
   state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.customerId !== customerId);
   state.zaloAutoOverview = (state.zaloAutoOverview || []).filter((r) => r.customerId !== customerId);
+  dropAutoStatusCache();
   notify();
 }
 
@@ -1063,6 +1089,7 @@ export async function removeZaloAutoSend(id) {
   if (!res.ok) throw new Error(res.reason || 'Không xóa được khỏi danh sách gửi tự động.');
   state.zaloAutoSendList = state.zaloAutoSendList.filter((r) => r.id !== id);
   state.zaloAutoOverview = (state.zaloAutoOverview || []).filter((r) => r.id !== id);
+  dropAutoStatusCache();
   notify();
 }
 
@@ -2197,6 +2224,7 @@ export function logout() {
   }
   state.session = null;
   lastSendFromServer.clear();
+  dropAutoStatusCache();
   lastRefreshOkAt = 0;
   refreshFailStreak = 0;
   clearTimeout(refreshRetryTimer); refreshRetryTimer = null;

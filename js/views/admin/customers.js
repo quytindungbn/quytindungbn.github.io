@@ -1348,10 +1348,10 @@ function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
 function zaloAutoStatusHtml(status) {
   if (status === null) return '<div class="field-hint">Đang kiểm tra trạng thái gửi tự động...</div>';
   if (status === undefined) return '<div class="field-hint">Chưa kiểm tra được trạng thái gửi tự động.</div>';
+  if (!status.enabled) return '<div class="field-hint">Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>';
   const interval = [1, 2, 3, 4].includes(status.intervalMonths) ? status.intervalMonths : 1;
-  return status.enabled
-    ? `<div class="field-hint customer-contract-oa-auto-added">Đã thêm vào gửi tự động ${interval === 1 ? 'hàng tháng' : `${interval} tháng`}</div>`
-    : '<div class="field-hint">Muốn gửi tự động hàng tháng thì vào mục Quản lý OA.</div>';
+  const every = status.intervalMonths === null ? '' : interval === 1 ? ' hàng tháng' : ` ${interval} tháng`;
+  return `<div class="field-hint customer-contract-oa-auto-added">Đã thêm vào gửi tự động${every}</div>`;
 }
 
 function manualOaState(contract) {
@@ -1493,13 +1493,14 @@ export function openContractView(customerId, contract, { readOnly = false, reope
     zaloShown ? `<button type="button" class="cv-act" id="btn-zalo-manual-ct" ${!inZaloList || zaloCooldownDaysLeft > 0 ? 'disabled' : ''}>${icon('send')}<span>Gửi tin Zalo OA ngay</span></button>` : '',
   ].filter(Boolean);
   const oaPickHtml = canManageZalo && canPay && contract.oaEnabled !== false ? contractOaPickHtml(contract) : '';
+  const autoQuick = canPay ? S.peekZaloAutoSendStatus(contract.id) : null;
   const contactHtml = canPay ? `
             <section class="cv-card cv-c-contact">
               <h4 class="cv-h">${icon('send')}Liên hệ và gửi thông báo</h4>
               ${actBtns.length ? `<div class="cv-acts" style="--n:${actBtns.length}">${actBtns.join('')}</div>` : ''}
               ${zaloShown ? `<div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
               ${oaPickHtml ? `<div class="cv-oa" id="cv-oa-pick">${oaPickHtml}</div>` : ''}
-              <div id="zalo-auto-status-ct">${zaloAutoStatusHtml(null)}</div>
+              <div id="zalo-auto-status-ct">${zaloAutoStatusHtml(autoQuick)}</div>
             </section>` : '';
   const payHtml = `
             <section class="cv-card cv-c-pay">
@@ -1704,10 +1705,9 @@ export function openContractView(customerId, contract, { readOnly = false, reope
         });
       }
       const zaloAutoStatus = sheet.querySelector('#zalo-auto-status-ct');
-      if (zaloAutoStatus) {
-        S.getZaloAutoSendStatus(contract.id)
-          .then((status) => { if (zaloAutoStatus.isConnected) zaloAutoStatus.innerHTML = zaloAutoStatusHtml(status); })
-          .catch(() => { if (zaloAutoStatus.isConnected) zaloAutoStatus.innerHTML = zaloAutoStatusHtml(undefined); });
+      if (zaloAutoStatus && !autoQuick?.final) {
+        const showAutoStatus = (status) => { if (zaloAutoStatus.isConnected) zaloAutoStatus.innerHTML = zaloAutoStatusHtml(status); };
+        S.getZaloAutoSendStatus(contract.id).then(showAutoStatus).catch(() => { if (!autoQuick) showAutoStatus(undefined); });
       }
       bindInstallmentNextBox(sheet, contract, 'installment-next-box-ct');
       const qrImgEl = sheet.querySelector('#qr-img-ct');

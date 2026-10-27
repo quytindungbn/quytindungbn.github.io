@@ -3442,6 +3442,13 @@ create policy "admins add note log" on customer_note_log
 
 - Chi tiết hợp đồng (admin), khung "Liên hệ và gửi thông báo" (`.cv-c-contact`): giãn dòng hơn (ô SMS / Thông báo / Zalo cao hơn, các hàng cách xa hơn, khối "Gửi Zalo OA tới" có ô chọn cao hơn) và có một đường kẻ mảnh phía trên "Gửi Zalo OA tới" (viền trên của `.cv-oa`, chỉ hiện khi khối này hiện, tức là khi có người cùng vay).
 
+### 10.98 Chi tiết hợp đồng: dòng trạng thái gửi tự động hiện ngay (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Trước đây mỗi lần mở chi tiết hợp đồng, dòng "Đang kiểm tra trạng thái gửi tự động..." luôn phải chờ Edge Function `create-account` (action `get-zalo-auto-send-status`: kiểm tra phiên rồi đọc `admins`, `contracts`, `customers`, `zalo_auto_send_list` nối tiếp, chưa kể lúc hàm khởi động lạnh) nên có khi chờ rất lâu, và mở lại đúng hợp đồng đó vẫn hỏi lại từ đầu.
+- Nay `peekZaloAutoSendStatus()` (`js/state.js`) suy ra ngay từ dữ liệu app đã tải, không chờ mạng: hợp đồng có dòng trong `zaloAutoSendList` (quản trị toàn quyền đọc được dòng của mọi người nhờ RLS) thì hiện luôn "Đã thêm vào gửi tự động hàng tháng / N tháng"; quản trị toàn quyền mà hợp đồng chưa có dòng nào thì hiện luôn "Muốn gửi tự động hàng tháng thì vào mục Quản lý OA." và KHÔNG gọi máy chủ.
+- Nhân viên có quyền quản lý OA và đã có danh sách tổng (`zaloAutoOverview`, nạp khi vào Quản lý OA) cũng biết ngay đã thêm hay chưa; chu kỳ (danh sách tổng không có) và việc xác nhận lại được lấy ngầm từ máy chủ, chữ chỉ đổi khi khác, máy chủ lỗi thì giữ nguyên chữ tạm. Nhân viên thường chưa biết gì thì vẫn hiện "Đang kiểm tra..." đến khi máy chủ trả lời.
+- `getZaloAutoSendStatus()` nhớ kết quả từng hợp đồng 5 phút (mở lại hợp đồng là hiện ngay), gộp các lượt hỏi trùng nhau và không nhớ lỗi. Bộ nhớ đệm tự xóa khi bỏ một lựa chọn gửi tự động, bỏ khách khỏi Danh sách OA hoặc đăng xuất. Edge Function không đổi.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
