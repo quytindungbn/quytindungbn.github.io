@@ -2923,11 +2923,12 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cv-hero.is-over .cv-prog i { box-shadow: 0 0 0 3px #e0574d; }
 
 .cv-strip { position: relative; z-index: 1; margin: -28px 22px 0; border: 1px solid var(--cd-gold2); border-radius: 16px; background: #fff; box-shadow: 0 18px 38px -22px rgba(8, 47, 40, .55); overflow: hidden; }
-.cv-cells { --cv-vh: 32px; --cv-nh: 28px; display: grid; grid-template-columns: 1.1fr 1.1fr 1.15fr .95fr; }
+.cv-cells { --cv-vh: 32px; --cv-nh: 28px; --cv-big: 24px; display: grid; grid-template-columns: 1.25fr .9fr 1.2fr 1.15fr; }
 .cv-cell { min-width: 0; padding: 10px 18px 11px; border-left: 1px solid var(--cd-line); }
 .cv-cell:first-child { border-left: 0; }
 .cv-lbl { font: 600 10.5px/1.2 var(--lux-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--cd-gold); }
-.cv-val { display: block; height: var(--cv-vh); margin-top: 3px; overflow: hidden; font: 700 24px/1.3 var(--font-serif, serif); line-height: var(--cv-vh); letter-spacing: -.005em; color: var(--cd-em); white-space: nowrap; }
+.cv-val { display: block; box-sizing: border-box; height: var(--cv-vh); margin-top: 3px; padding-top: calc(.35 * (var(--cv-big) - 1em)); overflow: hidden; font: 700 24px/1.3 var(--font-serif, serif); line-height: var(--cv-vh); letter-spacing: -.005em; color: var(--cd-em); white-space: nowrap; }
+.cv-val.sm { font-size: 20px; color: #3d5c53; }
 .cv-val.gold { color: #8a6a22; }
 .cv-note { display: flex; align-items: center; min-height: var(--cv-nh); margin-top: 3px; font: 500 11.5px/1.35 var(--lux-sans); color: var(--cd-mut); }
 .cv-row { display: flex; align-items: center; min-height: var(--cv-nh); gap: 8px; margin-top: 3px; font: 500 12px/1 var(--lux-sans); color: var(--cd-mut); }
@@ -3045,12 +3046,13 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-term { gap: 0 10px; margin-top: 7px; }
   .cv-term .e { display: none; }
   .cv-strip { margin: -26px 12px 0; }
-  .cv-cells { --cv-vh: 30px; grid-template-columns: 1fr 1fr; }
+  .cv-cells { --cv-vh: 30px; --cv-big: 21px; grid-template-columns: 1fr 1fr; }
   .cv-cell { padding: 9px 14px 10px; }
   .cv-cell:nth-child(1) .cv-note { min-height: 0; }
   .cv-cell:nth-child(odd) { border-left: 0; }
   .cv-cell:nth-child(n+3) { border-top: 1px solid var(--cd-line); }
   .cv-val { font-size: 21px; }
+  .cv-val.sm { font-size: 18px; }
   .cv-reset { padding: 7px 14px; }
   .cv-formula { padding: 7px 14px; }
   .cv-formula .lbl, .cv-alert { display: none; }

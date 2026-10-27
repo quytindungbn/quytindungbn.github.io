@@ -1412,13 +1412,18 @@ function fitOneLine(el, minPx = 9) {
 
 function fitMoneyRow(els) {
   const list = [...els];
+  const nat = list.map((el) => { el.style.fontSize = ''; return parseFloat(getComputedStyle(el).fontSize) || 16; });
   list.forEach((el) => fitOneLine(el));
+  const ratio = list.map((el, i) => (parseFloat(getComputedStyle(el).fontSize) || nat[i]) / nat[i]);
   const rows = new Map();
-  list.forEach((el) => { const k = Math.round(el.getBoundingClientRect().top); rows.set(k, [...(rows.get(k) || []), el]); });
-  rows.forEach((group) => {
-    const sizes = group.map((el) => parseFloat(getComputedStyle(el).fontSize));
-    const min = Math.min(...sizes);
-    group.forEach((el, i) => { if (sizes[i] > min) el.style.fontSize = `${min}px`; });
+  list.forEach((el, i) => { const k = Math.round(el.getBoundingClientRect().top); rows.set(k, [...(rows.get(k) || []), i]); });
+  rows.forEach((idx) => {
+    const main = idx.filter((i) => !list[i].classList.contains('sm'));
+    const fMain = main.length ? Math.min(...main.map((i) => ratio[i])) : 1;
+    idx.forEach((i) => {
+      const f = list[i].classList.contains('sm') ? Math.min(fMain, ratio[i]) : fMain;
+      if (f < 1) list[i].style.fontSize = `${Math.max(9, Math.round(nat[i] * f * 2) / 2)}px`;
+    });
   });
 }
 
@@ -1554,7 +1559,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
             </div>
             <div class="cv-cell" title="Gốc đã trả = số tiền vay ban đầu trừ dư nợ hiện tại">
               <div class="cv-lbl">GỐC ĐÃ TRẢ</div>
-              <strong class="cv-val">${paidText}</strong>
+              <strong class="cv-val sm">${paidText}</strong>
             </div>
             <div class="cv-cell">
               <div class="cv-lbl">LÃI CỘNG DỒN</div>
