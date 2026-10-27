@@ -26,7 +26,7 @@ export function render(contentEl, filterEl, params) {
   const interestDays = S.interestDaysAccrued(contract);
   const accrued = S.accruedInterest(contract);
   const canPay = S.effectiveContractStatus(contract) !== 'da_tat_toan';
-  const row = (label, value) => `<div class="cw-sl"><span>${label}</span><em></em><b>${value}</b></div>`;
+  const row = (label, value) => `<div class="cw-sl"><span>${label}</span><b>${value}</b></div>`;
   const alertHtml = canPay && info.source !== 'installment'
     ? (info.status === 'qua_han' ? `<span class="al bad">${icon('alert', 'icon-sm')}Hợp đồng đã quá hạn ${info.days} ngày</span>`
       : info.status === 'gan_den_han' ? `<span class="al">${icon('alert', 'icon-sm')}Còn ${info.days} ngày đến hạn thanh toán</span>`

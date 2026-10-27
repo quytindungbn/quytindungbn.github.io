@@ -3436,6 +3436,7 @@ create policy "admins add note log" on customer_note_log
 - Chi tiết hợp đồng (máy tính): 2 cột cân nhau. Cột trái: bảng thông tin + nút "Liên hệ tư vấn"; cột phải: "Lãi đến nay" + "Thanh toán" + ghi chú đỏ. Điện thoại giữ thứ tự cũ (nhờ `order`, hai cột `.cw-c1` / `.cw-c2` là `display: contents`).
 - Cửa sổ Thanh toán (máy tính): rộng 800px, 2 cột (nhập tiền / nút tải + chia sẻ ở trái, ảnh QR ở phải, lớp `.pay-qr`); điện thoại giữ 1 cột. Logic thanh toán / QR không đổi.
 - Hotline để trống thì ẩn dòng Hotline trong khung hỗ trợ, ô "Yêu cầu vay mới" chiếm cả hàng.
+- Bảng thông tin ở chi tiết hợp đồng (khách): bỏ dòng chấm nối giữa nhãn và số liệu, nhãn nằm trái, số liệu nằm phải.
 - Chi tiết hợp đồng (admin): khung "Thông tin hợp đồng" (`.cv-c-info`) dùng chữ có chân của theme (`--font-serif`, đậm vừa 16px) cho số liệu và số điện thoại; nhãn giữ Inter xám.
 
 ---

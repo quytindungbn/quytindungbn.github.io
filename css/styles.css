@@ -3209,10 +3209,9 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cw-split { display: flex; flex-direction: column; }
 .cw-c1, .cw-c2 { display: contents; }
 .cw-statement { order: 1; margin: 14px 18px 0; padding: 2px 18px; border: 1px solid var(--line); border-radius: 15px; background: #fff; box-shadow: 0 12px 26px -22px rgba(8, 47, 40, .45); }
-.cw-sl { display: flex; align-items: baseline; gap: 8px; padding: 11px 0; font: 500 13.5px/1.3 var(--sans); }
+.cw-sl { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 11px 0; font: 500 13.5px/1.3 var(--sans); }
 .cw-sl + .cw-sl { border-top: 1px solid var(--line); }
 .cw-sl span { color: var(--mut); }
-.cw-sl em { flex: 1; min-width: 12px; height: 0; border-bottom: 1px dotted #c3d0cb; transform: translateY(-3px); }
 .cw-sl b { font: 600 14.5px/1.2 var(--serif); font-variant-numeric: tabular-nums; color: var(--ink); }
 .cw-inst { order: 2; margin: 12px 18px 0; }
 .cw-inst:empty { display: none; }
