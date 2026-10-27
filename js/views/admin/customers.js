@@ -1410,6 +1410,18 @@ function fitOneLine(el, minPx = 9) {
   while (el.scrollWidth > el.clientWidth + 0.5 && size > minPx) { size -= 0.5; el.style.fontSize = `${size}px`; }
 }
 
+function fitMoneyRow(els) {
+  const list = [...els];
+  list.forEach((el) => fitOneLine(el));
+  const rows = new Map();
+  list.forEach((el) => { const k = Math.round(el.getBoundingClientRect().top); rows.set(k, [...(rows.get(k) || []), el]); });
+  rows.forEach((group) => {
+    const sizes = group.map((el) => parseFloat(getComputedStyle(el).fontSize));
+    const min = Math.min(...sizes);
+    group.forEach((el, i) => { if (sizes[i] > min) el.style.fontSize = `${min}px`; });
+  });
+}
+
 function openCopyFallback(text) {
   openModal({
     title: 'Sao chép thông tin khoản vay',
@@ -1542,7 +1554,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
             </div>
             <div class="cv-cell" title="Gốc đã trả = số tiền vay ban đầu trừ dư nợ hiện tại">
               <div class="cv-lbl">GỐC ĐÃ TRẢ</div>
-              <strong class="cv-val sm">${paidText}</strong>
+              <strong class="cv-val">${paidText}</strong>
             </div>
             <div class="cv-cell">
               <div class="cv-lbl">LÃI CỘNG DỒN</div>
@@ -1768,7 +1780,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
           if (from !== 'date') asOfInput.value = formatDate(asOf);
           if (from !== 'days') { daysInput.value = String(days); sizeDays(); }
           accruedEl.textContent = formatVND(accrued);
-          fitOneLine(accruedEl);
+          fitMoneyRow(sheet.querySelectorAll('.cv-cells .cv-val'));
           if (formulaEl) { formulaEl.innerHTML = contractFormulaHtml(contract, days, accrued); fitOneLine(formulaEl); }
           const edited = daysBetween(today, asOf) !== 0;
           if (resetRow) resetRow.hidden = !edited;
@@ -1838,9 +1850,10 @@ export function openContractView(customerId, contract, { readOnly = false, reope
         sizeDays();
       }
 
-      const moneyEls = [...sheet.querySelectorAll('.cv-cells .cv-val'), ...sheet.querySelectorAll('.cv-fx')];
+      const valEls = sheet.querySelectorAll('.cv-cells .cv-val');
+      const fxEls = sheet.querySelectorAll('.cv-fx');
       const custEl = sheet.querySelector('.cv-main.has-co .cv-cust');
-      const fitMoney = () => { moneyEls.forEach((el) => fitOneLine(el)); fitCoNames(custEl); };
+      const fitMoney = () => { fitMoneyRow(valEls); fxEls.forEach((el) => fitOneLine(el)); fitCoNames(custEl); };
       fitMoney();
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitMoney);
       if (typeof ResizeObserver === 'function') new ResizeObserver(fitMoney).observe(sheet.querySelector('.cv-cells'));
