@@ -241,6 +241,7 @@ export function dueNotesSummary() {
     count: due.length,
     customers: new Set(due.map((n) => n.customerId)).size,
     late: due.filter((n) => noteState(n, today) === 'late').length,
+    soon: due.filter((n) => noteState(n, today) === 'soon').length,
   };
 }
 
@@ -259,7 +260,7 @@ function dueRowHtml(note, today, ui) {
 function dueBodyHtml(ui) {
   const today = todayIso();
   const groups = dueGroups(today);
-  if (!groups.length) return emptyState({ iconName: 'checkCircle', title: 'Đã xử lý hết việc đến hạn', message: 'Không còn ghi chú nào đến hạn hôm nay.' });
+  if (!groups.length) return emptyState({ iconName: 'checkCircle', title: 'Đã xử lý hết việc đến hạn', message: 'Không còn ghi chú nào đến hạn hoặc sắp đến hạn.' });
   const total = groups.reduce((s, g) => s + g.notes.length, 0);
   const money = groups.reduce((s, g) => s + g.notes.reduce((x, n) => x + (n.amount || 0), 0), 0);
   const head = `<div class="nz-sum">${groups.length} khách hàng · ${total} việc${money ? ` · Cần thu hôm nay: <strong>${formatVND(money)}</strong>` : ''}</div>`;

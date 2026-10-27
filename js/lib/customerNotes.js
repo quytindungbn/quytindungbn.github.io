@@ -2,6 +2,7 @@ export const NOTE_KINDS = ['none', 'after', 'date', 'monthly'];
 export const NOTE_MAX_LEN = 300;
 export const MONTHLY_MIN_GAP = 10;
 export const MONTHLY_MAX_DAY = 30;
+export const DUE_AHEAD_DAYS = 3;
 const WEEKDAYS = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 const RANK = { late: 0, today: 1, soon: 2, plain: 3, done: 4 };
 
@@ -77,7 +78,10 @@ export function noteState(note, today) {
 
 export function isDue(note, today) {
   const s = noteState(note, today);
-  return s === 'late' || s === 'today';
+  if (s === 'late' || s === 'today') return true;
+  if (s !== 'soon' || diffDays(today, note.remindOn) > DUE_AHEAD_DAYS) return false;
+  const touched = note.updatedAt ? isoOf(new Date(note.updatedAt)) : null;
+  return !touched || touched < addDaysIso(note.remindOn, -DUE_AHEAD_DAYS);
 }
 
 export function pillLabel(note, today) {

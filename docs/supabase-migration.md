@@ -3401,6 +3401,8 @@ create policy "admins add note log" on customer_note_log
   );
 ```
 
+- **Báo trước 3 ngày**: ghi chú hẹn trong 3 ngày tới cũng được đưa vào "Nhắc việc đến hạn" (số đỏ ở menu Tổng quan, khung Cần chú ý ghi "N sắp đến hạn", danh sách đến hạn nhãn "Còn N ngày"). Ghi chú vừa tạo / vừa sửa / vừa Hoãn hôm nay mà hẹn trong 3 ngày tới thì chưa báo trước (đến ngày mới hiện), để Hoãn không bị hiện lại ngay. Không cần SQL.
+
 ### 10.93 Chi tiết hợp đồng — giao diện mới (không cần SQL)
 
 - Cửa sổ chi tiết hợp đồng (`openContractView` trong `js/views/admin/customers.js`, kiểu `.cv-*` ở cuối `css/styles.css`) đổi giao diện cùng phong cách "Chi tiết khách hàng": đầu trang xanh ngọc viền vàng một dòng (số hợp đồng, nhãn tình trạng, tên khách, thanh tiến độ ngày vay → đến hạn), bốn khung số liệu nổi (Dư nợ hiện tại, Gốc đã trả, Lãi cộng dồn + ô ngày, Số ngày lãi) và dòng "Cách tính lãi" nằm trọn một hàng (chữ tự thu nhỏ vừa hàng).

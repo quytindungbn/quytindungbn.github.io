@@ -66,7 +66,9 @@ test('noteState / isDue / pillLabel / repeatLabel', () => {
   assert.equal(noteState(n({ status: 'done', remindOn: '2026-10-24' }), T), 'done');
   assert.equal(isDue(n({ remindOn: '2026-10-24' }), T), true);
   assert.equal(isDue(n({ remindOn: '2026-10-26' }), T), true);
-  assert.equal(isDue(n({ remindOn: '2026-10-27' }), T), false);
+  assert.equal(isDue(n({ remindOn: '2026-10-27' }), T), true);
+  assert.equal(isDue(n({ remindOn: '2026-10-29' }), T), true);
+  assert.equal(isDue(n({ remindOn: '2026-10-30' }), T), false);
   assert.equal(isDue(n({}), T), false);
   assert.equal(pillLabel(n({ remindOn: '2026-10-24' }), T), 'Trễ 2 ngày');
   assert.equal(pillLabel(n({ remindOn: '2026-10-26' }), T), 'Hôm nay');
@@ -150,4 +152,14 @@ test('hàng tháng: tháng không có ngày đó thì nhắc vào cuối tháng,
   assert.equal(firstMonthlyOn(30, '2026-02-05'), '2026-02-28');
   assert.equal(firstMonthlyOn(30, '2026-01-25'), '2026-02-28');
   assert.equal(firstMonthlyOn(30, '2026-04-10'), '2026-04-30');
+});
+
+test('báo trước 3 ngày: ghi chú vừa tạo / vừa hoãn trong cửa sổ 3 ngày thì chưa báo trước, đến ngày mới hiện', () => {
+  const n = (x) => ({ status: 'open', ...x });
+  assert.equal(isDue(n({ remindOn: '2026-10-29', updatedAt: '2026-10-26T08:00:00' }), T), false);
+  assert.equal(isDue(n({ remindOn: '2026-10-29', updatedAt: '2026-10-20T08:00:00' }), T), true);
+  assert.equal(isDue(n({ remindOn: '2026-10-29', updatedAt: '2026-10-26T08:00:00' }), '2026-10-29'), true);
+  assert.equal(isDue(n({ remindOn: '2026-10-30', updatedAt: '2026-10-20T08:00:00' }), T), false);
+  assert.equal(isDue(n({ remindOn: '2026-10-30', updatedAt: '2026-10-20T08:00:00' }), '2026-10-27'), true);
+  assert.equal(isDue(n({ remindOn: '2026-10-29', status: 'done' }), T), false);
 });
