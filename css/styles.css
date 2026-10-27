@@ -3067,3 +3067,6 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-foot { padding: 12px 0 16px; }
   .cv-del { width: 100%; }
 }
+
+.nav-badge.is-due, .bottom-nav-badge.is-due { box-shadow: 0 4px 10px -3px rgba(224, 54, 47, .55); animation: luxBubble 2.4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .nav-badge.is-due, .bottom-nav-badge.is-due { animation: none; } }
