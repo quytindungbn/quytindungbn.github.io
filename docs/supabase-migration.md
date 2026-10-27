@@ -3455,6 +3455,14 @@ create policy "admins add note log" on customer_note_log
 - Dưới 3 ô SMS / Thông báo / Zalo có dòng nhắc "Tin Zalo OA sẽ ghi lãi tính đến …: … đ, hạn thanh toán …" — chỉ hiện khi đã chỉnh ngày, số tiền khớp ô "Lãi đến nay".
 - Máy chủ: action mới `send-zalo-manual-asof` (kèm `asOf` dạng `YYYY-MM-DD`) dùng chung toàn bộ luồng của `send-zalo-manual` (quyền, 5 ngày/lần, người nhận, nhật ký gửi). `asOf` phải là ngày có thật, từ ngày đã trả lãi đến cho tới 3650 ngày sau (khoảng giống ô nhập ở giao diện), sai thì từ chối và KHÔNG gửi tin nào. Nhật ký hoạt động ghi thêm "tính lãi đến dd/mm/yyyy".
 - Dùng action riêng để máy chủ CŨ (chưa deploy lại) từ chối ("Thiếu hoặc sai type") thay vì lặng lẽ gửi theo ngày hôm nay; khi đó giao diện báo "Máy chủ chưa cập nhật … chưa gửi tin nào". Gửi OA không chỉnh ngày vẫn chạy bình thường với máy chủ cũ.
+- Ghi chú sau khi deploy: dòng "Hạn thanh toán" của mẫu OA là tham số `NGAY_KE_HOACH` (không phải `NGAY_DAO_HAN`), nên bản chạy thật chỉ đổi `NGAY_KE_HOACH` + lãi theo ngày chỉnh; `NGAY_DAO_HAN` (ngày đáo hạn hợp đồng / kỳ trả nợ) giữ nguyên cho cả 2 mẫu.
+
+### 10.100 Chi tiết hợp đồng: nút "Thêm OA" / "Bỏ OA" ngay sau "Hợp đồng tín dụng" (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Đầu chi tiết hợp đồng (admin), cùng hàng và ngay sau chữ "HỢP ĐỒNG TÍN DỤNG", có nút nhỏ (máy tính 22px, điện thoại 24px): khách CHƯA trong Danh sách OA → nút vàng "＋ Thêm OA"; khách ĐÃ trong Danh sách OA → nút kính mờ "－ Bỏ OA" (hỏi xác nhận như ở chi tiết khách hàng vì bỏ khỏi OA cũng bỏ mọi lựa chọn gửi tự động của khách). Chỉ hiện với tài khoản có quyền quản lý OA. Khách thiếu số điện thoại: nút mờ, bấm chỉ báo lý do. Cùng logic với nút ở chi tiết khách hàng (hàm dùng chung `addCustomerToOa` / `removeCustomerFromOa` trong `js/views/admin/customers.js`, gồm cả hộp xác nhận "Người cùng vay đã thay đổi").
+- Bấm xong cập nhật ngay tại chỗ (không mở lại cửa sổ): đổi nút, câu gợi ý trong khung "Liên hệ và gửi thông báo", bật/khóa nút "Gửi tin Zalo OA ngay" và dòng trạng thái gửi tự động.
+- Câu gợi ý khi khách chưa có trong Danh sách OA đổi thành: "Khách chưa có trong Danh sách OA — Kiểm tra SĐT đã có đăng ký Zalo, sau đó thêm vào Danh sách OA để gửi tin."
+- Máy tính: phần đầu cao thêm khoảng 9px (hàng nút xen vào giữa nhãn và số hợp đồng), điện thoại không đổi chiều cao.
 
 ---
 

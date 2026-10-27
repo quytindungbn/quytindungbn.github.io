@@ -2885,6 +2885,15 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cv-main, .cv-cust { min-width: 0; }
 .cv-eyebrow { display: block; margin-bottom: 1px; font: 600 10px/1 var(--lux-sans); letter-spacing: .18em; text-transform: uppercase; color: #dccb99; }
 .cv-main { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 12px; }
+.cv-eyerow { display: flex; align-items: center; gap: 10px; }
+.cv-eyerow .cv-eyebrow { flex: none; margin-bottom: 0; }
+.cv-oa-slot { display: inline-flex; align-items: center; min-width: 0; }
+.cv-oa-slot .cd-oa-btn { height: 24px; padding: 0 12px 0 9px; gap: 5px; font-size: 12px; }
+.cv-oa-slot .cd-oa-btn svg { width: 13px; height: 13px; }
+@media (min-width: 640px) {
+  .cv-eyerow { margin: -5px 0 3px; }
+  .cv-oa-slot .cd-oa-btn { height: 22px; }
+}
 .cv-code { margin: 0; font: 700 24px/1.1 var(--font-serif, serif); letter-spacing: .01em; color: #fff; }
 .cv-code small { margin-right: 8px; font: 600 11px/1 var(--lux-sans); letter-spacing: .16em; text-transform: uppercase; color: #dccb99; vertical-align: .2em; }
 .cv-state { display: inline-flex; align-items: center; gap: 8px; height: 25px; padding: 0 13px; border: 1px solid rgba(244, 201, 93, .5); border-radius: 999px; background: rgba(244, 201, 93, .16); color: #ffe9ac; font: 700 12px/1 var(--lux-sans); white-space: nowrap; }
@@ -3023,6 +3032,7 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-head { display: block; }
   .cv-block { display: block; }
   .cv-eyebrow { display: flex; align-items: center; min-height: 26px; margin-bottom: 0; }
+  .cv-eyerow { min-height: 26px; gap: 8px; }
   .cv-head .cv-tools { position: absolute; top: 9px; right: 14px; gap: 6px; }
   .cv-tbtn { height: 28px; min-width: 28px; }
   .cv-tbtn svg { width: 15px; height: 15px; }

@@ -722,6 +722,42 @@ function zaloActionButtonHtml(inZaloList, blockedReason = '') {
     : `<button class="cd-oa-btn is-add${blockedReason ? ' is-blocked' : ''}" id="btn-add-zalo-cust"${blockedReason ? ` aria-disabled="true" title="${escapeHtml(blockedReason)}"` : ''}>${icon('plus', 'icon-sm')} Thêm vào OA</button>`;
 }
 
+function addCustomerToOa(customerId, { onStart, onDone } = {}) {
+  const blocked = S.oaAddBlockReason(customerId);
+  if (blocked) { toast(blocked, 'error'); return; }
+  const doAdd = async () => {
+    onStart?.();
+    try { await S.addZaloCustomer(customerId); S.dismissCoBorrowerChange(customerId); toast('Đã thêm vào danh sách OA', 'success'); onDone?.(true); }
+    catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); onDone?.(false); }
+  };
+  const chg = S.coChangeInfo(customerId);
+  if (!chg) { doAdd(); return; }
+  confirmDialog({
+    title: 'Người cùng vay đã thay đổi',
+    message: `Hợp đồng nay ghi người cùng vay ${chg.names.length ? `là <b>${chg.names.map(escapeHtml).join(', ')}</b>` : 'khác'}, khác với <b>${escapeHtml(chg.prevName)}</b> đã chọn trước đó. Chỉ gửi Zalo OA cho người vay, hoặc nhập số và tick gửi cho người mới trước khi gửi cho họ. Vẫn thêm khách vào danh sách OA?`,
+    confirmLabel: 'Vẫn thêm vào OA', onConfirm: doAdd,
+  });
+}
+
+function removeCustomerFromOa(customerId, { onStart, onDone } = {}) {
+  confirmDialog({
+    title: 'Bỏ khỏi danh sách OA?',
+    message: 'Mọi lựa chọn gửi Zalo tự động (của mọi nhân viên) cho khách này sẽ bị bỏ theo luôn.',
+    danger: true, confirmLabel: 'Bỏ khỏi OA',
+    onConfirm: async () => {
+      onStart?.();
+      try { await S.removeZaloCustomer(customerId); toast('Đã bỏ khỏi danh sách OA', 'success'); onDone?.(true); }
+      catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); onDone?.(false); }
+    },
+  });
+}
+
+function contractOaBtnHtml(inZaloList, blockedReason = '') {
+  return inZaloList
+    ? `<button type="button" class="cd-oa-btn is-remove" id="btn-remove-oa-ct">${icon('minus', 'icon-sm')} Bỏ OA</button>`
+    : `<button type="button" class="cd-oa-btn is-add${blockedReason ? ' is-blocked' : ''}" id="btn-add-oa-ct"${blockedReason ? ` aria-disabled="true" title="${escapeHtml(blockedReason)}"` : ''}>${icon('plus', 'icon-sm')} Thêm OA</button>`;
+}
+
 const statusDotInline = (on) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${on ? 'var(--success)' : 'var(--danger)'};flex:none"></span>`;
 
 const CALL_PREVIEW = 4;
@@ -1057,37 +1093,15 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
       }
       function bindZaloButtons() {
         const addZaloBtn = sheet.querySelector('#btn-add-zalo-cust');
-        const doAddZalo = async () => {
-          addZaloBtn.disabled = true;
-          try { await S.addZaloCustomer(customerId); S.dismissCoBorrowerChange(customerId); toast('Đã thêm vào danh sách OA', 'success'); updateZaloUi(true); sheet.querySelector('#cd-pp-card')?.querySelector('.cd-pp-warn')?.remove(); }
-          catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); addZaloBtn.disabled = false; }
-        };
-        if (addZaloBtn) addZaloBtn.addEventListener('click', () => {
-          const blocked = S.oaAddBlockReason(customerId);
-          if (blocked) { toast(blocked, 'error'); return; }
-          const chg = S.coChangeInfo(customerId);
-          if (chg) {
-            confirmDialog({
-              title: 'Người cùng vay đã thay đổi',
-              message: `Hợp đồng nay ghi người cùng vay ${chg.names.length ? `là <b>${chg.names.map(escapeHtml).join(', ')}</b>` : 'khác'}, khác với <b>${escapeHtml(chg.prevName)}</b> đã chọn trước đó. Chỉ gửi Zalo OA cho người vay, hoặc nhập số và tick gửi cho người mới trước khi gửi cho họ. Vẫn thêm khách vào danh sách OA?`,
-              confirmLabel: 'Vẫn thêm vào OA', onConfirm: doAddZalo,
-            });
-            return;
-          }
-          doAddZalo();
-        });
+        if (addZaloBtn) addZaloBtn.addEventListener('click', () => addCustomerToOa(customerId, {
+          onStart: () => { addZaloBtn.disabled = true; },
+          onDone: (ok) => {
+            if (!ok) { addZaloBtn.disabled = false; return; }
+            updateZaloUi(true); sheet.querySelector('#cd-pp-card')?.querySelector('.cd-pp-warn')?.remove();
+          },
+        }));
         const removeZaloBtn = sheet.querySelector('#btn-remove-zalo-cust');
-        if (removeZaloBtn) removeZaloBtn.addEventListener('click', () => {
-          confirmDialog({
-            title: 'Bỏ khỏi danh sách OA?',
-            message: 'Mọi lựa chọn gửi Zalo tự động (của mọi nhân viên) cho khách này sẽ bị bỏ theo luôn.',
-            danger: true, confirmLabel: 'Bỏ khỏi OA',
-            onConfirm: async () => {
-              try { await S.removeZaloCustomer(customerId); toast('Đã bỏ khỏi danh sách OA', 'success'); updateZaloUi(false); }
-              catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
-            },
-          });
-        });
+        if (removeZaloBtn) removeZaloBtn.addEventListener('click', () => removeCustomerFromOa(customerId, { onDone: (ok) => { if (ok) updateZaloUi(false); } }));
       }
       bindZaloButtons();
 
@@ -1333,7 +1347,7 @@ function buildSmsLink(customer, contract) {
 
 function zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend) {
   if (!inZaloList) {
-    return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} Khách chưa có trong Danh sách OA — vào chi tiết khách hàng (nút "Thêm vào OA") để thêm trước khi gửi được.</div>`;
+    return `<div class="field-hint text-danger">${icon('alert', 'icon-sm')} Khách chưa có trong Danh sách OA — Kiểm tra SĐT đã có đăng ký Zalo, sau đó thêm vào Danh sách OA để gửi tin.</div>`;
   }
   if (!lastZaloSend) return '';
 
@@ -1494,6 +1508,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
   ].filter(Boolean);
   const oaPickHtml = canManageZalo && canPay && contract.oaEnabled !== false ? contractOaPickHtml(contract) : '';
   const autoQuick = canPay ? S.peekZaloAutoSendStatus(contract.id) : null;
+  const oaHeadHtml = canManageZalo && customer ? `<span class="cv-oa-slot" id="cv-oa-slot">${contractOaBtnHtml(inZaloList, inZaloList ? '' : S.oaAddBlockReason(customerId))}</span>` : '';
   const contactHtml = canPay ? `
             <section class="cv-card cv-c-contact">
               <h4 class="cv-h">${icon('send')}Liên hệ và gửi thông báo</h4>
@@ -1533,7 +1548,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
         <header class="cv-hero ${overdue ? 'is-over' : ''}">
           <div class="cv-head">
             <div class="cv-block">
-              <span class="cv-eyebrow">Hợp đồng tín dụng</span>
+              <div class="cv-eyerow"><span class="cv-eyebrow">Hợp đồng tín dụng</span>${oaHeadHtml}</div>
               <div class="cv-main ${coName ? 'has-co' : ''}">
                 <h2 class="cv-code"><small>Số</small>${escapeHtml(contract.code)}</h2>
                 ${chipHtml}
@@ -1873,6 +1888,29 @@ export function openContractView(customerId, contract, { readOnly = false, reope
       });
       const zaloManualBtn = sheet.querySelector('#btn-zalo-manual-ct');
       const zaloHintWrap = sheet.querySelector('#zalo-hint-wrap-ct');
+      const oaSlot = sheet.querySelector('#cv-oa-slot');
+      function syncOaAfterChange() {
+        oaSlot.innerHTML = contractOaBtnHtml(S.isZaloCustomer(customerId), S.oaAddBlockReason(customerId));
+        const st = manualOaState(contract);
+        if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(st.inZaloList, st.cooldownDaysLeft, st.lastZaloSend);
+        if (zaloManualBtn && !manualOaSending.has(contract.id)) zaloManualBtn.disabled = !st.inZaloList || st.cooldownDaysLeft > 0;
+        const autoEl = sheet.querySelector('#zalo-auto-status-ct');
+        if (autoEl) autoEl.innerHTML = zaloAutoStatusHtml({ enabled: false, intervalMonths: null });
+        bindOaSlot();
+      }
+      function bindOaSlot() {
+        const addBtn = oaSlot.querySelector('#btn-add-oa-ct');
+        if (addBtn) addBtn.addEventListener('click', () => addCustomerToOa(customerId, {
+          onStart: () => { addBtn.disabled = true; },
+          onDone: (ok) => { if (ok) syncOaAfterChange(); else addBtn.disabled = false; },
+        }));
+        const removeBtn = oaSlot.querySelector('#btn-remove-oa-ct');
+        if (removeBtn) removeBtn.addEventListener('click', () => removeCustomerFromOa(customerId, {
+          onStart: () => { removeBtn.disabled = true; },
+          onDone: (ok) => { if (ok) syncOaAfterChange(); else removeBtn.disabled = false; },
+        }));
+      }
+      if (oaSlot) bindOaSlot();
 
       if (zaloHintWrap) S.fetchLastSuccessfulZaloSend(contract.id).then((row) => {
         if (!row || !zaloHintWrap.isConnected) return;
