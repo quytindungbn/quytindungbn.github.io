@@ -1105,9 +1105,12 @@ export async function updateZaloAutoSendSettings(id, patch) {
   notify();
 }
 
-export async function sendZaloManual(contractId) {
+export async function sendZaloManual(contractId, { asOf = null } = {}) {
   const session = getSession();
-  const res = await callCreateAccountFunction(session?.sbToken, { type: 'send-zalo-manual', contractId });
+  const res = await callCreateAccountFunction(session?.sbToken, asOf ? { type: 'send-zalo-manual-asof', contractId, asOf } : { type: 'send-zalo-manual', contractId });
+  if (asOf && !res.ok && /Thiếu hoặc sai "type"/.test(res.reason || '')) {
+    return { ok: false, reason: 'Máy chủ chưa cập nhật để gửi theo ngày tính lãi đã chỉnh (cần deploy lại create-account) — chưa gửi tin nào.' };
+  }
 
   refreshSessionData().catch(() => {});
   return res;

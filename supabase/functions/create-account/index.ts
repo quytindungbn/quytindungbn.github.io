@@ -236,11 +236,14 @@ function nextInstallmentInfoZalo(contract: any, asOf: Date): { idx: number; next
   if (idx < 0) return null;
   return { idx, next: plan[idx] };
 }
-function interestDaysAccruedZalo(contract: any, asOf: Date): number {
+function interestDaysRawZalo(contract: any, asOf: Date): number {
   const paidUntil = contract.interest_paid_until || contract.disbursed_date;
   let days = daysBetweenZalo(new Date(paidUntil), asOf);
   if (contract.disbursed_date && daysBetweenZalo(new Date(contract.disbursed_date), new Date(paidUntil)) === 1) days += 1;
-  return Math.max(0, days);
+  return days;
+}
+function interestDaysAccruedZalo(contract: any, asOf: Date): number {
+  return Math.max(0, interestDaysRawZalo(contract, asOf));
 }
 
 function interestRoundedToThousand(balance: number | string, days: number, annualRate: number | string): number {
@@ -1603,7 +1606,7 @@ Deno.serve(async (req) => {
     return json({ ok: true, enabled: !!selection, intervalMonths: selection?.interval_months || null });
   }
 
-  if (body.type === 'add-zalo-auto-send' || body.type === 'remove-zalo-auto-send' || body.type === 'send-zalo-manual'
+  if (body.type === 'add-zalo-auto-send' || body.type === 'remove-zalo-auto-send' || body.type === 'send-zalo-manual' || body.type === 'send-zalo-manual-asof'
     || body.type === 'add-zalo-customer' || body.type === 'remove-zalo-customer' || body.type === 'update-zalo-auto-send-settings') {
     const authHeader = req.headers.get('Authorization') || '';
     const selfToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -1791,10 +1794,16 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    if (body.type === 'send-zalo-manual') {
+    if (body.type === 'send-zalo-manual' || body.type === 'send-zalo-manual-asof') {
       const contractId = String(body.contractId || '').trim();
       if (!contractId) return json({ ok: false, reason: 'Thiếu thông tin.' }, 400);
       const now = new Date();
+      const wantsAsOf = body.type === 'send-zalo-manual-asof';
+      const asOfText = wantsAsOf ? String(body.asOf || '') : '';
+      const asOfDate = asOfText ? new Date(asOfText) : null;
+      if (wantsAsOf && (!/^\d{4}-\d{2}-\d{2}$/.test(asOfText) || !asOfDate || Number.isNaN(asOfDate.getTime()) || asOfDate.toISOString().slice(0, 10) !== asOfText)) {
+        return json({ ok: false, reason: 'Ngày tính lãi không hợp lệ.' }, 400);
+      }
 
       const [contractRes, lastLogRes, orgRowRes, accessToken] = await Promise.all([
         admin.from('contracts').select('*').eq('id', contractId).maybeSingle(),
@@ -1844,12 +1853,16 @@ Deno.serve(async (req) => {
         return json({ ok: false, reason: `Chưa cấu hình Template ID cho mẫu "${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}" — vào Quản lý OA > Cấu hình để điền trước.` }, 500);
       }
 
-      const interest = accruedInterestZalo(contract, now);
+      if (asOfDate) {
+        const asOfDays = interestDaysRawZalo(contract, asOfDate);
+        if (asOfDays < 0 || asOfDays > 3650) return json({ ok: false, reason: 'Ngày tính lãi nằm ngoài khoảng cho phép của hợp đồng này.' }, 400);
+      }
+      const interest = accruedInterestZalo(contract, asOfDate || now);
 
       const instForGoc = usesDueTemplate ? nextInstallmentInfoZalo(contract, now) : null;
       const goc = usesDueTemplate ? (instForGoc ? instForGoc.next.dueAmount : Number(contract.balance)) : 0;
       const total = goc + interest;
-      const dueDateForZalo = instForGoc ? instForGoc.next.dueDate : contract.due_date;
+      const dueDateForZalo = asOfText || (instForGoc ? instForGoc.next.dueDate : contract.due_date);
       const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
       const templateData = {
         TEN_KHACH_HANG: customer.name || '',
@@ -1883,14 +1896,14 @@ Deno.serve(async (req) => {
       if (result.ok) {
         const sentWho = recipients.filter((_, i) => results[i].ok).map((r) => (r.who === 'co' ? 'người cùng vay' : 'người vay'));
         logActivity(caller.id, caller.name || caller.username, caller.username, 'send-zalo-manual',
-          `Gửi tay Zalo OA (mẫu **${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}**) cho khách hàng "**${customer.name || contractId}**"${recipients.length > 1 || recipients[0].who === 'co' ? ` — tới ${sentWho.join(' và ')}` : ''}`)
+          `Gửi tay Zalo OA (mẫu **${usesDueTemplate ? 'Đến hạn' : 'Báo lãi'}**) cho khách hàng "**${customer.name || contractId}**"${recipients.length > 1 || recipients[0].who === 'co' ? ` — tới ${sentWho.join(' và ')}` : ''}${asOfText ? `, tính lãi đến **${formatDateVNZalo(asOfText)}**` : ''}`)
           .catch((e) => console.error('Lỗi ghi activity_log (send-zalo-manual):', e));
       }
       if (!result.ok) return json({ ok: false, reason: result.reason });
       const failNote = failedRecipients.length
         ? `Chưa gửi được cho ${failedRecipients.map((x) => (x.who === 'co' ? 'người cùng vay' : 'người vay')).join(', ')}: ${failedRecipients[0].res.reason || 'Gửi thất bại.'}.${untickNote}`
         : '';
-      return json({ ok: true, sent: sentCount, sentTo: sentCount > 1 ? 'both' : recipients[results.findIndex((r) => r.ok)].who, ...(failNote ? { note: failNote } : {}) });
+      return json({ ok: true, sent: sentCount, sentTo: sentCount > 1 ? 'both' : recipients[results.findIndex((r) => r.ok)].who, ...(asOfText ? { asOf: asOfText } : {}), ...(failNote ? { note: failNote } : {}) });
     }
   }
 

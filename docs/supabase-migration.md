@@ -3449,6 +3449,13 @@ create policy "admins add note log" on customer_note_log
 - Nhân viên có quyền quản lý OA và đã có danh sách tổng (`zaloAutoOverview`, nạp khi vào Quản lý OA) cũng biết ngay đã thêm hay chưa; chu kỳ (danh sách tổng không có) và việc xác nhận lại được lấy ngầm từ máy chủ, chữ chỉ đổi khi khác, máy chủ lỗi thì giữ nguyên chữ tạm. Nhân viên thường chưa biết gì thì vẫn hiện "Đang kiểm tra..." đến khi máy chủ trả lời.
 - `getZaloAutoSendStatus()` nhớ kết quả từng hợp đồng 5 phút (mở lại hợp đồng là hiện ngay), gộp các lượt hỏi trùng nhau và không nhớ lỗi. Bộ nhớ đệm tự xóa khi bỏ một lựa chọn gửi tự động, bỏ khách khỏi Danh sách OA hoặc đăng xuất. Edge Function không đổi.
 
+### 10.99 Gửi Zalo OA tay theo "ngày tính lãi đến" đã chỉnh (BẮT BUỘC deploy lại Edge Function `create-account`; KHÔNG cần SQL)
+
+- Ở chi tiết hợp đồng (admin), khi sửa "Lãi đến ngày" (gõ ngày, chọn lịch hoặc nhập số ngày) thành một ngày khác hôm nay rồi bấm "Gửi tin Zalo OA ngay": tin ghi **lãi tính đến đúng ngày đó** (`LAI_PHAI_TRA`, và `SO_TIEN_CHUYEN_KHOAN` = gốc + lãi đó) và **hạn thanh toán (`NGAY_DAO_HAN`) = ngày đó**. `NGAY_KE_HOACH` vẫn là ngày gửi (hôm nay). Chọn mẫu Báo lãi / Đến hạn và số gốc phải trả vẫn tính theo hôm nay như cũ. Không sửa ngày (hoặc sửa lại về hôm nay) thì gửi y như trước; các nút gửi OA khác (danh sách khách) không đổi.
+- Dưới 3 ô SMS / Thông báo / Zalo có dòng nhắc "Tin Zalo OA sẽ ghi lãi tính đến …: … đ, hạn thanh toán …" — chỉ hiện khi đã chỉnh ngày, số tiền khớp ô "Lãi đến nay".
+- Máy chủ: action mới `send-zalo-manual-asof` (kèm `asOf` dạng `YYYY-MM-DD`) dùng chung toàn bộ luồng của `send-zalo-manual` (quyền, 5 ngày/lần, người nhận, nhật ký gửi). `asOf` phải là ngày có thật, từ ngày đã trả lãi đến cho tới 3650 ngày sau (khoảng giống ô nhập ở giao diện), sai thì từ chối và KHÔNG gửi tin nào. Nhật ký hoạt động ghi thêm "tính lãi đến dd/mm/yyyy".
+- Dùng action riêng để máy chủ CŨ (chưa deploy lại) từ chối ("Thiếu hoặc sai type") thay vì lặng lẽ gửi theo ngày hôm nay; khi đó giao diện báo "Máy chủ chưa cập nhật … chưa gửi tin nào". Gửi OA không chỉnh ngày vẫn chạy bình thường với máy chủ cũ.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

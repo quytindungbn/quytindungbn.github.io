@@ -1364,7 +1364,7 @@ function manualOaState(contract) {
   return { inZaloList, lastZaloSend, cooldownDaysLeft: daysSince === null ? 0 : Math.max(0, 5 - daysSince) };
 }
 
-async function sendManualOa(contractId, button, onSuccess) {
+async function sendManualOa(contractId, button, onSuccess, asOf = null) {
   if (manualOaSending.has(contractId)) return;
   const originalLabel = button.innerHTML;
   const compact = button.classList.contains('customer-ledger-oa');
@@ -1372,9 +1372,9 @@ async function sendManualOa(contractId, button, onSuccess) {
   button.disabled = true;
   button.innerHTML = compact ? 'Đang gửi' : `${icon('refresh', 'icon-sm')} Đang gửi...`;
   try {
-    const res = await S.sendZaloManual(contractId);
+    const res = await S.sendZaloManual(contractId, { asOf });
 
-    const okText = res.sent >= 2 ? 'Đã gửi tin Zalo OA cho người vay và người cùng vay' : res.sentTo === 'co' ? 'Đã gửi tin Zalo OA cho người cùng vay' : 'Đã gửi tin Zalo OA cho người vay';
+    const okText = (res.sent >= 2 ? 'Đã gửi tin Zalo OA cho người vay và người cùng vay' : res.sentTo === 'co' ? 'Đã gửi tin Zalo OA cho người cùng vay' : 'Đã gửi tin Zalo OA cho người vay') + (asOf ? ` (lãi tính đến ${formatDate(asOf)})` : '');
     toast(res.ok ? (res.note ? `${okText}. ${res.note}` : okText) : (res.reason || 'Gửi thất bại — xem chi tiết lỗi trong "Quản lý gửi tin".'), res.ok ? 'success' : 'error', res.note || /chưa đăng ký Zalo/.test(res.reason || '') ? 7000 : undefined);
     if (res.ok) {
       const sentAt = new Date().toISOString();
@@ -1498,7 +1498,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
             <section class="cv-card cv-c-contact">
               <h4 class="cv-h">${icon('send')}Liên hệ và gửi thông báo</h4>
               ${actBtns.length ? `<div class="cv-acts" style="--n:${actBtns.length}">${actBtns.join('')}</div>` : ''}
-              ${zaloShown ? `<div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div>` : ''}
+              ${zaloShown ? `<div id="zalo-hint-wrap-ct">${zaloHintHtml(inZaloList, zaloCooldownDaysLeft, lastZaloSend)}</div><div id="zalo-asof-hint-ct"></div>` : ''}
               ${oaPickHtml ? `<div class="cv-oa" id="cv-oa-pick">${oaPickHtml}</div>` : ''}
               <div id="zalo-auto-status-ct">${zaloAutoStatusHtml(autoQuick)}</div>
             </section>` : '';
@@ -1766,6 +1766,8 @@ export function openContractView(customerId, contract, { readOnly = false, reope
       const formulaEl = sheet.querySelector('.cv-fx');
       const resetRow = sheet.querySelector('#ct-resetrow');
       const resetRowDate = sheet.querySelector('#ct-resetdate');
+      let oaAsOf = null;
+      const oaAsOfHint = sheet.querySelector('#zalo-asof-hint-ct');
       if (accruedEl && asOfInput && daysInput) {
         const today = startOfDay(new Date());
         const minAsOf = interestAsOfForDays(contract, 0);
@@ -1790,6 +1792,8 @@ export function openContractView(customerId, contract, { readOnly = false, reope
           const edited = daysBetween(today, asOf) !== 0;
           if (resetRow) resetRow.hidden = !edited;
           if (resetRowDate) resetRowDate.textContent = formatDate(asOf);
+          oaAsOf = edited ? toDateInputValue(asOf) : null;
+          if (oaAsOfHint) oaAsOfHint.innerHTML = edited ? `<div class="field-hint">Tin Zalo OA sẽ ghi lãi tính đến <strong>${formatDate(asOf)}</strong>: <strong>${formatVND(accrued)}</strong>, hạn thanh toán <strong>${formatDate(asOf)}</strong>.</div>` : '';
 
           laiAmount = accrued;
           if (laiInput) laiInput.value = accrued ? formatNumber(accrued) : '';
@@ -1880,7 +1884,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
 
       if (zaloManualBtn) zaloManualBtn.addEventListener('click', () => sendManualOa(contract.id, zaloManualBtn, (sentAt) => {
         if (zaloHintWrap) zaloHintWrap.innerHTML = zaloHintHtml(true, 5, { sentAt, triggeredBy: 'manual' });
-      }));
+      }, oaAsOf));
       const delBtn = sheet.querySelector('#del-contract');
       if (delBtn) delBtn.addEventListener('click', () => {
         confirmDialog({
