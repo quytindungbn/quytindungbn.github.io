@@ -1577,13 +1577,13 @@ export function openContractView(customerId, contract, { readOnly = false, reope
                 <div class="oc-line"><span>Lãi suất</span><b>${contract.interestRate}%/năm</b></div>
                 <div class="oc-line"><span>SĐT</span><b class="cv-ph">${mainDial ? `<button type="button" class="cv-cp" data-cv-copy="main" title="Sao chép số điện thoại" aria-label="Sao chép số điện thoại">${icon('copy', 'icon-sm')}</button><a class="cv-tel" href="tel:${escapeHtml(mainDial)}" data-cv-call="main">${icon('phone', 'icon-sm')} ${escapeHtml(customer.phone)}</a>` : '—'}</b></div>
                 ${coDial ? `<div class="oc-line"><span>SĐT người cùng vay</span><b class="cv-ph"><button type="button" class="cv-cp" data-cv-copy="co" title="Sao chép số điện thoại người cùng vay" aria-label="Sao chép số điện thoại người cùng vay">${icon('copy', 'icon-sm')}</button><a class="cv-tel" href="tel:${escapeHtml(coDial)}" data-cv-call="co">${icon('phone', 'icon-sm')} ${escapeHtml(coPhoneRaw)}</a></b></div>` : ''}
-              </section>${contactHtml}
-            </div>
-            <div class="cv-col">
+              </section>
               <section class="cv-card cv-c-asset">
                 <h4 class="cv-h">${icon('shieldCheck')}Tài sản bảo đảm</h4>
-                ${collateralName ? `<div class="cv-asset"><span class="ic">${icon('landmark')}</span><span class="t">${collateralName}</span><span class="v">Giá trị: ${formatVND(Math.max(0, Number(contract.collateralValue) || 0))}</span></div>` : '<p class="cv-none">Không có tài sản bảo đảm</p>'}
-              </section>${payHtml}
+                ${collateralName ? `<div class="cv-asset"><span class="ic">${icon('landmark')}</span><span class="t">${collateralName}</span><span class="v"><small>Giá trị</small>${formatVND(Math.max(0, Number(contract.collateralValue) || 0))}</span></div>` : '<p class="cv-none">Không có tài sản bảo đảm</p>'}
+              </section>
+            </div>
+            <div class="cv-col">${contactHtml}${payHtml}
             </div>
           </div>
           ${readOnly ? '' : `<div class="cv-foot"><button type="button" class="cv-del" id="del-contract">${icon('trash', 'icon-sm')} Xóa hợp đồng</button></div>`}
