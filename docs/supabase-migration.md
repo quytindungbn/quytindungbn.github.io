@@ -3462,7 +3462,7 @@ create policy "admins add note log" on customer_note_log
 - Đầu chi tiết hợp đồng (admin), cùng hàng và ngay sau chữ "HỢP ĐỒNG TÍN DỤNG", có nút nhỏ (máy tính 22px, điện thoại 24px): khách CHƯA trong Danh sách OA → nút vàng "＋ Thêm OA"; khách ĐÃ trong Danh sách OA → nút kính mờ "－ Bỏ OA" (hỏi xác nhận như ở chi tiết khách hàng vì bỏ khỏi OA cũng bỏ mọi lựa chọn gửi tự động của khách). Chỉ hiện với tài khoản có quyền quản lý OA. Khách thiếu số điện thoại: nút mờ, bấm chỉ báo lý do. Cùng logic với nút ở chi tiết khách hàng (hàm dùng chung `addCustomerToOa` / `removeCustomerFromOa` trong `js/views/admin/customers.js`, gồm cả hộp xác nhận "Người cùng vay đã thay đổi").
 - Bấm xong cập nhật ngay tại chỗ (không mở lại cửa sổ): đổi nút, câu gợi ý trong khung "Liên hệ và gửi thông báo", bật/khóa nút "Gửi tin Zalo OA ngay" và dòng trạng thái gửi tự động.
 - Câu gợi ý khi khách chưa có trong Danh sách OA đổi thành: "Khách chưa có trong Danh sách OA — Kiểm tra SĐT đã có đăng ký Zalo, sau đó thêm vào Danh sách OA để gửi tin."
-- Máy tính: phần đầu cao thêm khoảng 9px (hàng nút xen vào giữa nhãn và số hợp đồng), điện thoại không đổi chiều cao.
+- Nút OA và nhãn đến hạn ("Còn 8 ngày" / "Quá hạn N ngày", `.cv-state`) làm nhỏ gọn: nút OA cao 18px, nhãn cao 18px (điện thoại) / 19px (máy tính), chữ 10,5–11px; phần đầu chi tiết hợp đồng trên máy tính thấp hơn bản trước khoảng 5px, điện thoại không đổi chiều cao.
 
 ---
 
