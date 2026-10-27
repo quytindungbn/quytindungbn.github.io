@@ -1862,7 +1862,7 @@ Deno.serve(async (req) => {
       const instForGoc = usesDueTemplate ? nextInstallmentInfoZalo(contract, now) : null;
       const goc = usesDueTemplate ? (instForGoc ? instForGoc.next.dueAmount : Number(contract.balance)) : 0;
       const total = goc + interest;
-      const dueDateForZalo = asOfText || (instForGoc ? instForGoc.next.dueDate : contract.due_date);
+      const dueDateForZalo = instForGoc ? instForGoc.next.dueDate : contract.due_date;
       const nameNoDiacritics = stripDiacriticsUpper(customer.name || '');
       const templateData = {
         TEN_KHACH_HANG: customer.name || '',
@@ -1875,7 +1875,7 @@ Deno.serve(async (req) => {
         NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`TRA ${usesDueTemplate ? '' : 'LAI '}HDTD ${contract.code} ${nameNoDiacritics}`),
         NGAY_DAO_HAN: formatDateVNZalo(dueDateForZalo),
 
-        NGAY_KE_HOACH: formatDateVNZalo(now.toISOString()),
+        NGAY_KE_HOACH: formatDateVNZalo(asOfText || now.toISOString()),
       };
       const results = await Promise.all(recipients.map((r) => sendZaloTemplateLogged({
         accessToken, phone: r.phone, templateId, templateData,
