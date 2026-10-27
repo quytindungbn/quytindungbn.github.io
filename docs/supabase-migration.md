@@ -3440,6 +3440,8 @@ create policy "admins add note log" on customer_note_log
 - Chi tiết hợp đồng (admin): khung "Thông tin hợp đồng" (`.cv-c-info`) dùng chữ có chân của theme (`--font-serif`, đậm vừa 16px) cho số liệu và số điện thoại; nhãn giữ Inter xám.
 - Chi tiết hợp đồng (admin), 4 ô số liệu (`.cv-cells`): các số tiền cùng hàng nằm trên một đường chân chữ (số "Gốc đã trả" nhỏ hơn và màu nhạt hơn số "Dư nợ hiện tại" nhưng vẫn thẳng hàng, nhờ `padding-top` bù theo cỡ chữ ở `.cv-val`), dòng ghi chú / ô ngày ("Đến [ngày]", "Từ [ngày]") cũng cùng một hàng — hai biến `--cv-vh` (hàng số liệu) và `--cv-nh` (hàng ghi chú) dùng chung cho mọi ô, cả điện thoại (2x2) lẫn máy tính (4 ô). Khi số quá dài phải thu nhỏ, các số lớn cùng hàng thu nhỏ như nhau và số "Gốc đã trả" thu nhỏ theo (`fitMoneyRow` trong `js/views/admin/customers.js`). Nhãn "Gốc" / "Lãi" trong khung "Gửi mã QR để thanh toán" đậm hơn (800).
 
+- Chi tiết hợp đồng (admin), khung "Liên hệ và gửi thông báo" (`.cv-c-contact`): giãn dòng hơn (ô SMS / Thông báo / Zalo cao hơn, các hàng cách xa hơn, khối "Gửi Zalo OA tới" có ô chọn cao hơn) và có một đường kẻ mảnh phía trên "Gửi Zalo OA tới" (viền trên của `.cv-oa`, chỉ hiện khi khối này hiện, tức là khi có người cùng vay).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

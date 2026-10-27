@@ -3104,6 +3104,24 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-col { gap: 14px; }
 }
 
+/* Khung Liên hệ và gửi thông báo: giãn dòng, đường kẻ nhẹ phía trên "Gửi Zalo OA tới" */
+.cv-c-contact .cv-acts { gap: 8px; margin-top: 13px; }
+.cv-c-contact .cv-act { gap: 5px; min-height: 58px; padding: 9px 4px; }
+.cv-c-contact .field-hint { margin-top: 11px; }
+.cv-c-contact .field-hint.text-danger { margin-top: 13px; }
+.cv-c-contact .cv-oa { margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--cd-line); }
+.cv-c-contact .cv-oa .cd-pp-picks { margin-top: 0; }
+.cv-c-contact .cv-oa .cd-pp-pick-h { margin-bottom: 8px; }
+.cv-c-contact .cv-oa .cd-pp-tile { padding: 7px 12px; }
+@media (min-width: 640px) {
+  .cv-c-contact .cv-acts { gap: 10px; margin-top: 15px; }
+  .cv-c-contact .cv-act { gap: 6px; min-height: 62px; padding: 10px 6px; }
+  .cv-c-contact .field-hint { margin-top: 12px; }
+  .cv-c-contact .field-hint.text-danger { margin-top: 14px; }
+  .cv-c-contact .cv-oa { margin-top: 16px; padding-top: 15px; }
+}
+@media (min-width: 760px) { .cv-c-contact .cv-oa .cd-pp-pick-h { margin: 0; } }
+
 /* Giao diện khách hàng (Mẫu 3) */
 .cw { --ink: #182320; --em: #0c4a3f; --pri: #0f6f61; --gold: #b08d3c; --goldd: #8a6a22; --goldl: #dccb99; --mut: #667069; --line: #e5eae8; --line2: #dbe6e0; --tint: #e3f3ef; --sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; --serif: var(--font-serif, 'Source Serif 4', Georgia, serif); font-family: var(--sans); color: var(--ink); }
 .cw * { box-sizing: border-box; }
