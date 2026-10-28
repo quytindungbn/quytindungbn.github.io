@@ -4,6 +4,7 @@
   "private": true,
   "description": "BẢN DEMO — cổng khách hàng quỹ tín dụng (tra cứu khoản vay, yêu cầu tư vấn) + trang quản trị. Web app thuần HTML/CSS/JS, không cần build. Đã kết nối Supabase (database + Edge Function thật, xem docs/supabase-migration.md) — chưa có OTP thật, chưa rà soát bảo mật/pháp lý độc lập nên chưa dùng để vận hành thật.",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "stamp": "node tools/stamp-version.mjs"
   }
 }

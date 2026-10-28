@@ -5,6 +5,7 @@ import { initials, colorFor, maskCccd } from '../utils.js';
 import { isStandalone } from '../lib/installPwa.js';
 import { bindInstallButton } from './installBtn.js';
 import { openChatPanel } from './chatPanel.js';
+import { appVersionLabel, checkForUpdate } from '../lib/update.js';
 
 export const CUSTOMER_NAV = [
   { path: '#/', label: 'Trang chủ', shortLabel: 'Trang chủ', icon: 'landmark' },
@@ -54,49 +55,51 @@ function bindBottomNavAutoHide() {
   if (navAutoHideBound) return;
   navAutoHideBound = true;
   const SHOW_ABOVE = 80;
-  const STEP = 10;
-  const SURE_SCROLL = 160;
+  const HIDE_AFTER = 36;
+  const SHOW_AFTER = 14;
+  const fine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   let lastY = window.scrollY;
   let touchOn = false;
-  let touchScrollY = 0;
-  let touchX0 = 0;
-  let touchY0 = 0;
+  let x0 = 0;
+  let y0 = 0;
+  let prevY = 0;
+  let run = 0;
   let horizontal = false;
-  let pendingHide = false;
   window.addEventListener('scroll', () => {
     const y = window.scrollY;
+    if (y <= SHOW_ABOVE) { setNavHidden(false); lastY = y; return; }
+    if (!fine) return;
     if (Date.now() < navLockUntil) { lastY = y; return; }
-    if (y <= SHOW_ABOVE) { setNavHidden(false); lastY = y; pendingHide = false; return; }
     const dy = y - lastY;
-    if (Math.abs(dy) < STEP) return;
+    if (Math.abs(dy) < 10) return;
     lastY = y;
-    if (dy > 0 && touchOn && y - touchScrollY < SURE_SCROLL) { pendingHide = true; return; }
-    pendingHide = false;
     setNavHidden(dy > 0);
   }, { passive: true });
   window.addEventListener('touchstart', (e) => {
-    touchOn = e.touches.length === 1;
-    touchScrollY = window.scrollY;
-    pendingHide = false;
+    touchOn = e.touches.length === 1 && !e.target.closest('.modal-overlay');
     horizontal = false;
-    if (touchOn) { touchX0 = e.touches[0].clientX; touchY0 = e.touches[0].clientY; }
+    run = 0;
+    if (touchOn) { x0 = e.touches[0].clientX; y0 = prevY = e.touches[0].clientY; }
   }, { passive: true });
   window.addEventListener('touchmove', (e) => {
     if (!touchOn || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - touchX0;
-    const dy = e.touches[0].clientY - touchY0;
-    if (!horizontal && Math.abs(dx) >= 16 && Math.abs(dx) >= Math.abs(dy)) { horizontal = true; pendingHide = false; }
-    if (horizontal) showBottomNav(1200);
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+    const dx = x - x0;
+    const dy = y - y0;
+    if (!horizontal && Math.abs(dx) >= 16 && Math.abs(dx) >= Math.abs(dy)) horizontal = true;
+    if (horizontal) { showBottomNav(1200); return; }
+    const step = y - prevY;
+    prevY = y;
+    if (!step) return;
+    run = Math.sign(step) === Math.sign(run) ? run + step : step;
+    if (run <= -HIDE_AFTER && Math.abs(dy) > 1.5 * Math.abs(dx) && window.scrollY > SHOW_ABOVE && Date.now() >= navLockUntil) setNavHidden(true);
+    else if (run >= SHOW_AFTER) setNavHidden(false);
   }, { passive: true });
-  const endTouch = () => {
-    touchOn = false;
-    if (!pendingHide) return;
-    pendingHide = false;
-    setTimeout(() => { if (Date.now() >= navLockUntil) setNavHidden(true); }, 50);
-  };
+  const endTouch = () => { touchOn = false; };
   window.addEventListener('touchend', endTouch, { passive: true });
   window.addEventListener('touchcancel', endTouch, { passive: true });
-  window.addEventListener('hashchange', () => { setNavHidden(false); lastY = window.scrollY; pendingHide = false; });
+  window.addEventListener('hashchange', () => { setNavHidden(false); lastY = window.scrollY; });
 }
 
 function matchPath(navPath, current) {
@@ -167,6 +170,7 @@ export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA,
             <a href="#/doi-mat-khau" class="sidebar-tool" title="Đổi mật khẩu" aria-label="Đổi mật khẩu">${icon('lock')}</a>
             <button type="button" class="sidebar-tool" id="btn-logout-side" title="Đăng xuất" aria-label="Đăng xuất">${icon('logout')}</button>
           </div>
+          <button type="button" class="app-ver" data-app-ver title="Kiểm tra cập nhật">Phiên bản ${appVersionLabel()}</button>
         </div>
       </aside>
       <div class="main-col">
@@ -183,6 +187,7 @@ export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA,
   bindBottomNavAutoHide();
   renderSidebarProfile();
   document.getElementById('btn-logout-side').addEventListener('click', onLogoutClick);
+  root.querySelectorAll('[data-app-ver]').forEach((b) => b.addEventListener('click', () => checkForUpdate({ manual: true })));
   const installBtnSide = document.getElementById('btn-install-side');
   if (installBtnSide) bindInstallButton(installBtnSide);
 }
@@ -251,6 +256,7 @@ function openMoreSheet(overflowItems) {
           </a>`;
         }).join('')}
       </div>
+      <button type="button" class="app-ver" data-app-ver>Phiên bản ${appVersionLabel()} · Kiểm tra cập nhật</button>
     `,
     footHtml: `
       ${!isStandalone() ? `<button class="btn btn-outline btn-block" id="sheet-install">${icon('download', 'icon-sm')} Cài ứng dụng</button>` : ''}
@@ -259,6 +265,7 @@ function openMoreSheet(overflowItems) {
     onMount(sheet, closeFn) {
 
       sheet.querySelector('#sheet-logout').addEventListener('click', () => { closeFn(); onLogoutClick(); });
+      sheet.querySelector('[data-app-ver]').addEventListener('click', () => checkForUpdate({ manual: true }));
       const installBtn = sheet.querySelector('#sheet-install');
       if (installBtn) bindInstallButton(installBtn);
     },

@@ -5,6 +5,7 @@ import { toast } from './components/toast.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js';
 import { initAutoInstallPrompt } from './components/installBtn.js';
+import { initAutoUpdate } from './lib/update.js';
 import { renderLogin } from './views/login.js';
 import { renderChangePassword } from './views/changePassword.js';
 
@@ -269,6 +270,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (existingSession) autoSubscribeIfPossible(existingSession.sbToken);
 
   initAutoInstallPrompt();
+  initAutoUpdate();
 });
 
 S.subscribe(() => {
