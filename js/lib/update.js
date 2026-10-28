@@ -8,10 +8,7 @@ let checking = false;
 let bar = null;
 let hiddenAt = 0;
 
-export function appVersionLabel() {
-  const m = /^\d{4}-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(APP_VERSION);
-  return m ? `${m[2]}/${m[1]} ${m[3]}` : APP_VERSION;
-}
+export const appVersionLabel = () => APP_VERSION;
 
 const getTried = () => { try { return sessionStorage.getItem(TRIED_KEY); } catch { return null; } };
 const setTried = (v) => { try { sessionStorage.setItem(TRIED_KEY, v); } catch { /* bỏ qua */ } };

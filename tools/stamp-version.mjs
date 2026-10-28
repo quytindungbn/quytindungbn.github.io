@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -24,10 +25,29 @@ export function contentHash() {
   return h.digest('hex').slice(0, 12);
 }
 
-export function stamp(now = new Date()) {
-  const v = now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)$/;
+
+export function nextVersion(base, prev, hash) {
+  const m = prev && typeof prev.v === 'string' ? VERSION_RE.exec(prev.v) : null;
+  if (!m || `${m[1]}.${m[2]}` !== base) return `${base}.1`;
+  return prev.h === hash ? prev.v : `${base}.${Number(m[3]) + 1}`;
+}
+
+function readJson(path) {
+  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
+}
+
+function committedInfo() {
+  try { return JSON.parse(execFileSync('git', ['show', 'HEAD:version.json'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return readJson(join(ROOT, 'version.json')); }
+}
+
+export function stamp() {
+  const pkg = readJson(join(ROOT, 'package.json'));
+  const base = String((pkg && pkg.version) || '1.0.0').split('.').slice(0, 2).join('.');
+  const h = contentHash();
+  const v = nextVersion(base, committedInfo(), h);
   writeFileSync(join(ROOT, VERSION_JS), `export const APP_VERSION = '${v}';\n`);
-  writeFileSync(join(ROOT, 'version.json'), JSON.stringify({ v, h: contentHash(), files: listFiles() }, null, 1) + '\n');
+  writeFileSync(join(ROOT, 'version.json'), JSON.stringify({ v, h, files: listFiles() }, null, 1) + '\n');
   return v;
 }
 
