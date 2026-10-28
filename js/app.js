@@ -56,7 +56,10 @@ let shellKey = null;
 
 let lastRoutePath = null;
 const balanceSheetPath = '#/admin/can-doi-ke-toan';
-let balanceSheetScrollY = 0;
+
+// Các trang dài: rời đi rồi quay lại thì về đúng chỗ đang xem (bộ lọc/tìm kiếm của danh sách khách vốn đã được giữ).
+const KEEP_SCROLL_PATHS = new Set([balanceSheetPath, '#/admin/khach-hang']);
+const scrollMemo = new Map();
 
 let lastSessionKey = undefined;
 function sessionKey(session) {
@@ -104,8 +107,8 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
     AdminSupport.resetFilters?.();
     AdminLogs.resetFilters?.();
     AdminOverview.resetSelection?.();
-    balanceSheetScrollY = 0;
-    if (lastRoutePath === balanceSheetPath) lastRoutePath = null;
+    scrollMemo.clear();
+    if (KEEP_SCROLL_PATHS.has(lastRoutePath)) lastRoutePath = null;
     if (session && lastSessionKey !== undefined) scheduleWarmUp();
     lastSessionKey = curSessionKey;
     dataOnly = false;
@@ -143,7 +146,7 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   const canManageZaloOA = session.role === 'admin' ? S.canManageZaloOA(session.id) : false;
   const canViewBalanceSheet = session.role === 'admin' ? S.canViewBalanceSheet(session.id) : false;
   const { path, query } = splitHash();
-  if (lastRoutePath === balanceSheetPath && path !== balanceSheetPath) balanceSheetScrollY = window.scrollY;
+  if (KEEP_SCROLL_PATHS.has(lastRoutePath) && path !== lastRoutePath) scrollMemo.set(lastRoutePath, window.scrollY);
   const routes = session.role === 'admin' ? adminRoutes : customerRoutes;
   const defaultPath = session.role === 'admin' ? '#/admin' : '#/';
   let match = matchRoute(path, routes);
@@ -176,15 +179,20 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
 
   clearFabs();
   filterEl.innerHTML = '';
-  const returningToBalanceSheet = path === balanceSheetPath && lastRoutePath !== balanceSheetPath;
-  if (scrollTop && !returningToBalanceSheet) window.scrollTo(0, 0);
+  const returningToKept = KEEP_SCROLL_PATHS.has(path) && lastRoutePath !== path;
+  const keptY = returningToKept ? (scrollMemo.get(path) || 0) : 0;
+  if (scrollTop && !returningToKept) window.scrollTo(0, 0);
 
   headerEl.classList.remove('cw-off'); contentEl.classList.remove('cw-on');
   if (match.view.renderHeader) match.view.renderHeader(headerEl, match.params);
+  if (returningToKept) match.view.prepareRestore?.(keptY);
   match.view.render(contentEl, filterEl, match.params, query);
-  if (returningToBalanceSheet) requestAnimationFrame(() => {
-    if (splitHash().path === balanceSheetPath) window.scrollTo(0, balanceSheetScrollY);
-  });
+  if (returningToKept) {
+    window.scrollTo(0, keptY);
+    requestAnimationFrame(() => {
+      if (splitHash().path === path) window.scrollTo(0, keptY);
+    });
+  }
 
   if (path !== lastRoutePath && path !== '#/admin/nhat-ky') {
     S.logAdminAction('nav-page', { pageLabel: NAV_LABEL_MAP[path] || path });

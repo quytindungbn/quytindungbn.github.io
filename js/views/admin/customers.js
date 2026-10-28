@@ -94,6 +94,10 @@ function currentAdmin() {
 let ledgerDrawToken = 0;
 const LEDGER_FIRST_CHUNK = 30;
 const LEDGER_NEXT_CHUNK = 30;
+let restoreScrollY = 0;
+
+// Quay lại danh sách từ menu khác: vẽ đủ danh sách ngay để trang đủ cao cho đúng vị trí cuộn cũ.
+export function prepareRestore(y) { restoreScrollY = y > 40 ? y : 0; }
 
 export function render(contentEl, filterEl) {
   const admin = currentAdmin();
@@ -384,7 +388,7 @@ export function render(contentEl, filterEl) {
     const shownWrap = contentEl.querySelector('.customer-ledger-wrap');
     if (shownWrap && shownWrap.__sig === sig) return;
     const drawToken = ++ledgerDrawToken;
-    const progressive = window.scrollY < 40 && enriched.length > LEDGER_FIRST_CHUNK;
+    const progressive = window.scrollY < 40 && !restoreScrollY && enriched.length > LEDGER_FIRST_CHUNK;
     const firstGroups = progressive ? enriched.slice(0, LEDGER_FIRST_CHUNK) : enriched;
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
@@ -427,6 +431,7 @@ export function render(contentEl, filterEl) {
     });
   }
   draw();
+  restoreScrollY = 0;
   window.__qtdRedrawCustomers = draw;
   S.loadOpenNotes().then((ok) => { if (ok && contentEl.isConnected) draw(); });
 }

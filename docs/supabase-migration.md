@@ -3473,6 +3473,11 @@ create policy "admins add note log" on customer_note_log
 - Cách hoạt động trong `js/views/admin/customers.js`: `pagePair` nhớ khách + hợp đồng đang xem; `switchPage()` đóng hợp đồng rồi mở hồ sơ khách (hoặc ngược lại, mở ĐÚNG hợp đồng vừa xem, không có thì hợp đồng đang hiệu lực mới nhất) với hiệu ứng trượt; nếu hồ sơ khách đã nằm sẵn bên dưới (mở từ danh sách khách) thì chỉ lộ ra, không mở nhân đôi. Chuyển trang dùng `reopen: true` nên KHÔNG ghi thêm nhật ký "xem hợp đồng / xem khách".
 - MÁY TÍNH (màn ≥ 640px): ở đầu chi tiết hợp đồng có nút "Hồ sơ khách" (đứng đầu cụm nút, trước Sao chép / In giấy báo / Đóng; cửa sổ hẹp 640–899px chỉ còn biểu tượng) hoặc bấm phím K. Hồ sơ khách mở CHỒNG lên hợp đồng nên đóng hồ sơ là quay về đúng hợp đồng đang xem; nếu hồ sơ khách đã nằm bên dưới thì chỉ đóng hợp đồng để lộ ra. Phím K bị bỏ qua khi đang gõ trong ô nhập, khi giữ Ctrl/Alt/Shift/Cmd, khi có cửa sổ khác nằm trên hợp đồng, và được gỡ khi đóng hợp đồng. Điện thoại không hiện nút này (đã có vuốt).
 
+### 10.102 Danh sách "Khách hàng & Hợp đồng" nhớ vị trí cuộn khi qua menu khác (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Cuộn xuống đến một khách, sang menu khác (ví dụ "Quản lý OA", "Tính lãi vay"…) rồi mở lại "Khách hàng & Hợp đồng" (bấm menu hoặc nút Back) thì danh sách nằm đúng chỗ cũ — cả điện thoại và máy tính. Ô tìm kiếm, bộ lọc Thôn/Xóm, lọc quá hạn / gần đến hạn, sắp xếp, lọc số tiền vốn đã được giữ từ trước nên vẫn như cũ.
+- Cách làm (`js/app.js`): `KEEP_SCROLL_PATHS` (Khách hàng & Hợp đồng, Quản trị) + `scrollMemo` lưu `scrollY` lúc rời trang và trả lại lúc quay về; trang khác vẫn bắt đầu từ đầu. Danh sách khách vốn vẽ dần (30 khách đầu rồi vẽ tiếp) nên khi quay về `prepareRestore(y)` trong `js/views/admin/customers.js` cho vẽ đủ ngay để trang đủ cao. Đăng nhập/đăng xuất (đổi phiên) thì xóa bộ nhớ này.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
