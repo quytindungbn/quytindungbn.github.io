@@ -871,6 +871,12 @@ function logMatchesQuery(raw) {
   };
 }
 
+function logSenderHtml(l) {
+  const a = l.triggeredBy === 'manual' && l.triggeredByAdminId ? S.getAdmin(l.triggeredByAdminId) : null;
+  const short = a && a.name ? shortPersonName(a.name) : '';
+  return short ? `<span class="lg-by" title="Người gửi: ${escapeHtml(a.name)}">${escapeHtml(short)}</span>` : '';
+}
+
 function logRowHtml(it) {
   const { first, customer, contract, recips } = it;
   const d = new Date(it.time);
@@ -888,7 +894,7 @@ function logRowHtml(it) {
       <div class="lg-main">
         <div class="lg-who"><b class="lg-name">${customer ? escapeHtml(customer.name) : '—'}</b>${contract ? `<span class="lg-code">${escapeHtml(contract.code)}</span>` : ''}</div>
         <div class="lg-to"><span class="lg-to-l">Gửi tới</span>${recips.map((r) => logToHtml(r.rc, it.partial ? (r.l.status === 'success' ? 'ok' : 'err') : '')).join('')}</div>
-        <div class="lg-meta"><span class="oa-chip ${first.triggeredBy === 'manual' ? 'b' : 'g'}">${first.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}</span><span class="oa-chip ${first.kind === 'den_han' ? 'b' : 'g'}">${first.kind === 'den_han' ? 'Đến hạn' : 'Báo lãi'}</span></div>
+        <div class="lg-meta">${logSenderHtml(first)}<span class="oa-chip ${first.triggeredBy === 'manual' ? 'b' : 'g'}">${first.triggeredBy === 'manual' ? 'Gửi tay' : 'Tự động'}</span><span class="oa-chip ${first.kind === 'den_han' ? 'b' : 'g'}">${first.kind === 'den_han' ? 'Đến hạn' : 'Báo lãi'}</span></div>
         ${errHtml}
       </div>
       <time class="lg-time">${hh}</time>
