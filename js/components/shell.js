@@ -48,6 +48,8 @@ export const getNavPaths = () => navPaths;
 let navAutoHideBound = false;
 let navLockUntil = 0;
 export const lockNavAutoHide = (ms = 900) => { navLockUntil = Math.max(navLockUntil, Date.now() + ms); };
+const setNavHidden = (hidden) => document.body.classList.toggle('nav-hidden', hidden);
+export const showBottomNav = (ms = 1500) => { lockNavAutoHide(ms); setNavHidden(false); };
 function bindBottomNavAutoHide() {
   if (navAutoHideBound) return;
   navAutoHideBound = true;
@@ -57,29 +59,44 @@ function bindBottomNavAutoHide() {
   let lastY = window.scrollY;
   let touchOn = false;
   let touchScrollY = 0;
+  let touchX0 = 0;
+  let touchY0 = 0;
+  let horizontal = false;
   let pendingHide = false;
-  const setHidden = (hidden) => document.body.classList.toggle('nav-hidden', hidden);
   window.addEventListener('scroll', () => {
     const y = window.scrollY;
     if (Date.now() < navLockUntil) { lastY = y; return; }
-    if (y <= SHOW_ABOVE) { setHidden(false); lastY = y; pendingHide = false; return; }
+    if (y <= SHOW_ABOVE) { setNavHidden(false); lastY = y; pendingHide = false; return; }
     const dy = y - lastY;
     if (Math.abs(dy) < STEP) return;
     lastY = y;
     if (dy > 0 && touchOn && y - touchScrollY < SURE_SCROLL) { pendingHide = true; return; }
     pendingHide = false;
-    setHidden(dy > 0);
+    setNavHidden(dy > 0);
   }, { passive: true });
-  window.addEventListener('touchstart', (e) => { touchOn = e.touches.length === 1; touchScrollY = window.scrollY; pendingHide = false; }, { passive: true });
+  window.addEventListener('touchstart', (e) => {
+    touchOn = e.touches.length === 1;
+    touchScrollY = window.scrollY;
+    pendingHide = false;
+    horizontal = false;
+    if (touchOn) { touchX0 = e.touches[0].clientX; touchY0 = e.touches[0].clientY; }
+  }, { passive: true });
+  window.addEventListener('touchmove', (e) => {
+    if (!touchOn || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - touchX0;
+    const dy = e.touches[0].clientY - touchY0;
+    if (!horizontal && Math.abs(dx) >= 16 && Math.abs(dx) >= Math.abs(dy)) { horizontal = true; pendingHide = false; }
+    if (horizontal) showBottomNav(1200);
+  }, { passive: true });
   const endTouch = () => {
     touchOn = false;
     if (!pendingHide) return;
     pendingHide = false;
-    setTimeout(() => { if (Date.now() >= navLockUntil) setHidden(true); }, 50);
+    setTimeout(() => { if (Date.now() >= navLockUntil) setNavHidden(true); }, 50);
   };
   window.addEventListener('touchend', endTouch, { passive: true });
   window.addEventListener('touchcancel', endTouch, { passive: true });
-  window.addEventListener('hashchange', () => { setHidden(false); lastY = window.scrollY; pendingHide = false; });
+  window.addEventListener('hashchange', () => { setNavHidden(false); lastY = window.scrollY; pendingHide = false; });
 }
 
 function matchPath(navPath, current) {

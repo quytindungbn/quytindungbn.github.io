@@ -2070,14 +2070,17 @@ export function loadOpenNotes({ force = false } = {}) {
   openNotesLoadedAt = Date.now();
   openNotesInflight = (async () => {
     try {
+      if (!force) await new Promise((r) => setTimeout(r, 350));
       const sb = getSupabaseClient(session.sbToken);
       const { data, error } = await sb.from('customer_notes').select('*').eq('status', 'open').order('remind_on', { ascending: true, nullsFirst: false }).limit(2000);
       if (error) return false;
       const fresh = (data || []).map(mapNoteRow);
       const ids = new Set(fresh.map((n) => n.id));
+      const openSig = (list) => list.filter((n) => n.status === 'open').map((n) => `${n.id}|${n.remindOn}|${n.updatedAt}|${n.text}`).sort().join('\n');
+      const before = openSig(state.customerNotes || []);
       state.customerNotes = (state.customerNotes || []).filter((n) => n.status === 'done' && !ids.has(n.id)).concat(fresh);
       notesRev += 1;
-      return true;
+      return openSig(state.customerNotes) !== before;
     } catch { return false; }
   })().finally(() => { openNotesInflight = null; });
   return openNotesInflight;

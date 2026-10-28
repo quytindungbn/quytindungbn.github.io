@@ -1,5 +1,5 @@
 import * as S from './state.js';
-import { buildShell, getNavPaths, lockNavAutoHide, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_TOOLS, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
+import { buildShell, getNavPaths, lockNavAutoHide, showBottomNav, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_TOOLS, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { toast } from './components/toast.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
@@ -112,23 +112,21 @@ function bindMenuSwipe() {
     if (!getNavPaths().includes(splitHash().path) || blocked(e.target)) return;
     t0 = { x: t.clientX, y: t.clientY, at: Date.now(), path: splitHash().path };
   }, { passive: true });
-  document.addEventListener('touchmove', (e) => {
-    if (!t0) return;
-    const t = e.touches[0]; const dx = t.clientX - t0.x; const dy = t.clientY - t0.y;
-    if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.3) lockNavAutoHide(1200);
-  }, { passive: true });
   document.addEventListener('touchcancel', () => { t0 = null; }, { passive: true });
   document.addEventListener('touchend', (e) => {
     if (!t0) return;
     const start = t0; t0 = null;
     const t = e.changedTouches[0]; const dx = t.clientX - start.x; const dy = t.clientY - start.y;
-    if (Math.abs(dx) < 72 || Math.abs(dx) < Math.abs(dy) * 2 || Date.now() - start.at > 600) return;
+    if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.6 || Date.now() - start.at > 900) return;
     if (document.querySelector('.modal-overlay') || splitHash().path !== start.path || String(window.getSelection?.() || '')) return;
     const paths = getNavPaths(); const i = paths.indexOf(start.path);
     if (i < 0 || paths.length < 2) return;
     menuSlide = dx < 0 ? 'left' : 'right';
-    lockNavAutoHide(1200);
-    location.hash = paths[(i + (dx < 0 ? 1 : -1) + paths.length) % paths.length];
+    const target = paths[(i + (dx < 0 ? 1 : -1) + paths.length) % paths.length];
+    const wasHidden = document.body.classList.contains('nav-hidden');
+    showBottomNav(1500);
+    if (wasHidden) requestAnimationFrame(() => requestAnimationFrame(() => { location.hash = target; }));
+    else location.hash = target;
   }, { passive: true });
 }
 
@@ -251,7 +249,7 @@ window.addEventListener('hashchange', () => {
   closeAllModals();
   renderApp();
 
-  S.refreshSessionData({ minAgeMs: 15000 });
+  setTimeout(() => S.refreshSessionData({ minAgeMs: 15000 }), 450);
 });
 
 window.addEventListener('qtd:refresh-failed', () => toast('Chưa tải được dữ liệu mới — đang hiện dữ liệu lần trước. Kiểm tra mạng rồi tải lại trang.', 'error'));
