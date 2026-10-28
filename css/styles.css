@@ -2891,9 +2891,6 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cv-oa-slot .cd-oa-btn { height: 18px; padding: 0 8px 0 6px; gap: 3px; font-size: 10.5px; }
 .cv-oa-slot .cd-oa-btn svg { width: 10px; height: 10px; }
 .cv-oa-slot .cd-oa-btn.is-add { box-shadow: 0 4px 10px -5px rgba(232, 200, 100, .8), inset 0 1px 0 rgba(255, 255, 255, .5); }
-@media (min-width: 640px) {
-  .cv-eyerow { margin: -3px 0 0; }
-}
 .cv-code { margin: 0; font: 700 24px/1.1 var(--font-serif, serif); letter-spacing: .01em; color: #fff; }
 .cv-code small { margin-right: 8px; font: 600 11px/1 var(--lux-sans); letter-spacing: .16em; text-transform: uppercase; color: #dccb99; vertical-align: .2em; }
 .cv-state { display: inline-flex; align-items: center; gap: 5px; height: 19px; padding: 0 9px 0 7px; border: 1px solid rgba(244, 201, 93, .5); border-radius: 999px; background: rgba(244, 201, 93, .16); color: #ffe9ac; font: 600 11px/1 var(--lux-sans); white-space: nowrap; }
@@ -3026,6 +3023,16 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .cv-del { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 16px; border: 1px solid #f1c9c5; border-radius: 11px; background: #fff; color: #b3261e; font: 700 13px/1 var(--lux-sans); cursor: pointer; }
 .cv-del svg { width: 16px; height: 16px; }
 
+@media (min-width: 640px) {
+  .cv-block { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+  .cv-eyerow, .cv-main { display: contents; }
+  .cv-eyebrow { order: 1; display: flex; align-items: center; min-height: 34px; margin-right: -2px; }
+  .cv-code { order: 2; font-size: 19px; }
+  .cv-state { order: 3; }
+  .cv-oa-slot { order: 4; }
+  .cv-cust { order: 5; }
+  .cv-term { margin-top: 14px; }
+}
 @media (max-width: 639px) {
   .modal-sheet.cv-sheet { width: 100%; border-radius: 22px 22px 0 0; }
   .cv-hero { padding: 10px 14px 36px; }
@@ -3037,8 +3044,9 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-tbtn { height: 28px; min-width: 28px; }
   .cv-tbtn svg { width: 15px; height: 15px; }
   .cv-print { display: none; }
-  .cv-main { width: 100%; }
-  .cv-code { font-size: 21px; }
+  .cv-main { width: 100%; row-gap: 6px; }
+  .cv-code { font-size: 16px; }
+  .cv-code small { font-size: 10px; margin-right: 6px; }
   .cv-state { height: 18px; padding: 0 8px 0 6px; font-size: 10.5px; }
   .cv-state .d, .cv-cell .d { display: none; }
   .cv-state .p, .cv-cell .p { display: inline; }

@@ -3463,6 +3463,7 @@ create policy "admins add note log" on customer_note_log
 - Bấm xong cập nhật ngay tại chỗ (không mở lại cửa sổ): đổi nút, câu gợi ý trong khung "Liên hệ và gửi thông báo", bật/khóa nút "Gửi tin Zalo OA ngay" và dòng trạng thái gửi tự động.
 - Câu gợi ý khi khách chưa có trong Danh sách OA đổi thành: "Khách chưa có trong Danh sách OA — Kiểm tra SĐT đã có đăng ký Zalo, sau đó thêm vào Danh sách OA để gửi tin."
 - Nút OA và nhãn đến hạn ("Còn 8 ngày" / "Quá hạn N ngày", `.cv-state`) làm nhỏ gọn: nút OA cao 18px, nhãn cao 18px (điện thoại) / 19px (máy tính), chữ 10,5–11px; phần đầu chi tiết hợp đồng trên máy tính thấp hơn bản trước khoảng 5px, điện thoại không đổi chiều cao.
+- Đầu chi tiết hợp đồng trên MÁY TÍNH gộp thành một hàng: "HỢP ĐỒNG TÍN DỤNG  SỐ 461/26  [tình trạng đến hạn]  [Thêm OA / Bỏ OA]" (`.cv-block` thành flex, `.cv-eyerow` / `.cv-main` là `display: contents` rồi xếp bằng `order`), số hợp đồng 19px, các dòng cách nhau rộng hơn (hàng đầu cao bằng hàng nút Sao chép / In giấy báo / Đóng). Điện thoại giữ cách xếp cũ, số hợp đồng nhỏ lại còn 16px.
 
 ---
 
