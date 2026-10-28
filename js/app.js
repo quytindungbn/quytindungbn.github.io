@@ -1,5 +1,5 @@
 import * as S from './state.js';
-import { buildShell, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_TOOLS, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
+import { buildShell, getNavPaths, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_TOOLS, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { toast } from './components/toast.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
@@ -92,6 +92,40 @@ function matchRoute(path, routes) {
     }
   }
   return null;
+}
+
+// Điện thoại: vuốt ngang ở các trang menu để sang menu kế / trước (chạy vòng tròn theo thứ tự thanh menu).
+let menuSlide = null;
+function bindMenuSwipe() {
+  const phoneLayout = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 899px)').matches;
+  const blocked = (el) => {
+    for (let n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName) || n.isContentEditable || (n.hasAttribute && n.hasAttribute('data-no-swipe'))) return true;
+      if (n.scrollWidth > n.clientWidth + 2 && /(auto|scroll)/.test(getComputedStyle(n).overflowX)) return true;
+    }
+    return false;
+  };
+  let t0 = null;
+  document.addEventListener('touchstart', (e) => {
+    t0 = null;
+    if (e.touches.length !== 1 || !phoneLayout() || !S.getSession() || document.querySelector('.modal-overlay')) return;
+    const t = e.touches[0];
+    if (t.clientX <= 28 || t.clientX >= window.innerWidth - 28) return;
+    if (!getNavPaths().includes(splitHash().path) || blocked(e.target)) return;
+    t0 = { x: t.clientX, y: t.clientY, at: Date.now(), path: splitHash().path };
+  }, { passive: true });
+  document.addEventListener('touchcancel', () => { t0 = null; }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!t0) return;
+    const start = t0; t0 = null;
+    const t = e.changedTouches[0]; const dx = t.clientX - start.x; const dy = t.clientY - start.y;
+    if (Math.abs(dx) < 72 || Math.abs(dx) < Math.abs(dy) * 2 || Date.now() - start.at > 600) return;
+    if (document.querySelector('.modal-overlay') || splitHash().path !== start.path || String(window.getSelection?.() || '')) return;
+    const paths = getNavPaths(); const i = paths.indexOf(start.path);
+    if (i < 0 || paths.length < 2) return;
+    menuSlide = dx < 0 ? 'left' : 'right';
+    location.hash = paths[(i + (dx < 0 ? 1 : -1) + paths.length) % paths.length];
+  }, { passive: true });
 }
 
 function clearFabs() { document.querySelectorAll('.fab').forEach((el) => el.remove()); }
@@ -193,6 +227,12 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
       if (splitHash().path === path) window.scrollTo(0, keptY);
     });
   }
+  if (menuSlide) {
+    const from = menuSlide === 'left' ? 36 : -36; menuSlide = null;
+    if (typeof contentEl.animate === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      [filterEl, contentEl].forEach((el) => el.animate([{ transform: `translateX(${from}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' }));
+    }
+  }
 
   if (path !== lastRoutePath && path !== '#/admin/nhat-ky') {
     S.logAdminAction('nav-page', { pageLabel: NAV_LABEL_MAP[path] || path });
@@ -220,6 +260,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   S.refreshSessionData().finally(scheduleWarmUp);
   S.refreshOrgPublic();
   startAutoRefresh();
+  bindMenuSwipe();
 
   const existingSession = S.getSession();
   if (existingSession) autoSubscribeIfPossible(existingSession.sbToken);

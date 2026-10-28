@@ -3478,6 +3478,12 @@ create policy "admins add note log" on customer_note_log
 - Cuộn xuống đến một khách, sang menu khác (ví dụ "Quản lý OA", "Tính lãi vay"…) rồi mở lại "Khách hàng & Hợp đồng" (bấm menu hoặc nút Back) thì danh sách nằm đúng chỗ cũ — cả điện thoại và máy tính. Ô tìm kiếm, bộ lọc Thôn/Xóm, lọc quá hạn / gần đến hạn, sắp xếp, lọc số tiền vốn đã được giữ từ trước nên vẫn như cũ.
 - Cách làm (`js/app.js`): `KEEP_SCROLL_PATHS` (Khách hàng & Hợp đồng, Quản trị) + `scrollMemo` lưu `scrollY` lúc rời trang và trả lại lúc quay về; trang khác vẫn bắt đầu từ đầu. Danh sách khách vốn vẽ dần (30 khách đầu rồi vẽ tiếp) nên khi quay về `prepareRestore(y)` trong `js/views/admin/customers.js` cho vẽ đủ ngay để trang đủ cao. Đăng nhập/đăng xuất (đổi phiên) thì xóa bộ nhớ này.
 
+### 10.103 Điện thoại: vuốt ngang để chuyển giữa các menu (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Màn có thanh menu dưới đáy (≤ 899px): ở các trang menu, vuốt TRÁI sang menu kế, vuốt PHẢI về menu trước, theo đúng thứ tự thanh menu của chính tài khoản đó (`getNavPaths()` trong `js/components/shell.js`: tài khoản toàn quyền có tới 9 menu, nhân viên chỉ thấy menu của mình). Chạy vòng tròn: menu cuối vuốt tiếp thì về menu đầu. Trang mới trượt vào (220ms); chuyển menu bằng vuốt cũng ghi nhật ký "mở trang" và có lịch sử trình duyệt như bấm menu (nút Back quay về menu trước đó).
+- Bộ lắng nghe `bindMenuSwipe()` trong `js/app.js`. Chỉ nhận cử chỉ: một ngón, ngang ≥ 72px, ngang gấp ≥ 2 lần dọc (để còn cuộn trang), nhanh hơn 600ms, bắt đầu cách mép trái/phải ≥ 28px (tránh cử chỉ "quay lại" của điện thoại), không bắt đầu trên ô nhập / vùng cuộn ngang được / phần tử có `data-no-swipe`, không khi đang chọn chữ, không khi đang mở cửa sổ (hợp đồng, hồ sơ khách, menu "Thêm"… — hai màn Hợp đồng ↔ Khách vẫn dùng cách vuốt riêng ở 10.101), và chỉ khi đang ở một trang thuộc menu (Đổi mật khẩu… không vuốt được). Máy tính (có thanh menu bên trái) không đổi.
+- Kết hợp với 10.102: vuốt sang menu khác rồi vuốt lại thì danh sách khách vẫn về đúng chỗ đã cuộn.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

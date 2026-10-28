@@ -42,6 +42,10 @@ export const ADMIN_NAV_SUPER_ONLY = [
 
 const BOTTOM_NAV_MAX_DIRECT = 4;
 
+let navPaths = [];
+// Thứ tự các menu của tài khoản đang đăng nhập (cùng thứ tự với thanh menu) — dùng cho vuốt chuyển menu trên điện thoại.
+export const getNavPaths = () => navPaths;
+
 let navAutoHideBound = false;
 function bindBottomNavAutoHide() {
   if (navAutoHideBound) return;
@@ -139,6 +143,7 @@ export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA,
       <nav class="bottom-nav" id="bottom-nav"></nav>
     </div>
   `;
+  navPaths = nav.map((item) => item.path);
   renderSidebarNav(nav);
   renderBottomNav(nav);
   bindBottomNavAutoHide();
