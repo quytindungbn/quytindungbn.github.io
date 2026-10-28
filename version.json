@@ -1,6 +1,6 @@
 {
- "v": "2026-10-28 21:44:05",
- "h": "250f65692c0e",
+ "v": "2026-10-28 22:12:24",
+ "h": "fab6607362d6",
  "files": [
   "css/styles.css",
   "index.html",
@@ -25,6 +25,7 @@
   "js/lib/contractOrder.js",
   "js/lib/customerNotes.js",
   "js/lib/dateInput.js",
+  "js/lib/diag.js",
   "js/lib/excelLite.js",
   "js/lib/installEnv.js",
   "js/lib/installPwa.js",

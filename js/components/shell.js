@@ -1,11 +1,12 @@
 import { icon } from '../icons.js';
 import { openModal } from './modal.js';
 import * as S from '../state.js';
-import { initials, colorFor, maskCccd } from '../utils.js';
+import { initials, colorFor, maskCccd, escapeHtml } from '../utils.js';
 import { isStandalone } from '../lib/installPwa.js';
 import { bindInstallButton } from './installBtn.js';
 import { openChatPanel } from './chatPanel.js';
 import { appVersionLabel, checkForUpdate } from '../lib/update.js';
+import { diagLog, diagReport } from '../lib/diag.js';
 
 export const CUSTOMER_NAV = [
   { path: '#/', label: 'Trang chủ', shortLabel: 'Trang chủ', icon: 'landmark' },
@@ -48,58 +49,81 @@ export const getNavPaths = () => navPaths;
 
 let navAutoHideBound = false;
 let navLockUntil = 0;
+let navArmed = null;
 export const lockNavAutoHide = (ms = 900) => { navLockUntil = Math.max(navLockUntil, Date.now() + ms); };
-const setNavHidden = (hidden) => document.body.classList.toggle('nav-hidden', hidden);
-export const showBottomNav = (ms = 1500) => { lockNavAutoHide(ms); setNavHidden(false); };
+function setNavHidden(hidden, why = '') {
+  const was = document.body.classList.contains('nav-hidden');
+  document.body.classList.toggle('nav-hidden', hidden);
+  if (was !== hidden) diagLog(hidden ? 'thanh menu ẨN' : 'thanh menu HIỆN', why);
+}
+export const showBottomNav = (ms = 1500, why = 'showBottomNav') => { navArmed = null; lockNavAutoHide(ms); setNavHidden(false, why); };
+const hideBottomNav = (why) => { if (Date.now() >= navLockUntil) setNavHidden(true, why); };
 function bindBottomNavAutoHide() {
   if (navAutoHideBound) return;
   navAutoHideBound = true;
   const SHOW_ABOVE = 80;
-  const HIDE_AFTER = 36;
+  const HIDE_AFTER = 48;
+  const HIDE_LIVE = 140;
   const SHOW_AFTER = 14;
+  const SCROLLED = 24;
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   let lastY = window.scrollY;
-  let touchOn = false;
-  let x0 = 0;
-  let y0 = 0;
-  let prevY = 0;
-  let run = 0;
-  let horizontal = false;
+  let lastTouch = 0;
+  let g = null;
   window.addEventListener('scroll', () => {
     const y = window.scrollY;
-    if (y <= SHOW_ABOVE) { setNavHidden(false); lastY = y; return; }
-    if (!fine) return;
+    if (y <= SHOW_ABOVE) { setNavHidden(false, 'đầu trang'); lastY = y; return; }
+    if (navArmed) {
+      if (Date.now() > navArmed.until) navArmed = null;
+      else if (y - navArmed.sy >= SCROLLED) { navArmed = null; hideBottomNav('cuộn xuống'); return; }
+    }
+    if (!fine || Date.now() - lastTouch < 3000) return;
     if (Date.now() < navLockUntil) { lastY = y; return; }
     const dy = y - lastY;
     if (Math.abs(dy) < 10) return;
     lastY = y;
-    setNavHidden(dy > 0);
+    setNavHidden(dy > 0, 'cuộn chuột');
   }, { passive: true });
   window.addEventListener('touchstart', (e) => {
-    touchOn = e.touches.length === 1 && !e.target.closest('.modal-overlay');
-    horizontal = false;
-    run = 0;
-    if (touchOn) { x0 = e.touches[0].clientX; y0 = prevY = e.touches[0].clientY; }
+    lastTouch = Date.now();
+    navArmed = null;
+    const t = e.touches[0];
+    g = e.touches.length === 1 && !e.target.closest('.modal-overlay') ? { x0: t.clientX, y0: t.clientY, minY: t.clientY, side: false, sy: window.scrollY, at: lastTouch } : null;
+    if (g) diagLog('chạm', `x=${Math.round(t.clientX)} y=${Math.round(t.clientY)} cuộn=${Math.round(window.scrollY)}`);
   }, { passive: true });
   window.addEventListener('touchmove', (e) => {
-    if (!touchOn || e.touches.length !== 1) return;
+    lastTouch = Date.now();
+    if (!g || e.touches.length !== 1) return;
     const x = e.touches[0].clientX;
     const y = e.touches[0].clientY;
-    const dx = x - x0;
-    const dy = y - y0;
-    if (!horizontal && Math.abs(dx) >= 16 && Math.abs(dx) >= Math.abs(dy)) horizontal = true;
-    if (horizontal) { showBottomNav(1200); return; }
-    const step = y - prevY;
-    prevY = y;
-    if (!step) return;
-    run = Math.sign(step) === Math.sign(run) ? run + step : step;
-    if (run <= -HIDE_AFTER && Math.abs(dy) > 1.5 * Math.abs(dx) && window.scrollY > SHOW_ABOVE && Date.now() >= navLockUntil) setNavHidden(true);
-    else if (run >= SHOW_AFTER) setNavHidden(false);
+    const dx = x - g.x0;
+    const dy = y - g.y0;
+    if (!g.side && Math.abs(dx) >= 16 && Math.abs(dx) >= Math.abs(dy)) { g.side = true; diagLog('ngón đi ngang', `dx=${Math.round(dx)} dy=${Math.round(dy)}`); }
+    if (g.side) { showBottomNav(1500, 'vuốt ngang'); return; }
+    g.minY = Math.min(g.minY, y);
+    const up = g.y0 - g.minY;
+    if (y - g.minY >= SHOW_AFTER) setNavHidden(false, 'ngón đi xuống');
+    else if (up >= HIDE_LIVE && Math.abs(dx) * 4 <= up && window.scrollY > SHOW_ABOVE) hideBottomNav('kéo dọc dài');
   }, { passive: true });
-  const endTouch = () => { touchOn = false; };
+  const endTouch = (e) => {
+    lastTouch = Date.now();
+    const s = g;
+    g = null;
+    if (!s) return;
+    const t = e.changedTouches && e.changedTouches[0];
+    const dx = t ? t.clientX - s.x0 : 0;
+    const dy = t ? t.clientY - s.y0 : 0;
+    diagLog(e.type === 'touchcancel' ? 'hủy chạm' : 'nhấc tay', `dx=${Math.round(dx)} dy=${Math.round(dy)} ${lastTouch - s.at}ms cuộn ${Math.round(s.sy)}→${Math.round(window.scrollY)}${s.side ? ' ngang' : ''}`);
+    if (e.type === 'touchcancel') return;
+    if (s.side) { showBottomNav(1500, 'vuốt ngang'); return; }
+    const up = s.y0 - s.minY;
+    if (!t || up < HIDE_AFTER || t.clientY - s.minY >= SHOW_AFTER || Math.abs(dx) > 0.6 * up) return;
+    if (window.scrollY - s.sy >= SCROLLED && window.scrollY > SHOW_ABOVE) hideBottomNav('cuộn xuống');
+    else navArmed = { sy: s.sy, until: Date.now() + 700 };
+  };
   window.addEventListener('touchend', endTouch, { passive: true });
   window.addEventListener('touchcancel', endTouch, { passive: true });
-  window.addEventListener('hashchange', () => { setNavHidden(false); lastY = window.scrollY; });
+  window.addEventListener('hashchange', () => { navArmed = null; setNavHidden(false, 'đổi trang'); lastY = window.scrollY; });
 }
 
 function matchPath(navPath, current) {
@@ -187,7 +211,7 @@ export function buildShell(root, role, isSuper, canManageUsers, canManageZaloOA,
   bindBottomNavAutoHide();
   renderSidebarProfile();
   document.getElementById('btn-logout-side').addEventListener('click', onLogoutClick);
-  root.querySelectorAll('[data-app-ver]').forEach((b) => b.addEventListener('click', () => checkForUpdate({ manual: true })));
+  root.querySelectorAll('[data-app-ver]').forEach(bindVersionButton);
   const installBtnSide = document.getElementById('btn-install-side');
   if (installBtnSide) bindInstallButton(installBtnSide);
 }
@@ -265,11 +289,43 @@ function openMoreSheet(overflowItems) {
     onMount(sheet, closeFn) {
 
       sheet.querySelector('#sheet-logout').addEventListener('click', () => { closeFn(); onLogoutClick(); });
-      sheet.querySelector('[data-app-ver]').addEventListener('click', () => checkForUpdate({ manual: true }));
+      bindVersionButton(sheet.querySelector('[data-app-ver]'));
       const installBtn = sheet.querySelector('#sheet-install');
       if (installBtn) bindInstallButton(installBtn);
     },
   });
+}
+
+function openDiag() {
+  const text = diagReport();
+  openModal({
+    title: 'Chẩn đoán',
+    sheetClass: 'diag-sheet',
+    bodyHtml: `<pre class="diag-pre">${escapeHtml(text)}</pre>`,
+    footHtml: '<button type="button" class="btn btn-outline btn-block" data-diag-copy>Sao chép</button>',
+    onMount(sheet) {
+      const btn = sheet.querySelector('[data-diag-copy]');
+      btn.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(text); btn.textContent = 'Đã sao chép'; } catch {
+          const r = document.createRange();
+          r.selectNodeContents(sheet.querySelector('.diag-pre'));
+          const sel = getSelection();
+          sel.removeAllRanges();
+          sel.addRange(r);
+          btn.textContent = 'Đã chọn chữ — sao chép bằng máy';
+        }
+      });
+    },
+  });
+}
+
+function bindVersionButton(btn) {
+  let timer = 0;
+  let long = false;
+  btn.addEventListener('pointerdown', () => { long = false; clearTimeout(timer); timer = setTimeout(() => { long = true; openDiag(); }, 800); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, () => clearTimeout(timer)));
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  btn.addEventListener('click', () => { if (long) { long = false; return; } checkForUpdate({ manual: true }); });
 }
 
 function onLogoutClick() {

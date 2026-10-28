@@ -6,6 +6,7 @@ import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
 import './lib/installPwa.js';
 import { initAutoInstallPrompt } from './components/installBtn.js';
 import { initAutoUpdate } from './lib/update.js';
+import { diagLog, bindDiagLog } from './lib/diag.js';
 import { renderLogin } from './views/login.js';
 import { renderChangePassword } from './views/changePassword.js';
 
@@ -95,6 +96,7 @@ function matchRoute(path, routes) {
 }
 
 let menuSlide = null;
+let slidingNow = 0;
 function bindMenuSwipe() {
   const phoneLayout = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 899px)').matches;
   const blocked = (el) => {
@@ -125,7 +127,9 @@ function bindMenuSwipe() {
     menuSlide = dx < 0 ? 'left' : 'right';
     const target = paths[(i + (dx < 0 ? 1 : -1) + paths.length) % paths.length];
     const wasHidden = document.body.classList.contains('nav-hidden');
-    showBottomNav(1500);
+    diagLog('vuốt đổi menu', `${dx < 0 ? 'trái' : 'phải'} → ${target}`);
+    showBottomNav(1500, 'đổi menu');
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
     if (wasHidden) requestAnimationFrame(() => requestAnimationFrame(() => { location.hash = target; }));
     else location.hash = target;
   }, { passive: true });
@@ -233,8 +237,12 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   }
   if (menuSlide) {
     const from = menuSlide === 'left' ? 24 : -24; menuSlide = null;
-    if (typeof contentEl.animate === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      [filterEl, contentEl].forEach((el) => el.animate([{ transform: `translateX(${from}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }));
+    if (typeof contentEl.animate === 'function' && window.CSS?.supports?.('overflow-x', 'clip') && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const col = contentEl.closest('.main-col');
+      slidingNow++;
+      col.classList.add('menu-sliding');
+      const runs = [filterEl, contentEl].map((el) => el.animate([{ transform: `translateX(${from}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }).finished.catch(() => null));
+      Promise.all(runs).then(() => { if (--slidingNow === 0) col.classList.remove('menu-sliding'); });
     }
   }
 
@@ -257,6 +265,7 @@ window.addEventListener('qtd:refresh-failed', () => toast('Chưa tải được 
 window.addEventListener('qtd:logout', () => { closeAllModals(); S.logout(); location.hash = '#/'; renderApp(); });
 
 window.addEventListener('DOMContentLoaded', async () => {
+  bindDiagLog();
   root = document.getElementById('root');
   registerServiceWorker();
   await S.init();
