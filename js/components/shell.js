@@ -43,30 +43,43 @@ export const ADMIN_NAV_SUPER_ONLY = [
 const BOTTOM_NAV_MAX_DIRECT = 4;
 
 let navPaths = [];
-// Thứ tự các menu của tài khoản đang đăng nhập (cùng thứ tự với thanh menu) — dùng cho vuốt chuyển menu trên điện thoại.
 export const getNavPaths = () => navPaths;
 
 let navAutoHideBound = false;
 let navLockUntil = 0;
-// Đang vuốt ngang / vừa đổi menu: bỏ qua các lần cuộn lắt nhắt để thanh menu dưới không ẩn rồi hiện.
 export const lockNavAutoHide = (ms = 900) => { navLockUntil = Math.max(navLockUntil, Date.now() + ms); };
 function bindBottomNavAutoHide() {
   if (navAutoHideBound) return;
   navAutoHideBound = true;
   const SHOW_ABOVE = 80;
   const STEP = 10;
+  const SURE_SCROLL = 160;
   let lastY = window.scrollY;
+  let touchOn = false;
+  let touchScrollY = 0;
+  let pendingHide = false;
   const setHidden = (hidden) => document.body.classList.toggle('nav-hidden', hidden);
   window.addEventListener('scroll', () => {
     const y = window.scrollY;
     if (Date.now() < navLockUntil) { lastY = y; return; }
-    if (y <= SHOW_ABOVE) { setHidden(false); lastY = y; return; }
+    if (y <= SHOW_ABOVE) { setHidden(false); lastY = y; pendingHide = false; return; }
     const dy = y - lastY;
     if (Math.abs(dy) < STEP) return;
-    setHidden(dy > 0);
     lastY = y;
+    if (dy > 0 && touchOn && y - touchScrollY < SURE_SCROLL) { pendingHide = true; return; }
+    pendingHide = false;
+    setHidden(dy > 0);
   }, { passive: true });
-  window.addEventListener('hashchange', () => { setHidden(false); lastY = window.scrollY; });
+  window.addEventListener('touchstart', (e) => { touchOn = e.touches.length === 1; touchScrollY = window.scrollY; pendingHide = false; }, { passive: true });
+  const endTouch = () => {
+    touchOn = false;
+    if (!pendingHide) return;
+    pendingHide = false;
+    setTimeout(() => { if (Date.now() >= navLockUntil) setHidden(true); }, 50);
+  };
+  window.addEventListener('touchend', endTouch, { passive: true });
+  window.addEventListener('touchcancel', endTouch, { passive: true });
+  window.addEventListener('hashchange', () => { setHidden(false); lastY = window.scrollY; pendingHide = false; });
 }
 
 function matchPath(navPath, current) {

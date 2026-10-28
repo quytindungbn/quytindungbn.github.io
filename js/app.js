@@ -57,7 +57,6 @@ let shellKey = null;
 let lastRoutePath = null;
 const balanceSheetPath = '#/admin/can-doi-ke-toan';
 
-// Các trang dài: rời đi rồi quay lại thì về đúng chỗ đang xem (bộ lọc/tìm kiếm của danh sách khách vốn đã được giữ).
 const KEEP_SCROLL_PATHS = new Set([balanceSheetPath, '#/admin/khach-hang']);
 const scrollMemo = new Map();
 
@@ -94,7 +93,6 @@ function matchRoute(path, routes) {
   return null;
 }
 
-// Điện thoại: vuốt ngang ở các trang menu để sang menu kế / trước (chạy vòng tròn theo thứ tự thanh menu).
 let menuSlide = null;
 function bindMenuSwipe() {
   const phoneLayout = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 899px)').matches;

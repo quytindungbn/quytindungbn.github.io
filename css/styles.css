@@ -3164,7 +3164,6 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 @keyframes pgOutL { from { transform: none; } to { transform: translateX(-100%); } }
 @keyframes pgOutR { from { transform: none; } to { transform: translateX(100%); } }
 
-/* Vuốt ngang chuyển menu / trang: khi ngón tay đi ngang, trình duyệt không cuộn dọc theo (không giật, thanh menu dưới không ẩn rồi hiện). Vùng cuộn ngang riêng (bảng, hàng lọc) vẫn cuộn bình thường. */
 @media (max-width: 899px) {
   html, body { overscroll-behavior-x: none; }
   .main-col { touch-action: pan-y pinch-zoom; }

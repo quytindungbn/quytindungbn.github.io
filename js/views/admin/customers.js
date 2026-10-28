@@ -96,7 +96,6 @@ const LEDGER_FIRST_CHUNK = 30;
 const LEDGER_NEXT_CHUNK = 30;
 let restoreScrollY = 0;
 
-// Quay lại danh sách từ menu khác: vẽ đủ danh sách ngay để trang đủ cao cho đúng vị trí cuộn cũ.
 export function prepareRestore(y) { restoreScrollY = y > 40 ? y : 0; }
 
 export function render(contentEl, filterEl) {
@@ -408,7 +407,6 @@ export function render(contentEl, filterEl) {
     let restGroups = progressive ? groupHtmls.slice(LEDGER_FIRST_CHUNK) : [];
     const ledgerEl = contentEl.querySelector('.customer-ledger');
     if (restGroups.length && restoreScrollY > 0 && ledgerEl) {
-      // Quay lại giữa danh sách dài: vẽ ngay đủ khách để trang cao tới chỗ cũ (dư một màn rưỡi), phần còn lại vẽ dần phía dưới.
       const per = Math.max(40, ledgerEl.scrollHeight / Math.max(1, firstGroups.length));
       const need = Math.min(restGroups.length, Math.ceil((restoreScrollY + window.innerHeight * 1.5) / per) - firstGroups.length + 6);
       if (need > 0) { ledgerEl.insertAdjacentHTML('beforeend', restGroups.slice(0, need).join('')); restGroups = restGroups.slice(need); }
@@ -795,7 +793,6 @@ function mountPagePair(sheet, page, closeFn) {
   }, { passive: true });
 }
 
-// Máy tính: nút "Hồ sơ khách" (phím K) mở hồ sơ khách chồng lên hợp đồng; hồ sơ đã nằm bên dưới thì chỉ đóng hợp đồng để lộ ra.
 function jumpToCustomer(sheet, closeFn) {
   const customerId = pagePair.customerId;
   if (!customerId || !S.getCustomer(customerId)) return;
