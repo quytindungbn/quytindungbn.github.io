@@ -2525,7 +2525,7 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cd-contracts-card { order: 2; }
   #cd-calls-card { order: 3; }
   .cd-hero { padding: 12px 14px 28px; }
-  .cd-close { top: 10px; right: 12px; width: 30px; height: 30px; }
+  .cd-close { top: 9px; right: 14px; width: 28px; height: 28px; }
   .cd-id { gap: 12px; padding-right: 36px; }
   .cd-avatar { width: 46px; height: 46px; font-size: 16px; box-shadow: 0 0 0 2px #0c4a3f, 0 0 0 3.5px #dccb99; }
   .cd-name { font-size: 17.5px; line-height: 1.35; margin-top: 3px; }
@@ -3146,14 +3146,16 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 
 .pg-dots { display: none; }
 @media (max-width: 639px) {
+  .modal-sheet.pg-pair { height: 94vh; height: 94dvh; max-height: 94vh; max-height: 94dvh; }
   .pg-dots { position: absolute; z-index: 3; top: -3px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; }
   .pg-dot { position: relative; width: 22px; height: 16px; padding: 0; border: 0; background: none; cursor: pointer; }
   .pg-dot::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255, 255, 255, .38); transition: width .2s, margin .2s, background .2s; }
   .pg-dot.on::after { width: 16px; margin-left: -8px; border-radius: 4px; background: #dccb99; }
-  .modal-overlay.pg-in-right, .modal-overlay.pg-in-left { animation: none; background: transparent; }
+  .modal-overlay.pg-in-right, .modal-overlay.pg-in-left { animation: none; }
+  .modal-overlay.pg-over { background: transparent; }
   .modal-overlay.pg-in-right .modal-sheet { animation: pgInR .26s cubic-bezier(.2, .8, .2, 1); }
   .modal-overlay.pg-in-left .modal-sheet { animation: pgInL .26s cubic-bezier(.2, .8, .2, 1); }
-  .modal-overlay.pg-ghost { pointer-events: none; animation: none; background: transparent; }
+  .modal-overlay.pg-ghost { pointer-events: none; animation: none; background: transparent; z-index: 101; }
   .modal-overlay.pg-out-left .modal-sheet { animation: pgOutL .26s ease-in forwards; }
   .modal-overlay.pg-out-right .modal-sheet { animation: pgOutR .26s ease-in forwards; }
 }

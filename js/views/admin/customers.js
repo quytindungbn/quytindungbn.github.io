@@ -735,7 +735,7 @@ function switchPage(from, dir, sheet, closeFn) {
   if (!customerId || !S.getCustomer(customerId)) return;
   const slideIn = () => {
     const tops = [...document.querySelectorAll('.modal-overlay:not(.pg-ghost)')];
-    if (tops.length) tops[tops.length - 1].classList.add(dir === 'left' ? 'pg-in-right' : 'pg-in-left');
+    if (tops.length) tops[tops.length - 1].classList.add(dir === 'left' ? 'pg-in-right' : 'pg-in-left', ...(tops.length > 1 ? ['pg-over'] : []));
   };
   if (from === 'customer') {
     const list = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan').sort(compareContractsNewestFirst);
@@ -759,6 +759,7 @@ function switchPage(from, dir, sheet, closeFn) {
 }
 
 function mountPagePair(sheet, page, closeFn) {
+  sheet.classList.add('pg-pair');
   sheet.querySelectorAll('.pg-dot').forEach((dot) => dot.addEventListener('click', () => {
     if (dot.dataset.pg === page) return;
     switchPage(page, page === 'contract' ? 'left' : 'right', sheet, closeFn);
