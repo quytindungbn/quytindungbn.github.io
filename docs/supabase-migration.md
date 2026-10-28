@@ -3465,6 +3465,13 @@ create policy "admins add note log" on customer_note_log
 - Nút OA và nhãn đến hạn ("Còn 8 ngày" / "Quá hạn N ngày", `.cv-state`) làm nhỏ gọn: nút OA cao 18px, nhãn cao 18px (điện thoại) / 19px (máy tính), chữ 10,5–11px; phần đầu chi tiết hợp đồng trên máy tính thấp hơn bản trước khoảng 5px, điện thoại không đổi chiều cao.
 - Đầu chi tiết hợp đồng trên MÁY TÍNH gộp thành một hàng: "HỢP ĐỒNG TÍN DỤNG  SỐ 461/26  [tình trạng đến hạn]  [Thêm OA / Bỏ OA]" (`.cv-block` thành flex, `.cv-eyerow` / `.cv-main` là `display: contents` rồi xếp bằng `order`), số hợp đồng 19px, các dòng cách nhau rộng hơn (hàng đầu cao bằng hàng nút Sao chép / In giấy báo / Đóng). Điện thoại giữ cách xếp cũ, số hợp đồng nhỏ lại còn 16px.
 
+### 10.101 Chuyển nhanh giữa "Chi tiết hợp đồng" và "Hồ sơ khách hàng" (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- ĐIỆN THOẠI (màn ≤ 639px): ở hai màn "Chi tiết hợp đồng" và "Hồ sơ khách hàng", vuốt ngang trái hoặc phải để chuyển sang màn kia; chỉ có 2 trang nên chạy vòng tròn (hợp đồng → khách → đúng hợp đồng vừa xem → …). Ở mép trên có 2 chấm trang (`.pg-dots`) cho biết đang ở trang nào, chạm vào chấm cũng chuyển được. Các màn khác không có tính năng này.
+- Cử chỉ chỉ được nhận khi: một ngón, vuốt ngang ≥ 64px, nhanh hơn 700ms, ngang gấp ≥ 1,7 lần dọc (để không cản cuộn trang), không bắt đầu sát mép trái/phải 28px (cử chỉ "quay lại" của điện thoại), không bắt đầu trên ô nhập / vùng cuộn ngang. Khách chưa có hợp đồng nào thì không có chấm trang và không vuốt được.
+- Cách hoạt động trong `js/views/admin/customers.js`: `pagePair` nhớ khách + hợp đồng đang xem; `switchPage()` đóng hợp đồng rồi mở hồ sơ khách (hoặc ngược lại, mở ĐÚNG hợp đồng vừa xem, không có thì hợp đồng đang hiệu lực mới nhất) với hiệu ứng trượt; nếu hồ sơ khách đã nằm sẵn bên dưới (mở từ danh sách khách) thì chỉ lộ ra, không mở nhân đôi. Chuyển trang dùng `reopen: true` nên KHÔNG ghi thêm nhật ký "xem hợp đồng / xem khách".
+- MÁY TÍNH (màn ≥ 640px): ở đầu chi tiết hợp đồng có nút "Hồ sơ khách" (đứng đầu cụm nút, trước Sao chép / In giấy báo / Đóng; cửa sổ hẹp 640–899px chỉ còn biểu tượng) hoặc bấm phím K. Hồ sơ khách mở CHỒNG lên hợp đồng nên đóng hồ sơ là quay về đúng hợp đồng đang xem; nếu hồ sơ khách đã nằm bên dưới thì chỉ đóng hợp đồng để lộ ra. Phím K bị bỏ qua khi đang gõ trong ô nhập, khi giữ Ctrl/Alt/Shift/Cmd, khi có cửa sổ khác nằm trên hợp đồng, và được gỡ khi đóng hợp đồng. Điện thoại không hiện nút này (đã có vuốt).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

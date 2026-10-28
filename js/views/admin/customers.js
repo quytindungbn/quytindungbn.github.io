@@ -722,6 +722,91 @@ function zaloActionButtonHtml(inZaloList, blockedReason = '') {
     : `<button class="cd-oa-btn is-add${blockedReason ? ' is-blocked' : ''}" id="btn-add-zalo-cust"${blockedReason ? ` aria-disabled="true" title="${escapeHtml(blockedReason)}"` : ''}>${icon('plus', 'icon-sm')} Thêm vào OA</button>`;
 }
 
+const pagePair = { customerId: '', contractId: '', cd: { readOnly: false, context: 'customer', showActions: false } };
+const phoneView = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 639px)').matches;
+
+function pagerDotsHtml(active) {
+  const dot = (k, label) => `<button type="button" class="pg-dot${active === k ? ' on' : ''}" data-pg="${k}" role="tab" aria-selected="${active === k}" aria-label="${label}"></button>`;
+  return `<div class="pg-dots" role="tablist" aria-label="Chuyển giữa Hợp đồng và Khách hàng">${dot('contract', 'Hợp đồng')}${dot('customer', 'Khách hàng')}</div>`;
+}
+
+function switchPage(from, dir, sheet, closeFn) {
+  const customerId = pagePair.customerId;
+  if (!customerId || !S.getCustomer(customerId)) return;
+  const slideIn = () => {
+    const tops = [...document.querySelectorAll('.modal-overlay:not(.pg-ghost)')];
+    if (tops.length) tops[tops.length - 1].classList.add(dir === 'left' ? 'pg-in-right' : 'pg-in-left');
+  };
+  if (from === 'customer') {
+    const list = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan').sort(compareContractsNewestFirst);
+    const last = S.getContract(pagePair.contractId);
+    const contract = last && last.customerId === customerId ? last : list[0];
+    if (!contract) return;
+    openContractView(customerId, contract, { readOnly: pagePair.cd.readOnly, reopen: true });
+    slideIn();
+    return;
+  }
+  const ghost = sheet.closest('.modal-overlay').cloneNode(true);
+  ghost.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
+  ghost.classList.add('pg-ghost', dir === 'left' ? 'pg-out-left' : 'pg-out-right');
+  document.body.appendChild(ghost);
+  setTimeout(() => ghost.remove(), 320);
+  const customerUnder = [...document.querySelectorAll('.cd-sheet')].some((el) => el !== sheet && el.dataset.pgCustomer === customerId);
+  closeFn();
+  if (customerUnder) return;
+  openCustomerDetail(customerId, { ...pagePair.cd, reopen: true });
+  slideIn();
+}
+
+function mountPagePair(sheet, page, closeFn) {
+  sheet.querySelectorAll('.pg-dot').forEach((dot) => dot.addEventListener('click', () => {
+    if (dot.dataset.pg === page) return;
+    switchPage(page, page === 'contract' ? 'left' : 'right', sheet, closeFn);
+  }));
+  let t0 = null;
+  const blocked = (el) => {
+    for (let n = el; n && n !== sheet; n = n.parentElement) {
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName) || n.isContentEditable || n.hasAttribute('data-no-swipe')) return true;
+      if (n.scrollWidth > n.clientWidth + 2 && /(auto|scroll)/.test(getComputedStyle(n).overflowX)) return true;
+    }
+    return false;
+  };
+  sheet.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    t0 = e.touches.length === 1 && phoneView() && t.clientX > 28 && t.clientX < window.innerWidth - 28 && !blocked(e.target) ? { x: t.clientX, y: t.clientY, at: Date.now() } : null;
+  }, { passive: true });
+  sheet.addEventListener('touchend', (e) => {
+    if (!t0) return;
+    const t = e.changedTouches[0]; const dx = t.clientX - t0.x; const dy = t.clientY - t0.y; const ms = Date.now() - t0.at; t0 = null;
+    if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.7 || ms > 700) return;
+    switchPage(page, dx < 0 ? 'left' : 'right', sheet, closeFn);
+  }, { passive: true });
+}
+
+// Máy tính: nút "Hồ sơ khách" (phím K) mở hồ sơ khách chồng lên hợp đồng; hồ sơ đã nằm bên dưới thì chỉ đóng hợp đồng để lộ ra.
+function jumpToCustomer(sheet, closeFn) {
+  const customerId = pagePair.customerId;
+  if (!customerId || !S.getCustomer(customerId)) return;
+  const under = [...document.querySelectorAll('.cd-sheet')].some((el) => el !== sheet && el.dataset.pgCustomer === customerId);
+  if (under) { closeFn(); return; }
+  openCustomerDetail(customerId, { ...pagePair.cd, reopen: true });
+}
+
+function mountCustomerJump(sheet, closeFn) {
+  sheet.querySelector('#btn-open-customer')?.addEventListener('click', () => jumpToCustomer(sheet, closeFn));
+  const onKey = (e) => {
+    if (!sheet.isConnected) { document.removeEventListener('keydown', onKey); return; }
+    if (e.key.toLowerCase() !== 'k' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing || e.repeat || phoneView()) return;
+    const t = e.target;
+    if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    const overlays = document.querySelectorAll('.modal-overlay:not(.pg-ghost)');
+    if (overlays[overlays.length - 1] !== sheet.closest('.modal-overlay')) return;
+    e.preventDefault();
+    jumpToCustomer(sheet, closeFn);
+  };
+  document.addEventListener('keydown', onKey);
+}
+
 function addCustomerToOa(customerId, { onStart, onDone } = {}) {
   const blocked = S.oaAddBlockReason(customerId);
   if (blocked) { toast(blocked, 'error'); return; }
@@ -972,6 +1057,8 @@ function contractCardHtml(ct) {
 
 export function openCustomerDetail(customerId, { readOnly = false, context = 'customer', showActions = context === 'use', reopen = false } = {}) {
   const c = S.getCustomer(customerId);
+  if (pagePair.customerId !== customerId) pagePair.contractId = '';
+  pagePair.customerId = customerId; pagePair.cd = { readOnly, context, showActions };
   if (!reopen) S.logAdminAction('view-customer', { customerId });
 
   const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
@@ -1006,6 +1093,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
     sheetClass: 'customer-detail-sheet cd-sheet',
     bodyHtml: `
       <header class="cd-hero">
+        ${contracts.length ? pagerDotsHtml('customer') : ''}
         <button type="button" class="cd-close" data-cd-close aria-label="Đóng">${icon('x')}</button>
         <div class="cd-id">
           <span class="cd-avatar" style="background:${colorFor(c.id)}">${initials(c.name)}</span>
@@ -1039,6 +1127,8 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
     `,
     onMount(sheet, closeFn) {
       sheet.querySelector('[data-cd-close]').addEventListener('click', closeFn);
+      sheet.dataset.pgCustomer = customerId;
+      if (sheet.querySelector('.pg-dots')) mountPagePair(sheet, 'customer', closeFn);
       mountNoteCard(sheet, customerId);
 
       const copyPhone = async (btn) => {
@@ -1455,6 +1545,8 @@ function contractFormulaHtml(contract, days, accrued) {
 
 export function openContractView(customerId, contract, { readOnly = false, reopen = false } = {}) {
   const customer = S.getCustomer(customerId);
+  if (pagePair.customerId !== customerId) pagePair.cd = { readOnly, context: 'customer', showActions: false };
+  pagePair.customerId = customerId; pagePair.contractId = contract.id;
   if (!reopen) S.logAdminAction('view-contract', { contractId: contract.id });
 
   const info = S.contractStatusInfo(contract);
@@ -1546,6 +1638,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
     bodyHtml: `
       <div class="customer-contract-view cv">
         <header class="cv-hero ${overdue ? 'is-over' : ''}">
+          ${customer ? pagerDotsHtml('contract') : ''}
           <div class="cv-head">
             <div class="cv-block">
               <div class="cv-eyerow"><span class="cv-eyebrow">Hợp đồng tín dụng</span>${oaHeadHtml}</div>
@@ -1556,6 +1649,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
               </div>
             </div>
             <div class="cv-tools">
+              ${customer ? `<button type="button" class="cv-tbtn txt cv-tcust" id="btn-open-customer" title="Mở hồ sơ khách hàng (phím tắt: K)" aria-keyshortcuts="K">${icon('user')}<span>Hồ sơ khách</span></button>` : ''}
               <button type="button" class="cv-tbtn" id="btn-copy-loan" title="Sao chép thông tin khoản vay để gửi khách" aria-label="Sao chép thông tin khoản vay để gửi khách">${icon('copy')}</button>
               <button type="button" class="cv-tbtn cv-close" aria-label="Đóng">${icon('x')}</button>
             </div>
@@ -1626,6 +1720,8 @@ export function openContractView(customerId, contract, { readOnly = false, reope
     onMount(sheet, closeFn) {
       const closeBtn = sheet.querySelector('.cv-close');
       closeBtn.addEventListener('click', closeFn);
+      if (sheet.querySelector('.pg-dots')) mountPagePair(sheet, 'contract', closeFn);
+      if (customer) mountCustomerJump(sheet, closeFn);
       sheet.addEventListener('click', (e) => {
         const call = e.target.closest('[data-cv-call]');
         if (!call || !customer) return;

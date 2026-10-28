@@ -3033,6 +3033,10 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-cust { order: 5; }
   .cv-term { margin-top: 14px; }
 }
+@media (min-width: 640px) and (max-width: 899px) {
+  .cv-tbtn.cv-tcust { padding: 0; width: 34px; }
+  .cv-tcust span { display: none; }
+}
 @media (max-width: 639px) {
   .modal-sheet.cv-sheet { width: 100%; border-radius: 22px 22px 0 0; }
   .cv-hero { padding: 10px 14px 36px; }
@@ -3043,7 +3047,7 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-head .cv-tools { position: absolute; top: 9px; right: 14px; gap: 6px; }
   .cv-tbtn { height: 28px; min-width: 28px; }
   .cv-tbtn svg { width: 15px; height: 15px; }
-  .cv-print { display: none; }
+  .cv-print, .cv-tcust { display: none; }
   .cv-main { width: 100%; row-gap: 6px; }
   .cv-code { font-size: 16px; }
   .cv-code small { font-size: 10px; margin-right: 6px; }
@@ -3139,6 +3143,24 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-c-contact .cv-oa { margin-top: 16px; padding-top: 15px; }
 }
 @media (min-width: 760px) { .cv-c-contact .cv-oa .cd-pp-pick-h { margin: 0; } }
+
+.pg-dots { display: none; }
+@media (max-width: 639px) {
+  .pg-dots { position: absolute; z-index: 3; top: -3px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; }
+  .pg-dot { position: relative; width: 22px; height: 16px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .pg-dot::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255, 255, 255, .38); transition: width .2s, margin .2s, background .2s; }
+  .pg-dot.on::after { width: 16px; margin-left: -8px; border-radius: 4px; background: #dccb99; }
+  .modal-overlay.pg-in-right, .modal-overlay.pg-in-left { animation: none; background: transparent; }
+  .modal-overlay.pg-in-right .modal-sheet { animation: pgInR .26s cubic-bezier(.2, .8, .2, 1); }
+  .modal-overlay.pg-in-left .modal-sheet { animation: pgInL .26s cubic-bezier(.2, .8, .2, 1); }
+  .modal-overlay.pg-ghost { pointer-events: none; animation: none; background: transparent; }
+  .modal-overlay.pg-out-left .modal-sheet { animation: pgOutL .26s ease-in forwards; }
+  .modal-overlay.pg-out-right .modal-sheet { animation: pgOutR .26s ease-in forwards; }
+}
+@keyframes pgInR { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes pgInL { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes pgOutL { from { transform: none; } to { transform: translateX(-100%); } }
+@keyframes pgOutR { from { transform: none; } to { transform: translateX(100%); } }
 
 /* Giao diện khách hàng (Mẫu 3) */
 .cw { --ink: #182320; --em: #0c4a3f; --pri: #0f6f61; --gold: #b08d3c; --goldd: #8a6a22; --goldl: #dccb99; --mut: #667069; --line: #e5eae8; --line2: #dbe6e0; --tint: #e3f3ef; --sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; --serif: var(--font-serif, 'Source Serif 4', Georgia, serif); font-family: var(--sans); color: var(--ink); }
