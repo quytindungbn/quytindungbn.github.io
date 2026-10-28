@@ -388,7 +388,7 @@ export function render(contentEl, filterEl) {
     const shownWrap = contentEl.querySelector('.customer-ledger-wrap');
     if (shownWrap && shownWrap.__sig === sig) return;
     const drawToken = ++ledgerDrawToken;
-    const progressive = window.scrollY < 40 && !restoreScrollY && enriched.length > LEDGER_FIRST_CHUNK;
+    const progressive = (window.scrollY < 40 || restoreScrollY > 0) && enriched.length > LEDGER_FIRST_CHUNK;
     const firstGroups = progressive ? enriched.slice(0, LEDGER_FIRST_CHUNK) : enriched;
     contentEl.innerHTML = `
       <div class="customer-list-summary">${enriched.length} khách hàng · ${totalContracts} hợp đồng · <strong>${formatVND(totalAmount)}</strong></div>
@@ -407,6 +407,12 @@ export function render(contentEl, filterEl) {
 
     let restGroups = progressive ? groupHtmls.slice(LEDGER_FIRST_CHUNK) : [];
     const ledgerEl = contentEl.querySelector('.customer-ledger');
+    if (restGroups.length && restoreScrollY > 0 && ledgerEl) {
+      // Quay lại giữa danh sách dài: vẽ ngay đủ khách để trang cao tới chỗ cũ (dư một màn rưỡi), phần còn lại vẽ dần phía dưới.
+      const per = Math.max(40, ledgerEl.scrollHeight / Math.max(1, firstGroups.length));
+      const need = Math.min(restGroups.length, Math.ceil((restoreScrollY + window.innerHeight * 1.5) / per) - firstGroups.length + 6);
+      if (need > 0) { ledgerEl.insertAdjacentHTML('beforeend', restGroups.slice(0, need).join('')); restGroups = restGroups.slice(need); }
+    }
     const appendNextChunk = (force) => {
       if (!restGroups.length || drawToken !== ledgerDrawToken || !ledgerEl?.isConnected) { restGroups = []; return; }
       if (force !== true && navigator.scheduling && navigator.scheduling.isInputPending && navigator.scheduling.isInputPending()) { setTimeout(() => requestAnimationFrame(appendNextChunk), 80); return; }

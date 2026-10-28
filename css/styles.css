@@ -3164,6 +3164,15 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 @keyframes pgOutL { from { transform: none; } to { transform: translateX(-100%); } }
 @keyframes pgOutR { from { transform: none; } to { transform: translateX(100%); } }
 
+/* Vuốt ngang chuyển menu / trang: khi ngón tay đi ngang, trình duyệt không cuộn dọc theo (không giật, thanh menu dưới không ẩn rồi hiện). Vùng cuộn ngang riêng (bảng, hàng lọc) vẫn cuộn bình thường. */
+@media (max-width: 899px) {
+  html, body { overscroll-behavior-x: none; }
+  .main-col { touch-action: pan-y pinch-zoom; }
+}
+@media (max-width: 639px) {
+  .modal-sheet.pg-pair .modal-body { touch-action: pan-y pinch-zoom; }
+}
+
 /* Giao diện khách hàng (Mẫu 3) */
 .cw { --ink: #182320; --em: #0c4a3f; --pri: #0f6f61; --gold: #b08d3c; --goldd: #8a6a22; --goldl: #dccb99; --mut: #667069; --line: #e5eae8; --line2: #dbe6e0; --tint: #e3f3ef; --sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; --serif: var(--font-serif, 'Source Serif 4', Georgia, serif); font-family: var(--sans); color: var(--ink); }
 .cw * { box-sizing: border-box; }

@@ -1,5 +1,5 @@
 import * as S from './state.js';
-import { buildShell, getNavPaths, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_TOOLS, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
+import { buildShell, getNavPaths, lockNavAutoHide, updateActiveNav, renderSidebarProfile, renderChatFab, renderSupportNavBadge, ADMIN_NAV, ADMIN_NAV_SUPPORT, ADMIN_NAV_TOOLS, ADMIN_NAV_MANAGE_USERS, ADMIN_NAV_MANAGE_ZALO_OA, ADMIN_NAV_BALANCE_SHEET, ADMIN_NAV_SUPER_ONLY } from './components/shell.js';
 import { closeAllModals } from './components/modal.js';
 import { toast } from './components/toast.js';
 import { registerServiceWorker, autoSubscribeIfPossible } from './lib/push.js';
@@ -114,6 +114,11 @@ function bindMenuSwipe() {
     if (!getNavPaths().includes(splitHash().path) || blocked(e.target)) return;
     t0 = { x: t.clientX, y: t.clientY, at: Date.now(), path: splitHash().path };
   }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!t0) return;
+    const t = e.touches[0]; const dx = t.clientX - t0.x; const dy = t.clientY - t0.y;
+    if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.3) lockNavAutoHide(1200);
+  }, { passive: true });
   document.addEventListener('touchcancel', () => { t0 = null; }, { passive: true });
   document.addEventListener('touchend', (e) => {
     if (!t0) return;
@@ -124,6 +129,7 @@ function bindMenuSwipe() {
     const paths = getNavPaths(); const i = paths.indexOf(start.path);
     if (i < 0 || paths.length < 2) return;
     menuSlide = dx < 0 ? 'left' : 'right';
+    lockNavAutoHide(1200);
     location.hash = paths[(i + (dx < 0 ? 1 : -1) + paths.length) % paths.length];
   }, { passive: true });
 }
@@ -222,15 +228,16 @@ function renderApp({ scrollTop = true, dataOnly = false } = {}) {
   if (returningToKept) match.view.prepareRestore?.(keptY);
   match.view.render(contentEl, filterEl, match.params, query);
   if (returningToKept) {
+    lockNavAutoHide(900);
     window.scrollTo(0, keptY);
     requestAnimationFrame(() => {
       if (splitHash().path === path) window.scrollTo(0, keptY);
     });
   }
   if (menuSlide) {
-    const from = menuSlide === 'left' ? 36 : -36; menuSlide = null;
+    const from = menuSlide === 'left' ? 24 : -24; menuSlide = null;
     if (typeof contentEl.animate === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      [filterEl, contentEl].forEach((el) => el.animate([{ transform: `translateX(${from}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' }));
+      [filterEl, contentEl].forEach((el) => el.animate([{ transform: `translateX(${from}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }));
     }
   }
 
