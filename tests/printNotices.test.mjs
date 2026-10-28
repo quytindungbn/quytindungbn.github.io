@@ -53,6 +53,20 @@ test('hai mẫu in dùng đúng hợp đồng, địa chỉ và khoản phải t
   assert.match(due, /20\.918\.000 ₫/);
 });
 
+test('ngày và tháng trong giấy báo luôn đủ 2 chữ số', () => {
+  const early = { ...base, asOf: new Date(2026, 4, 4), contract: { ...base.contract, dueDate: '2026-09-09' } };
+  const interest = buildNoticeHtml({ ...early, type: 'interest' });
+  const due = buildNoticeHtml({ ...early, type: 'due' });
+  for (const html of [interest, due]) {
+    assert.match(html, /Bình Sơn, ngày 04 tháng 05 năm 2026/);
+    assert.match(html, /Lãi tạm tính đến ngày 04\/05\/2026/);
+    assert.match(html, /Ngày đến hạn HĐ<\/span><strong>09\/09\/2026/);
+  }
+  assert.match(interest, /trước <strong>ngày 08 tháng 05 năm 2026<\/strong>/);
+  assert.match(due, /trước <strong>ngày 09 tháng 09 năm 2026<\/strong>/);
+  assert.doesNotMatch(interest + due, /ngày \d tháng|tháng \d năm/);
+});
+
 test('dữ liệu khách hàng trong giấy báo được mã hóa HTML', () => {
   const html = buildNoticeHtml({ ...base, type: 'due', customer: { name: '<img src=x onerror=alert(1)>', address: '<script>alert(1)</script>' } });
   assert.doesNotMatch(html, /<img src=x/);

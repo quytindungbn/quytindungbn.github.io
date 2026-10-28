@@ -59,7 +59,8 @@ export function nextNoticePaymentDate(from) {
 }
 
 function writtenDate(date) {
-  return `ngày ${date.getDate()} tháng ${date.getMonth() + 1} năm ${date.getFullYear()}`;
+  const two = (n) => String(n).padStart(2, '0');
+  return `ngày ${two(date.getDate())} tháng ${two(date.getMonth() + 1)} năm ${date.getFullYear()}`;
 }
 
 export function noticeDeadlineDate(type, dueDate, asOf) {
