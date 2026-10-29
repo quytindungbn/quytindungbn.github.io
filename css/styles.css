@@ -2661,7 +2661,7 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .lg-time { padding-top: 0; font-size: 14.5px; }
 }
 @media (min-width: 1340px) {
-  .lg-main { grid-template-columns: minmax(0, 1fr) 376px 196px; }
+  .lg-main { grid-template-columns: 284px minmax(376px, 1fr) 196px; }
   .lg-to { grid-column: 2; grid-row: 1; }
   .lg-meta { grid-column: 3; }
 }
