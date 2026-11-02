@@ -259,11 +259,6 @@ const trendSeries = [
   { key: 'grossLoans', label: 'Dư nợ cho vay', color: '#4f9d86' },
 ];
 
-function trendMonthDetail(report) {
-  return `<strong>${monthName(report.year_month)}</strong><div>${trendSeries.map((s) =>
-    `<span><em><i style="background:${s.color}"></i>${s.label}</em><b>${money(report.figures.end[s.key])}</b></span>`).join('')}</div>`;
-}
-
 function trendSvg(shown, base, span, mobile) {
   const viewport = mobile ? 320 : 1120;
   const visible = mobile ? 5 : 12;
@@ -326,11 +321,9 @@ function trendChart(list) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const base = Math.max(0, min - (max - min || max * 0.05) * 0.12);
-  const span = Math.max(1, max + (max - min || max * 0.05) * 0.1 - base);
-  const selected = shown.find((r) => r.year_month === selectedMonth) || shown.at(-1);
+  const span = Math.max(1, max + (max - min || max * 0.05) * 0.16 - base);
   return `<p class="bs-chart-note">Tổng tài sản, tiền gửi, dư nợ: tỷ đồng.</p><div class="bs-chart-scroll">${trendSvg(shown, base, span, false)}${trendSvg(shown, base, span, true)}</div>
-    <div class="bs-chart-legend">${trendSeries.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>
-    <div class="bs-trend-detail" id="bs-trend-detail" aria-live="polite">${trendMonthDetail(selected)}</div>`;
+    <div class="bs-chart-legend">${trendSeries.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>`;
 }
 
 function profitSvg(list, mobile) {
@@ -372,8 +365,9 @@ function profitSvg(list, mobile) {
     const zero = yBar(0);
     const top = Math.min(edge, zero);
     const height = Math.max(Math.abs(zero - edge), 1.5);
-    svg += `<rect x="${(x(i) - slot * 0.28).toFixed(1)}" y="${top.toFixed(1)}" width="${(slot * 0.56).toFixed(1)}" height="${height.toFixed(1)}" rx="2" fill="${i === selected ? '#b08d3c' : '#4f9d86'}"/>`;
-    svg += label(x(i), monthly[i] >= 0 ? top - 6 : top + height + font + 1, trieu(monthly[i]), i === selected ? '#8a6a22' : '#0c4a3f');
+    const loss = monthly[i] < 0;
+    svg += `<rect x="${(x(i) - slot * 0.28).toFixed(1)}" y="${top.toFixed(1)}" width="${(slot * 0.56).toFixed(1)}" height="${height.toFixed(1)}" rx="2" fill="${loss ? '#b4372d' : i === selected ? '#b08d3c' : '#4f9d86'}"/>`;
+    svg += label(x(i), loss ? top + height + font + 1 : top - 6, trieu(monthly[i]), loss ? '#b4372d' : i === selected ? '#8a6a22' : '#0c4a3f');
   });
   svg += caption(g.capB, 'LỢI NHUẬN LŨY KẾ TỪ ĐẦU NĂM', 'triệu đồng');
   svg += rule(yLine(0));
