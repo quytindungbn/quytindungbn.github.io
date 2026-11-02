@@ -5,9 +5,9 @@ import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
-import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios } from '../../lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios, monthlyProfit, previousMonthReport } from '../../lib/balanceSheetMetrics.js';
 import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
-import { escapeHtml, formatNumber, formatVND, formatCompact, compactParts } from '../../utils.js';
+import { escapeHtml, formatNumber, formatVND, compactParts } from '../../utils.js';
 import { icon } from '../../icons.js';
 import { periodStepperHtml } from '../../components/ui.js';
 import { kvGet, kvSet } from '../../lib/kvCache.js';
@@ -257,7 +257,6 @@ const trendSeries = [
   { key: 'assets', label: 'Tổng tài sản', color: '#0c4a3f' },
   { key: 'customerDeposits', label: 'Tiền gửi khách hàng', color: '#b08d3c' },
   { key: 'grossLoans', label: 'Dư nợ cho vay', color: '#4f9d86' },
-  { key: 'profit', label: 'Lợi nhuận', color: '#a8402f', rightAxis: true },
 ];
 
 function trendMonthDetail(report) {
@@ -265,7 +264,7 @@ function trendMonthDetail(report) {
     `<span><em><i style="background:${s.color}"></i>${s.label}</em><b>${money(report.figures.end[s.key])}</b></span>`).join('')}</div>`;
 }
 
-function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
+function trendSvg(shown, base, span, mobile) {
   const viewport = mobile ? 320 : 1120;
   const visible = mobile ? 5 : 12;
   const height = mobile ? 255 : 372;
@@ -278,13 +277,11 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
   const bottom = mobile ? 208 : 316;
   const x = (i) => left + i * step;
   const y = (v) => bottom - (v - base) / span * (bottom - top);
-  const profitY = (v) => bottom - (v - profitBase) / profitSpan * (bottom - top);
   const lines = [0, 0.5, 1].map((p) => {
     const yy = bottom - (bottom - top) * p;
     return `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#e2e8f0"/>`;
   }).join('');
-  const pointYs = trendSeries.map((s) => shown.map((r) =>
-    (s.rightAxis ? profitY : y)(Number(r.figures.end[s.key]) || 0)));
+  const pointYs = trendSeries.map((s) => shown.map((r) => y(Number(r.figures.end[s.key]) || 0)));
   const positions = shown.map((_, monthIndex) => {
     const points = trendSeries.map((_, seriesIndex) => ({ seriesIndex, rawY: pointYs[seriesIndex][monthIndex] }))
       .sort((a, b) => a.rawY - b.rawY);
@@ -310,17 +307,16 @@ function trendSvg(shown, base, span, profitBase, profitSpan, mobile) {
     return indexed;
   });
   const plots = trendSeries.map((s, seriesIndex) => {
-    const pointY = s.rightAxis ? profitY : y;
-    const points = shown.map((r, i) => `${x(i)},${pointY(Number(r.figures.end[s.key]) || 0)}`).join(' ');
-    return { line: `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="${mobile ? 2 : 3}" ${s.rightAxis ? 'stroke-dasharray="7 4"' : ''} stroke-linecap="round" stroke-linejoin="round"/>`, dots: shown.map((r, i) => {
+    const points = shown.map((r, i) => `${x(i)},${y(Number(r.figures.end[s.key]) || 0)}`).join(' ');
+    return { line: `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="${mobile ? 2 : 3}" stroke-linecap="round" stroke-linejoin="round"/>`, dots: shown.map((r, i) => {
       const value = Number(r.figures.end[s.key]) || 0;
       const cx = x(i), cy = pointYs[seriesIndex][i];
       const { dotX, labelY } = positions[i][seriesIndex];
-      return `<g class="bs-trend-point${r.year_month === selectedMonth ? ' is-active' : ''}" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 10.5 : 13}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="3" paint-order="stroke">${s.rightAxis ? formatTrieuDong(value) : `${formatTyDong(value)} tỷ`}</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
+      return `<g class="bs-trend-point${r.year_month === selectedMonth ? ' is-active' : ''}" data-trend-month="${r.year_month}" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · ${s.label}: ${money(value)}">${dotX !== cx ? `<line x1="${cx}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${s.color}" stroke-width="1.5"/>` : ''}<circle cx="${dotX}" cy="${cy}" r="${mobile ? 11 : 13}" fill="transparent"/><circle class="bs-trend-dot" cx="${dotX}" cy="${cy}" r="${mobile ? 3.5 : 5}" fill="${s.color}" stroke="white" stroke-width="1.5"/>${Math.abs(labelY - cy) > 16 ? `<line x1="${dotX}" y1="${cy}" x2="${dotX}" y2="${labelY + 3}" stroke="${s.color}" stroke-width="1" stroke-dasharray="2 2"/>` : ''}<text x="${dotX}" y="${labelY}" text-anchor="middle" font-size="${mobile ? 10.5 : 13}" font-weight="700" fill="${s.color}" stroke="white" stroke-width="3" paint-order="stroke">${formatTyDong(value)} tỷ</text><title>${monthName(r.year_month)} · ${s.label}: ${money(value)}</title></g>`;
     }).join('') };
   });
   const labels = shown.map((r, i) => `<text x="${x(i)}" y="${mobile ? 240 : 352}" text-anchor="middle" font-size="${mobile ? 10 : 13}" font-weight="700" fill="#475569">${r.year_month.slice(5, 7)}/${r.year_month.slice(2, 4)}</text>`).join('');
-  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" style="width:${shown.length > visible ? (width / viewport * 100).toFixed(2) : 100}%" role="img" aria-label="Biến động theo các tháng đã nạp: tổng tài sản, tiền gửi và dư nợ tính bằng tỷ đồng; lợi nhuận tính bằng triệu đồng">${lines}${plots.map((plot) => plot.line).join('')}${plots.map((plot) => plot.dots).join('')}${labels}</svg>`;
+  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${height}" style="width:${shown.length > visible ? (width / viewport * 100).toFixed(2) : 100}%" role="img" aria-label="Biến động theo các tháng đã nạp: tổng tài sản, tiền gửi và dư nợ tính bằng tỷ đồng">${lines}${plots.map((plot) => plot.line).join('')}${plots.map((plot) => plot.dots).join('')}${labels}</svg>`;
 }
 
 function trendChart(list) {
@@ -329,54 +325,128 @@ function trendChart(list) {
   const values = shown.flatMap((r) => [Number(r.figures.end.assets), Number(r.figures.end.customerDeposits), Number(r.figures.end.grossLoans) || 0]);
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const base = Math.max(0, min - (max - min || max * 0.05) * 0.35);
-  const span = Math.max(1, max - base);
-  const profits = shown.map((r) => Number(r.figures.end.profit) || 0);
-
-  const profitBase = Math.min(0, ...profits) * 2;
-  const profitTop = Math.max(0, ...profits) * 2 || 1;
-  const profitSpan = Math.max(1, profitTop - profitBase);
+  const base = Math.max(0, min - (max - min || max * 0.05) * 0.12);
+  const span = Math.max(1, max + (max - min || max * 0.05) * 0.1 - base);
   const selected = shown.find((r) => r.year_month === selectedMonth) || shown.at(-1);
-  return `<p class="bs-chart-note">Tổng tài sản, tiền gửi, dư nợ: tỷ đồng · Lợi nhuận: triệu đồng.</p><div class="bs-chart-scroll">${trendSvg(shown, base, span, profitBase, profitSpan, false)}${trendSvg(shown, base, span, profitBase, profitSpan, true)}</div>
+  return `<p class="bs-chart-note">Tổng tài sản, tiền gửi, dư nợ: tỷ đồng.</p><div class="bs-chart-scroll">${trendSvg(shown, base, span, false)}${trendSvg(shown, base, span, true)}</div>
     <div class="bs-chart-legend">${trendSeries.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>
     <div class="bs-trend-detail" id="bs-trend-detail" aria-live="polite">${trendMonthDetail(selected)}</div>`;
+}
+
+function profitSvg(list, mobile) {
+  const width = mobile ? 320 : 1120;
+  const pad = mobile ? 8 : 14;
+  const n = list.length;
+  const slot = (width - pad * 2) / n;
+  const x = (i) => pad + slot * (i + 0.5);
+  const monthly = list.map((r) => monthlyProfit(r) ?? 0);
+  const cumulative = list.map((r) => Number(r.figures.end.profit) || 0);
+  const g = mobile
+    ? { capA: 12, aTop: 40, aBottom: 112, capB: 146, bTop: 174, bBottom: 236, axis: 258, height: 266 }
+    : { capA: 14, aTop: 50, aBottom: 142, capB: 188, bTop: 222, bBottom: 308, axis: 334, height: 344 };
+  const font = mobile ? 10.5 : 13;
+  const selected = list.findIndex((r) => r.year_month === selectedMonth);
+  const scale = (values, top, bottom) => {
+    const lo = Math.min(0, ...values);
+    const hi = Math.max(0, ...values, 1);
+    return (v) => bottom - (v - lo) / (hi - lo) * (bottom - top);
+  };
+  const yBar = scale(monthly, g.aTop, g.aBottom);
+  const yLine = scale(cumulative, g.bTop, g.bBottom);
+  const trieu = (v) => (mobile ? formatNumber(Math.round(v / 1e6)) : formatTrieuDong(v));
+  const label = (cx, cy, text, color) => `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" font-size="${font}" font-weight="700" fill="${color}" stroke="white" stroke-width="3" paint-order="stroke">${text}</text>`;
+  const caption = (y, title, unit) => `<text class="bs-profit-cap" x="${pad}" y="${y}" font-size="${mobile ? 10 : 12}">${title}<tspan class="bs-profit-unit" dx="8">${unit}</tspan></text>`;
+  const rule = (y) => `<line x1="${pad}" y1="${y.toFixed(1)}" x2="${width - pad}" y2="${y.toFixed(1)}" stroke="#cbd5e1"/>`;
+  const showCumulative = list.map((_, i) => !mobile || (n - 1 - i) % 2 === 0);
+  if (mobile && selected >= 0) {
+    showCumulative[selected] = true;
+    if (selected > 0) showCumulative[selected - 1] = false;
+    if (selected < n - 1) showCumulative[selected + 1] = false;
+  }
+  let svg = '';
+  if (selected >= 0) svg += `<rect x="${(pad + slot * selected).toFixed(1)}" y="${g.capA + 8}" width="${slot.toFixed(1)}" height="${g.axis - g.capA - 2}" fill="#b08d3c" opacity=".1"/>`;
+  svg += caption(g.capA, 'LỢI NHUẬN HÀNG THÁNG', 'triệu đồng');
+  svg += rule(yBar(0));
+  list.forEach((r, i) => {
+    const edge = yBar(monthly[i]);
+    const zero = yBar(0);
+    const top = Math.min(edge, zero);
+    const height = Math.max(Math.abs(zero - edge), 1.5);
+    svg += `<rect x="${(x(i) - slot * 0.28).toFixed(1)}" y="${top.toFixed(1)}" width="${(slot * 0.56).toFixed(1)}" height="${height.toFixed(1)}" rx="2" fill="${i === selected ? '#b08d3c' : '#4f9d86'}"/>`;
+    svg += label(x(i), monthly[i] >= 0 ? top - 6 : top + height + font + 1, trieu(monthly[i]), i === selected ? '#8a6a22' : '#0c4a3f');
+  });
+  svg += caption(g.capB, 'LỢI NHUẬN LŨY KẾ TỪ ĐẦU NĂM', 'triệu đồng');
+  svg += rule(yLine(0));
+  const points = list.map((_, i) => `${x(i).toFixed(1)},${yLine(cumulative[i]).toFixed(1)}`);
+  svg += `<polygon points="${x(0).toFixed(1)},${yLine(0).toFixed(1)} ${points.join(' ')} ${x(n - 1).toFixed(1)},${yLine(0).toFixed(1)}" fill="#0c4a3f" opacity=".08"/>`;
+  svg += `<polyline points="${points.join(' ')}" fill="none" stroke="#0c4a3f" stroke-width="${mobile ? 2 : 3}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  list.forEach((r, i) => {
+    const cy = yLine(cumulative[i]);
+    const active = i === selected;
+    svg += `<circle cx="${x(i).toFixed(1)}" cy="${cy.toFixed(1)}" r="${(mobile ? 3.5 : 5) + (active ? 2 : 0)}" fill="${active ? '#b08d3c' : '#0c4a3f'}" stroke="white" stroke-width="1.5"/>`;
+    if (showCumulative[i]) svg += label(x(i), cy - (mobile ? 9 : 12), trieu(cumulative[i]), active ? '#8a6a22' : '#0c4a3f');
+    svg += `<text x="${x(i).toFixed(1)}" y="${g.axis}" text-anchor="middle" font-size="${mobile ? 10 : 13}" font-weight="${active ? 800 : 700}" fill="${active ? '#0c4a3f' : '#475569'}">${mobile ? `T${Number(r.year_month.slice(5, 7))}` : `${r.year_month.slice(5, 7)}/${r.year_month.slice(2, 4)}`}</text>`;
+    svg += `<rect class="bs-profit-hit" data-trend-month="${r.year_month}" x="${(pad + slot * i).toFixed(1)}" y="${g.capA + 8}" width="${slot.toFixed(1)}" height="${g.axis - g.capA + 6}" fill="transparent" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · lợi nhuận hàng tháng ${money(monthly[i])}, lũy kế ${money(cumulative[i])}"/>`;
+  });
+  return `<svg class="${mobile ? 'bs-trend-mobile' : 'bs-trend-desktop'}" viewBox="0 0 ${width} ${g.height}" style="width:100%" role="img" aria-label="Lợi nhuận hàng tháng (cột) và lợi nhuận lũy kế từ đầu năm (đường) theo các tháng, đơn vị triệu đồng">${svg}</svg>`;
+}
+
+function profitSection(report) {
+  const year = report.year_month.slice(0, 4);
+  const yearList = reports.filter((r) => r.year_month.slice(0, 4) === year);
+  const month = monthlyProfit(report);
+  const previous = previousMonthReport(reports, report.year_month);
+  const previousMonth = previous ? monthlyProfit(previous) : null;
+  const end = report.figures.end;
+  const figure = (title, value, base) => {
+    const compact = value == null ? null : compactMoney(value);
+    return `<div class="bs-pf"><span class="bs-pf-label">${title}</span><span class="bs-pf-value">${compact ? `${compact.num}<small>${compact.unit}</small>` : '—'}</span><span class="bs-pf-change">${compact ? change(value, base) : ''}</span></div>`;
+  };
+  return `<div class="card card-pad bs-section bs-profit-section" id="bs-sec-profit"><h3 class="bs-sec-h">Lợi nhuận</h3>
+    <div class="bs-profit-figures">${figure('Lợi nhuận hàng tháng', month, previousMonth)}${figure('Lợi nhuận lũy kế', Number(end.profit) || 0, report.figures.start?.profit)}</div>
+    <div class="bs-chart-scroll" data-chart="profit">${profitSvg(yearList, false)}${profitSvg(yearList, true)}</div>
+    <p class="bs-chart-note">Tháng đang chọn tô vàng. Bấm vào một tháng để xem số liệu tháng đó.</p></div>`;
 }
 
 let trendScrollLeft = null;
 
 function bindTrendPoints(root, onSelect) {
-  const chart = root.querySelector('.bs-chart-scroll');
-  if (!chart) return;
-  const pick = (target) => {
-    const point = target?.closest?.('[data-trend-month]');
-    if (point) onSelect(point.dataset.trendMonth);
-  };
-  chart.addEventListener('click', (event) => pick(event.target));
-  chart.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    pick(event.target);
+  root.querySelectorAll('.bs-chart-scroll').forEach((chart) => {
+    const pick = (target) => {
+      const point = target?.closest?.('[data-trend-month]');
+      if (point) onSelect(point.dataset.trendMonth);
+    };
+    chart.addEventListener('click', (event) => pick(event.target));
+    chart.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      pick(event.target);
+    });
+    if (chart.dataset.chart === 'profit') return;
+    chart.scrollLeft = trendScrollLeft ?? chart.scrollWidth;
+    trendScrollLeft = null;
   });
-  chart.scrollLeft = trendScrollLeft ?? chart.scrollWidth;
-  trendScrollLeft = null;
 }
 
-function composition(items, total, centerLabel, { grossShares = false } = {}) {
-  const chartTotal = items.reduce((sum, [, value]) => sum + Math.max(0, value), 0) || 1;
-  let offset = 0;
-  const stops = items.map(([, value, color]) => {
-    const start = offset;
-    offset += Math.max(0, value) / chartTotal * 100;
-    return `${color} ${start}% ${offset}%`;
-  }).join(',');
-  const percentageBase = grossShares ? chartTotal : total;
-  return `<div class="bs-composition"><div class="bs-donut" style="background:conic-gradient(${stops})"><div>${formatCompact(total)}<small>${centerLabel}</small></div></div>
-    <div class="bs-composition-list">${items.map(([label, value, color]) => `<div class="${value < 0 ? 'bs-composition-deduction' : ''}"><span><i style="background:${color}"></i>${label}</span><strong>${percentageBase ? (value / percentageBase * 100).toFixed(1).replace('.', ',') + '%' : '—'}</strong><small>${money(value)}</small></div>`).join('')}</div></div>
+function stackedBar(items) {
+  const parts = items.filter(([, value]) => value > 0);
+  const sum = parts.reduce((total, [, value]) => total + value, 0) || 1;
+  return `<div class="bs-stack" role="img" aria-label="Tỷ trọng các khoản">${parts.map(([label, value, color]) => `<i style="flex-grow:${(value / sum * 100).toFixed(2)};background:${color}" title="${label}"></i>`).join('')}</div>`;
+}
+
+function composition(title, items, total, totalLabel, { grossShares = false } = {}) {
+  const chartTotal = items.reduce((sum, [, value]) => sum + Math.max(0, value || 0), 0) || 1;
+  const base = grossShares ? chartTotal : total;
+  const sign = (value) => (value < 0 ? '−' : '');
+  const rows = items.map(([label, value, color]) => `<li class="${value < 0 ? 'bs-neg' : ''}"><i style="background:${color}"></i><span>${label}</span><small>${Number.isFinite(value) ? `${sign(value)}${(Math.abs(value) / 1e9).toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} tỷ` : '—'}</small><b>${Number.isFinite(value) && base ? `${sign(value)}${Math.abs(value / base * 100).toFixed(1).replace('.', ',')}%` : '—'}</b></li>`).join('');
+  const compact = compactMoney(total);
+  return `<h3>${title}</h3><span class="bs-comp-total"><small>${totalLabel}</small><b>${compact.num}<u>${compact.unit}</u></b></span>
+    ${stackedBar(items)}<ul class="bs-comp-list">${rows}</ul>
     ${!grossShares && items.some(([, value]) => value < 0) ? '<p class="bs-chart-note">Khoản âm hiển thị trong danh sách, không vẽ thành lát trên biểu đồ.</p>' : ''}`;
 }
 
 function assetComposition(figures) {
-  return composition([
+  return composition('Cơ cấu tài sản', [
     ['Dư nợ cho vay', figures.grossLoans, '#0c4a3f'],
     ['Dự phòng rủi ro (trừ)', -(figures.totalProvision ?? figures.generalProvision + figures.specificProvision), '#a8402f'],
     ['Tiền gửi tại TCTD', figures.tctdDeposits, '#b08d3c'],
@@ -387,7 +457,7 @@ function assetComposition(figures) {
 }
 
 function fundingComposition(figures) {
-  return composition([
+  return composition('Cơ cấu nguồn vốn', [
     ['Tiền gửi khách hàng', figures.customerDeposits, '#0c4a3f'],
     ['Lãi và phí phải trả', figures.interestPayable, '#dcc27d'],
     ['Nợ phải trả khác', figures.otherLiabilities, '#b9c4bf'],
@@ -545,8 +615,9 @@ function draw(contentEl) {
       </div>` : ''}</div>
     ${!report ? `<div class="card card-pad"><p>Chưa có bảng cân đối nào. Quản trị viên toàn quyền có thể nạp file .xls hoặc .xlsx của từng tháng.</p></div>` : `
     <div class="card card-pad bs-section bs-trend-section" id="bs-sec-trend"><h3 class="bs-sec-h">Biến động</h3>${trendChart(reports)}</div>
-    <div class="bs-comp-wrap" id="bs-sec-comp"><h3 class="bs-sec-h bs-d-only">Cơ cấu</h3><div class="bs-two-col"><div class="card card-pad bs-section"><h3>Cơ cấu tài sản</h3>${assetComposition(end)}</div>
-      <div class="card card-pad bs-section"><h3>Cơ cấu nguồn vốn</h3>${fundingComposition(end)}</div></div></div>
+    ${profitSection(report)}
+    <div class="bs-comp-wrap" id="bs-sec-comp"><h3 class="bs-sec-h bs-d-only">Cơ cấu</h3><div class="bs-two-col"><div class="card card-pad bs-section bs-comp-card">${assetComposition(end)}</div>
+      <div class="card card-pad bs-section bs-comp-card">${fundingComposition(end)}</div></div></div>
     <div class="bs-management bs-section" id="bs-sec-mgmt"><div class="bs-management-title"><h3 class="bs-sec-h">Cân đối rút gọn</h3></div>
       ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart)}
         ${managementRow('Tổng tài sản', 'assets', start, end, yearStart, { total: true })}`)}
@@ -575,7 +646,7 @@ function draw(contentEl) {
   }
   bindTrendPoints(contentEl, (yearMonth) => {
     if (yearMonth === selectedMonth) return;
-    trendScrollLeft = contentEl.querySelector('.bs-chart-scroll')?.scrollLeft ?? null;
+    trendScrollLeft = contentEl.querySelector('.bs-chart-scroll:not([data-chart])')?.scrollLeft ?? null;
     const scrollY = window.scrollY;
     selectedMonth = yearMonth;
     remoteProvisions.delete(selectedMonth);

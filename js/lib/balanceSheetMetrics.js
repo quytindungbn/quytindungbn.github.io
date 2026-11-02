@@ -82,6 +82,22 @@ export function nextProvisionDeadline(yearMonth) {
   return `07/${String(nextMonth).padStart(2, '0')}/${month === 12 ? year + 1 : year}`;
 }
 
+export function monthlyProfit(report) {
+  const end = Number(report?.figures?.end?.profit);
+  if (!Number.isFinite(end)) return null;
+  if (/-01$/.test(report.year_month || '')) return end;
+  const start = Number(report.figures.start?.profit);
+  return Number.isFinite(start) ? end - start : null;
+}
+
+export function previousMonthReport(reports, yearMonth) {
+  if (!/^\d{4}-\d{2}$/.test(yearMonth || '')) return null;
+  const year = Number(yearMonth.slice(0, 4));
+  const month = Number(yearMonth.slice(5));
+  const key = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
+  return reports.find((report) => report.year_month === key) || null;
+}
+
 export function managementRatios(end) {
   if (!end) return null;
   const profit = Number(end.profit);

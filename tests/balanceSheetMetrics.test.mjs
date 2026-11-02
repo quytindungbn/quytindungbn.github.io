@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios } from '../js/lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios, monthlyProfit, previousMonthReport } from '../js/lib/balanceSheetMetrics.js';
 
 test('biến động dùng số gốc tuyệt đối và không tạo tỷ lệ giả khi gốc bằng 0', () => {
   assert.deepEqual(compareBalance(70_147_510_875, 70_726_277_233), {
@@ -93,4 +93,25 @@ test('chỉ số quản trị dùng lợi nhuận lũy kế và vốn chủ sở
   assert.equal(ratios.loanDeposit, 5000 / 6000 * 100);
   assert.equal(ratios.depositCapital, 1.5);
   assert.equal(managementRatios({ profit: 1, equity: -1, assets: 0, grossLoans: 1, customerDeposits: 0 }).depositCapital, null);
+});
+
+test('lợi nhuận hàng tháng là chênh lệch lợi nhuận lũy kế đầu và cuối tháng', () => {
+  const report = (yearMonth, start, end) => ({ year_month: yearMonth, figures: { start: { profit: start }, end: { profit: end } } });
+  assert.equal(monthlyProfit(report('2026-10', 828e6, 920e6)), 92e6);
+  assert.equal(monthlyProfit(report('2026-05', 352e6, 300e6)), -52e6);
+  assert.equal(monthlyProfit(report('2026-01', 0, 86e6)), 86e6);
+  assert.equal(monthlyProfit(report('2026-01', 1_000e6, 86e6)), 86e6);
+  assert.equal(monthlyProfit(report('2026-01', undefined, -15e6)), -15e6);
+  assert.equal(monthlyProfit(report('2026-02', undefined, 86e6)), null);
+  assert.equal(monthlyProfit({ year_month: '2026-03', figures: { end: {} } }), null);
+  assert.equal(monthlyProfit(null), null);
+});
+
+test('tháng liền trước kể cả qua năm', () => {
+  const reports = [{ year_month: '2025-12' }, { year_month: '2026-01' }, { year_month: '2026-03' }];
+  assert.equal(previousMonthReport(reports, '2026-01').year_month, '2025-12');
+  assert.equal(previousMonthReport(reports, '2026-02').year_month, '2026-01');
+  assert.equal(previousMonthReport(reports, '2026-04').year_month, '2026-03');
+  assert.equal(previousMonthReport(reports, '2026-03'), null);
+  assert.equal(previousMonthReport(reports, 'abc'), null);
 });
