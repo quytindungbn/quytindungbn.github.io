@@ -945,19 +945,6 @@ svg { display: block; }
 .bs-profit-details .bs-profit-head { color:var(--text-muted); font-weight:700; font-size:11px; }
 .bs-profit-details .bs-profit-total { font-weight:800; background:#e8f5f1; padding:10px; border-radius:8px; }
 .bs-account-period { margin:0 0 10px; color:var(--text-muted); font-size:12px; }
-.modal-sheet.bs-account-sheet { max-width:960px; }
-.bs-account-list { border:1px solid var(--border-strong); border-radius:9px; overflow:hidden; }
-.bs-account-columns, .bs-account-line { display:grid; grid-template-columns:minmax(150px,1.4fr) minmax(125px,1fr) repeat(2,minmax(150px,1.1fr)); align-items:center; gap:10px; }
-.bs-account-columns { padding:8px 12px; background:var(--surface-alt); color:var(--text-muted); font-size:11px; font-weight:750; border-bottom:1px solid var(--border-strong); }
-.bs-account-columns > :not(:first-child) { text-align:right; }
-.bs-account-line { padding:10px 12px; border-bottom:1px solid var(--border); font-size:12px; }
-.bs-account-line:last-child { border-bottom:0; }
-.bs-account-line > div:first-child { min-width:0; display:grid; gap:3px; }
-.bs-account-line > div:first-child > span { color:var(--text-muted); overflow-wrap:anywhere; }
-.bs-account-line > div:first-child > small { color:var(--text-muted); line-height:1.35; }
-.bs-account-line b { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.bs-account-delta { min-width:0; text-align:right; }
-.bs-account-total { background:#e8f5f1; font-weight:800; }
 .bs-table-wrap { width:100%; overflow-x:auto; }
 .bs-table { width:100%; min-width:670px; border-collapse:collapse; font-size:12.5px; font-variant-numeric:tabular-nums; }
 .bs-table th, .bs-table td { padding:9px 8px; border-bottom:1px solid var(--border-strong); }
@@ -981,7 +968,7 @@ svg { display: block; }
 .bs-management-head, .bs-management-row { display:grid; grid-template-columns:minmax(190px,1.3fr) minmax(140px,1fr) repeat(2,minmax(135px,1fr)); gap:12px; align-items:center; padding:10px 16px; }
 .bs-management-head { font-size:11px; font-weight:750; color:var(--text-muted); border-bottom:1px solid var(--border-strong); }
 .bs-management-head span:not(:first-child) { text-align:right; }
-.bs-management-head span:nth-child(n+3), .bs-account-columns span:nth-child(n+3), .bs-profit-head span:last-child { font-weight:400; }
+.bs-management-head span:nth-child(n+3), .bs-profit-head span:last-child { font-weight:400; }
 .bs-management-row { border-bottom:1px solid var(--border); font-size:12px; }
 .bs-management-row:last-child { border-bottom:0; }
 .bs-management-name { display:flex; align-items:center; gap:8px; font-weight:650; }
@@ -1086,11 +1073,6 @@ button.provision-row:hover, button.provision-row:focus-visible { background:var(
   .bs-profit-details > div > :last-child { grid-column:1 / -1; justify-self:end; }
   .bs-profit-details .bs-profit-head > :last-child { display:none; }
   .bs-profit-details > div:not(.bs-profit-head) > :last-child::before { content:'Tăng/giảm: '; font-weight:400; }
-  .bs-account-columns { display:none; }
-  .bs-account-line { grid-template-columns:minmax(0,1fr) auto; align-items:start; padding:10px; gap:7px; }
-  .bs-account-line b { align-self:start; font-size:11px; }
-  .bs-account-delta { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
-  .bs-account-delta::before { content:attr(data-label); color:var(--text-muted); font-size:11px; font-weight:400; flex:none; }
 }
 
 .flex { display: flex; }
@@ -1642,6 +1624,24 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-lux .bs-doc .bs-management-value .bs-change-separator { display: none; }
   .bs-lux .bs-doc .bs-management-child { background: none; color: var(--mut); }
   .bs-lux .bs-doc .bs-management-child .bs-management-name { font-style: italic; }
+  .bs-lux .bs-doc .bs-management-name > .bs-expand { display: inline-flex; align-items: center; gap: 9px; max-width: 100%; padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .bs-lux .bs-doc .bs-expand:hover, .bs-lux .bs-doc .bs-management-row.is-open .bs-expand { color: var(--em); }
+  .bs-lux .bs-doc .bs-expand:focus-visible { outline: 2px solid var(--g); outline-offset: 3px; border-radius: 4px; }
+  .bs-lux .bs-doc .bs-expand-chev { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 20px; border: 1px solid var(--g2); border-radius: 50%; background: #fffdf8; color: var(--g); transition: transform .22s ease, background-color .15s ease, border-color .15s ease; }
+  .bs-lux .bs-doc .bs-expand-chev .icon { width: 12px; height: 12px; stroke-width: 2.2; }
+  .bs-lux .bs-doc .bs-expand:hover .bs-expand-chev, .bs-lux .bs-doc .bs-expand[aria-expanded="true"] .bs-expand-chev { border-color: var(--g); background: #fbf6e6; }
+  .bs-lux .bs-doc .bs-expand[aria-expanded="true"] .bs-expand-chev { transform: rotate(180deg); }
+  .bs-lux .bs-doc .bs-sub { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows .28s cubic-bezier(.4, 0, .2, 1), opacity .18s ease, visibility 0s linear .28s; }
+  .bs-lux .bs-doc .bs-sub.is-open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows .28s cubic-bezier(.4, 0, .2, 1), opacity .24s ease .04s, visibility 0s; }
+  .bs-lux .bs-doc .bs-sub-in { min-height: 0; overflow: hidden; background: #fbf9f2; box-shadow: inset 3px 0 0 var(--g2); }
+  .bs-lux .bs-doc .bs-sub-in .bs-management-row:last-child { border-bottom: 1px dotted var(--g2); }
+  .bs-lux .bs-doc .bs-acc-code { font: 600 11.5px 'Inter', sans-serif; font-style: normal; letter-spacing: .03em; color: #8a6a22; }
+  .bs-lux .bs-doc .bs-acc-name { font-style: italic; }
+  .bs-lux .bs-doc .bs-management-child .bs-management-name { display: flex; align-items: baseline; gap: 7px; }
+  .bs-lux .bs-doc .bs-sub-arrow { flex: none; font-style: normal; }
+  .bs-lux .bs-doc .bs-sub-label { min-width: 0; }
+  @media (min-width: 900px) { .bs-lux .bs-doc .bs-management-head, .bs-lux .bs-doc .bs-management-row { grid-template-columns: minmax(190px, 3fr) repeat(3, minmax(132px, 1fr)); } }
+  @media (prefers-reduced-motion: reduce) { .bs-lux .bs-doc .bs-sub, .bs-lux .bs-doc .bs-sub.is-open, .bs-lux .bs-doc .bs-expand-chev { transition: none; } }
   .bs-lux .bs-doc .bs-management-total { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); background: none; color: var(--em); }
   .bs-lux .bs-doc .bs-management-total .bs-management-name { font-weight: 700; }
   .bs-lux .bs-doc .bs-management-total .bs-management-end strong { font-size: 14px; color: var(--em); }
@@ -1702,6 +1702,8 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-lux .bs-doc .bs-management-value { padding: 2px 0; font-size: 12.5px; }
   .bs-lux .bs-doc .bs-management-numbered .bs-management-value { padding-left: 38px; }
   .bs-lux .bs-doc .bs-management-child .bs-management-value { padding-left: 22px; }
+  .bs-lux .bs-doc .bs-sub-in .bs-management-row { padding: 9px 8px 9px 14px; }
+  .bs-lux .bs-doc .bs-sub-in .bs-management-hint { padding: 10px 8px 10px 14px; }
   .bs-lux .bs-doc .bs-management-value::before { color: var(--mut); font: 500 11px 'Inter', sans-serif; }
   .bs-lux .bs-doc .bs-management-value .bs-change { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 8px; font-size: 12.5px; }
   .bs-lux .bs-doc .bs-management-value .bs-change-separator { display: inline; margin-right: 6px; color: #b9c4bf; }

@@ -205,3 +205,23 @@ test('TK 484 tách 4841/4842; TK 461 và 469 tách hết tài khoản con', () =
   ]);
   assert.equal(end.accountDetails.otherLiabilities.reduce((sum, row) => sum + row.balance, 0), 20);
 });
+
+test('lãi và phí phải thu tách theo TK 394 (tiền gửi) và TK 391 (hoạt động tín dụng), bỏ dòng số dư 0', () => {
+  const rows = sample();
+  rows[20] = ['Tài sản khác', '3', 12, 0, 0, 0, 12, 0];
+  rows[23][3] = rows[23][7] = 92;
+  rows[26] = ['Lãi phải thu từ hoạt động tín dụng', '391', 5, 0, 0, 0, 5, 0];
+  rows[27] = ['Lãi phải thu từ tiền gửi', '394', 7, 0, 0, 0, 7, 0];
+  const { end } = parseBalanceSheetRows(rows);
+  assert.equal(end.accruedReceivables, 12);
+  assert.deepEqual(end.accountDetails.accruedReceivables.map(({ code, name, balance }) => [code, name, balance]),
+    [['394', 'Lãi phải thu từ tiền gửi', 7], ['391', 'Lãi phải thu từ hoạt động tín dụng', 5]]);
+  assert.equal(end.accountDetails.accruedReceivables.reduce((sum, line) => sum + line.balance, 0), end.accruedReceivables);
+
+  rows[20][2] = rows[20][6] = 7;
+  rows[23][3] = rows[23][7] = 87;
+  rows[26][2] = rows[26][6] = 0;
+  const onlyDeposits = parseBalanceSheetRows(rows).end;
+  assert.equal(onlyDeposits.accruedReceivables, 7);
+  assert.deepEqual(onlyDeposits.accountDetails.accruedReceivables.map(({ code, balance }) => [code, balance]), [['394', 7]]);
+});

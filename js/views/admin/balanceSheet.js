@@ -22,6 +22,7 @@ let latestContentEl = null;
 let skipCache = false;
 const remoteProvisions = new Map();
 const pendingProvisions = new Set();
+const openRows = new Set();
 
 const monthName = (ym) => `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)}`;
 const reportDate = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso || '')
@@ -37,14 +38,15 @@ function change(current, base) {
   return `<span class="bs-change ${tone}"><strong>${signed(result.amount)}</strong><small><span class="bs-change-separator" aria-hidden="true">|</span>${result.percent == null ? '—' : percent(result.percent)}</small></span>`;
 }
 
-function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, accountDetail = null, ordinal = null } = {}) {
+function managementRow(label, key, start, end, yearOpening, { total = false, child = false, noYear = false, profitDetail = false, toggle = null, ordinal = null } = {}) {
   const name = `${label}<span class="bs-colon">:</span>`;
+  const childName = `<span class="bs-sub-arrow" aria-hidden="true">↳</span><span class="bs-sub-label">${name}</span>`;
   const detailButton = profitDetail
     ? `<button type="button" class="bs-management-link" data-profit-details aria-label="Xem Doanh thu và Chi phí">${name}</button>`
-    : accountDetail
-      ? `<button type="button" class="bs-management-link" data-account-details="${accountDetail}" aria-label="Xem chi tiết tài khoản ${label}">${name}</button>`
-      : `<span>${name}</span>`;
-  return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${ordinal ? 'bs-management-numbered' : ''}">
+    : toggle
+      ? `<button type="button" class="bs-expand" data-expand="${toggle.id}" aria-expanded="${toggle.open}" aria-controls="bs-sub-${toggle.id}"><span>${name}</span><span class="bs-expand-chev" aria-hidden="true">${icon('chevronDown', 'icon-sm')}</span></button>`
+      : child ? childName : `<span>${name}</span>`;
+  return `<div class="bs-management-row ${total ? 'bs-management-total' : ''} ${child ? 'bs-management-child' : ''} ${ordinal ? 'bs-management-numbered' : ''}${toggle?.open ? ' is-open' : ''}">
     <div class="bs-management-name">${ordinal ? `<span class="bs-roman" aria-label="Mục ${ordinal}">${ordinal}.</span>` : ''}${detailButton}</div>
     <div class="bs-management-end"><strong>${money(end[key])}</strong></div>
     <div class="bs-management-value" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
@@ -68,12 +70,36 @@ function roman(index) {
   return numerals[index - 1] || String(index);
 }
 
-function numberedManagementRows(items, start, end, yearOpening) {
-  return items.map((item, index) => managementRow(item.label, item.key,
-    start, end, yearOpening, { ...item.options, ordinal: roman(index + 1) }) +
-    (item.children || []).map(([label, key]) => managementRow(`↳ ${label}`, key,
-      start, end, yearOpening, { child: true })).join('') +
-    (item.detailHtml || '')).join('');
+function accountLineRow(line) {
+  const code = line.residual ? 'Phần chưa tách' : `TK ${escapeHtml(String(line.code || ''))}${line.incomplete ? ' (chưa đủ cấp)' : ''}`;
+  const balance = Number(line.balance) || 0;
+  return `<div class="bs-management-row bs-management-child">
+    <div class="bs-management-name"><span class="bs-sub-arrow" aria-hidden="true">↳</span><span class="bs-sub-label"><b class="bs-acc-code">${code}</b>${line.name ? ` <span class="bs-acc-name">${escapeHtml(String(line.name))}</span>` : ''}</span></div>
+    <div class="bs-management-end"><strong>${money(balance)}</strong></div>
+    <div class="bs-management-value" data-label="Tăng/giảm">${change(balance, line.startBalance)}</div>
+    <div class="bs-management-value" data-label="Từ đầu năm">${change(balance, line.yearBalance)}</div>
+  </div>`;
+}
+
+function accountLinesHtml(report, key) {
+  const { start, end } = report.figures;
+  const januaryStart = yearOpeningReport(reports, report.year_month)?.figures?.start;
+  const lines = accountDetailChanges(end.accountDetails?.[key], start.accountDetails?.[key],
+    januaryStart?.accountDetails?.[key], historicAccountLines(reports, report.year_month, key));
+  if (!lines) return '<p class="bs-management-hint">Kỳ này được nạp trước khi ứng dụng lưu chi tiết tài khoản. Nạp lại file A01 của đúng tháng để xem từng tài khoản.</p>';
+  return lines.length ? lines.map(accountLineRow).join('') : '<p class="bs-management-hint">Không có số dư cuối kỳ.</p>';
+}
+
+function numberedManagementRows(items, start, end, yearOpening, group) {
+  return items.map((item, index) => {
+    const subHtml = (item.children || []).map(([label, key]) => managementRow(label, key,
+      start, end, yearOpening, { child: true })).join('') + (item.detailHtml || '');
+    const id = `${group}-${item.key}`;
+    const open = !!subHtml && openRows.has(id);
+    return managementRow(item.label, item.key, start, end, yearOpening,
+      { ...item.options, ordinal: roman(index + 1), toggle: subHtml ? { id, open } : null }) +
+      (subHtml ? `<div class="bs-sub${open ? ' is-open' : ''}" id="bs-sub-${id}" data-sub="${id}"><div class="bs-sub-in">${subHtml}</div></div>` : '');
+  }).join('');
 }
 
 const ratioFormat = (value, suffix) => Number.isFinite(value)
@@ -123,6 +149,7 @@ function resetIfChangedUser() {
   loadingPromise = null;
   remoteProvisions.clear();
   pendingProvisions.clear();
+  openRows.clear();
 }
 
 async function loadRemoteProvision(yearMonth, contentEl) {
@@ -477,38 +504,6 @@ function showProfitDetails(report) {
   });
 }
 
-function showAccountDetails(report, key) {
-  const labels = { internalReceivables: 'Phải thu nội bộ', otherLiabilities: 'Nợ phải trả khác' };
-  const label = labels[key];
-  if (!label) return;
-  const { start, end } = report.figures;
-  const januaryStart = yearOpeningReport(reports, report.year_month)?.figures?.start;
-  const lines = accountDetailChanges(end.accountDetails?.[key], start.accountDetails?.[key],
-    januaryStart?.accountDetails?.[key], historicAccountLines(reports, report.year_month, key));
-  if (!lines) {
-    openModal({ title: label, bodyHtml: '<p class="text-muted">Kỳ này được nạp trước khi ứng dụng lưu chi tiết tài khoản. Vui lòng nạp lại file A01 của đúng tháng để xem từng tài khoản và số dư.</p>' });
-    return;
-  }
-  openModal({
-    title: `${label} · ${monthName(report.year_month)}`,
-    sheetClass: 'bs-account-sheet',
-    bodyHtml: `<p class="bs-account-period">Số dư đến ngày ${reportDate(report.period_end)}</p>
-      <div class="bs-account-list">
-        <div class="bs-account-columns"><span>Tài khoản</span><span>Cuối kỳ</span><span>Tăng/giảm</span><span>Từ đầu năm</span></div>
-        ${lines.length ? lines.map((line) => `<div class="bs-account-line">
-          <div><strong>${line.residual ? 'Phần chưa tách' : `TK ${escapeHtml(String(line.code || ''))}${line.incomplete ? ' (chưa đủ cấp)' : ''}`}</strong>${line.name ? `<span>${escapeHtml(String(line.name))}</span>` : ''}</div>
-          <b>${money(Number(line.balance) || 0)}</b>
-          <div class="bs-account-delta" data-label="Tăng/giảm">${change(Number(line.balance) || 0, line.startBalance)}</div>
-          <div class="bs-account-delta" data-label="Từ đầu năm">${change(Number(line.balance) || 0, line.yearBalance)}</div>
-        </div>`).join('') : '<p class="text-muted">Không có số dư cuối kỳ.</p>'}
-        <div class="bs-account-line bs-account-total"><div><strong>Tổng ${label}</strong></div><b>${money(end[key])}</b>
-          <div class="bs-account-delta" data-label="Tăng/giảm">${change(end[key], start[key])}</div>
-          <div class="bs-account-delta" data-label="Từ đầu năm">${change(end[key], januaryStart?.[key])}</div>
-        </div>
-      </div>`,
-  });
-}
-
 function provisionComparison(report) {
   const snap = S.listMonthlySnapshots().find((x) => x.yearMonth === report.year_month);
   const end = report.figures.end;
@@ -566,24 +561,24 @@ function draw(contentEl) {
     ...(Number.isFinite(end.fixedAssetsNet) && Number.isFinite(end.capitalContribution)
       ? [{ label: 'TSCĐ sau hao mòn', key: 'fixedAssetsNet' }, { label: 'Vốn góp NHHTX', key: 'capitalContribution' }]
       : [{ label: 'TSCĐ ròng và vốn góp NHHTX', key: 'fixedCapital' }]),
-    { label: 'Phải thu nội bộ', key: 'internalReceivables', options: { accountDetail: 'internalReceivables' } },
-    { label: 'Lãi và phí phải thu', key: 'accruedReceivables' },
+    { label: 'Phải thu nội bộ', key: 'internalReceivables', detailHtml: accountLinesHtml(report, 'internalReceivables') },
+    { label: 'Lãi và phí phải thu', key: 'accruedReceivables', detailHtml: accountLinesHtml(report, 'accruedReceivables') },
     ...(end.otherAssets || start.otherAssets || reports.some((item) => item.year_month?.slice(0, 4) === report.year_month.slice(0, 4)
       && item.year_month <= report.year_month && item.figures?.end?.otherAssets)
       ? [{ label: 'Tài sản khác', key: 'otherAssets' }] : []),
   ] : [];
   const equityDetails = equityParts ? `
-    ${equityPartRow('↳ Vốn điều lệ', 'charterCapital', report, yearStart)}
-    ${equityPartRow('↳ Quỹ dự trữ bổ sung vốn điều lệ', 'supplementaryReserve', report, yearStart)}
-    ${equityPartRow('↳ Quỹ đầu tư phát triển', 'developmentReserve', report, yearStart)}
-    ${equityPartRow('↳ Quỹ dự phòng tài chính', 'financialReserve', report, yearStart)}
+    ${equityPartRow('Vốn điều lệ', 'charterCapital', report, yearStart)}
+    ${equityPartRow('Quỹ dự trữ bổ sung vốn điều lệ', 'supplementaryReserve', report, yearStart)}
+    ${equityPartRow('Quỹ đầu tư phát triển', 'developmentReserve', report, yearStart)}
+    ${equityPartRow('Quỹ dự phòng tài chính', 'financialReserve', report, yearStart)}
     ${equityParts.otherEquity || start.equityParts?.otherEquity || yearStart?.equityParts?.otherEquity || hasEquityHistory
-      ? equityPartRow('↳ Lợi nhuận chưa phân phối', 'otherEquity', report, yearStart) : ''}`
+      ? equityPartRow('Lợi nhuận chưa phân phối', 'otherEquity', report, yearStart) : ''}`
     : '<p class="bs-management-hint">Cần nạp lại file kỳ này để hiển thị vốn điều lệ và các quỹ.</p>';
   const fundingItems = report ? [
     { label: 'Tiền gửi khách hàng', key: 'customerDeposits' },
     { label: 'Lãi và phí phải trả', key: 'interestPayable' },
-    { label: 'Nợ phải trả khác', key: 'otherLiabilities', options: { accountDetail: 'otherLiabilities' } },
+    { label: 'Nợ phải trả khác', key: 'otherLiabilities', detailHtml: accountLinesHtml(report, 'otherLiabilities') },
     { label: 'Vốn chủ sở hữu', key: 'equity', detailHtml: equityDetails },
     { label: 'Lợi nhuận lũy kế', key: 'profit', options: { noYear: true, profitDetail: true } },
   ] : [];
@@ -613,9 +608,9 @@ function draw(contentEl) {
     <div class="bs-comp-wrap" id="bs-sec-comp"><h3 class="bs-sec-h bs-d-only">Cơ cấu</h3><div class="bs-two-col"><div class="card card-pad bs-section bs-comp-card">${assetComposition(end)}</div>
       <div class="card card-pad bs-section bs-comp-card">${fundingComposition(end)}</div></div></div>
     <div class="bs-management bs-section" id="bs-sec-mgmt"><div class="bs-management-title"><h3 class="bs-sec-h">Cân đối rút gọn</h3></div>
-      ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart)}
+      ${managementSection('Tài sản', `${numberedManagementRows(assetItems, start, end, yearStart, 'ts')}
         ${managementRow('Tổng tài sản', 'assets', start, end, yearStart, { total: true })}`)}
-      ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, fundingYearStart)}
+      ${managementSection('Nguồn vốn', `${numberedManagementRows(fundingItems, start, end, fundingYearStart, 'nv')}
         ${managementRow('Tổng nguồn vốn', 'liabilities', start, end, yearStart, { total: true })}`)}
       <p class="bs-balance-note">Chênh lệch Tài sản − Nguồn vốn cuối kỳ: <strong>${signed(end.assets - end.liabilities)}</strong></p></div>
     ${provisionComparison(report)}
@@ -649,9 +644,14 @@ function draw(contentEl) {
   });
   contentEl.querySelector('#bs-profit-details')?.addEventListener('click', () => showProfitDetails(report));
   contentEl.querySelector('[data-profit-details]')?.addEventListener('click', () => showProfitDetails(report));
-  contentEl.querySelectorAll('[data-account-details]').forEach((button) => {
-    button.addEventListener('click', () => showAccountDetails(report, button.dataset.accountDetails));
-  });
+  contentEl.querySelectorAll('[data-expand]').forEach((button) => button.addEventListener('click', () => {
+    const id = button.dataset.expand;
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(open));
+    button.closest('.bs-management-row')?.classList.toggle('is-open', open);
+    contentEl.querySelector(`[data-sub="${id}"]`)?.classList.toggle('is-open', open);
+    if (open) openRows.add(id); else openRows.delete(id);
+  }));
   contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { reloadFromServer(contentEl); });
   contentEl.querySelector('#bs-import')?.addEventListener('click', () => contentEl.querySelector('#bs-file')?.click());
   contentEl.querySelector('#bs-file')?.addEventListener('change', async (event) => {

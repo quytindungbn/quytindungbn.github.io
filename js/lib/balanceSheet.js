@@ -141,8 +141,10 @@ export function parseBalanceSheetRows(rows) {
     const profit = revenue - expenses;
     const otherLiabilities = liabilities - customerDeposits - interestPayable - equity - profit;
     if (otherAssets < 0 || otherLiabilities < 0) throw new Error('Các khoản mục chi tiết vượt tổng tài sản hoặc nguồn vốn.');
+    const accruedLine = (code) => ({ code, name: accounts.get(code)?.name || '', balance: debit(code) });
     const accountDetails = {
       internalReceivables: breakdown(['36'], 4, debit, internalReceivables),
+      accruedReceivables: ['394', '391'].map(accruedLine).filter((line) => line.balance !== 0),
       otherLiabilities: breakdown(['4', '5'], 3, credit, otherLiabilities, ['423', '49']),
       equityOther: breakdown(['6'], 3, credit, equity).filter((line) => line.residual ||
         (line.code !== '6' && !['601', '611', '612', '613'].some((code) => line.code.startsWith(code)))),

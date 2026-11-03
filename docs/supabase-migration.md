@@ -3522,6 +3522,14 @@ create policy "admins add note log" on customer_note_log
 - Thêm `export function refresh` cho trang: mỗi lần dữ liệu chung đổi (`notify`) app vẽ lại trang đang xem bằng `refresh` chứ không gọi lại `render`, nên các thông báo dữ liệu không kéo theo lần gọi máy chủ nào.
 - Bài thử `logs_refresh` (6 tình huống: dòng mới hiện ngay khi mở lại; dòng ghi trễ hiện sau ~1,5 giây; 25 dòng dồn; thông báo dữ liệu không gọi máy chủ; đang gõ tìm kiếm; rời trang). Bản cũ không đạt 3 tình huống đầu (dòng mới mất ~4 giây mới hiện, 25 dòng dồn chỉ hiện 20), bản mới đạt cả 6.
 
+### 10.109 Quản trị — "Cân đối rút gọn": mục có mục con bấm xả xuống (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Mặc định chỉ hiện các mục chính. Mục có mục con có nút tròn ⌄ ngay sau tên (bấm để xả xuống / gập lại; bàn phím Enter hoặc Space cũng được): Tiền gửi tại các TCTD (không kỳ hạn / có kỳ hạn), Dư nợ cho vay (dự phòng chung / cụ thể), Phải thu nội bộ, Lãi và phí phải thu, Nợ phải trả khác, Vốn chủ sở hữu (vốn điều lệ và các quỹ). Lợi nhuận lũy kế giữ nguyên: bấm tên mở khung Doanh thu – Chi phí.
+- Phải thu nội bộ và Nợ phải trả khác không còn mở khung nổi nữa: các tài khoản (mã TK, tên, số dư, tăng/giảm, từ đầu năm) hiện ngay trong bảng (`accountLinesHtml` / `accountLineRow` trong `js/views/admin/balanceSheet.js`). Đã xóa hàm `showAccountDetails` và CSS `bs-account-*` của khung nổi (chỉ còn `bs-account-period` dùng ở cửa sổ kiểm tra khi nạp file).
+- Lãi và phí phải thu tách 2 dòng theo TK 394 và TK 391 của file A01, tên lấy theo tên tài khoản trong file. `js/lib/balanceSheet.js` thêm `accountDetails.accruedReceivables` (thứ tự 394 rồi 391, bỏ dòng số dư 0, tổng hai dòng = `accruedReceivables`); có bài thử trong `tests/balanceSheet.test.mjs`. Các kỳ đã nạp trước đây chưa lưu trường này: mở mục sẽ hiện lời nhắc nạp lại file A01 của tháng đó, và cột "Từ đầu năm" cần nạp lại file tháng 01 của năm. Kỳ nạp từ nay về sau tự có.
+- Trạng thái mở nằm trong bộ nhớ trang (`openRows`): giữ khi đổi kỳ báo cáo, mất khi tải lại trang hoặc đổi tài khoản. Khung con xả xuống bằng lưới `grid-template-rows` 0fr → 1fr (cùng kiểu ô xả xuống của Tính lãi vay), ẩn khỏi bàn phím và trình đọc màn hình khi gập, tắt hiệu ứng khi máy bật giảm chuyển động. Dòng con dùng mũi tên ↳ tách riêng nên tên dài xuống hàng vẫn thẳng lề.
+- Máy tính (từ 900px): cột tên rộng hơn (`minmax(190px, 3fr)` cộng 3 cột số `minmax(132px, 1fr)`) để tên tài khoản dài nằm trọn 1 hàng khi khung 900px; điện thoại giữ bố cục 3 dòng cho mỗi mục.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
