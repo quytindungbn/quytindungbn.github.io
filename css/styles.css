@@ -982,7 +982,6 @@ svg { display: block; }
 .bs-management-value { text-align:right; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .bs-management-total { background:#e8f5f1; font-weight:800; }
 .bs-management-total .bs-management-name { font-weight:800; }
-.bs-management-hint { margin:0; padding:10px 16px; font-size:12px; color:var(--text-muted); background:var(--surface-alt); }
 .bs-stats .stat-trend { width:100%; }
 .bs-stats .bs-change { justify-content:flex-start; }
 .bs-stats .stat-trend { font-weight:400; }
@@ -1703,7 +1702,6 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
   .bs-lux .bs-doc .bs-management-numbered .bs-management-value { padding-left: 38px; }
   .bs-lux .bs-doc .bs-management-child .bs-management-value { padding-left: 22px; }
   .bs-lux .bs-doc .bs-sub-in .bs-management-row { padding: 9px 8px 9px 14px; }
-  .bs-lux .bs-doc .bs-sub-in .bs-management-hint { padding: 10px 8px 10px 14px; }
   .bs-lux .bs-doc .bs-management-value::before { color: var(--mut); font: 500 11px 'Inter', sans-serif; }
   .bs-lux .bs-doc .bs-management-value .bs-change { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 8px; font-size: 12.5px; }
   .bs-lux .bs-doc .bs-management-value .bs-change-separator { display: inline; margin-right: 6px; color: #b9c4bf; }

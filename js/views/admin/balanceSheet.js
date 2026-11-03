@@ -86,8 +86,7 @@ function accountLinesHtml(report, key) {
   const januaryStart = yearOpeningReport(reports, report.year_month)?.figures?.start;
   const lines = accountDetailChanges(end.accountDetails?.[key], start.accountDetails?.[key],
     januaryStart?.accountDetails?.[key], historicAccountLines(reports, report.year_month, key));
-  if (!lines) return '<p class="bs-management-hint">Kỳ này được nạp trước khi ứng dụng lưu chi tiết tài khoản. Nạp lại file A01 của đúng tháng để xem từng tài khoản.</p>';
-  return lines.length ? lines.map(accountLineRow).join('') : '<p class="bs-management-hint">Không có số dư cuối kỳ.</p>';
+  return lines?.length ? lines.map(accountLineRow).join('') : '';
 }
 
 function numberedManagementRows(items, start, end, yearOpening, group) {
@@ -574,7 +573,7 @@ function draw(contentEl) {
     ${equityPartRow('Quỹ dự phòng tài chính', 'financialReserve', report, yearStart)}
     ${equityParts.otherEquity || start.equityParts?.otherEquity || yearStart?.equityParts?.otherEquity || hasEquityHistory
       ? equityPartRow('Lợi nhuận chưa phân phối', 'otherEquity', report, yearStart) : ''}`
-    : '<p class="bs-management-hint">Cần nạp lại file kỳ này để hiển thị vốn điều lệ và các quỹ.</p>';
+    : '';
   const fundingItems = report ? [
     { label: 'Tiền gửi khách hàng', key: 'customerDeposits' },
     { label: 'Lãi và phí phải trả', key: 'interestPayable' },
