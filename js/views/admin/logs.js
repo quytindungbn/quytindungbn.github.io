@@ -11,7 +11,11 @@ let noMore = false;
 const PAGE_SIZE = 100;
 
 const POLL_MS = 5000;
+const FOLLOW_UP_MS = 1500;
+const LATEST_LIMIT = 20;
 let pollTimer = null;
+let followUpTimer = null;
+let epoch = 0;
 
 function isThisRouteActive() {
   return (location.hash || '#/').split('?')[0] === '#/admin/nhat-ky';
@@ -26,22 +30,34 @@ export function resetFilters() {
   searchQuery = '';
   loadingMore = false;
   noMore = false;
+  epoch++;
   stopPolling();
 }
 
 export async function render(contentEl) {
-  if (!allRows.length && !noMore) {
+  const firstLoad = !allRows.length && !noMore;
+  if (firstLoad) {
     contentEl.innerHTML = `<div class="card card-pad text-sm text-muted" style="text-align:center">Đang tải...</div>`;
+    const startedIn = epoch;
     try {
       const rows = await S.listActivityLog({ limit: PAGE_SIZE });
-      if (!isThisRouteActive()) return;
+      if (startedIn !== epoch || !isThisRouteActive()) return;
       allRows = rows;
       if (rows.length < PAGE_SIZE) noMore = true;
     } catch (e) {
-      if (isThisRouteActive()) contentEl.innerHTML = `<div class="card card-pad">${emptyState({ iconName: 'clock', title: 'Không tải được', message: e.message || 'Có lỗi xảy ra, thử lại sau.' })}</div>`;
+      if (startedIn === epoch && isThisRouteActive()) contentEl.innerHTML = `<div class="card card-pad">${emptyState({ iconName: 'clock', title: 'Không tải được', message: e.message || 'Có lỗi xảy ra, thử lại sau.' })}</div>`;
       return;
     }
   }
+  drawList(contentEl);
+  startPolling();
+  if (!firstLoad) refreshLatest(contentEl);
+  clearTimeout(followUpTimer);
+  followUpTimer = setTimeout(() => refreshLatest(contentEl), FOLLOW_UP_MS);
+}
+
+export function refresh(contentEl) {
+  if (!allRows.length && !noMore) { render(contentEl); return; }
   drawList(contentEl);
   startPolling();
 }
@@ -52,25 +68,37 @@ function startPolling() {
 }
 function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  clearTimeout(followUpTimer);
+  followUpTimer = null;
 }
 
-async function pollTick() {
+function pollTick() {
   if (!isThisRouteActive()) { stopPolling(); return; }
-
-  if (document.activeElement && document.activeElement.id === 'log-search') return;
   const contentEl = document.getElementById('app-content');
   if (!contentEl) { stopPolling(); return; }
-  try {
-    const latest = await S.listActivityLog({ limit: 20 });
-    if (!isThisRouteActive()) { stopPolling(); return; }
-    const existingIds = new Set(allRows.map((r) => r.id));
-    const freshOnes = latest.filter((r) => !existingIds.has(r.id));
-    if (!freshOnes.length) return;
-    allRows = [...freshOnes, ...allRows];
-    drawList(contentEl);
-  } catch (e) {
+  refreshLatest(contentEl);
+}
 
-  }
+async function refreshLatest(contentEl) {
+  const startedIn = epoch;
+  const stale = () => startedIn !== epoch || !isThisRouteActive() || loadingMore || document.activeElement?.id === 'log-search';
+  if (stale()) return;
+  try {
+    const latest = await S.listActivityLog({ limit: LATEST_LIMIT });
+    if (stale()) return;
+    const known = new Set(allRows.map((r) => r.id));
+    const fresh = latest.filter((r) => !known.has(r.id));
+    if (!fresh.length) return;
+    if (fresh.length === LATEST_LIMIT) {
+      const page = await S.listActivityLog({ limit: PAGE_SIZE });
+      if (stale()) return;
+      allRows = page;
+      noMore = page.length < PAGE_SIZE;
+    } else {
+      allRows = [...fresh, ...allRows];
+    }
+    drawList(contentEl);
+  } catch { return; }
 }
 
 function drawList(contentEl) {
@@ -109,15 +137,17 @@ function drawList(contentEl) {
     if (loadingMore) return;
     loadingMore = true;
     drawList(contentEl);
+    const startedIn = epoch;
     try {
       const last = allRows[allRows.length - 1];
       const more = await S.listActivityLog({ before: last?.createdAt, limit: PAGE_SIZE });
-      if (!isThisRouteActive()) return;
+      if (startedIn !== epoch) return;
       allRows = allRows.concat(more);
       if (more.length < PAGE_SIZE) noMore = true;
     } catch (e) { toast(e.message || 'Có lỗi xảy ra', 'error'); }
+    if (startedIn !== epoch) return;
     loadingMore = false;
-    drawList(contentEl);
+    if (isThisRouteActive()) drawList(contentEl);
   });
 }
 

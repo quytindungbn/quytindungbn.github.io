@@ -1097,7 +1097,7 @@ kiếm tự lên khi GitHub Pages deploy lại, không cần làm gì thêm.
   nhật, đỡ giật hơn.
 - **Import Excel tự cập nhật SĐT/địa chỉ đổi**: đã có sẵn từ trước, không đổi gì — dòng nào trong file
   có SĐT/địa chỉ khác với hồ sơ hiện tại thì tự cập nhật đè lên (ô trống trong file thì GIỮ NGUYÊN dữ
-  liệu cũ, không xóa mất).
+  liệu cũ, không xóa mất — riêng SĐT người vay đã đổi từ mục 10.107: file mới để trống số thì xóa số cũ).
 
 **Việc cần bạn làm**: deploy lại **CẢ 2** Edge Function (`create-account` và `send-due-reminders`) cho
 phần định dạng tiền — phần tốc độ tự lên khi GitHub Pages deploy lại, không cần làm gì thêm trên
@@ -3505,6 +3505,22 @@ create policy "admins add note log" on customer_note_log
 
 - Dùng khi một lỗi chỉ xảy ra trên điện thoại thật mà máy thử không tái hiện được (ví dụ thanh menu dưới ẩn khi vuốt). Cách mở: BẤM GIỮ (~1 giây) dòng "Phiên bản 1.0.N" (cuối cửa sổ "Thêm" trên điện thoại, hoặc cuối thanh bên trên máy tính); bấm nhanh vẫn là kiểm tra cập nhật như cũ. Bảng hiện phiên bản, loại máy/trình duyệt, cỡ màn hình, có mở như ứng dụng đã cài (standalone) hay không, có chuột hay không, rồi nhật ký ~160 sự kiện gần nhất tính từ lúc mở app: chạm, ngón đi ngang, nhấc tay (độ dời, thời gian, trang cuộn bao nhiêu), thanh menu ẨN/HIỆN kèm lý do, vuốt đổi menu, đổi trang, khung nhìn đổi chiều cao (thanh địa chỉ trình duyệt co/giãn). Nút "Sao chép" chép toàn bộ chữ để dán gửi lại.
 - Chỉ giữ trong bộ nhớ của trang, KHÔNG gửi đi đâu, mất khi tải lại. Mã: `js/lib/diag.js` (`diagLog`, `diagReport`, `bindDiagLog`), mở bảng bằng `openDiag()` trong `js/components/shell.js`. Bài thử `ct_menuswipe` mục 12.
+
+### 10.107 Nhập file: người vay không có SĐT trong file mới thì xóa SĐT đang lưu (BẮT BUỘC deploy lại Edge Function `create-account`; KHÔNG cần SQL)
+
+- Trước đây: khách đã có trong hệ thống, file nhập mới để trống ô SĐT thì SĐT cũ được GIỮ NGUYÊN. Giờ: file mới để trống số thì SĐT của người vay bị XÓA (hồ sơ về "chưa có SĐT"), đúng với dữ liệu của file mới.
+- Cách tính theo từng CCCD, trong `supabase/functions/create-account/index.ts` (khối `import`, dùng chung cho `import-preview`): trước vòng lặp chính gom `filePhoneByCccd` = SĐT cuối cùng khác trống trong các dòng còn dư nợ của khách đó. Khách có nhiều hợp đồng chỉ mất số khi KHÔNG dòng nào của họ có số; có số ở dòng nào thì lấy số đó (cùng kết quả như cách ghi tuần tự trước đây).
+- Chỉ áp dụng khi dòng có trường `phone` (nhập từ file/bảng dán luôn gửi trường này; dòng dán thiếu hẳn cột SĐT thì không động tới số) và chỉ với các dòng hợp lệ như vòng lặp xử lý (CCCD đúng 9–12 số, dư nợ > 0). Khách không có mặt trong file, hoặc chỉ có hợp đồng đã tất toán trong file, không bị đổi. Khách mới tạo: như cũ. Người cùng vay (lưu trong `co_people`) không bị ảnh hưởng.
+- An toàn: bước "Xem trước" (mục "Khách hàng đổi thông tin") liệt kê rõ từng khách bị đổi `SĐT: <số cũ> → —` trước khi xác nhận; sau khi nhập vẫn hoàn tác được bằng "Lịch sử nhập" (ảnh chụp `updatedCustomers` đã lưu cột `phone`, nên hoàn tác trả lại số cũ).
+- Việc cần bạn làm: deploy lại Edge Function `create-account` (sửa web không tự áp dụng phần này). Chưa deploy thì máy chủ vẫn chạy cách cũ (giữ số cũ khi file trống).
+
+### 10.108 Nhật ký: mở lại từ menu khác là tự lấy dòng mới ngay (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Lỗi: đang ở menu khác rồi sang "Nhật ký" thì chỉ thấy danh sách cũ đã nhớ sẵn; dòng mới chỉ hiện sau vòng tự làm mới 5 giây, và nếu lúc vắng mặt có hơn 20 dòng mới thì phần vượt 20 dòng không bao giờ hiện (vòng làm mới chỉ lấy 20 dòng mới nhất rồi gắn vào đầu danh sách, để lại khoảng trống).
+- Sửa trong `js/views/admin/logs.js`: mỗi lần mở trang Nhật ký, vẽ ngay danh sách đã nhớ rồi lấy ngay 20 dòng mới nhất (`refreshLatest`), và lấy thêm một lần nữa sau 1,5 giây vì dòng nhật ký do Edge Function `log-admin-action` ghi chậm hơn thao tác vài trăm mili giây; sau đó vẫn 5 giây/lần như cũ. Nếu cả 20 dòng lấy về đều mới (có thể còn dòng nằm giữa) thì tải lại trang đầu 100 dòng thay vì gắn thêm, để không thủng và không trùng.
+- Giữ nguyên: đang gõ ô tìm kiếm thì không làm mới; đang bấm "Tải thêm" thì không làm mới; rời trang thì dừng hẳn (không gọi máy chủ ở menu khác); đổi tài khoản thì bỏ kết quả đang chờ (biến `epoch`).
+- Thêm `export function refresh` cho trang: mỗi lần dữ liệu chung đổi (`notify`) app vẽ lại trang đang xem bằng `refresh` chứ không gọi lại `render`, nên các thông báo dữ liệu không kéo theo lần gọi máy chủ nào.
+- Bài thử `logs_refresh` (6 tình huống: dòng mới hiện ngay khi mở lại; dòng ghi trễ hiện sau ~1,5 giây; 25 dòng dồn; thông báo dữ liệu không gọi máy chủ; đang gõ tìm kiếm; rời trang). Bản cũ không đạt 3 tình huống đầu (dòng mới mất ~4 giây mới hiện, 25 dòng dồn chỉ hiện 20), bản mới đạt cả 6.
 
 ---
 

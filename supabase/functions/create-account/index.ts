@@ -2542,6 +2542,14 @@ Deno.serve(async (req) => {
     const touchedCccds = new Set<string>();
     const newTempPasswords = new Map<string, string>();
 
+    const filePhoneByCccd = new Map<string, string>();
+    for (const row of rows) {
+      const rowCccd = String(row.cccd || '').trim();
+      if (!/^\d{9,12}$/.test(rowCccd) || (Number(row.balance) || 0) <= 0) continue;
+      const rowPhone = String(row.phone || '').replace(/\s/g, '');
+      if (rowPhone) filePhoneByCccd.set(rowCccd, rowPhone);
+    }
+
     for (const row of rows) {
       const cccd = String(row.cccd || '').trim();
       if (!cccd || !/^\d{9,12}$/.test(cccd)) {
@@ -2565,7 +2573,7 @@ Deno.serve(async (req) => {
       if (cust) {
         const patch: Record<string, unknown> = {};
         if (row.name) patch.name = row.name;
-        if (row.phone) patch.phone = String(row.phone).replace(/\s/g, '');
+        if (Object.prototype.hasOwnProperty.call(row, 'phone')) patch.phone = filePhoneByCccd.get(cccd) || '';
         if (row.address) { patch.address = row.address; Object.assign(patch, parsedAddr); }
         cust = { ...cust, ...patch };
         customerByCccd.set(cccd, cust);
