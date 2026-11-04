@@ -98,22 +98,22 @@ export function previousMonthReport(reports, yearMonth) {
   return reports.find((report) => report.year_month === key) || null;
 }
 
-export function provisionAlertTarget(reports, yearMonth, currentMonth) {
-  if (!/^\d{4}-\d{2}$/.test(yearMonth || '')) return null;
-  if (yearMonth < currentMonth) return reports.find((report) => report.year_month === yearMonth) || null;
-  return yearMonth === currentMonth ? previousMonthReport(reports, yearMonth) : null;
+const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+export function provisionAlertTarget(reports, viewedMonth, today = new Date()) {
+  if (today.getDate() > 7) return null;
+  const due = monthKey(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+  if (viewedMonth !== due && viewedMonth !== monthKey(today)) return null;
+  return reports.find((report) => report.year_month === due) || null;
 }
 
-export function provisionAdjustments(report, required) {
+export function provisionAdjustment(report, required) {
   const end = report?.figures?.end;
-  if (!end || !required) return [];
-  const deadline = nextProvisionDeadline(report.year_month);
-  return [
-    ['Dự phòng chung', end.generalProvision, required.generalProvision],
-    ['Dự phòng cụ thể', end.specificProvision, required.specificProvision],
-  ].map(([label, fileValue, requiredValue]) => ({
-    label, gap: provisionDifference(fileValue, requiredValue), yearMonth: report.year_month, deadline,
-  })).filter((item) => item.gap);
+  if (!end || !required) return null;
+  const fileTotal = end.totalProvision ?? end.generalProvision + end.specificProvision;
+  const gap = provisionDifference(fileTotal, required.generalProvision + required.specificProvision);
+  if (gap == null || Math.round(gap) === 0) return null;
+  return { gap: Math.round(gap), yearMonth: report.year_month, deadline: nextProvisionDeadline(report.year_month) };
 }
 
 export function managementRatios(end) {
