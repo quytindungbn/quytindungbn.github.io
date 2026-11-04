@@ -3530,6 +3530,13 @@ create policy "admins add note log" on customer_note_log
 - Trạng thái mở nằm trong bộ nhớ trang (`openRows`): giữ khi đổi kỳ báo cáo, mất khi tải lại trang hoặc đổi tài khoản. Khung con xả xuống bằng lưới `grid-template-rows` 0fr → 1fr (cùng kiểu ô xả xuống của Tính lãi vay), ẩn khỏi bàn phím và trình đọc màn hình khi gập, tắt hiệu ứng khi máy bật giảm chuyển động. Dòng con dùng mũi tên ↳ tách riêng nên tên dài xuống hàng vẫn thẳng lề.
 - Máy tính (từ 900px): cột tên rộng hơn (`minmax(190px, 3fr)` cộng 3 cột số `minmax(132px, 1fr)`) để tên tài khoản dài nằm trọn 1 hàng khi khung 900px; điện thoại giữ bố cục 3 dòng cho mỗi mục.
 
+### 10.110 Quản trị — "Trích lập dự phòng": sang tháng mới vẫn nhắc trích / hoàn nhập của tháng trước (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Trước đây: câu cảnh báo ("Dự phòng chung dư … cần hoàn nhập phần dư" / "thiếu … cần trích bổ sung trong 07 ngày đầu tháng sau") chỉ hiện khi xem đúng báo cáo của tháng đã qua. Vừa nạp file của tháng mới (app mở sẵn tháng mới nhất) là không còn thấy nhắc việc của tháng trước nữa.
+- Nay: xem báo cáo của tháng hiện tại (chưa chốt) thì hiện nhắc việc của tháng liền trước (cần có báo cáo tháng đó và số "Phải trích" đã chốt). Ví dụ ngày 04/11/2026 xem báo cáo tháng 11 vẫn thấy "Tháng 10/2026: Dự phòng chung dư … cần hoàn nhập phần dư". Xem báo cáo của tháng đã qua thì cảnh báo của chính tháng đó như cũ. Mọi câu cảnh báo đều ghi rõ "Tháng MM/YYYY:" ở đầu.
+- Mã: `provisionAlertTarget` (chọn báo cáo cần cảnh báo theo tháng đang xem và tháng hiện tại của máy) và `provisionAdjustments` (chênh lệch từng khoản: chiều dư / thiếu, hạn ngày 07 tháng sau) trong `js/lib/balanceSheetMetrics.js`; `provisionComparison` trong `js/views/admin/balanceSheet.js` chỉ dựng câu chữ. Có bài thử trong `tests/balanceSheetMetrics.test.mjs`.
+- Lưu ý: app không biết việc trích / hoàn nhập đã làm hay chưa nên nhắc việc tháng trước hiện suốt tháng hiện tại, sang tháng kế tiếp thì tự không còn ở màn hình tháng đó (báo cáo của chính tháng cũ vẫn giữ cảnh báo như trước).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

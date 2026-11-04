@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios, monthlyProfit, previousMonthReport } from '../js/lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios, monthlyProfit, previousMonthReport, provisionAlertTarget, provisionAdjustments } from '../js/lib/balanceSheetMetrics.js';
 
 test('biến động dùng số gốc tuyệt đối và không tạo tỷ lệ giả khi gốc bằng 0', () => {
   assert.deepEqual(compareBalance(70_147_510_875, 70_726_277_233), {
@@ -114,4 +114,26 @@ test('tháng liền trước kể cả qua năm', () => {
   assert.equal(previousMonthReport(reports, '2026-04').year_month, '2026-03');
   assert.equal(previousMonthReport(reports, '2026-03'), null);
   assert.equal(previousMonthReport(reports, 'abc'), null);
+});
+
+test('cảnh báo trích / hoàn nhập dự phòng: tháng đã qua thì xét chính nó, sang tháng mới vẫn nhắc tháng liền trước', () => {
+  const reports = ['2026-09', '2026-10', '2026-11'].map((year_month) => ({ year_month }));
+  assert.equal(provisionAlertTarget(reports, '2026-10', '2026-11').year_month, '2026-10');
+  assert.equal(provisionAlertTarget(reports, '2026-09', '2026-11').year_month, '2026-09');
+  assert.equal(provisionAlertTarget(reports, '2026-11', '2026-11').year_month, '2026-10');
+  assert.equal(provisionAlertTarget(reports.filter((item) => item.year_month !== '2026-10'), '2026-11', '2026-11'), null);
+  assert.equal(provisionAlertTarget(reports, '2026-11', '2026-10'), null);
+  assert.equal(provisionAlertTarget([{ year_month: '2026-12' }], '2027-01', '2027-01').year_month, '2026-12');
+  assert.equal(provisionAlertTarget(reports, '', '2026-11'), null);
+});
+
+test('chênh lệch dự phòng ghi rõ tháng, chiều dư / thiếu và hạn ngày 07 tháng sau; bỏ khoản khớp hoặc chưa có số', () => {
+  const report = { year_month: '2026-10', figures: { end: { generalProvision: 357_159_322, specificProvision: 203_000_000 } } };
+  const items = provisionAdjustments(report, { generalProvision: 354_450_000, specificProvision: 203_000_000 });
+  assert.deepEqual(items, [{ label: 'Dự phòng chung', gap: 2_709_322, yearMonth: '2026-10', deadline: '07/11/2026' }]);
+  const short = provisionAdjustments(report, { generalProvision: 360_000_000, specificProvision: 210_000_000 });
+  assert.deepEqual(short.map(({ label, gap }) => [label, gap]), [['Dự phòng chung', -2_840_678], ['Dự phòng cụ thể', -7_000_000]]);
+  assert.deepEqual(provisionAdjustments(report, null), []);
+  assert.deepEqual(provisionAdjustments(null, { generalProvision: 1, specificProvision: 1 }), []);
+  assert.deepEqual(provisionAdjustments(report, { generalProvision: NaN, specificProvision: 203_000_000 }), []);
 });

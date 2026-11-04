@@ -98,6 +98,24 @@ export function previousMonthReport(reports, yearMonth) {
   return reports.find((report) => report.year_month === key) || null;
 }
 
+export function provisionAlertTarget(reports, yearMonth, currentMonth) {
+  if (!/^\d{4}-\d{2}$/.test(yearMonth || '')) return null;
+  if (yearMonth < currentMonth) return reports.find((report) => report.year_month === yearMonth) || null;
+  return yearMonth === currentMonth ? previousMonthReport(reports, yearMonth) : null;
+}
+
+export function provisionAdjustments(report, required) {
+  const end = report?.figures?.end;
+  if (!end || !required) return [];
+  const deadline = nextProvisionDeadline(report.year_month);
+  return [
+    ['Dự phòng chung', end.generalProvision, required.generalProvision],
+    ['Dự phòng cụ thể', end.specificProvision, required.specificProvision],
+  ].map(([label, fileValue, requiredValue]) => ({
+    label, gap: provisionDifference(fileValue, requiredValue), yearMonth: report.year_month, deadline,
+  })).filter((item) => item.gap);
+}
+
 export function managementRatios(end) {
   if (!end) return null;
   const profit = Number(end.profit);
