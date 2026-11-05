@@ -3543,6 +3543,14 @@ create policy "admins add note log" on customer_note_log
 - Sửa: `monthlyDetailPanelHtml` trong `js/views/admin/overview.js` chừa sẵn một dòng trống (`&nbsp;`, `aria-hidden`) cùng cỡ chữ với dòng tỷ lệ ở tab "Dư nợ", nên cả 3 tab có cùng chiều cao từng hàng và cùng kích thước bảng. Không đặt chiều cao cố định nên đúng với mọi phông chữ; số dư ở tab "Dư nợ" nằm đúng vị trí như hai tab kia.
 - Đã đo bằng trình duyệt giả lập khung 1280×900, 390×844 và 360×700 (ngày giả 05/11/2026, có dòng "Th11/26 đang cập nhật"): chiều cao khung và bảng bằng nhau ở cả 3 tab.
 
+### 10.112 Tổng quan — khung "Cần chú ý" nổi rõ hơn nhưng vẫn nhẹ (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Vấn đề: khung "Cần chú ý" trông giống mọi khung khác (tiêu đề chữ thường, vạch mảnh), dễ bị bỏ qua dù là nơi cần xem đầu tiên. Bản đầu làm nổi quá nên đã giảm xuống mức "Mẫu 1 — nhẹ vừa" được duyệt.
+- Giao diện: thanh màu mảnh 3 px trên đầu khung (cùng kiểu thanh vàng của khung Tổng dư nợ); đầu khung có chuông trong vòng tròn nhạt, tiêu đề "Cần chú ý", dòng gợi ý "Bấm từng dòng để xem chi tiết" và nhãn tổng số việc (ví dụ "13 việc" = quá hạn + gần đến hạn + nhắc việc); nền chuyển nhạt từ màu cảnh báo sang trắng; mỗi dòng có nút tròn › cùng màu mức độ. Dòng không có việc (0) chuyển xám để không gây nhiễu.
+- Màu theo tình hình (thuộc tính `data-tone` của `#attention-slot`, do `toneOfStats` quyết định): đỏ khi có hợp đồng quá hạn hoặc nhắc việc đã trễ; vàng khi chỉ còn việc sắp đến hạn; xanh kèm dấu tích và dòng "Chưa có việc cần xử lý" khi không có gì; xám khi tháng đang xem chưa lưu đủ chi tiết hợp đồng/ngày đến hạn (không khẳng định "không có việc" khi chưa có dữ liệu). Đổi tháng ở ô chọn kỳ, hoặc đóng cửa sổ Nhắc việc, đều vẽ lại màu qua `paintAttention`.
+- Mã: `attentionStats`, `toneOfStats`, `attnHeadHtml`, `paintAttention` trong `js/views/admin/overview.js`; CSS `.lux-c-attn`, `.lux-attn-head` ở cuối `css/styles.css`. Bỏ tiêu đề rời `<h3 class="lux-c-attn-h">` (điện thoại) và `.lux-attn-title` (máy tính) vì tiêu đề nay nằm trong khung ở cả hai cỡ màn hình.
+- Đã đối chiếu từng điểm ảnh với bản xem trước đã duyệt (1280×900 và 390×844, 3 trạng thái đỏ / vàng / xanh): giống hệt; kiểm tra đổi qua 12 tháng không lỗi, tháng cũ chưa lưu chi tiết hiện màu xám.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

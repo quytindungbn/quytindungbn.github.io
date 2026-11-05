@@ -148,13 +148,46 @@ function heroInnerHtml(m, ctx) {
       </div>`;
 }
 
-const ATTN_TITLE = '<h3 class="lux-h lux-attn-title"><span>Cần chú ý</span></h3>';
+const ATTN_HINTS = { calm: 'Chưa có việc cần xử lý', mute: 'Kỳ này chưa lưu đủ chi tiết' };
+
+function attentionStats(m, ctx) {
+  const notes = dueNotesSummary();
+  if (isCurrentMonth(m)) {
+    const overdue = ctx.live.overdue.length;
+    const near = ctx.live.nearDue.length;
+    return { total: overdue + near + notes.count, red: overdue > 0 || notes.late > 0, gold: near > 0 || notes.count > 0, partial: false };
+  }
+  const snap = snapshotOverview(m);
+  const overdue = snap.hasDetail ? snap.overdueRows.length : 0;
+  const near = snap.hasAttention ? snap.nearRows.length : 0;
+  return { total: overdue + near, red: overdue > 0, gold: near > 0, partial: !snap.hasAttention };
+}
+
+function toneOfStats(st) {
+  return st.red ? 'red' : st.gold ? 'gold' : st.partial ? 'mute' : 'calm';
+}
+
+function attentionTone(m, ctx) {
+  return toneOfStats(attentionStats(m, ctx));
+}
+
+function attnHeadHtml(st) {
+  const tone = toneOfStats(st);
+  return `<div class="lux-attn-head"><span class="lux-attn-ico">${icon(tone === 'calm' ? 'checkCircle' : 'bell')}</span>
+    <div class="lux-attn-ttl"><b>Cần chú ý</b><small>${ATTN_HINTS[tone] || 'Bấm từng dòng để xem chi tiết'}</small></div>
+    ${st.total ? `<span class="lux-attn-total">${formatNumber(st.total)} việc</span>` : ''}</div>`;
+}
+
+function paintAttention(slot, m, ctx) {
+  slot.dataset.tone = attentionTone(m, ctx);
+  slot.innerHTML = attentionInnerHtml(m, ctx);
+}
 
 function notesAttnRowHtml() {
   const n = dueNotesSummary();
   if (!n.count) return '';
   const tone = n.late ? 'red' : 'gold';
-  return `<button type="button" class="lux-attn-row" id="tile-notes" data-count="${n.count}">
+  return `<button type="button" class="lux-attn-row is-${tone}" id="tile-notes" data-count="${n.count}">
         <span class="mk ${tone}"></span>
         <span class="t"><b>Nhắc việc đến hạn</b><small>${formatNumber(n.customers)} khách hàng${n.late ? ` · ${formatNumber(n.late)} trễ hạn` : ''}${n.soon ? ` · ${formatNumber(n.soon)} sắp đến hạn` : ''}</small></span>
         <span class="v"><b class="lux-bubble" aria-label="${n.count} việc đến hạn">${n.count > 99 ? '99+' : formatNumber(n.count)}</b></span>${LUX_CHEVRON}
@@ -167,7 +200,7 @@ function redrawAttention(root) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === selectedDashboardMonth) || months[months.length - 1];
   const ctx = { live: computeLiveOverview(), dashboardData: { months, prevMonthOf, yearStartOf } };
-  slot.innerHTML = attentionInnerHtml(m, ctx);
+  paintAttention(slot, m, ctx);
   bindAttention(root, m, ctx.live);
 }
 
@@ -183,13 +216,14 @@ function attentionInnerHtml(m, ctx) {
     const L = ctx.live;
     const overdueMoney = compactVnd(L.overdueTotal);
     const nearDueMoney = compactVnd(L.nearDueTotal);
-    return `${ATTN_TITLE}${notesAttnRowHtml()}
-      <button type="button" class="lux-attn-row" id="tile-overdue">
+    const st = attentionStats(m, ctx);
+    return `${attnHeadHtml(st)}${notesAttnRowHtml()}
+      <button type="button" class="lux-attn-row ${L.overdue.length ? 'is-red' : 'is-zero'}" id="tile-overdue">
         <span class="mk red"></span>
         <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(L.overdue.length)} hợp đồng</small></span>
         <span class="v red">${overdueMoney.num}<small>${overdueMoney.unit}</small></span>${LUX_CHEVRON}
       </button>
-      <button type="button" class="lux-attn-row" id="tile-neardue">
+      <button type="button" class="lux-attn-row ${L.nearDue.length ? 'is-gold' : 'is-zero'}" id="tile-neardue">
         <span class="mk gold"></span>
         <span class="t"><b>Gần đến hạn</b><small>${formatNumber(L.nearDue.length)} hợp đồng</small></span>
         <span class="v gold">${nearDueMoney.num}<small>${nearDueMoney.unit}</small></span>${LUX_CHEVRON}
@@ -198,21 +232,22 @@ function attentionInnerHtml(m, ctx) {
   const snap = snapshotOverview(m);
   const overdueMoney = compactVnd(snap.hasDetail ? snap.overdueTotal : 0);
   const nearMoney = compactVnd(snap.hasAttention ? snap.nearTotal : 0);
-  return `${ATTN_TITLE}
-      ${snap.hasDetail ? `<button type="button" class="lux-attn-row" id="tile-overdue">
+  const st = attentionStats(m, ctx);
+  return `${attnHeadHtml(st)}
+      ${snap.hasDetail ? `<button type="button" class="lux-attn-row ${snap.overdueRows.length ? 'is-red' : 'is-zero'}" id="tile-overdue">
         <span class="mk red"></span>
         <span class="t"><b>Hợp đồng quá hạn</b><small>${formatNumber(snap.overdueRows.length)} hợp đồng · tại ${m.label}</small></span>
         <span class="v red">${overdueMoney.num}<small>${overdueMoney.unit}</small></span>${LUX_CHEVRON}
-      </button>` : `<div class="lux-attn-row is-static">
+      </button>` : `<div class="lux-attn-row is-static is-zero">
         <span class="mk red"></span>
         <span class="t"><b>Hợp đồng quá hạn</b><small>${m.label} chưa lưu chi tiết hợp đồng</small></span>
         <span class="v red">—</span>
       </div>`}
-      ${snap.hasAttention ? `<button type="button" class="lux-attn-row" id="tile-neardue">
+      ${snap.hasAttention ? `<button type="button" class="lux-attn-row ${snap.nearRows.length ? 'is-gold' : 'is-zero'}" id="tile-neardue">
         <span class="mk gold"></span>
         <span class="t"><b>Gần đến hạn</b><small>${formatNumber(snap.nearRows.length)} hợp đồng · tại ${m.label}</small></span>
         <span class="v gold">${nearMoney.num}<small>${nearMoney.unit}</small></span>${LUX_CHEVRON}
-      </button>` : `<div class="lux-attn-row is-static">
+      </button>` : `<div class="lux-attn-row is-static is-zero">
         <span class="mk gold"></span>
         <span class="t"><b>Gần đến hạn</b><small>${m.label} chốt trước khi lưu ngày đến hạn nên không tính lại được</small></span>
         <span class="v gold">—</span>
@@ -285,8 +320,7 @@ export function render(contentEl) {
     <section class="lux-hero lux-c-hero" id="hero-slot" aria-label="Tổng dư nợ">${heroInnerHtml(dashboardMonth, ctx)}
     </section>
 
-    <h3 class="lux-h lux-h--plain lux-c-attn-h"><span>Cần chú ý</span></h3>
-    <div class="lux-card lux-attn lux-c-attn" id="attention-slot">${attentionInnerHtml(dashboardMonth, ctx)}
+    <div class="lux-card lux-attn lux-c-attn" id="attention-slot" data-tone="${attentionTone(dashboardMonth, ctx)}">${attentionInnerHtml(dashboardMonth, ctx)}
     </div>
 
     ${debtDashboardHtml(dashboardData, dashboardMonth)}
@@ -1064,7 +1098,7 @@ function selectMonth(root, ym) {
 
   const ctx = { live: computeLiveOverview(), dashboardData: { months, prevMonthOf, yearStartOf } };
   root.querySelector('#hero-slot').innerHTML = heroInnerHtml(m, ctx);
-  root.querySelector('#attention-slot').innerHTML = attentionInnerHtml(m, ctx);
+  paintAttention(root.querySelector('#attention-slot'), m, ctx);
   bindAttention(root, m, ctx.live);
 
   const oldScrollLeft = [...root.querySelectorAll('#trend-chart-slot .trend-scroll')].map((el) => el.scrollLeft);
