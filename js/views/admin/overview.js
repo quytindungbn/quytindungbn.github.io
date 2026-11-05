@@ -845,7 +845,7 @@ function monthlyDetailPanelHtml(metric, months, prevMonthOf, yearStartOf) {
     const big = compactParts(value);
     return `<div class="mdl-row">
       <div class="mdl-m"><b><span class="mdl-t">Tháng </span>${x.yearMonth.slice(5, 7)}/${x.yearMonth.slice(0, 4)}</b>${x.live ? '<small>đang cập nhật</small>' : ''}</div>
-      <div class="mdl-v"><b>${big.num}</b> <span class="mdl-u">${big.unit}</span>${metric.ratioKey ? `<small>${formatPercent(x[metric.ratioKey])} dư nợ</small>` : ''}</div>
+      <div class="mdl-v"><b>${big.num}</b> <span class="mdl-u">${big.unit}</span>${metric.ratioKey ? `<small>${formatPercent(x[metric.ratioKey])} dư nợ</small>` : '<small aria-hidden="true">&nbsp;</small>'}</div>
       ${kpiCompareHtml('So tháng trước', value, prev ? Number(prev[metric.key]) : null, metric.mode)}
       ${kpiCompareHtml('So đầu năm', value, yearStart ? Number(yearStart[metric.key]) : null, metric.mode)}
     </div>`;

@@ -3537,6 +3537,12 @@ create policy "admins add note log" on customer_note_log
 - Mã: `provisionAlertTarget(reports, viewedMonth, today)` chọn báo cáo cần nhắc và `provisionAdjustment(report, required)` tính chênh lệch tổng + hạn (`nextProvisionDeadline`) trong `js/lib/balanceSheetMetrics.js`; `provisionComparison` trong `js/views/admin/balanceSheet.js` chỉ dựng câu chữ. Bài thử trong `tests/balanceSheetMetrics.test.mjs` (các ngày 01, 04, 07, 08 của tháng, giữa tháng, qua năm).
 - Lịch sử: bản 1.0.9 từng hiện 2 dòng (chung, cụ thể) suốt tháng hiện tại; đã đổi theo yêu cầu thành 1 dòng và chỉ đến ngày 07.
 
+### 10.111 Tổng quan — "Tổng hợp tăng giảm" → "Xem chi tiết": 3 tab cùng một kích thước (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Lỗi: ở cửa sổ "Chi tiết theo từng tháng", tab "Dư nợ" có hàng thấp hơn hai tab "Nợ xấu" và "Lãi phải thu" (hai tab sau có thêm dòng tỷ lệ "x% dư nợ" dưới số dư), nên mỗi lần đổi tab bảng co giãn: máy tính khung cửa sổ đổi cao 750 ↔ 792 px và nhích lên xuống, điện thoại độ dài phải cuộn đổi từ 690 sang 822 px.
+- Sửa: `monthlyDetailPanelHtml` trong `js/views/admin/overview.js` chừa sẵn một dòng trống (`&nbsp;`, `aria-hidden`) cùng cỡ chữ với dòng tỷ lệ ở tab "Dư nợ", nên cả 3 tab có cùng chiều cao từng hàng và cùng kích thước bảng. Không đặt chiều cao cố định nên đúng với mọi phông chữ; số dư ở tab "Dư nợ" nằm đúng vị trí như hai tab kia.
+- Đã đo bằng trình duyệt giả lập khung 1280×900, 390×844 và 360×700 (ngày giả 05/11/2026, có dòng "Th11/26 đang cập nhật"): chiều cao khung và bảng bằng nhau ở cả 3 tab.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
