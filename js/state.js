@@ -1,6 +1,6 @@
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { describeOrgPatch } from './lib/activityLabels.js';
-import { heirNamesOf, heirOfContract, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, phoneHolders } from './lib/coBorrower.js';
+import { heirNamesOf, heirOfContract, savedCoPeopleOf, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, phoneHolders } from './lib/coBorrower.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { validateDraft, planChanged, firstRemindOn, nextAfterDone, addDaysIso, todayIso, isDue } from './lib/customerNotes.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
@@ -618,6 +618,11 @@ export function listCoPeople(customerId) {
   }));
 }
 
+export function listSavedCoPeople(customerId) {
+  const c = getCustomer(customerId);
+  return c ? savedCoPeopleOf(c.coPeople, activeContractsOf(customerId), c.name) : [];
+}
+
 export function oaAddBlockReason(customerId) {
   const c = getCustomer(customerId);
   if (!c || String(c.phone || '').trim() || hasOaPhone(activeContractsOf(customerId), c)) return '';
@@ -703,9 +708,14 @@ export async function setContractOa(contractId, patch, { optimistic = true } = {
 
 export async function saveCoPhone(customerId, name, phone) {
   const c = getCustomer(customerId);
+  const savedOnly = listSavedCoPeople(customerId).some((p) => samePerson(p.name, name));
   const { result } = await runCoSave(customerId, async () => {
     const res = await callCreateAccountFunction(getSession()?.sbToken, { type: 'save-co-phone', customerId, name, phone });
-    if (!res.ok) throw coSaveError(res);
+    if (!res.ok) {
+      const err = coSaveError(res);
+      if (savedOnly && /không ghi người cùng vay/.test(err.message)) err.message = 'Máy chủ chưa cập nhật để sửa số người cùng vay đã lưu — cần deploy lại Edge Function create-account (docs mục 10.113).';
+      throw err;
+    }
     return res;
   });
   if (c && Array.isArray(result.people)) c.coPeople = result.people.map((x) => ({ name: String(x?.name || ''), phone: String(x?.phone || '') })).filter((x) => x.name);
@@ -713,6 +723,17 @@ export async function saveCoPhone(customerId, name, phone) {
     const ct = getContract(r.id);
     if (ct) { ct.oaToMain = r.oaToMain !== false; ct.oaToCo = !!r.oaToCo; ct.oaCoKey = r.oaCoKey || null; }
   }
+  notify();
+}
+
+export async function removeCoPerson(customerId, name) {
+  const c = getCustomer(customerId);
+  const { result } = await runCoSave(customerId, async () => {
+    const res = await callCreateAccountFunction(getSession()?.sbToken, { type: 'remove-co-person', customerId, name });
+    if (!res.ok) throw coSaveError(res);
+    return res;
+  });
+  if (c && Array.isArray(result.people)) c.coPeople = result.people.map((x) => ({ name: String(x?.name || ''), phone: String(x?.phone || '') })).filter((x) => x.name);
   notify();
 }
 

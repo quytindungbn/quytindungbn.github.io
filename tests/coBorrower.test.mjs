@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normPersonName, samePerson, samePhone, heirOfContract, heirNamesOf, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, shortPersonName, checkCoPhone, sanitizeCoPhoneInput, logRecipient, phoneHolders } from '../js/lib/coBorrower.js';
+import { normPersonName, samePerson, samePhone, heirOfContract, heirNamesOf, savedCoPeopleOf, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, shortPersonName, checkCoPhone, sanitizeCoPhoneInput, logRecipient, phoneHolders } from '../js/lib/coBorrower.js';
 
 test('so sánh tên: bỏ qua hoa/thường và khoảng trắng thừa, giữ dấu', () => {
   assert.equal(normPersonName('  Trần   Văn  Bình '), 'trần văn bình');
@@ -15,6 +15,18 @@ test('heirNamesOf: bỏ tên trống, tên trùng khách và tên lặp', () => 
   assert.deepEqual(heirNamesOf(cts, 'Lê Quang Ninh'), ['ĐỖ THỊ HOA', 'VÕ VĂN AN']);
   assert.deepEqual(heirNamesOf([], 'A'), []);
   assert.deepEqual(heirNamesOf(null, 'A'), []);
+});
+
+test('savedCoPeopleOf: người còn trong sổ nhưng không còn hợp đồng đang vay nào ghi tên', () => {
+  const book = [
+    { name: 'TRẦN THỊ BÍCH', phone: '0988777666' }, { name: 'Lê Văn Khánh', phone: '' },
+    { name: 'ĐỖ THỊ HOA', phone: '0911222333' }, { name: 'lê quang ninh', phone: '0900000000' }, { name: '  ', phone: '1' },
+  ];
+  assert.deepEqual(savedCoPeopleOf(book, [{ heirName: 'Đỗ  Thị Hoa' }], 'Lê Quang Ninh'),
+    [{ name: 'TRẦN THỊ BÍCH', phone: '0988777666' }, { name: 'Lê Văn Khánh', phone: '' }]);
+  assert.deepEqual(savedCoPeopleOf(book, [], 'Lê Quang Ninh').map((p) => p.name), ['TRẦN THỊ BÍCH', 'Lê Văn Khánh', 'ĐỖ THỊ HOA']);
+  assert.deepEqual(savedCoPeopleOf(null, [{ heirName: 'A' }], 'X'), []);
+  assert.equal(savedCoPeopleOf([{ name: 'A B', phone: '1' }, { name: 'a   b', phone: '2' }], [], 'X').length, 1);
 });
 
 test('samePhone: so sánh số điện thoại bỏ ký tự lạ, +84/84 coi như 0', () => {

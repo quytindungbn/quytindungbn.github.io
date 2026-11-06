@@ -31,6 +31,18 @@ export function coPhoneOf(people, name) {
   return p ? String(p.phone || '') : '';
 }
 
+export function savedCoPeopleOf(people, contracts, customerName) {
+  const onContracts = heirNamesOf(contracts, customerName);
+  const out = [];
+  for (const p of people || []) {
+    const name = String(p?.name || '').replace(/\s+/g, ' ').trim();
+    if (!name || samePerson(name, customerName)) continue;
+    if (onContracts.some((n) => samePerson(n, name)) || out.some((x) => samePerson(x.name, name))) continue;
+    out.push({ name, phone: String(p?.phone || '') });
+  }
+  return out;
+}
+
 export function contractOa(contract, customer) {
   const enabled = contract?.oaEnabled !== false;
   const coName = heirOfContract(contract, customer?.name);

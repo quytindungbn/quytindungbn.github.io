@@ -3551,6 +3551,21 @@ create policy "admins add note log" on customer_note_log
 - Mã: `attentionStats`, `toneOfStats`, `attnHeadHtml`, `paintAttention` trong `js/views/admin/overview.js`; CSS `.lux-c-attn`, `.lux-attn-head` ở cuối `css/styles.css`. Bỏ tiêu đề rời `<h3 class="lux-c-attn-h">` (điện thoại) và `.lux-attn-title` (máy tính) vì tiêu đề nay nằm trong khung ở cả hai cỡ màn hình.
 - Đã đối chiếu từng điểm ảnh với bản xem trước đã duyệt (1280×900 và 390×844, 3 trạng thái đỏ / vàng / xanh): giống hệt; kiểm tra đổi qua 12 tháng không lỗi, tháng cũ chưa lưu chi tiết hiện màu xám.
 
+### 10.113. Người cùng vay đã lưu không còn "biến mất" khi khách tất toán (CẦN deploy lại Edge Function create-account; không cần SQL mới)
+
+**Nguyên nhân**: sổ người cùng vay (`customers.co_people`, mục 10.83/10.84) vẫn nằm trong hồ sơ khách có tài khoản Use sau khi tất toán, nhưng thẻ "Người cùng vay & Zalo OA" ở chi tiết khách chỉ liệt kê người **đang ghi trên hợp đồng còn dư nợ** (`listCoPeople`). Hết hợp đồng thì thẻ ẩn hẳn — nhìn như bị xóa, không xem/sửa/gọi được và cũng không biết số còn lưu.
+
+**Màn hình** (chi tiết khách / Quản lý User, `js/views/admin/customers.js`, `S.listSavedCoPeople`, `savedCoPeopleOf` trong `js/lib/coBorrower.js`):
+- Người còn trong sổ nhưng **không còn hợp đồng đang vay nào ghi tên** hiện ở mục **"Đã lưu — tự dùng lại khi vay lại"** (khách hết hợp đồng thì thẻ có tên "Người cùng vay đã lưu"): tên, số điện thoại, nút sao chép, nút Gọi, bút sửa số (hoặc "Nhập số điện thoại" nếu chưa có) và nút thùng rác **Xóa khỏi sổ** (có hỏi lại; chỉ người không còn hợp đồng nào ghi tên mới xóa được).
+- Lần vay sau, hợp đồng ghi **đúng tên người đó** (không phân biệt hoa/thường, khoảng trắng thừa; dấu tiếng Việt vẫn phải đúng) thì số **tự điền**, lựa chọn gửi Zalo OA cũng được dùng lại — như cũ, không phải nhập lại. Người đó chuyển từ mục "Đã lưu" lên mục người cùng vay của hợp đồng.
+
+**Máy chủ** (`create-account`, CẦN deploy lại):
+- `save-co-phone` nay cũng nhận người **đã có trong sổ** dù chưa có hợp đồng nào ghi tên (trước đó báo "Hợp đồng của khách này không ghi người cùng vay…").
+- Type mới `remove-co-person` ({ customerId, name } — quyền Quản lý OA hoặc Quản lý User, nhân viên theo Thôn/Xóm): xóa người khỏi sổ; từ chối nếu còn hợp đồng đang vay ghi tên người đó; Nhật ký ghi `remove-co-person`.
+- **Không bao giờ dọn hồ sơ khách khi chưa cất được sổ người cùng vay**: lúc nhập file, hồ sơ hết dư nợ chưa có Use mà sổ không cất được vào `co_people_archive` (chưa chạy SQL mục 10.84, lỗi bảng…) thì **giữ lại hồ sơ** (kết quả nhập báo "Giữ lại N hồ sơ…"); trước đây vẫn xóa và mất sổ. `delete-customer` cũng từ chối khi chưa cất được sổ, và cất sổ trước khi xóa.
+
+**Chưa deploy lại `create-account`**: màn hình vẫn hiện danh sách "Đã lưu" (đọc từ dữ liệu có sẵn) nhưng sửa số / xóa người đã lưu sẽ báo cần deploy; mọi thứ khác chạy như cũ. Không cần SQL mới (dùng `co_people` và `co_people_archive` của mục 10.83 / 10.84).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

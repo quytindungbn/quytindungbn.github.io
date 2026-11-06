@@ -927,8 +927,9 @@ function coCardMode(customerId, contracts) {
 }
 function coCardShown(customerId, contracts, { canOa, canEdit }) {
   const mode = coCardMode(customerId, contracts);
-  if (mode === 'none') return false;
-  if (mode === 'detail' && !S.listCoPeople(customerId).length) return canOa;
+  const saved = S.listSavedCoPeople(customerId).length > 0;
+  if (mode === 'none') return saved && (canOa || canEdit);
+  if (mode === 'detail' && !S.listCoPeople(customerId).length) return canOa || (saved && canEdit);
   return canOa || canEdit;
 }
 
@@ -941,7 +942,7 @@ function phoneDupHtml(hs) {
     <ul>${hs.slice(0, 4).map((h) => `<li>${who(h)}</li>`).join('')}${hs.length > 4 ? `<li>… và ${hs.length - 4} người khác</li>` : ''}</ul>
     ${sameMain ? '<div class="cd-pp-dup-n">Trùng số người vay nên gửi OA chỉ gửi 1 tin cho số này.</div>' : ''}`;
 }
-function coPersonHtml(p, { canEdit, editing, pending }) {
+function coPersonHtml(p, { canEdit, editing, pending, saved = false }) {
   const key = escapeHtml(normPersonName(p.name));
   const dial = String(p.phone || '').replace(/[^\d+]/g, '');
   const callBtn = dial
@@ -960,11 +961,13 @@ function coPersonHtml(p, { canEdit, editing, pending }) {
           <button type="button" class="btn btn-primary btn-sm" data-pp-save>Lưu</button><button type="button" class="btn btn-outline btn-sm" data-pp-cancel>Hủy</button></div>
         <div class="cd-pp-dup" id="pp-dup" hidden></div>
       </div>` : '';
-  return `<div class="cd-pp${p.phone ? '' : ' is-need'}${editing ? ' is-editing' : ''}" data-person="${key}">
+  const delBtn = saved && canEdit
+    ? `<button type="button" class="cd-pp-del" data-pp-del="${key}" aria-label="Xóa ${escapeHtml(p.name)} khỏi sổ người cùng vay" title="Xóa khỏi sổ">${icon('trash', 'icon-sm')}</button>` : '';
+  return `<div class="cd-pp${p.phone || saved ? '' : ' is-need'}${saved ? ' is-saved' : ''}${editing ? ' is-editing' : ''}" data-person="${key}">
       <div class="cd-pp-top">
         <span class="cd-pp-av is-co" style="background:${colorFor(p.name)}">${escapeHtml(initials(p.name))}</span>
-        <div class="cd-pp-tx"><small>Người cùng vay</small><b>${escapeHtml(p.name)}</b>${phoneLine}</div>
-        ${callBtn}
+        <div class="cd-pp-tx"><small>${saved ? 'Đã lưu' : 'Người cùng vay'}</small><b>${escapeHtml(p.name)}</b>${phoneLine}</div>
+        ${saved ? `<span class="cd-pp-acts">${callBtn}${delBtn}</span>` : callBtn}
       </div>
       ${form}
     </div>`;
@@ -1045,9 +1048,13 @@ function coCardHtml(c, contracts, { canOa, canEdit, editKey = null, pending = fa
   const oaSection = canOa && oaRows ? `
     <div class="cdo-sec">${icon('send', 'icon-sm')} Gửi Zalo OA theo từng hợp đồng</div>
     <div class="cdo-rows">${oaRows}</div>` : '';
-  const title = people.length ? (canOa ? 'Người cùng vay &amp; Zalo OA' : 'Người cùng vay') : 'Zalo OA theo hợp đồng';
-  return `<h3 class="cd-h"><span>${title}</span>${people.length ? `<em>${people.length}</em>` : ''}</h3>
-    ${warn}${peopleHtml}${mainForm}${pickSection}${oaSection}`;
+  const saved = S.listSavedCoPeople(c.id);
+  const savedSection = saved.length ? `${people.length || oaSection ? '<div class="cd-pp-saved-h">Đã lưu — tự dùng lại khi vay lại</div>' : ''}${saved.map((p) => coPersonHtml(p, { canEdit, editing: !!editKey && normPersonName(p.name) === editKey, pending: false, saved: true })).join('')}
+    <p class="cd-pp-saved-n">Số điện thoại được giữ lại. Khi người này lại được ghi trên hợp đồng mới, số tự điền — không cần nhập lại.</p>` : '';
+  const title = people.length ? (canOa ? 'Người cùng vay &amp; Zalo OA' : 'Người cùng vay') : oaSection || !saved.length ? 'Zalo OA theo hợp đồng' : 'Người cùng vay đã lưu';
+  const total = people.length + saved.length;
+  return `<h3 class="cd-h"><span>${title}</span>${total ? `<em>${total}</em>` : ''}</h3>
+    ${warn}${peopleHtml}${mainForm}${pickSection}${oaSection}${savedSection}`;
 }
 
 function contractCardHtml(ct) {
@@ -1209,6 +1216,8 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
         const canEditCo = canManageZalo || canManageUse;
         let ppEditKey = null, ppPending = null, ppSaving = false;
         const drawPp = () => {
+          if (!coCardShown(customerId, contracts, { canOa: canManageZalo, canEdit: canEditCo })) { ppCard.style.display = 'none'; ppCard.innerHTML = ''; syncOaAddBtn(); return; }
+          ppCard.style.display = '';
           ppCard.innerHTML = coCardHtml(S.getCustomer(customerId) || c, contracts, { canOa: canManageZalo, canEdit: canEditCo, editKey: ppEditKey, pending: !!ppPending });
           if (ppEditKey) { ppCard.querySelector('#pp-phone')?.focus(); updateDup(); }
           syncOaAddBtn();
@@ -1222,7 +1231,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           box.hidden = !hs.length;
           box.innerHTML = hs.length ? phoneDupHtml(hs) : '';
         };
-        const personOf = (key) => S.listCoPeople(customerId).find((p) => normPersonName(p.name) === key);
+        const personOf = (key) => [...S.listCoPeople(customerId), ...S.listSavedCoPeople(customerId)].find((p) => normPersonName(p.name) === key);
         const onCoSaved = (e) => {
           if (!ppCard.isConnected) { document.removeEventListener('qtd-co-saved', onCoSaved); return; }
           if (e.detail && e.detail.customerId === customerId && !ppEditKey) drawPp();
@@ -1275,6 +1284,25 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
           if (call) {
             const p = personOf(call.dataset.ppCall);
             if (p) { S.logCall(customerId, p.phone, 'co', p.name); redrawCalls(); }
+            return;
+          }
+          const del = e.target.closest('[data-pp-del]');
+          if (del) {
+            const p = personOf(del.dataset.ppDel);
+            if (!p) return;
+            confirmDialog({
+              title: 'Xóa khỏi sổ người cùng vay?',
+              message: `Xóa <b>${escapeHtml(p.name)}</b>${p.phone ? ` (${escapeHtml(formatPhoneDisplay(p.phone))})` : ''} khỏi sổ của khách này. Lần sau người này lại được ghi trên hợp đồng thì phải nhập lại số điện thoại.`,
+              danger: true, confirmLabel: 'Xóa khỏi sổ',
+              onConfirm: async () => {
+                try {
+                  await S.removeCoPerson(customerId, p.name);
+                  toast('Đã xóa khỏi sổ người cùng vay', 'success');
+                  if (ppEditKey === normPersonName(p.name)) { ppEditKey = null; ppPending = null; }
+                  drawPp();
+                } catch (err) { toast(err.message || 'Có lỗi xảy ra', 'error'); }
+              },
+            });
             return;
           }
           const need = e.target.closest('[data-oa-need]');

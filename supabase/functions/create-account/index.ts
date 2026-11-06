@@ -772,25 +772,28 @@ async function applyCoPrefToNewContracts(custById: Map<string, any>, ctRows: any
   return updates.length;
 }
 
-async function archiveCoPeopleBeforePrune(customerIds: string[]): Promise<number> {
-  let saved = 0;
+async function archiveCoPeopleBeforePrune(customerIds: string[]): Promise<Set<string>> {
+  const unsafe = new Set<string>();
   try {
     for (const part of chunkArray(customerIds, 150)) {
       const { data: custs, error } = await admin.from('customers').select('id, cccd, co_people').in('id', part);
-      if (error) return saved;
-      const withBook = (custs || []).filter((c: any) => String(c.cccd ?? '').trim() && mergeCoBooks(c.co_people, []).length);
-      if (!withBook.length) continue;
-      const { data: old, error: oldErr } = await admin.from('co_people_archive').select('cccd, people').in('cccd', withBook.map((c: any) => c.cccd));
-      if (oldErr) return saved;
+      if (error) continue;
+      const withBook = (custs || []).filter((c: any) => mergeCoBooks(c.co_people, []).length);
+      for (const c of withBook as any[]) if (!String(c.cccd ?? '').trim()) unsafe.add(c.id);
+      const keyed = (withBook as any[]).filter((c) => String(c.cccd ?? '').trim());
+      if (!keyed.length) continue;
+      const { data: old, error: oldErr } = await admin.from('co_people_archive').select('cccd, people').in('cccd', keyed.map((c) => c.cccd));
+      if (oldErr) { keyed.forEach((c) => unsafe.add(c.id)); console.error('Lỗi đọc sổ người cùng vay đã cất:', oldErr.message); continue; }
       const oldByCccd = new Map<string, unknown>((old || []).map((r: any) => [r.cccd, r.people]));
-      const rows = withBook.map((c: any) => ({ cccd: c.cccd, people: mergeCoBooks(oldByCccd.get(c.cccd), c.co_people), updated_at: new Date().toISOString() }));
+      const rows = keyed.map((c) => ({ cccd: c.cccd, people: mergeCoBooks(oldByCccd.get(c.cccd), c.co_people), updated_at: new Date().toISOString() }));
       const { error: upErr } = await admin.from('co_people_archive').upsert(rows, { onConflict: 'cccd' });
-      if (upErr) console.error('Lỗi cất sổ người cùng vay:', upErr.message); else saved += rows.length;
+      if (upErr) { keyed.forEach((c) => unsafe.add(c.id)); console.error('Lỗi cất sổ người cùng vay:', upErr.message); }
     }
   } catch (e) {
     console.error('Lỗi cất sổ người cùng vay:', e);
+    customerIds.forEach((id) => unsafe.add(id));
   }
-  return saved;
+  return unsafe;
 }
 
 async function restoreCoPeopleFromArchive(custById: Map<string, any>, ctRows: any[]): Promise<number> {
@@ -1402,7 +1405,10 @@ Deno.serve(async (req) => {
     if (!('co_people' in customer)) return json({ ok: false, reason: 'Chưa chạy SQL gửi Zalo OA theo từng hợp đồng trên Supabase (docs mục 10.83).' }, 500);
     const { data: ctRows } = await admin.from('contracts').select('id, heir_name, oa_to_co, oa_co_key').eq('customer_id', customerId).gt('balance', 0);
     const named = (ctRows || []).filter((c: any) => samePerson(heirOfRow(c, customer.name), personName));
-    if (!named.length) return json({ ok: false, reason: `Hợp đồng của khách này không ghi người cùng vay "${personName}".` });
+    const people: CoEntry[] = (Array.isArray(customer.co_people) ? customer.co_people : [])
+      .map((x: any) => ({ name: String(x?.name ?? ''), phone: String(x?.phone ?? ''), ...(cleanCoPref(x?.oa) ? { oa: cleanCoPref(x?.oa) } : {}) })).filter((x: any) => x.name);
+    const idx = people.findIndex((x) => samePerson(x.name, personName));
+    if (!named.length && idx < 0) return json({ ok: false, reason: `Hợp đồng của khách này không ghi người cùng vay "${personName}".` });
     const raw = String(body.phone ?? '').trim();
     let phone = '';
     if (raw) {
@@ -1410,9 +1416,6 @@ Deno.serve(async (req) => {
       if (!clean) return json({ ok: false, reason: 'Số điện thoại phải đủ 10 số và bắt đầu bằng số 0.' });
       phone = clean;
     }
-    const people: CoEntry[] = (Array.isArray(customer.co_people) ? customer.co_people : [])
-      .map((x: any) => ({ name: String(x?.name ?? ''), phone: String(x?.phone ?? ''), ...(cleanCoPref(x?.oa) ? { oa: cleanCoPref(x?.oa) } : {}) })).filter((x: any) => x.name);
-    const idx = people.findIndex((x) => samePerson(x.name, personName));
     if (idx >= 0) people[idx] = { ...people[idx], name: people[idx].name, phone };
     else people.push({ name: String((named[0] as any).heir_name || personName).replace(/\s+/g, ' ').trim(), phone });
     const { error: upErr } = await admin.from('customers').update({ co_people: people }).eq('id', customerId);
@@ -1428,6 +1431,44 @@ Deno.serve(async (req) => {
     await logActivity(caller.id, caller.name || caller.username, caller.username, 'save-co-phone',
       `${phone ? 'Lưu' : 'Xóa'} số điện thoại người cùng vay "**${personName}**" của khách hàng "**${customer.name || customerId}**"`);
     return json({ ok: true, people, contracts: changed });
+  }
+
+  if (body.type === 'remove-co-person') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const selfToken = authHeader.replace(/^Bearer\s+/i, '');
+    const selfClaims = selfToken ? await verifyJwt(selfToken) : null;
+    if (!selfClaims || selfClaims.app_role !== 'admin') return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const { data: caller, error: callerErr } = await admin.from('admins').select('*').eq('id', selfClaims.row_id).maybeSingle();
+    if (callerErr || !caller) return json({ ok: false, reason: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    const isSuperCaller = caller.role === 'super';
+    const canOa = isSuperCaller || caller.can_manage_zalo_oa === true;
+    if (!canOa && caller.can_manage_users !== true) return json({ ok: false, reason: 'Bạn không có quyền sửa thông tin người cùng vay.' }, 403);
+    const customerId = String(body.customerId || '').trim();
+    const personName = String(body.name || '').replace(/\s+/g, ' ').trim();
+    if (!customerId || !personName) return json({ ok: false, reason: 'Thiếu thông tin người cùng vay.' }, 400);
+    const { data: customer } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
+    if (!customer) return json({ ok: false, reason: 'Không tìm thấy khách hàng.' }, 404);
+    if (!isSuperCaller) {
+      const allowedThon: string[] = caller.allowed_thon || [];
+      const allowedXom: string[] = caller.allowed_xom || [];
+      if (!(allowedThon.includes(customer.thon) || allowedXom.includes(`${customer.thon}||${customer.xom}`))) {
+        return json({ ok: false, reason: 'Bạn không có quyền với khách hàng này.' }, 403);
+      }
+    }
+    if (!('co_people' in customer)) return json({ ok: false, reason: 'Chưa chạy SQL gửi Zalo OA theo từng hợp đồng trên Supabase (docs mục 10.83).' }, 500);
+    const { data: ctRows } = await admin.from('contracts').select('id, heir_name').eq('customer_id', customerId).gt('balance', 0);
+    if ((ctRows || []).some((c: any) => samePerson(heirOfRow(c, customer.name), personName))) {
+      return json({ ok: false, reason: `Hợp đồng đang vay vẫn ghi người cùng vay "${personName}" — chỉ xóa được người không còn hợp đồng nào ghi tên.` });
+    }
+    const people: CoEntry[] = (Array.isArray(customer.co_people) ? customer.co_people : [])
+      .map((x: any) => ({ name: String(x?.name ?? ''), phone: String(x?.phone ?? ''), ...(cleanCoPref(x?.oa) ? { oa: cleanCoPref(x?.oa) } : {}) })).filter((x: any) => x.name);
+    const next = people.filter((x) => !samePerson(x.name, personName));
+    if (next.length === people.length) return json({ ok: true, people });
+    const { error: upErr } = await admin.from('customers').update({ co_people: next }).eq('id', customerId);
+    if (upErr) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
+    await logActivity(caller.id, caller.name || caller.username, caller.username, 'remove-co-person',
+      `Xóa người cùng vay "**${personName}**" khỏi sổ của khách hàng "**${customer.name || customerId}**"`);
+    return json({ ok: true, people: next });
   }
 
   if (body.type === 'save-main-phone') {
@@ -2261,6 +2302,9 @@ Deno.serve(async (req) => {
   if (body.type === 'delete-customer') {
     const customerId = String(body.customerId || '').trim();
     if (!customerId) return json({ ok: false, reason: 'Thiếu mã khách hàng.' }, 400);
+    if ((await archiveCoPeopleBeforePrune([customerId])).has(customerId)) {
+      return json({ ok: false, reason: 'Chưa cất được sổ người cùng vay của khách này (cần chạy SQL docs mục 10.84) nên chưa xóa.' }, 409);
+    }
     const { data: deleted, error } = await admin.from('customers').delete().eq('id', customerId).select('name, cccd').maybeSingle();
     if (error) return json({ ok: false, reason: 'Lỗi hệ thống, thử lại sau.' }, 500);
     await logActivity(callerAdmin.id, callerAdmin.name || callerAdmin.username, callerAdmin.username, 'delete-customer', `Xóa tài khoản khách hàng "**${deleted?.name || customerId}**"${deleted?.cccd ? ` (CCCD **${deleted.cccd}**)` : ''}`);
@@ -2851,14 +2895,19 @@ Deno.serve(async (req) => {
       importDetails.deletedCustomers = [];
       if (pruneRows.length) {
         const deletedIds = new Set<string>();
+        let keptForBook = 0;
         for (const part of chunkArray(pruneRows.map((c: any) => c.id as string), 150)) {
-          const { data: zaloRows } = await admin.from('zalo_customers').select('*').in('customer_id', part);
-          await archiveCoPeopleBeforePrune(part);
-          const { error } = await admin.from('customers').delete().in('id', part);
+          const unsafe = await archiveCoPeopleBeforePrune(part);
+          keptForBook += unsafe.size;
+          const deletable = part.filter((id) => !unsafe.has(id));
+          if (!deletable.length) continue;
+          const { data: zaloRows } = await admin.from('zalo_customers').select('*').in('customer_id', deletable);
+          const { error } = await admin.from('customers').delete().in('id', deletable);
           if (error) break;
-          part.forEach((id) => deletedIds.add(id));
+          deletable.forEach((id) => deletedIds.add(id));
           importSnapshot.zaloCustomers.push(...(zaloRows || []));
         }
+        if (keptForBook) result.errors.push(`Giữ lại ${keptForBook} hồ sơ khách hết dư nợ vì chưa cất được sổ người cùng vay (chạy SQL docs mục 10.84 rồi nhập lại để dọn).`);
         result.deletedCustomers = deletedIds.size;
         importSnapshot.deletedCustomers = pruneRows.filter((c: any) => deletedIds.has(c.id));
         importDetails.deletedCustomers = importSnapshot.deletedCustomers.map((c: any) => ({ name: c.name || '', cccd: c.cccd || '' }));
