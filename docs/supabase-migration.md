@@ -3571,6 +3571,50 @@ create policy "admins add note log" on customer_note_log
 - Theo yêu cầu: bỏ dòng "Số điện thoại được giữ lại. Khi người này lại được ghi trên hợp đồng mới, số tự điền — không cần nhập lại." đặt dưới danh sách người đã lưu ở thẻ người cùng vay (chi tiết khách / Quản lý User). Tiêu đề nhỏ "Đã lưu — tự dùng lại khi vay lại" giữ nguyên; cách hoạt động (giữ số, tự điền khi vay lại) không đổi.
 - Mã: bỏ thẻ `<p class="cd-pp-saved-n">` trong `coCardHtml` (`js/views/admin/customers.js`) và quy tắc CSS `.cd-pp-saved-n` (`css/styles.css`).
 
+### 10.115 Gửi tự động không bỏ sót: bắt lỗi từng hợp đồng, gửi song song, đọc đủ dữ liệu, GỬI BÙ sau 15 phút (CẦN deploy lại `send-due-reminders` + chạy 1 câu SQL thêm Cron Job; KHÔNG đổi web)
+
+**Vì sao làm**: có hợp đồng đã thêm vào "Báo lãi tự động" nhưng đúng ngày không thấy tin trong Lịch sử gửi, trong khi các hợp đồng khác vẫn gửi được. Đọc lại `send-due-reminders` thì thấy hàm cũ có những chỗ bỏ sót mà KHÔNG để lại dòng nào, và mỗi hợp đồng chỉ được xét đúng 1 ngày nên lỡ là chờ kỳ sau:
+- Các hợp đồng được gửi lần lượt từng cái (không song song), mỗi cái khoảng 1–2 giây, lời gọi Zalo không có thời gian chờ tối đa. Supabase cắt mỗi lượt ở 150 giây (gói miễn phí) / 400 giây (gói trả phí) và cắt là mọi hợp đồng xếp sau bị bỏ qua, không ghi gì.
+- Một hợp đồng báo lỗi khi xử lý làm dừng cả lượt (vòng lặp không bắt lỗi riêng từng hợp đồng).
+- Danh sách hợp đồng / khách / gửi tự động chỉ đọc một lần, Supabase mặc định trả tối đa 1.000 dòng một lần đọc: vượt 1.000 thì phần sau dòng 1.000 không bao giờ được gửi (phần chốt số liệu tháng thì đã phân trang từ trước).
+- Không lấy được mã truy cập Zalo OA thì bỏ cả lượt, không ghi vào lịch sử.
+- Không gửi bù: lỡ ngày thì thôi.
+
+**Đã sửa** (`supabase/functions/send-due-reminders/index.ts`, các hằng số ở đầu file):
+1. **Bắt lỗi riêng từng hợp đồng**: hợp đồng lỗi ghi `console.error` rồi làm tiếp các hợp đồng khác (`loiHeThong` trong kết quả).
+2. **Gửi song song 5 khách một lúc** (`CONCURRENCY`); các hợp đồng của CÙNG một khách vẫn làm lần lượt (để quy tắc "khách chưa đăng ký Zalo" chạy đúng). Mỗi lần gọi Zalo chờ tối đa 15 giây (`ZALO_FETCH_TIMEOUT_MS`), quá giờ thì ghi "Zalo không phản hồi sau 15 giây — tin có thể chưa gửi được".
+3. **Ngân sách thời gian 100 giây** (`RUN_BUDGET_MS`): hết giờ thì ngừng nhận hợp đồng mới (không bị Supabase cắt giữa lúc đang gửi, tránh tin đã đi mà chưa kịp ghi). Phần còn lại để lượt bù làm tiếp; số hợp đồng còn lại ghi ở `chuaXuLy` và `console.error`.
+4. **Đọc dữ liệu có phân trang** (`readAllRows`) cho hợp đồng, khách, danh sách gửi tự động — không còn giới hạn 1.000 dòng. Không đọc được danh sách khách / hợp đồng thì hàm báo lỗi 500 có lý do (lượt bù thử lại) thay vì chạy với dữ liệu thiếu; không đọc được danh sách gửi tự động thì vẫn gửi thông báo đẩy, bỏ qua Zalo và ghi cảnh báo.
+5. **Không lấy được mã truy cập Zalo OA**: mỗi hợp đồng đến lượt có 1 dòng "Thất bại — Chưa lấy được mã truy cập Zalo OA nên chưa gửi được" trong **Lịch sử gửi** (dòng này KHÔNG tính là đã thử nên lượt bù vẫn gửi lại được).
+6. **Chạy nền**: nếu có `EdgeRuntime.waitUntil` (Supabase có sẵn) thì hàm trả lời ngay `202 {"ok":true,"started":true}` rồi làm việc trong nền, nên việc cron/`pg_net` chờ phản hồi quá lâu rồi ngắt kết nối không còn ảnh hưởng. Không có `waitUntil` thì chạy ngay trong lần gọi như trước. Thêm `?wait=1` vào địa chỉ để chạy ngay và nhận bảng số liệu (dùng khi thử tay). Lượt `purpose=monthly-close` luôn chạy ngay như cũ.
+7. **Gửi bù**: hàm chạy lại bao nhiêu lần trong ngày cũng KHÔNG gửi trùng, vì hợp đồng nào hôm nay đã có tin thành công, hoặc đã thử (kể cả thất bại do Zalo báo lỗi), hoặc mới gửi tay trong 5 ngày, thì bị bỏ qua. Nhờ vậy lượt chạy thứ hai, 15 phút sau lượt 8h sáng, chỉ làm đúng những hợp đồng lượt đầu chưa kịp làm (hết giờ, lỗi, chưa có mã Zalo, cron lỡ, mới thêm vào danh sách trong 15 phút đó). Lần gửi mà Zalo đã báo lỗi thì KHÔNG bị gửi lại (để khỏi có 2 dòng thất bại / 2 tin).
+
+**Việc cần bạn làm**:
+1. Deploy lại Edge Function **`send-due-reminders`**: Supabase → Edge Functions → `send-due-reminders` → dán đè toàn bộ `supabase/functions/send-due-reminders/index.ts` → Deploy.
+2. Thêm Cron Job gửi bù (SQL Editor). Câu lệnh sao chép đúng địa chỉ và mã bí mật của Cron Job hằng ngày đang có (không cần gõ lại), đặt chạy sau 15 phút (1h15 UTC = 8h15 giờ Việt Nam):
+
+```sql
+select cron.schedule(
+  'send-due-reminders-catchup',
+  '15 1 * * *',
+  command
+)
+from cron.job
+where command like '%functions/v1/send-due-reminders%'
+  and command not like '%monthly-close%'
+  and coalesce(jobname, '') <> 'send-due-reminders-catchup'
+order by jobid
+limit 1;
+```
+
+Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh from cron.job order by jobid;` phải thấy thêm dòng `send-due-reminders-catchup` với lịch `15 1 * * *` (cùng 2 Cron Job cũ: hằng ngày `0 1 * * *` và chốt tháng `0 17 * * *`). Nếu Cron Job hằng ngày của bạn đặt giờ khác 1h UTC thì đổi `15 1` thành "phút + 15" của giờ đó. Muốn bỏ lượt bù: `select cron.unschedule('send-due-reminders-catchup');`.
+
+**Cách xem kết quả**: **Quản lý OA → Lịch sử gửi** (các tin của lượt 8h00 và lượt bù 8h15); **Edge Functions → `send-due-reminders` → Logs** có dòng `send-due-reminders daily-reminders {"laiHangThang":…,"zaloBaoLai":…,"loiHeThong":0,"chuaXuLy":0}` cho mỗi lượt. `loiHeThong` > 0 là có hợp đồng bị lỗi (xem dòng `Lỗi xử lý hợp đồng` ngay phía trên); `chuaXuLy` > 0 là lượt đó hết giờ.
+
+**Không đổi**: ngày gửi của từng hợp đồng (mốc ngày vay hoặc ngày lãi đã trả đến, định kỳ 1–4 tháng, ngày cụ thể), mẫu tin, người nhận, quy tắc 5 ngày sau gửi tay, thông báo đẩy cho khách. Hợp đồng thêm vào danh sách SAU lượt bù (15 phút) thì vẫn phải chờ kỳ sau.
+
+**Kiểm thử**: `tests/sendDueReminders.test.mjs` (18 kịch bản) chạy THẬT file `send-due-reminders/index.ts` trong môi trường giả lập (`tests/helpers/reminderSim.mjs`: giả Supabase có giới hạn 1.000 dòng, giả Zalo, giả đồng hồ), cần Node 22.13 trở lên. Đặt `REMINDER_SRC=<file .ts>` để chạy cùng các kịch bản trên một bản khác.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

@@ -19,6 +19,13 @@ const MONTHLY_REMINDER_OFFSETS = [0, 2];
 
 const DEFAULT_NEAR_DUE_DAYS_ZALO = 15;
 
+const ZALO_FETCH_TIMEOUT_MS = 15000;
+const ZALO_TOKEN_TIMEOUT_MS = 10000;
+const RUN_BUDGET_MS = 100000;
+const CONCURRENCY = 5;
+const READ_PAGE_SIZE = 1000;
+const ZALO_UNAVAILABLE_MESSAGE = 'Chưa lấy được mã truy cập Zalo OA nên chưa gửi được';
+
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
@@ -424,6 +431,7 @@ async function getZaloAccessToken(): Promise<string | null> {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', secret_key: ZALO_SECRET_KEY },
       body: new URLSearchParams({ app_id: ZALO_APP_ID, grant_type: 'refresh_token', refresh_token: tokenRow.refresh_token }),
+      signal: AbortSignal.timeout(ZALO_TOKEN_TIMEOUT_MS),
     });
     const json = await res.json();
     if (!json.access_token) { console.error('Lỗi làm mới Zalo access token:', json); return null; }
@@ -456,6 +464,42 @@ async function removeCustomerFromZaloLists(customerId: string): Promise<void> {
 
 const noZaloCustomerIds = new Set<string>();
 
+async function readAllRows(table: string, columns: string, orderBy: string[]): Promise<{ rows: any[]; error: string | null }> {
+  const rows: any[] = [];
+  for (let from = 0; ;) {
+    let query: any = admin.from(table).select(columns);
+    for (const col of orderBy) query = query.order(col, { ascending: true });
+    const { data, error } = await query.range(from, from + READ_PAGE_SIZE - 1);
+    if (error) return { rows, error: String(error.message || error) };
+    const page: any[] = data || [];
+    if (!page.length) return { rows, error: null };
+    rows.push(...page);
+    from += page.length;
+  }
+}
+
+async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>, shouldStop: () => boolean): Promise<T[]> {
+  let next = 0;
+  const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length && !shouldStop()) {
+      const item = items[next++];
+      try { await worker(item); } catch (e) { console.error('Lỗi không mong đợi khi xử lý:', e); }
+    }
+  });
+  await Promise.all(lanes);
+  return items.slice(next);
+}
+
+async function writeZaloLog(logRow: Record<string, unknown>, who?: 'main' | 'co', whoName?: string): Promise<void> {
+  if (who) { logRow.recipient_who = who; logRow.recipient_name = whoName || null; }
+  const { error: logErr } = await admin.from('zalo_send_log').insert(logRow);
+  if (logErr && who && /recipient_(who|name)/i.test(String(logErr.message || ''))) {
+
+    delete logRow.recipient_who; delete logRow.recipient_name;
+    await admin.from('zalo_send_log').insert(logRow);
+  }
+}
+
 async function sendZaloTemplate(opts: {
   accessToken: string; phone: string; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string;
@@ -477,13 +521,16 @@ async function sendZaloTemplate(opts: {
         template_data: opts.templateData,
         tracking_id: `qtd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       }),
+      signal: AbortSignal.timeout(ZALO_FETCH_TIMEOUT_MS),
     });
     const json = await res.json();
     if (json.error === 0) { status = 'success'; }
     else if (isZaloNoAccountError(json)) { errorMessage = ZALO_NO_ACCOUNT_MESSAGE; noAccount = true; console.error('SĐT không có Zalo:', json); }
     else { errorMessage = json.message || JSON.stringify(json); console.error('Lỗi gửi tin Zalo:', json); }
   } catch (e: any) {
-    errorMessage = String(e?.message || e);
+    errorMessage = e?.name === 'TimeoutError' || e?.name === 'AbortError'
+      ? `Zalo không phản hồi sau ${ZALO_FETCH_TIMEOUT_MS / 1000} giây — tin có thể chưa gửi được`
+      : String(e?.message || e);
     console.error('Lỗi gọi API gửi tin Zalo:', e);
   }
   if (noAccount && !opts.deferNoAccount) { noZaloCustomerIds.add(opts.customerId); await removeCustomerFromZaloLists(opts.customerId); }
@@ -491,13 +538,7 @@ async function sendZaloTemplate(opts: {
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null, triggered_by: 'auto',
   };
-  if (opts.who) { logRow.recipient_who = opts.who; logRow.recipient_name = opts.whoName || null; }
-  const { error: logErr } = await admin.from('zalo_send_log').insert(logRow);
-  if (logErr && opts.who && /recipient_(who|name)/i.test(String(logErr.message || ''))) {
-
-    delete logRow.recipient_who; delete logRow.recipient_name;
-    await admin.from('zalo_send_log').insert(logRow);
-  }
+  await writeZaloLog(logRow, opts.who, opts.whoName);
   return { ok: status === 'success', noAccount };
 }
 
@@ -641,41 +682,51 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
   };
 }
 
-Deno.serve(async (req) => {
-  if (CRON_SECRET) {
-    const provided = req.headers.get('x-cron-secret') || '';
-    if (provided !== CRON_SECRET) return new Response('Unauthorized', { status: 401 });
-  }
+type RunOutcome = { status: number; body: Record<string, unknown> };
 
-  const purpose = new URL(req.url).searchParams.get('purpose') || 'daily-reminders';
+async function runReminders(purpose: string): Promise<RunOutcome> {
   noZaloCustomerIds.clear();
 
+  const startedAt = Date.now();
   const now = new Date();
-  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0 };
+  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0, loiHeThong: 0, chuaXuLy: 0 };
+  const warnings: string[] = [];
 
   const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_interest_id, zalo_template_due_id, zalo_near_due_days, push_templates').limit(1).maybeSingle();
   const pushTpl = (orgRow?.push_templates as typeof DEFAULT_PUSH_TEMPLATES | null) || DEFAULT_PUSH_TEMPLATES;
   const shortName = orgRow?.short_name || 'Quỹ tín dụng';
   const NOTI_TITLE = renderNotificationTemplate(pushTpl.title, { Ten_quy: shortName });
 
-  const { data: contracts, error: ctErr } = await admin.from('contracts').select('*');
-  if (ctErr) return new Response(JSON.stringify({ ok: false, reason: ctErr.message }), { status: 500 });
+  const contractsRead = await readAllRows('contracts', '*', ['id']);
+  if (contractsRead.error) return { status: 500, body: { ok: false, reason: contractsRead.error } };
+  const contracts = contractsRead.rows;
 
-  let customersRes = await admin.from('customers').select('id, name, phone, co_people');
-  if (customersRes.error) customersRes = await admin.from('customers').select('id, name, phone');
-  const customersData = customersRes.data;
+  let customersRead = await readAllRows('customers', 'id, name, phone, co_people', ['id']);
+  if (customersRead.error) customersRead = await readAllRows('customers', 'id, name, phone', ['id']);
+  if (customersRead.error) return { status: 500, body: { ok: false, reason: customersRead.error } };
   const customerMap = new Map<string, ZaloCustomer>(
-    (customersData || []).map((c: any) => [c.id, { name: c.name, phone: c.phone, co_people: c.co_people ?? null }])
+    customersRead.rows.map((c: any) => [c.id, { name: c.name, phone: c.phone, co_people: c.co_people ?? null }])
   );
 
   const contractsByCustomer = new Map<string, any[]>();
-  for (const c of contracts || []) contractsByCustomer.set((c as any).customer_id, [...(contractsByCustomer.get((c as any).customer_id) || []), c]);
+  for (const c of contracts) {
+    const list = contractsByCustomer.get(c.customer_id);
+    if (list) list.push(c); else contractsByCustomer.set(c.customer_id, [c]);
+  }
 
-  const zaloAccessToken = (purpose !== 'monthly-close' && (orgRow?.zalo_template_interest_id || orgRow?.zalo_template_due_id)) ? await getZaloAccessToken() : null;
+  const zaloWanted = purpose !== 'monthly-close' && !!(orgRow?.zalo_template_interest_id || orgRow?.zalo_template_due_id);
+  const zaloAccessToken = zaloWanted ? await getZaloAccessToken() : null;
+  const zaloTokenFailed = zaloWanted && !zaloAccessToken;
+  if (zaloTokenFailed) warnings.push('Không lấy được mã truy cập Zalo OA');
 
-  const { data: autoSendRows } = await admin.from('zalo_auto_send_list').select('contract_id, kind, custom_day, interval_months');
+  let autoRead = await readAllRows('zalo_auto_send_list', 'contract_id, kind, custom_day, interval_months', ['created_at', 'id']);
+  if (autoRead.error) autoRead = await readAllRows('zalo_auto_send_list', 'contract_id, kind, custom_day, interval_months', ['id']);
+  if (autoRead.error) {
+    console.error('Không đọc được danh sách gửi tự động Zalo:', autoRead.error);
+    warnings.push('Không đọc được danh sách gửi tự động Zalo');
+  }
   const autoSendMap = new Map<string, { kind: string; customDay: number | null; intervalMonths: number }>(
-    (autoSendRows || []).map((r: any) => [r.contract_id, { kind: r.kind, customDay: r.custom_day, intervalMonths: r.interval_months || 1 }])
+    autoRead.rows.map((r: any) => [r.contract_id, { kind: r.kind, customDay: r.custom_day, intervalMonths: r.interval_months || 1 }])
   );
 
   async function shouldSend(contractId: string, kind: string): Promise<boolean> {
@@ -686,8 +737,21 @@ Deno.serve(async (req) => {
     return daysBetween(new Date(data[0].sent_at), now) >= 1;
   }
 
+  async function attemptedAutoZaloToday(contractId: string): Promise<boolean> {
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const { data, error } = await admin.from('zalo_send_log').select('error_message')
+      .eq('contract_id', contractId).eq('triggered_by', 'auto').gte('sent_at', dayStart.toISOString()).limit(20);
+    if (error) {
+      console.error('Không kiểm tra được lịch sử gửi tự động hôm nay:', error);
+      return true;
+    }
+    return (data || []).some((r: any) => !String(r.error_message || '').startsWith(ZALO_UNAVAILABLE_MESSAGE));
+  }
+
   async function shouldSendAutoZalo(contractId: string, kind: string): Promise<boolean> {
     if (!await shouldSend(contractId, kind)) return false;
+    if (await attemptedAutoZaloToday(contractId)) return false;
     const { data, error } = await admin.from('zalo_send_log').select('sent_at')
       .eq('contract_id', contractId).eq('triggered_by', 'manual').eq('status', 'success')
       .order('sent_at', { ascending: false }).limit(1).maybeSingle();
@@ -701,9 +765,36 @@ Deno.serve(async (req) => {
     await admin.from('notification_log').insert({ owner_id: customerId, contract_id: contractId, kind, sent_at: now.toISOString() });
   }
 
-  for (const ct of (purpose === 'monthly-close' ? [] : contracts || [])) {
+  async function logZaloUnavailable(ct: any, customer: ZaloCustomer, templateId: string, kind: string): Promise<void> {
+    for (const r of contractRecipients(ct, customer)) {
+      await writeZaloLog({
+        contract_id: ct.id, customer_id: ct.customer_id, kind, template_id: templateId,
+        phone: r.phone, status: 'error', error_message: ZALO_UNAVAILABLE_MESSAGE, triggered_by: 'auto',
+      }, r.who, r.who === 'co' ? heirOfRow(ct, customer.name) : String(customer.name || ''));
+    }
+  }
+
+  async function autoZalo(ct: any, kind: string, logKind: string): Promise<void> {
+    const picked = pickZaloTemplate(ct, now, orgRow);
+    if (!picked) return;
+    const customer = customerMap.get(ct.customer_id);
+    if (!customer || !contractRecipients(ct, customer).length || noZaloCustomerIds.has(ct.customer_id)) return;
+    if (!await shouldSendAutoZalo(ct.id, logKind)) return;
+    if (!zaloAccessToken) {
+      if (zaloTokenFailed) await logZaloUnavailable(ct, customer, picked.templateId, kind);
+      return;
+    }
+    const zaloOk = await sendZaloToCustomer({
+      accessToken: zaloAccessToken, customer, contract: ct, contractsOfCustomer: contractsByCustomer.get(ct.customer_id) || [ct], templateId: picked.templateId,
+      templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
+      contractId: ct.id, customerId: ct.customer_id, kind,
+    });
+    if (zaloOk) { await logSent(ct.customer_id, ct.id, logKind); result.zaloBaoLai++; }
+  }
+
+  async function handleContract(ct: any): Promise<void> {
     const status = effectiveStatus(ct, now);
-    if (status === 'da_tat_toan') continue;
+    if (status === 'da_tat_toan') return;
 
     if (isMonthlyReminderDay(interestAnchorDate(ct), now)) {
       if (await shouldSend(ct.id, 'lai_hang_thang')) {
@@ -725,43 +816,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    {
-      const autoEntry = autoSendMap.get(ct.id);
-      if (autoEntry?.kind === 'lai_hang_thang_auto' && zaloAccessToken
-        && isMonthlyReminderDayOnce(interestAnchorDate(ct), now, autoEntry.intervalMonths)) {
-        const picked = pickZaloTemplate(ct, now, orgRow);
-        if (picked) {
-          const customer = customerMap.get(ct.customer_id);
-          if (customer && contractRecipients(ct, customer).length && !noZaloCustomerIds.has(ct.customer_id) && await shouldSendAutoZalo(ct.id, 'zalo_lai_hang_thang')) {
-            const zaloOk = await sendZaloToCustomer({
-              accessToken: zaloAccessToken, customer, contract: ct, contractsOfCustomer: contractsByCustomer.get(ct.customer_id) || [ct], templateId: picked.templateId,
-              templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
-              contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_auto',
-            });
-            if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_lai_hang_thang'); result.zaloBaoLai++; }
-          }
-        }
-      }
+    const autoEntry = autoSendMap.get(ct.id);
+    if (autoEntry?.kind === 'lai_hang_thang_auto' && isMonthlyReminderDayOnce(interestAnchorDate(ct), now, autoEntry.intervalMonths)) {
+      await autoZalo(ct, 'lai_hang_thang_auto', 'zalo_lai_hang_thang');
     }
-
-    {
-      const autoEntry = autoSendMap.get(ct.id);
-      if (autoEntry?.kind === 'lai_hang_thang_custom_day' && autoEntry.customDay
-        && isCustomDayDue(autoEntry.customDay, interestAnchorDate(ct), now, autoEntry.intervalMonths)
-        && interestDaysAccrued(ct, now) > 20 && zaloAccessToken) {
-        const picked = pickZaloTemplate(ct, now, orgRow);
-        if (picked) {
-          const customer = customerMap.get(ct.customer_id);
-          if (customer && contractRecipients(ct, customer).length && !noZaloCustomerIds.has(ct.customer_id) && await shouldSendAutoZalo(ct.id, 'zalo_lai_ngay_cu_the')) {
-            const zaloOk = await sendZaloToCustomer({
-              accessToken: zaloAccessToken, customer, contract: ct, contractsOfCustomer: contractsByCustomer.get(ct.customer_id) || [ct], templateId: picked.templateId,
-              templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
-              contractId: ct.id, customerId: ct.customer_id, kind: 'lai_hang_thang_custom_day',
-            });
-            if (zaloOk) { await logSent(ct.customer_id, ct.id, 'zalo_lai_ngay_cu_the'); result.zaloBaoLai++; }
-          }
-        }
-      }
+    if (autoEntry?.kind === 'lai_hang_thang_custom_day' && autoEntry.customDay
+      && isCustomDayDue(autoEntry.customDay, interestAnchorDate(ct), now, autoEntry.intervalMonths)
+      && interestDaysAccrued(ct, now) > 20) {
+      await autoZalo(ct, 'lai_hang_thang_custom_day', 'zalo_lai_ngay_cu_the');
     }
 
     const inst = nextInstallmentInfo(ct, now);
@@ -789,6 +851,26 @@ Deno.serve(async (req) => {
     }
   }
 
+  if (purpose !== 'monthly-close') {
+    const openCount = (list: any[]) => list.filter((c) => effectiveStatus(c, now) !== 'da_tat_toan').length;
+    const budgetOver = () => Date.now() - startedAt > RUN_BUDGET_MS;
+    let left = 0;
+    const notStarted = await runPool([...contractsByCustomer.values()], CONCURRENCY, async (list: any[]) => {
+      for (let i = 0; i < list.length; i++) {
+        if (budgetOver()) { left += openCount(list.slice(i)); return; }
+        try {
+          await handleContract(list[i]);
+        } catch (e) {
+          result.loiHeThong++;
+          console.error('Lỗi xử lý hợp đồng', list[i]?.code, e);
+        }
+      }
+    }, budgetOver);
+    for (const list of notStarted) left += openCount(list);
+    result.chuaXuLy = left;
+    if (left > 0) console.error(`Hết thời gian của lượt chạy: còn ${left} hợp đồng chưa xử lý, lượt bù sau đó sẽ làm tiếp.`);
+  }
+
   try {
     const cutoff = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
     await admin.from('activity_log').delete().lt('created_at', cutoff);
@@ -805,9 +887,7 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       console.error('Lỗi chốt số liệu tháng:', e);
-      return new Response(JSON.stringify({ ok: false, reason: 'Không chốt được số liệu tháng.' }), {
-        status: 500, headers: { 'Content-Type': 'application/json' },
-      });
+      return { status: 500, body: { ok: false, reason: 'Không chốt được số liệu tháng.' } };
     }
   }
 
@@ -818,5 +898,30 @@ Deno.serve(async (req) => {
     console.error('Lỗi chốt bù tháng 08/2026:', e);
   }
 
-  return new Response(JSON.stringify({ ok: true, ...result }), { headers: { 'Content-Type': 'application/json' } });
+  console.info('send-due-reminders', purpose, JSON.stringify(result));
+  return { status: 200, body: { ok: true, ...result, ...(warnings.length ? { warnings } : {}) } };
+}
+
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+Deno.serve(async (req) => {
+  if (CRON_SECRET) {
+    const provided = req.headers.get('x-cron-secret') || '';
+    if (provided !== CRON_SECRET) return new Response('Unauthorized', { status: 401 });
+  }
+
+  const url = new URL(req.url);
+  const purpose = url.searchParams.get('purpose') || 'daily-reminders';
+  const work: Promise<RunOutcome> = runReminders(purpose).catch((e: any) => {
+    console.error('Lỗi lượt chạy send-due-reminders:', e);
+    return { status: 500, body: { ok: false, reason: String(e?.message || e) } };
+  });
+
+  const runtime = (globalThis as any).EdgeRuntime;
+  if (purpose !== 'monthly-close' && url.searchParams.get('wait') !== '1' && runtime && typeof runtime.waitUntil === 'function') {
+    runtime.waitUntil(work);
+    return new Response(JSON.stringify({ ok: true, started: true }), { status: 202, headers: JSON_HEADERS });
+  }
+  const out = await work;
+  return new Response(JSON.stringify(out.body), { status: out.status, headers: JSON_HEADERS });
 });
