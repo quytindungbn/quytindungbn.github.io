@@ -3566,6 +3566,11 @@ create policy "admins add note log" on customer_note_log
 
 **Chưa deploy lại `create-account`**: màn hình vẫn hiện danh sách "Đã lưu" (đọc từ dữ liệu có sẵn) nhưng sửa số / xóa người đã lưu sẽ báo cần deploy; mọi thứ khác chạy như cũ. Không cần SQL mới (dùng `co_people` và `co_people_archive` của mục 10.83 / 10.84).
 
+### 10.114 Người cùng vay đã lưu — bỏ câu ghi chú dưới mục "Đã lưu" (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- Theo yêu cầu: bỏ dòng "Số điện thoại được giữ lại. Khi người này lại được ghi trên hợp đồng mới, số tự điền — không cần nhập lại." đặt dưới danh sách người đã lưu ở thẻ người cùng vay (chi tiết khách / Quản lý User). Tiêu đề nhỏ "Đã lưu — tự dùng lại khi vay lại" giữ nguyên; cách hoạt động (giữ số, tự điền khi vay lại) không đổi.
+- Mã: bỏ thẻ `<p class="cd-pp-saved-n">` trong `coCardHtml` (`js/views/admin/customers.js`) và quy tắc CSS `.cd-pp-saved-n` (`css/styles.css`).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

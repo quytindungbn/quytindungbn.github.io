@@ -1049,8 +1049,7 @@ function coCardHtml(c, contracts, { canOa, canEdit, editKey = null, pending = fa
     <div class="cdo-sec">${icon('send', 'icon-sm')} Gửi Zalo OA theo từng hợp đồng</div>
     <div class="cdo-rows">${oaRows}</div>` : '';
   const saved = S.listSavedCoPeople(c.id);
-  const savedSection = saved.length ? `${people.length || oaSection ? '<div class="cd-pp-saved-h">Đã lưu — tự dùng lại khi vay lại</div>' : ''}${saved.map((p) => coPersonHtml(p, { canEdit, editing: !!editKey && normPersonName(p.name) === editKey, pending: false, saved: true })).join('')}
-    <p class="cd-pp-saved-n">Số điện thoại được giữ lại. Khi người này lại được ghi trên hợp đồng mới, số tự điền — không cần nhập lại.</p>` : '';
+  const savedSection = saved.length ? `${people.length || oaSection ? '<div class="cd-pp-saved-h">Đã lưu — tự dùng lại khi vay lại</div>' : ''}${saved.map((p) => coPersonHtml(p, { canEdit, editing: !!editKey && normPersonName(p.name) === editKey, pending: false, saved: true })).join('')}` : '';
   const title = people.length ? (canOa ? 'Người cùng vay &amp; Zalo OA' : 'Người cùng vay') : oaSection || !saved.length ? 'Zalo OA theo hợp đồng' : 'Người cùng vay đã lưu';
   const total = people.length + saved.length;
   return `<h3 class="cd-h"><span>${title}</span>${total ? `<em>${total}</em>` : ''}</h3>
