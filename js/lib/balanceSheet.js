@@ -5,6 +5,8 @@ function amount(value, row, column) {
   return n;
 }
 
+const LOAN_TERM_ACCOUNTS = { loanShortTerm: '2111', loanMediumTerm: '2112', loanLongTerm: '2113' };
+
 function periodFromRows(rows) {
   const heading = rows.slice(0, 12).map((row) => String(row?.[0] || '')).join(' ');
   const match = heading.match(/Từ ngày\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*đến ngày\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
@@ -118,6 +120,11 @@ export function parseBalanceSheetRows(rows) {
     const nhHtxTerm = debit('13121');
     const otherTctdDemand = debit('13119');
     const loanNet = grossLoans - totalProvision;
+    const termBalances = Object.entries(LOAN_TERM_ACCOUNTS).map(([key, code]) => [key, debit(code)]);
+    const loanTerms = Object.values(LOAN_TERM_ACCOUNTS).some((code) => account(code)) ? {
+      ...Object.fromEntries(termBalances),
+      loanOtherTerm: grossLoans - termBalances.reduce((sum, [, value]) => sum + value, 0),
+    } : {};
     const fixedAssetsGross = debit('301');
     const accumulatedDepreciation = credit('305');
     const fixedAssetsNet = fixedAssetsGross - accumulatedDepreciation;
@@ -159,7 +166,7 @@ export function parseBalanceSheetRows(rows) {
     }
     return { assets, liabilities, cash, tctdDeposits, tctdDemand, tctdTerm,
       nhHtxDemand, nhHtxTerm, otherTctdDemand, liquidity: cash + tctdDeposits,
-      grossLoans, totalProvision, generalProvision, specificProvision, otherProvision, loanNet, fixedCapital,
+      grossLoans, ...loanTerms, totalProvision, generalProvision, specificProvision, otherProvision, loanNet, fixedCapital,
       fixedAssetsGross, accumulatedDepreciation, fixedAssetsNet, capitalContribution,
       internalReceivables, accruedReceivables, otherAssets, customerDeposits,
       interestPayable, equity, equityParts, revenue, expenses, profit, otherLiabilities, accountDetails };

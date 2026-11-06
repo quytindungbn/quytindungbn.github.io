@@ -225,3 +225,35 @@ test('lãi và phí phải thu tách theo TK 394 (tiền gửi) và TK 391 (ho�
   assert.equal(onlyDeposits.accruedReceivables, 7);
   assert.deepEqual(onlyDeposits.accountDetails.accruedReceivables.map(({ code, balance }) => [code, balance]), [['394', 7]]);
 });
+
+test('dư nợ cho vay tách ngắn hạn, trung hạn, dài hạn theo TK 2111, 2112, 2113 (đầu kỳ và cuối kỳ riêng)', () => {
+  const rows = sample();
+  rows[26] = ['Cho vay ngắn hạn', '2111', 130, 0, 0, 0, 110, 0];
+  rows[27] = ['Cho vay trung hạn', '2112', 60, 0, 0, 0, 80, 0];
+  rows[28] = ['Cho vay dài hạn', '2113', 10, 0, 0, 0, 10, 0];
+  const { start, end } = parseBalanceSheetRows(rows);
+  assert.deepEqual([start.loanShortTerm, start.loanMediumTerm, start.loanLongTerm, start.loanOtherTerm], [130, 60, 10, 0]);
+  assert.deepEqual([end.loanShortTerm, end.loanMediumTerm, end.loanLongTerm, end.loanOtherTerm], [110, 80, 10, 0]);
+  assert.equal(end.loanShortTerm + end.loanMediumTerm + end.loanLongTerm + end.loanOtherTerm, end.grossLoans);
+});
+
+test('dư nợ theo kỳ hạn: tài khoản không có dòng thì tính 0, phần còn lại ghi vào "khác", cộng đủ các tài khoản con', () => {
+  const rows = sample();
+  rows[26] = ['', '211101', 90, 0, 0, 0, 90, 0];
+  rows[27] = ['', '211102', 30, 0, 0, 0, 30, 0];
+  rows[28] = ['Cho vay trung hạn', '2112', 50, 0, 0, 0, 50, 0];
+  const { end } = parseBalanceSheetRows(rows);
+  assert.equal(end.loanShortTerm, 120);
+  assert.equal(end.loanMediumTerm, 50);
+  assert.equal(end.loanLongTerm, 0);
+  assert.equal(end.loanOtherTerm, 30);
+  assert.equal(end.grossLoans, 200);
+});
+
+test('file không có tài khoản 2111 / 2112 / 2113 thì không lưu số theo kỳ hạn', () => {
+  const { start, end } = parseBalanceSheetRows(sample());
+  for (const period of [start, end]) {
+    for (const key of ['loanShortTerm', 'loanMediumTerm', 'loanLongTerm', 'loanOtherTerm']) assert.equal(key in period, false);
+  }
+  assert.equal(end.grossLoans, 200);
+});

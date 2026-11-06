@@ -6,7 +6,7 @@ Quản trị viên toàn quyền mở **Quản trị → Nạp cân đối**, ch
 
 Quyền xem của nhân viên do quản trị viên toàn quyền cấp tại **Quản lý User → nhân viên → Cho phép xem Cân đối kế toán**. Nhân viên chỉ xem; việc nạp file và sửa quyền vẫn dành riêng cho quản trị viên toàn quyền. Supabase RLS thực thi điều này ngay cả khi gọi API trực tiếp.
 
-Tổng tài sản = số dư Nợ trừ Có của tài khoản cấp 1 **1 + 2 + 3**. Phía nguồn vốn = số dư Có trừ Nợ của **4 + 5 + 6 + 7 + 8**. Trong đó 2191 là dự phòng cụ thể, 2192 là dự phòng chung; 7 trừ 8 là lợi nhuận lũy kế. Tài khoản không xuất hiện trong kỳ được tính 0; mã tài khoản mới được cộng vào nhóm tổng hợp phù hợp. Không cộng lặp tài khoản cha với tài khoản con. Ứng dụng kiểm tra tài sản bằng nguồn vốn cả đầu và cuối kỳ, và ngày báo cáo thuộc đúng tháng trước khi cho lưu.
+Tổng tài sản = số dư Nợ trừ Có của tài khoản cấp 1 **1 + 2 + 3**. Phía nguồn vốn = số dư Có trừ Nợ của **4 + 5 + 6 + 7 + 8**. Trong đó 2191 là dự phòng cụ thể, 2192 là dự phòng chung; 7 trừ 8 là lợi nhuận lũy kế. Dư nợ cho vay (TK 211…) được tách theo kỳ hạn: 2111 ngắn hạn, 2112 trung hạn, 2113 dài hạn, phần còn lại của dư nợ là "Khác" (chỉ lưu khi file có ít nhất một trong ba tài khoản). Tài khoản không xuất hiện trong kỳ được tính 0; mã tài khoản mới được cộng vào nhóm tổng hợp phù hợp. Không cộng lặp tài khoản cha với tài khoản con. Ứng dụng kiểm tra tài sản bằng nguồn vốn cả đầu và cuối kỳ, và ngày báo cáo thuộc đúng tháng trước khi cho lưu.
 
 Đối chiếu dự phòng chỉ lấy bản chốt của app **cùng tháng**; nếu app chưa có số dự phòng, hiển thị “Chưa có số liệu” thay vì 0. Chênh lệch là **bảng cân đối trừ phải trích**, để người quản trị kiểm tra, không tự điều chỉnh số nào.
 

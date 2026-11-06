@@ -5,7 +5,7 @@ import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
-import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, selectLatestBalanceImports, provisionDifference, managementRatios, monthlyProfit, previousMonthReport, provisionAlertTarget, provisionAdjustment } from '../../lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, loanTermChildren, selectLatestBalanceImports, provisionDifference, managementRatios, monthlyProfit, previousMonthReport, provisionAlertTarget, provisionAdjustment } from '../../lib/balanceSheetMetrics.js';
 import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, compactParts } from '../../utils.js';
 import { icon } from '../../icons.js';
@@ -554,7 +554,7 @@ function draw(contentEl) {
   const assetItems = report ? [
     { label: 'Tiền mặt tại đơn vị', key: 'cash' },
     { label: 'Tiền gửi tại các TCTD', key: 'tctdDeposits', children: [['Không kỳ hạn', 'tctdDemand'], ['Có kỳ hạn', 'tctdTerm']] },
-    { label: 'Dư nợ cho vay', key: 'grossLoans', children: [['Dự phòng chung', 'generalProvision'], ['Dự phòng cụ thể', 'specificProvision']] },
+    { label: 'Dư nợ cho vay', key: 'grossLoans', children: [...loanTermChildren(start, end), ['Dự phòng chung', 'generalProvision'], ['Dự phòng cụ thể', 'specificProvision']] },
     ...(Number.isFinite(end.fixedAssetsNet) && Number.isFinite(end.capitalContribution)
       ? [{ label: 'TSCĐ sau hao mòn', key: 'fixedAssetsNet' }, { label: 'Vốn góp NHHTX', key: 'capitalContribution' }]
       : [{ label: 'TSCĐ ròng và vốn góp NHHTX', key: 'fixedCapital' }]),
@@ -658,8 +658,15 @@ function draw(contentEl) {
   });
 }
 
+function loanTermImportRows(end) {
+  const rows = loanTermChildren(null, end);
+  if (!rows.length) return '<small>File không có tài khoản 2111 / 2112 / 2113 nên chưa tách được dư nợ theo kỳ hạn.</small>';
+  return rows.map(([label, key]) => `<div><span>Dư nợ ${label.toLowerCase()}</span><b>${money(end[key])}</b></div>`).join('');
+}
+
 async function previewImport(files, contentEl) {
   const importButton = contentEl.querySelector('#bs-import');
+  const importIcon = importButton?.innerHTML;
   if (importButton) importButton.disabled = true;
   try {
     const imports = [];
@@ -684,6 +691,7 @@ async function previewImport(files, contentEl) {
             <div><span>Tổng tài sản đầu kỳ</span><b>${money(parsed.start.assets)}</b></div>
             <div><span>Tổng tài sản cuối kỳ</span><b>${money(parsed.end.assets)}</b></div>
             <div><span>Dự phòng chung / cụ thể</span><b>${money(parsed.end.generalProvision)} / ${money(parsed.end.specificProvision)}</b></div>
+            ${loanTermImportRows(parsed.end)}
             ${existing ? `<p class="bs-warning">Sẽ thay bản ${monthName(parsed.yearMonth)} đang lưu (đến ngày ${reportDate(existing.period_end)}).</p>` : ''}</div>`;
         }).join('')}</div>
         ${skipped.length ? `<p class="bs-account-period">Bỏ qua ${skipped.length} file cũ hơn trong cùng tháng: ${skipped.map(({ file }) => escapeHtml(file.name)).join(', ')}.</p>` : ''}`,
@@ -713,6 +721,6 @@ async function previewImport(files, contentEl) {
   } catch (error) {
     toast(error.message || 'Không đọc được file bảng cân đối.', 'error');
   } finally {
-    if (importButton) { importButton.disabled = false; importButton.textContent = 'Nạp cân đối'; }
+    if (importButton) { importButton.disabled = false; importButton.innerHTML = importIcon; }
   }
 }
