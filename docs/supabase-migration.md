@@ -3573,7 +3573,7 @@ create policy "admins add note log" on customer_note_log
 
 ### 10.115 Gửi tự động không bỏ sót: bắt lỗi từng hợp đồng, gửi song song, đọc đủ dữ liệu, GỬI BÙ sau 15 phút (CẦN deploy lại `send-due-reminders` + chạy 1 câu SQL thêm Cron Job; KHÔNG đổi web)
 
-> **Đã được mục 10.116 thay thế một phần**: lượt bù cố định 8h15 (điểm 7 và câu SQL bên dưới) chuyển thành chạy lặp mỗi 5 phút đến khi xong. Các điểm 1–6 giữ nguyên.
+> **Đã được mục 10.116 thay thế một phần**: lượt bù cố định 8h15 (điểm 7 và câu SQL bên dưới) chuyển thành chạy lặp MỖI PHÚT trong khung 8h00–8h15, mỗi lượt gửi lại phần chưa gửi. Các điểm 1–6 giữ nguyên.
 
 **Vì sao làm**: có hợp đồng đã thêm vào "Báo lãi tự động" nhưng đúng ngày không thấy tin trong Lịch sử gửi, trong khi các hợp đồng khác vẫn gửi được. Đọc lại `send-due-reminders` thì thấy hàm cũ có những chỗ bỏ sót mà KHÔNG để lại dòng nào, và mỗi hợp đồng chỉ được xét đúng 1 ngày nên lỡ là chờ kỳ sau:
 - Các hợp đồng được gửi lần lượt từng cái (không song song), mỗi cái khoảng 1–2 giây, lời gọi Zalo không có thời gian chờ tối đa. Supabase cắt mỗi lượt ở 150 giây (gói miễn phí) / 400 giây (gói trả phí) và cắt là mọi hợp đồng xếp sau bị bỏ qua, không ghi gì.
@@ -3617,28 +3617,29 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 
 **Kiểm thử**: `tests/sendDueReminders.test.mjs` (số kịch bản hiện tại: xem mục 10.116) chạy THẬT file `send-due-reminders/index.ts` trong môi trường giả lập (`tests/helpers/reminderSim.mjs`: giả Supabase có giới hạn 1.000 dòng, giả Zalo, giả đồng hồ), cần Node 22.13 trở lên. Đặt `REMINDER_SRC=<file .ts>` để chạy cùng các kịch bản trên một bản khác.
 
-### 10.116 Gửi tự động chạy lặp mỗi 5 phút đến khi xong, thay cho 2 lượt cố định 8h00 + 8h15 (CẦN deploy lại `send-due-reminders` + chạy 1 câu SQL đổi lịch Cron Job; KHÔNG đổi web)
+### 10.116 Gửi tự động chỉ kiểm tra trong khung 8h00–8h15, chạy lặp MỖI PHÚT và gửi lại phần chưa gửi (CẦN deploy lại `send-due-reminders` + chạy SQL đổi lịch Cron Job; KHÔNG đổi web)
 
-**Vì sao đổi**: lượt bù cố định 8h15 (mục 10.115) vẫn bỏ sót được nếu cả hai lượt cùng gặp sự cố (Zalo chưa cấp mã, cơ sở dữ liệu chập chờn, hết giờ, cron lỡ…), và hợp đồng thêm vào danh sách sau 8h15 thì phải chờ kỳ sau. Giờ hàm tự chạy lại nhiều lần trong ngày cho đến khi mọi hợp đồng đến lượt đều đã được xử lý.
+**Vì sao đổi**: lượt bù cố định 8h15 (mục 10.115) vẫn bỏ sót được nếu cả hai lượt cùng gặp sự cố (Zalo chưa cấp mã, cơ sở dữ liệu chập chờn, hết giờ, cron lỡ…). Theo yêu cầu: chỉ kiểm tra gửi tự động trong khung **8h00–8h15 giờ Việt Nam**; trong 15 phút đó hàm chạy lặp mỗi phút, mỗi lượt gửi lại hợp đồng nào CHƯA có tin; hết 8h15 thì dừng đến sáng hôm sau. (Bản trước của mục này, chạy mỗi 5 phút từ 8h đến 20h, được thay bằng bản này; ai đã lỡ chạy câu SQL của bản đó thì câu SQL bên dưới ghi đè lại.)
 
-**Cách chạy** (`supabase/functions/send-due-reminders/index.ts`):
-- Cron Job hằng ngày đổi thành `*/5 1-12 * * *` (UTC) = **mỗi 5 phút từ 8h00 đến 19h55 giờ Việt Nam**. Hàm cũng tự chỉ làm việc trong khung 8h–20h giờ Việt Nam (`SEND_FROM_HOUR_VN`, `SEND_UNTIL_HOUR_VN`) để không gửi tin ban đêm dù cron cấu hình rộng hơn; ngoài khung trả `boQua` mà không đụng tới cơ sở dữ liệu.
-- **Hôm nay đã xong thì chỉ kiểm tra nhẹ**: dấu "đã xong" là một dòng `notification_log` (`owner_id = 'system'`, `kind = 'zalo_run_done'`, `contract_id` trống; không cần thêm bảng hay SQL). Lượt chạy thấy dấu này và không có hợp đồng nào được thêm vào danh sách gửi tự động sau dấu đó thì thoát ngay sau 2 truy vấn nhỏ (`daXong: true`), không đọc lại hợp đồng/khách.
-- **Chưa xong thì chạy đủ** (song song, ngân sách 100 giây như mục 10.115). Hợp đồng hôm nay đã có tin thành công, hoặc đã thử mà Zalo báo lỗi, hoặc mới gửi tay trong 5 ngày thì bỏ qua nên không bao giờ gửi trùng.
-- Cuối lượt, nếu không còn việc cần thử lại (`canThuLai = 0`) thì ghi dấu "hôm nay đã xong" (kết quả `daXong: true`); còn thì 5 phút sau lượt kế tiếp làm tiếp. Nhật ký cũ hơn 60 ngày của dấu này được dọn cùng `activity_log`.
-- **Hợp đồng thêm vào "Gửi tin tự động" giữa ngày** mà hôm nay đúng là ngày đến lượt: được gửi ở lần chạy kế tiếp (trong 5 phút), nếu hôm nay chưa có tin nào cho hợp đồng đó.
+**Cách chạy** (`supabase/functions/send-due-reminders/index.ts`, các hằng số ở đầu file):
+- Cron Job hằng ngày đổi thành `0-15 1 * * *` (UTC) = **mỗi phút từ 8h00 đến 8h15 giờ Việt Nam** (16 lần/ngày). Hàm cũng tự kiểm tra giờ (`SEND_WINDOW_FROM_MIN_VN`, `SEND_WINDOW_TO_MIN_VN`): ngoài 8h00–8h15 thì trả `boQua` ngay, không đụng tới cơ sở dữ liệu, nên cron cấu hình rộng hơn hay có người gọi nhầm cũng không gửi tin ngoài giờ.
+- **Mỗi lượt chỉ gửi phần chưa gửi**: hợp đồng hôm nay đã có tin thành công, hoặc đã thử mà Zalo báo lỗi, hoặc mới gửi tay trong 5 ngày thì bị bỏ qua. Nhờ vậy chạy bao nhiêu lượt cũng không bao giờ gửi trùng, và lượt sau chỉ làm đúng những hợp đồng lượt trước chưa làm được (hết giờ, lỗi thoáng qua, Zalo chưa cấp mã, mới thêm vào danh sách trong lúc đang trong khung…).
+- **Hôm nay đã xong thì chỉ kiểm tra nhẹ**: cuối lượt, nếu không còn việc cần thử lại (`canThuLai = 0`) thì ghi dấu "hôm nay đã xong" — một dòng `notification_log` (`owner_id = 'system'`, `kind = 'zalo_run_done'`, `contract_id` trống; không cần thêm bảng hay SQL). Các lượt sau thấy dấu này, và không có hợp đồng nào được thêm vào danh sách gửi tự động sau dấu đó, thì thoát ngay sau 2 truy vấn nhỏ (`daXong: true`), không đọc lại hợp đồng/khách. Dấu và khóa cũ được dọn cùng `activity_log` (dấu quá 60 ngày, khóa quá 1 ngày).
+- **Chống hai lượt chạy chồng nhau**: lượt nào làm việc cũng đặt một dòng khóa `zalo_run_lock` trong `notification_log`; lượt khác thấy khóa còn hạn (trong 150 giây, `RUN_LOCK_TTL_MS`) thì bỏ qua (`boQua: 'đang có lượt khác chạy'`), xong thì xóa khóa. Lượt bị chết giữa chừng thì khóa tự hết hạn sau 150 giây. Không đặt được khóa (cơ sở dữ liệu lỗi) thì vẫn chạy, và vẫn không gửi trùng nhờ lịch sử gửi.
+- **Lượt cuối (8h14, kèm 8h15) không chờ nữa**: việc nào còn dở vì lý do tạm thời thì ghi rõ vào **Lịch sử gửi** một dòng "Thất bại — lý do" cho hợp đồng đó, để không hợp đồng nào bị bỏ qua mà im lặng. Các lượt trước đó chưa ghi dòng lỗi (để 15 phút không đầy dòng lỗi lặp lại), chỉ cố gửi lại.
+- Giữ nguyên từ mục 10.115: bắt lỗi riêng từng hợp đồng, gửi song song 5 khách một lúc, mỗi lần gọi Zalo chờ tối đa 15 giây, ngân sách 100 giây mỗi lượt, đọc dữ liệu có phân trang, chạy nền (trả `202` ngay), `purpose=monthly-close` chạy ngay như cũ.
 
 **Cái gì được thử lại, cái gì không**:
-- Thử lại ở lượt sau: hết giờ lượt (`chuaXuLy`), lỗi đọc cơ sở dữ liệu thoáng qua, không đọc được danh sách gửi tự động, không lấy được mã truy cập Zalo OA (lịch sử chỉ ghi 1 dòng "Thất bại — Chưa lấy được mã truy cập Zalo OA nên chưa gửi được" cho mỗi hợp đồng mỗi ngày).
-- Thử lại tối đa 3 lần mỗi hợp đồng mỗi ngày: lỗi kết nối tới Zalo mà tin chưa đi (dòng "Lỗi kết nối Zalo: …").
-- KHÔNG thử lại: Zalo không phản hồi sau 15 giây (tin có thể đã đi, tránh gửi trùng); Zalo báo lỗi (số chưa đăng ký Zalo, mẫu bị từ chối, hết hạn mức…) — hiện "Thất bại" kèm lý do; chưa chọn mẫu tin Zalo trong Cài đặt (ghi 1 dòng "Thất bại — Chưa chọn mẫu tin Zalo "Báo lãi" / "Đến hạn" trong Cài đặt nên chưa gửi được" mỗi hợp đồng mỗi ngày); lỗi dữ liệu cố định của một hợp đồng (ghi log, bỏ qua hợp đồng đó, không cản dấu "đã xong").
+- **Thử lại mỗi phút (đến lượt cuối)**: hết giờ lượt (`chuaXuLy`), lỗi đọc cơ sở dữ liệu thoáng qua, không đọc được danh sách gửi tự động, không lấy được mã truy cập Zalo OA, lỗi kết nối tới Zalo mà tin chưa đi. Nếu đến lượt cuối vẫn không được thì ghi 1 dòng mỗi hợp đồng: "Thất bại — Chưa lấy được mã truy cập Zalo OA nên chưa gửi được" hoặc "Thất bại — Lỗi kết nối Zalo: …". Lỗi đọc cơ sở dữ liệu kéo dài hết 8h15 thì KHÔNG có dòng trong Lịch sử gửi, chỉ có dòng "Sẽ thử lại hợp đồng …" trong Edge Functions → Logs.
+- **KHÔNG thử lại**: Zalo không phản hồi sau 15 giây (tin có thể đã đi, tránh gửi trùng); Zalo báo lỗi rõ ràng (số chưa đăng ký Zalo, mẫu bị từ chối, hết hạn mức…) — hiện "Thất bại" kèm lý do, gửi lại cũng cho kết quả y hệt; chưa chọn mẫu tin Zalo trong Cài đặt (ghi 1 dòng "Thất bại — Chưa chọn mẫu tin Zalo "Báo lãi" / "Đến hạn" trong Cài đặt nên chưa gửi được" mỗi hợp đồng mỗi ngày); lỗi dữ liệu cố định của một hợp đồng (ghi log, bỏ qua hợp đồng đó, không cản dấu "đã xong"); hợp đồng nhiều người nhận mà có người đã nhận được tin còn người kia lỗi kết nối (dòng lỗi của người kia ghi ngay, không gửi lại để người đã nhận không nhận trùng).
+- **Hợp đồng thêm vào "Gửi tin tự động" lúc 8h00–8h15** mà hôm nay đúng là ngày đến lượt: được gửi ở lượt kế tiếp (trong 1 phút). Thêm SAU 8h15 thì phải chờ kỳ sau (hoặc bấm "Gửi tin Zalo OA ngay").
 
 **Việc cần bạn làm**:
 1. Deploy lại Edge Function **`send-due-reminders`**: Supabase → Edge Functions → `send-due-reminders` → dán đè toàn bộ `supabase/functions/send-due-reminders/index.ts` → Deploy.
 2. Đổi lịch Cron Job và bỏ lượt bù cố định 8h15 (SQL Editor, chạy một lần; chạy lại không hại gì):
 
 ```sql
-select cron.alter_job(job_id := jobid, schedule := '*/5 1-12 * * *')
+select cron.alter_job(job_id := jobid, schedule := '0-15 1 * * *')
 from cron.job
 where command like '%functions/v1/send-due-reminders%'
   and command not like '%monthly-close%'
@@ -3647,13 +3648,15 @@ where command like '%functions/v1/send-due-reminders%'
 select cron.unschedule(jobid) from cron.job where jobname = 'send-due-reminders-catchup';
 ```
 
-Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh from cron.job order by jobid;` phải còn 2 dòng: Cron Job hằng ngày với lịch `*/5 1-12 * * *` và Cron Job chốt tháng `0 17 * * *`; không còn `send-due-reminders-catchup`. Chưa làm bước 2 thì hàm vẫn chạy đúng như mục 10.115 (một lượt 8h00 và một lượt bù 8h15, không gửi trùng).
+Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh from cron.job order by jobid;` phải còn 2 dòng: Cron Job hằng ngày với lịch `0-15 1 * * *` và Cron Job chốt tháng `0 17 * * *`; không còn `send-due-reminders-catchup`. Chưa làm bước 2 thì hàm vẫn chạy đúng (lịch cũ chạy lúc 8h00 và 8h15, lượt 8h15 là lượt cuối, không gửi trùng) — chỉ là ít lượt thử lại hơn.
 
-**Cách xem**: **Quản lý OA → Lịch sử gửi**; **Edge Functions → `send-due-reminders` → Logs** có một dòng `send-due-reminders daily-reminders {…,"loiHeThong":0,"chuaXuLy":0,"canThuLai":0,"daXong":true}` cho mỗi lượt chạy đủ (lượt chỉ kiểm tra nhẹ không ghi dòng nào). `canThuLai` > 0 là lượt đó còn việc, lượt sau sẽ làm tiếp.
+**Cách xem**: **Quản lý OA → Lịch sử gửi**; **Edge Functions → `send-due-reminders` → Logs** có một dòng `send-due-reminders daily-reminders {…,"loiHeThong":0,"chuaXuLy":0,"canThuLai":0,"daXong":true}` cho mỗi lượt chạy đủ (lượt chỉ kiểm tra nhẹ hoặc bị bỏ qua không ghi dòng nào). `canThuLai` > 0 là lượt đó còn việc, phút sau sẽ làm tiếp.
 
-**Chi phí và chỉnh**: khoảng 144 lần gọi mỗi ngày (xa dưới hạn mức gói miễn phí), phần lớn chỉ 2 truy vấn nhỏ. Muốn thưa hơn thì đổi `*/5` thành `*/10`. Ép chạy ngoài khung giờ hoặc khi đã xong (thử tay): thêm `?force=1` vào địa chỉ; muốn nhận ngay bảng số liệu thay vì chạy nền: thêm `?wait=1`.
+**Chi phí và thử tay**: tối đa 16 lần gọi mỗi ngày, hầu hết chỉ 2 truy vấn nhỏ sau khi đã xong. Thử ngoài khung giờ hoặc khi đã xong: thêm `?force=1` vào địa chỉ (chạy ngay, bỏ qua khung giờ, dấu "đã xong" và khóa; lượt này tính là lượt cuối nên ghi luôn dòng lỗi nếu có); muốn nhận ngay bảng số liệu thay vì chạy nền: thêm `?wait=1`.
 
-**Kiểm thử**: `tests/sendDueReminders.test.mjs` nay có 27 kịch bản (thêm: khung giờ gửi, dấu "đã xong", hợp đồng thêm giữa ngày, lặp nhiều lượt khi lượt nào cũng hết giờ, lỗi kết nối thử lại tối đa 3 lần, lỗi đọc thoáng qua, thiếu mẫu tin).
+**Chưa kiểm chứng trên Supabase thật**: hành vi `EdgeRuntime.waitUntil` (hàm trả 202 rồi làm tiếp trong nền) và việc `pg_net` ngắt kết nối có làm hàm dừng hay không; hai điều này chỉ thấy được khi chạy thật (xem Logs của lượt 8h00 sau khi deploy). Thiết kế không phụ thuộc vào đó: nếu hàm bị dừng giữa chừng thì lượt kế tiếp 1 phút sau làm tiếp phần còn lại.
+
+**Kiểm thử**: `tests/sendDueReminders.test.mjs` có 31 kịch bản chạy THẬT file `index.ts` (xem mục 10.115) — gồm khung giờ 8h00–8h15 (7h59 và 8h16 bị bỏ qua, ép buộc thì chạy), lặp mỗi phút khi Zalo chưa cấp mã rồi cấp lại giữa khung (không có dòng lỗi thừa), Zalo không cấp mã suốt khung (đến 8h14 ghi 1 dòng lỗi mỗi hợp đồng), lỗi kết nối thoáng qua / kéo dài, hết giờ lượt rồi làm tiếp, dấu "đã xong" (các lượt sau chỉ kiểm tra nhẹ), hợp đồng thêm trong khung / sau khung, hai lượt cron chồng nhau (chỉ một lượt làm việc), khóa còn hạn / khóa cũ, không ghi được nhật ký thông báo mà vẫn không gửi trùng. Đã chạy đạt ở múi giờ UTC, Asia/Ho_Chi_Minh và America/Los_Angeles.
 
 ---
 

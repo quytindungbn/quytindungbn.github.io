@@ -26,10 +26,11 @@ const CONCURRENCY = 5;
 const READ_PAGE_SIZE = 1000;
 const ZALO_UNAVAILABLE_MESSAGE = 'Chưa lấy được mã truy cập Zalo OA nên chưa gửi được';
 const NETWORK_ERROR_PREFIX = 'Lỗi kết nối Zalo';
-const MAX_NETWORK_TRIES = 3;
-const SEND_FROM_HOUR_VN = 8;
-const SEND_UNTIL_HOUR_VN = 20;
+const SEND_WINDOW_FROM_MIN_VN = 8 * 60;
+const SEND_WINDOW_TO_MIN_VN = 8 * 60 + 15;
 const RUN_DONE_KIND = 'zalo_run_done';
+const RUN_LOCK_KIND = 'zalo_run_lock';
+const RUN_LOCK_TTL_MS = 150000;
 
 class RetryLater extends Error {}
 
@@ -498,6 +499,28 @@ async function dayAlreadyDone(now: Date): Promise<boolean> {
   return !(newer && newer.length);
 }
 
+async function acquireRunLock(now: Date): Promise<{ run: boolean; id: string | null }> {
+  const { data: mine, error } = await admin.from('notification_log')
+    .insert({ owner_id: 'system', kind: RUN_LOCK_KIND, contract_id: null }).select('id').maybeSingle();
+  if (error || !mine) {
+    console.error('Không đặt được dấu "đang chạy", vẫn chạy tiếp:', error?.message);
+    return { run: true, id: null };
+  }
+  const since = new Date(now.getTime() - RUN_LOCK_TTL_MS).toISOString();
+  const { data: first } = await admin.from('notification_log').select('id')
+    .eq('owner_id', 'system').eq('kind', RUN_LOCK_KIND).gte('sent_at', since)
+    .order('sent_at', { ascending: true }).order('id', { ascending: true }).limit(1);
+  if (first && first.length && first[0].id !== mine.id) {
+    await admin.from('notification_log').delete().eq('id', mine.id);
+    return { run: false, id: null };
+  }
+  return { run: true, id: mine.id };
+}
+
+async function releaseRunLock(id: string | null): Promise<void> {
+  if (id) await admin.from('notification_log').delete().eq('id', id);
+}
+
 async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>, shouldStop: () => boolean): Promise<T[]> {
   let next = 0;
   const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
@@ -527,7 +550,7 @@ async function sendZaloTemplate(opts: {
   who?: 'main' | 'co'; whoName?: string;
 
   deferNoAccount?: boolean;
-}): Promise<{ ok: boolean; noAccount: boolean; retry: boolean }> {
+}): Promise<{ ok: boolean; noAccount: boolean; retry: boolean; deferred?: { logRow: Record<string, unknown>; who?: 'main' | 'co'; whoName?: string } }> {
   let status: 'success' | 'error' = 'error';
   let errorMessage = '';
   let noAccount = false;
@@ -562,8 +585,9 @@ async function sendZaloTemplate(opts: {
     contract_id: opts.contractId, customer_id: opts.customerId, kind: opts.kind, template_id: opts.templateId,
     phone: opts.phone, status, error_message: errorMessage || null, triggered_by: 'auto',
   };
+  if (retry) return { ok: false, noAccount: false, retry: true, deferred: { logRow, who: opts.who, whoName: opts.whoName } };
   await writeZaloLog(logRow, opts.who, opts.whoName);
-  return { ok: status === 'success', noAccount, retry };
+  return { ok: status === 'success', noAccount, retry: false };
 }
 
 type ZaloCustomer = { name: string; phone: string; co_people?: unknown };
@@ -631,7 +655,7 @@ function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWh
 
 async function sendZaloToCustomer(opts: {
   accessToken: string; customer: ZaloCustomer; contract: any; contractsOfCustomer: any[]; templateId: string; templateData: Record<string, string>;
-  contractId: string; customerId: string; kind: string;
+  contractId: string; customerId: string; kind: string; finalChance: boolean;
 }): Promise<{ ok: boolean; retry: boolean }> {
   const recipients = contractRecipients(opts.contract, opts.customer);
   if (!recipients.length) return { ok: false, retry: false };
@@ -663,7 +687,12 @@ async function sendZaloToCustomer(opts: {
       console.error('Lỗi tự bỏ tick gửi OA người không có Zalo:', e);
     }
   }
-  return { ok: results.some((r) => r.ok), retry: results.some((r) => r.retry) };
+  const waiting = results.filter((r) => r.retry);
+  const hasRealRow = results.some((r) => !r.retry);
+  if (waiting.length && (hasRealRow || opts.finalChance)) {
+    for (const r of waiting) if (r.deferred) await writeZaloLog(r.deferred.logRow, r.deferred.who, r.deferred.whoName);
+  }
+  return { ok: results.some((r) => r.ok), retry: waiting.length > 0 && !hasRealRow && !opts.finalChance };
 }
 
 function formatVNDZaloTemplate(n: number): string {
@@ -708,15 +737,26 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
 type RunOutcome = { status: number; body: Record<string, unknown> };
 
 async function runReminders(purpose: string, force: boolean): Promise<RunOutcome> {
+  const now = new Date();
+  if (purpose === 'monthly-close') return runPass(purpose, now, false);
+  const minutes = ((now.getUTCHours() + 7) % 24) * 60 + now.getUTCMinutes();
+  if (!force && (minutes < SEND_WINDOW_FROM_MIN_VN || minutes > SEND_WINDOW_TO_MIN_VN)) {
+    return { status: 200, body: { ok: true, boQua: 'ngoài khung 8h00–8h15' } };
+  }
+  if (!force && await dayAlreadyDone(now)) return { status: 200, body: { ok: true, daXong: true } };
+  const lock = await acquireRunLock(now);
+  if (!lock.run) return { status: 200, body: { ok: true, boQua: 'đang có lượt khác chạy' } };
+  try {
+    return await runPass(purpose, now, force || minutes >= SEND_WINDOW_TO_MIN_VN - 1);
+  } finally {
+    await releaseRunLock(lock.id);
+  }
+}
+
+async function runPass(purpose: string, now: Date, finalChance: boolean): Promise<RunOutcome> {
   noZaloCustomerIds.clear();
 
   const startedAt = Date.now();
-  const now = new Date();
-  if (purpose !== 'monthly-close' && !force) {
-    const vnHour = (now.getUTCHours() + 7) % 24;
-    if (vnHour < SEND_FROM_HOUR_VN || vnHour >= SEND_UNTIL_HOUR_VN) return { status: 200, body: { ok: true, boQua: 'ngoài giờ gửi' } };
-    if (await dayAlreadyDone(now)) return { status: 200, body: { ok: true, daXong: true } };
-  }
   const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0, loiHeThong: 0, chuaXuLy: 0, canThuLai: 0 };
   const warnings: string[] = [];
 
@@ -774,9 +814,7 @@ async function runReminders(purpose: string, force: boolean): Promise<RunOutcome
       .eq('contract_id', contractId).eq('triggered_by', 'auto').gte('sent_at', dayStart.toISOString()).limit(20);
     if (error) throw new RetryLater(`Không kiểm tra được lịch sử gửi tự động hôm nay: ${error.message}`);
     const messages: string[] = (data || []).map((r: any) => String(r.error_message || ''));
-    const retryable = (m: string) => m.startsWith(ZALO_UNAVAILABLE_MESSAGE) || m.startsWith(NETWORK_ERROR_PREFIX);
-    const networkTries = messages.filter((m) => m.startsWith(NETWORK_ERROR_PREFIX)).length;
-    return messages.some((m) => !retryable(m)) || networkTries >= MAX_NETWORK_TRIES;
+    return messages.some((m) => !m.startsWith(ZALO_UNAVAILABLE_MESSAGE) && !m.startsWith(NETWORK_ERROR_PREFIX));
   }
 
   async function shouldSendAutoZalo(contractId: string, kind: string): Promise<boolean> {
@@ -817,16 +855,19 @@ async function runReminders(purpose: string, force: boolean): Promise<RunOutcome
       return;
     }
     if (!zaloAccessToken) {
-      if (zaloTokenFailed) { result.canThuLai++; await logZaloNote(ct, customer, picked.templateId, kind, ZALO_UNAVAILABLE_MESSAGE); }
+      if (zaloTokenFailed) {
+        if (finalChance) await logZaloNote(ct, customer, picked.templateId, kind, ZALO_UNAVAILABLE_MESSAGE);
+        else result.canThuLai++;
+      }
       return;
     }
     const sent = await sendZaloToCustomer({
       accessToken: zaloAccessToken, customer, contract: ct, contractsOfCustomer: contractsByCustomer.get(ct.customer_id) || [ct], templateId: picked.templateId,
       templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
-      contractId: ct.id, customerId: ct.customer_id, kind,
+      contractId: ct.id, customerId: ct.customer_id, kind, finalChance,
     });
     if (sent.ok) { await logSent(ct.customer_id, ct.id, logKind); result.zaloBaoLai++; }
-    if (sent.retry && !(await attemptedAutoZaloToday(ct.id))) result.canThuLai++;
+    if (sent.retry) result.canThuLai++;
   }
 
   async function handleContract(ct: any): Promise<void> {
@@ -918,6 +959,8 @@ async function runReminders(purpose: string, force: boolean): Promise<RunOutcome
     const cutoff = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
     await admin.from('activity_log').delete().lt('created_at', cutoff);
     await admin.from('notification_log').delete().eq('owner_id', 'system').eq('kind', RUN_DONE_KIND).lt('sent_at', cutoff);
+    await admin.from('notification_log').delete().eq('owner_id', 'system').eq('kind', RUN_LOCK_KIND)
+      .lt('sent_at', new Date(now.getTime() - 24 * 3600 * 1000).toISOString());
   } catch (e) {
     console.error('Lỗi dọn activity_log cũ:', e);
   }

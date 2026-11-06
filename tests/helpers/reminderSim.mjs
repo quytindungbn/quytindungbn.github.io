@@ -50,7 +50,7 @@ class Query {
     if (this.op === 'insert') {
       const rows = (Array.isArray(this.payload) ? this.payload : [this.payload]).map((r) => ({ ...sim.defaults(name), ...r }));
       table.push(...rows);
-      return { data: this.returning ? rows : null, error: null };
+      return { data: this.returning ? (this.single ? (rows[0] ?? null) : rows) : null, error: null };
     }
     if (this.op === 'update') {
       const hit = table.filter(match);
@@ -186,6 +186,25 @@ export async function createSim({ source, now = '2026-11-04T01:00:00Z', maxRows 
       return { status: res.status, body, callsAtResponse, outcome: settled[0]?.value ?? null };
     } catch (error) {
       return { status: 'THROWN', body: null, error };
+    } finally {
+      console.error = realError; console.info = realInfo;
+    }
+  };
+  // Gọi `count` lượt CÙNG LÚC (như 2 lần cron chồng nhau). Trả về mảng { status, body }.
+  sim.invokeParallel = async (count, { purpose = '', secret = 'bi-mat' } = {}) => {
+    globalThis.fetch = fakeFetch;
+    globalThis.EdgeRuntime = { waitUntil: (promise) => { sim.background.push(promise); } };
+    const url = `https://p.supabase.co/functions/v1/send-due-reminders?${purpose ? `purpose=${purpose}&` : ''}wait=1`;
+    const realError = console.error, realInfo = console.info;
+    console.error = (...a) => { sim.consoleErrors.push(a.map(String).join(' ')); };
+    console.info = () => {};
+    try {
+      return await Promise.all(Array.from({ length: count }, async () => {
+        const res = await sim.handler(new Request(url, { headers: { 'x-cron-secret': secret } }));
+        let body = null;
+        try { body = await res.json(); } catch { /* không phải JSON */ }
+        return { status: res.status, body };
+      }));
     } finally {
       console.error = realError; console.info = realInfo;
     }
