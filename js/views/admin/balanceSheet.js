@@ -659,7 +659,7 @@ function draw(contentEl) {
 }
 
 function loanTermImportRows(end) {
-  const rows = loanTermChildren(null, end);
+  const rows = loanTermChildren(null, end, { showZero: true });
   if (!rows.length) return '<small>File không có tài khoản 211 / 212 / 213 nên chưa tách được dư nợ theo kỳ hạn.</small>';
   return rows.map(([label, key]) => `<div><span>Dư nợ ${label.toLowerCase()}</span><b>${money(end[key])}</b></div>`).join('');
 }

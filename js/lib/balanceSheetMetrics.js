@@ -56,9 +56,10 @@ export function accountDetailChanges(endLines, startLines, yearLines, historyLin
 
 const LOAN_TERM_ROWS = [['Ngắn hạn', 'loanTermShort'], ['Trung hạn', 'loanTermMedium'], ['Dài hạn', 'loanTermLong']];
 
-export function loanTermChildren(start, end) {
+export function loanTermChildren(start, end, { showZero = false } = {}) {
   if (!LOAN_TERM_ROWS.every(([, key]) => Number.isFinite(end?.[key]))) return [];
-  return end.loanTermOther || start?.loanTermOther ? [...LOAN_TERM_ROWS, ['Khác', 'loanTermOther']] : LOAN_TERM_ROWS;
+  return [...LOAN_TERM_ROWS, ['Khác', 'loanTermOther']]
+    .filter(([, key], index) => (showZero && index < LOAN_TERM_ROWS.length) || end[key] || start?.[key]);
 }
 
 export function selectLatestBalanceImports(imports) {
