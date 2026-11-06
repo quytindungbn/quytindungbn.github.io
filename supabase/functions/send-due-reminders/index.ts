@@ -25,6 +25,13 @@ const RUN_BUDGET_MS = 100000;
 const CONCURRENCY = 5;
 const READ_PAGE_SIZE = 1000;
 const ZALO_UNAVAILABLE_MESSAGE = 'Chưa lấy được mã truy cập Zalo OA nên chưa gửi được';
+const NETWORK_ERROR_PREFIX = 'Lỗi kết nối Zalo';
+const MAX_NETWORK_TRIES = 3;
+const SEND_FROM_HOUR_VN = 8;
+const SEND_UNTIL_HOUR_VN = 20;
+const RUN_DONE_KIND = 'zalo_run_done';
+
+class RetryLater extends Error {}
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -478,6 +485,19 @@ async function readAllRows(table: string, columns: string, orderBy: string[]): P
   }
 }
 
+async function dayAlreadyDone(now: Date): Promise<boolean> {
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const { data, error } = await admin.from('notification_log').select('sent_at')
+    .eq('owner_id', 'system').eq('kind', RUN_DONE_KIND).gte('sent_at', dayStart.toISOString())
+    .order('sent_at', { ascending: false }).limit(1);
+  if (error || !data || !data.length) return false;
+  const markedAt = new Date(data[0].sent_at).toISOString();
+  const { data: newer, error: newerError } = await admin.from('zalo_auto_send_list').select('id').gt('created_at', markedAt).limit(1);
+  if (newerError) return false;
+  return !(newer && newer.length);
+}
+
 async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>, shouldStop: () => boolean): Promise<T[]> {
   let next = 0;
   const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
@@ -507,10 +527,11 @@ async function sendZaloTemplate(opts: {
   who?: 'main' | 'co'; whoName?: string;
 
   deferNoAccount?: boolean;
-}): Promise<{ ok: boolean; noAccount: boolean }> {
+}): Promise<{ ok: boolean; noAccount: boolean; retry: boolean }> {
   let status: 'success' | 'error' = 'error';
   let errorMessage = '';
   let noAccount = false;
+  let retry = false;
   try {
     const res = await fetch('https://business.openapi.zalo.me/message/template', {
       method: 'POST',
@@ -528,9 +549,12 @@ async function sendZaloTemplate(opts: {
     else if (isZaloNoAccountError(json)) { errorMessage = ZALO_NO_ACCOUNT_MESSAGE; noAccount = true; console.error('SĐT không có Zalo:', json); }
     else { errorMessage = json.message || JSON.stringify(json); console.error('Lỗi gửi tin Zalo:', json); }
   } catch (e: any) {
-    errorMessage = e?.name === 'TimeoutError' || e?.name === 'AbortError'
-      ? `Zalo không phản hồi sau ${ZALO_FETCH_TIMEOUT_MS / 1000} giây — tin có thể chưa gửi được`
-      : String(e?.message || e);
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+      errorMessage = `Zalo không phản hồi sau ${ZALO_FETCH_TIMEOUT_MS / 1000} giây — tin có thể chưa gửi được`;
+    } else {
+      retry = true;
+      errorMessage = `${NETWORK_ERROR_PREFIX}: ${String(e?.message || e)}`;
+    }
     console.error('Lỗi gọi API gửi tin Zalo:', e);
   }
   if (noAccount && !opts.deferNoAccount) { noZaloCustomerIds.add(opts.customerId); await removeCustomerFromZaloLists(opts.customerId); }
@@ -539,7 +563,7 @@ async function sendZaloTemplate(opts: {
     phone: opts.phone, status, error_message: errorMessage || null, triggered_by: 'auto',
   };
   await writeZaloLog(logRow, opts.who, opts.whoName);
-  return { ok: status === 'success', noAccount };
+  return { ok: status === 'success', noAccount, retry };
 }
 
 type ZaloCustomer = { name: string; phone: string; co_people?: unknown };
@@ -608,9 +632,9 @@ function planNoZaloUntick(cust: any, cts: any[], contractId: string, noAccountWh
 async function sendZaloToCustomer(opts: {
   accessToken: string; customer: ZaloCustomer; contract: any; contractsOfCustomer: any[]; templateId: string; templateData: Record<string, string>;
   contractId: string; customerId: string; kind: string;
-}): Promise<boolean> {
+}): Promise<{ ok: boolean; retry: boolean }> {
   const recipients = contractRecipients(opts.contract, opts.customer);
-  if (!recipients.length) return false;
+  if (!recipients.length) return { ok: false, retry: false };
   const results = await Promise.all(recipients.map((r) => sendZaloTemplate({
     accessToken: opts.accessToken, phone: r.phone, templateId: opts.templateId, templateData: opts.templateData,
     contractId: opts.contractId, customerId: opts.customerId, kind: opts.kind, deferNoAccount: true,
@@ -639,7 +663,7 @@ async function sendZaloToCustomer(opts: {
       console.error('Lỗi tự bỏ tick gửi OA người không có Zalo:', e);
     }
   }
-  return results.some((r) => r.ok);
+  return { ok: results.some((r) => r.ok), retry: results.some((r) => r.retry) };
 }
 
 function formatVNDZaloTemplate(n: number): string {
@@ -653,11 +677,10 @@ function isNearOrPastDueZalo(contract: any, asOf: Date, nearDueDays: number): bo
   return inst != null && inst.next.daysLeft <= nearDueDays;
 }
 
-function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: string | null; zalo_template_interest_id?: string | null; zalo_near_due_days?: number | null } | null): { templateId: string; dueTemplate: boolean } | null {
+function pickZaloTemplate(ct: any, now: Date, orgRow: { zalo_template_due_id?: string | null; zalo_template_interest_id?: string | null; zalo_near_due_days?: number | null } | null): { templateId: string | null; dueTemplate: boolean } {
   const nearDueDays = orgRow?.zalo_near_due_days || DEFAULT_NEAR_DUE_DAYS_ZALO;
   const dueTemplate = isNearOrPastDueZalo(ct, now, nearDueDays);
-  const templateId = dueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id;
-  if (!templateId) return null;
+  const templateId = (dueTemplate ? orgRow?.zalo_template_due_id : orgRow?.zalo_template_interest_id) || null;
   return { templateId, dueTemplate };
 }
 
@@ -684,12 +707,17 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
 
 type RunOutcome = { status: number; body: Record<string, unknown> };
 
-async function runReminders(purpose: string): Promise<RunOutcome> {
+async function runReminders(purpose: string, force: boolean): Promise<RunOutcome> {
   noZaloCustomerIds.clear();
 
   const startedAt = Date.now();
   const now = new Date();
-  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0, loiHeThong: 0, chuaXuLy: 0 };
+  if (purpose !== 'monthly-close' && !force) {
+    const vnHour = (now.getUTCHours() + 7) % 24;
+    if (vnHour < SEND_FROM_HOUR_VN || vnHour >= SEND_UNTIL_HOUR_VN) return { status: 200, body: { ok: true, boQua: 'ngoài giờ gửi' } };
+    if (await dayAlreadyDone(now)) return { status: 200, body: { ok: true, daXong: true } };
+  }
+  const result = { laiHangThang: 0, ganDenHanQuaHan: 0, zaloBaoLai: 0, loiHeThong: 0, chuaXuLy: 0, canThuLai: 0 };
   const warnings: string[] = [];
 
   const { data: orgRow } = await admin.from('orgs').select('short_name, zalo_template_interest_id, zalo_template_due_id, zalo_near_due_days, push_templates').limit(1).maybeSingle();
@@ -724,15 +752,17 @@ async function runReminders(purpose: string): Promise<RunOutcome> {
   if (autoRead.error) {
     console.error('Không đọc được danh sách gửi tự động Zalo:', autoRead.error);
     warnings.push('Không đọc được danh sách gửi tự động Zalo');
+    result.canThuLai++;
   }
   const autoSendMap = new Map<string, { kind: string; customDay: number | null; intervalMonths: number }>(
     autoRead.rows.map((r: any) => [r.contract_id, { kind: r.kind, customDay: r.custom_day, intervalMonths: r.interval_months || 1 }])
   );
 
   async function shouldSend(contractId: string, kind: string): Promise<boolean> {
-    const { data } = await admin.from('notification_log').select('sent_at')
+    const { data, error } = await admin.from('notification_log').select('sent_at')
       .eq('contract_id', contractId).eq('kind', kind)
       .order('sent_at', { ascending: false }).limit(1);
+    if (error) throw new RetryLater(`Không đọc được nhật ký thông báo: ${error.message}`);
     if (!data || !data.length) return true;
     return daysBetween(new Date(data[0].sent_at), now) >= 1;
   }
@@ -742,11 +772,11 @@ async function runReminders(purpose: string): Promise<RunOutcome> {
     dayStart.setHours(0, 0, 0, 0);
     const { data, error } = await admin.from('zalo_send_log').select('error_message')
       .eq('contract_id', contractId).eq('triggered_by', 'auto').gte('sent_at', dayStart.toISOString()).limit(20);
-    if (error) {
-      console.error('Không kiểm tra được lịch sử gửi tự động hôm nay:', error);
-      return true;
-    }
-    return (data || []).some((r: any) => !String(r.error_message || '').startsWith(ZALO_UNAVAILABLE_MESSAGE));
+    if (error) throw new RetryLater(`Không kiểm tra được lịch sử gửi tự động hôm nay: ${error.message}`);
+    const messages: string[] = (data || []).map((r: any) => String(r.error_message || ''));
+    const retryable = (m: string) => m.startsWith(ZALO_UNAVAILABLE_MESSAGE) || m.startsWith(NETWORK_ERROR_PREFIX);
+    const networkTries = messages.filter((m) => m.startsWith(NETWORK_ERROR_PREFIX)).length;
+    return messages.some((m) => !retryable(m)) || networkTries >= MAX_NETWORK_TRIES;
   }
 
   async function shouldSendAutoZalo(contractId: string, kind: string): Promise<boolean> {
@@ -755,41 +785,48 @@ async function runReminders(purpose: string): Promise<RunOutcome> {
     const { data, error } = await admin.from('zalo_send_log').select('sent_at')
       .eq('contract_id', contractId).eq('triggered_by', 'manual').eq('status', 'success')
       .order('sent_at', { ascending: false }).limit(1).maybeSingle();
-    if (error) {
-      console.error('Không kiểm tra được lịch sử gửi tay Zalo OA:', error);
-      return false;
-    }
+    if (error) throw new RetryLater(`Không kiểm tra được lịch sử gửi tay Zalo OA: ${error.message}`);
     return !data?.sent_at || now.getTime() - new Date(data.sent_at).getTime() >= 5 * 24 * 60 * 60 * 1000;
   }
   async function logSent(customerId: string, contractId: string, kind: string) {
     await admin.from('notification_log').insert({ owner_id: customerId, contract_id: contractId, kind, sent_at: now.toISOString() });
   }
 
-  async function logZaloUnavailable(ct: any, customer: ZaloCustomer, templateId: string, kind: string): Promise<void> {
+  async function logZaloNote(ct: any, customer: ZaloCustomer, templateId: string | null, kind: string, message: string): Promise<void> {
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const { data: written } = await admin.from('zalo_send_log').select('id')
+      .eq('contract_id', ct.id).eq('triggered_by', 'auto').eq('error_message', message)
+      .gte('sent_at', dayStart.toISOString()).limit(1);
+    if (written && written.length) return;
     for (const r of contractRecipients(ct, customer)) {
       await writeZaloLog({
         contract_id: ct.id, customer_id: ct.customer_id, kind, template_id: templateId,
-        phone: r.phone, status: 'error', error_message: ZALO_UNAVAILABLE_MESSAGE, triggered_by: 'auto',
+        phone: r.phone, status: 'error', error_message: message, triggered_by: 'auto',
       }, r.who, r.who === 'co' ? heirOfRow(ct, customer.name) : String(customer.name || ''));
     }
   }
 
   async function autoZalo(ct: any, kind: string, logKind: string): Promise<void> {
-    const picked = pickZaloTemplate(ct, now, orgRow);
-    if (!picked) return;
     const customer = customerMap.get(ct.customer_id);
     if (!customer || !contractRecipients(ct, customer).length || noZaloCustomerIds.has(ct.customer_id)) return;
     if (!await shouldSendAutoZalo(ct.id, logKind)) return;
-    if (!zaloAccessToken) {
-      if (zaloTokenFailed) await logZaloUnavailable(ct, customer, picked.templateId, kind);
+    const picked = pickZaloTemplate(ct, now, orgRow);
+    if (!picked.templateId) {
+      await logZaloNote(ct, customer, null, kind, `Chưa chọn mẫu tin Zalo "${picked.dueTemplate ? 'Đến hạn' : 'Báo lãi'}" trong Cài đặt nên chưa gửi được`);
       return;
     }
-    const zaloOk = await sendZaloToCustomer({
+    if (!zaloAccessToken) {
+      if (zaloTokenFailed) { result.canThuLai++; await logZaloNote(ct, customer, picked.templateId, kind, ZALO_UNAVAILABLE_MESSAGE); }
+      return;
+    }
+    const sent = await sendZaloToCustomer({
       accessToken: zaloAccessToken, customer, contract: ct, contractsOfCustomer: contractsByCustomer.get(ct.customer_id) || [ct], templateId: picked.templateId,
       templateData: buildZaloTemplateData(ct, customer, now, picked.dueTemplate),
       contractId: ct.id, customerId: ct.customer_id, kind,
     });
-    if (zaloOk) { await logSent(ct.customer_id, ct.id, logKind); result.zaloBaoLai++; }
+    if (sent.ok) { await logSent(ct.customer_id, ct.id, logKind); result.zaloBaoLai++; }
+    if (sent.retry && !(await attemptedAutoZaloToday(ct.id))) result.canThuLai++;
   }
 
   async function handleContract(ct: any): Promise<void> {
@@ -861,19 +898,26 @@ async function runReminders(purpose: string): Promise<RunOutcome> {
         try {
           await handleContract(list[i]);
         } catch (e) {
-          result.loiHeThong++;
-          console.error('Lỗi xử lý hợp đồng', list[i]?.code, e);
+          if (e instanceof RetryLater) {
+            result.canThuLai++;
+            console.error('Sẽ thử lại hợp đồng', list[i]?.code, e.message);
+          } else {
+            result.loiHeThong++;
+            console.error('Lỗi xử lý hợp đồng', list[i]?.code, e);
+          }
         }
       }
     }, budgetOver);
     for (const list of notStarted) left += openCount(list);
     result.chuaXuLy = left;
+    result.canThuLai += left;
     if (left > 0) console.error(`Hết thời gian của lượt chạy: còn ${left} hợp đồng chưa xử lý, lượt bù sau đó sẽ làm tiếp.`);
   }
 
   try {
     const cutoff = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
     await admin.from('activity_log').delete().lt('created_at', cutoff);
+    await admin.from('notification_log').delete().eq('owner_id', 'system').eq('kind', RUN_DONE_KIND).lt('sent_at', cutoff);
   } catch (e) {
     console.error('Lỗi dọn activity_log cũ:', e);
   }
@@ -898,8 +942,13 @@ async function runReminders(purpose: string): Promise<RunOutcome> {
     console.error('Lỗi chốt bù tháng 08/2026:', e);
   }
 
-  console.info('send-due-reminders', purpose, JSON.stringify(result));
-  return { status: 200, body: { ok: true, ...result, ...(warnings.length ? { warnings } : {}) } };
+  const finished = purpose !== 'monthly-close' && result.canThuLai === 0;
+  if (finished) {
+    const { error: markError } = await admin.from('notification_log').insert({ owner_id: 'system', kind: RUN_DONE_KIND, contract_id: null, sent_at: now.toISOString() });
+    if (markError) console.error('Không ghi được dấu "hôm nay đã xong":', markError.message);
+  }
+  console.info('send-due-reminders', purpose, JSON.stringify({ ...result, daXong: finished }));
+  return { status: 200, body: { ok: true, ...(purpose !== 'monthly-close' ? { daXong: finished } : {}), ...result, ...(warnings.length ? { warnings } : {}) } };
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -912,7 +961,8 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const purpose = url.searchParams.get('purpose') || 'daily-reminders';
-  const work: Promise<RunOutcome> = runReminders(purpose).catch((e: any) => {
+  const force = url.searchParams.get('force') === '1';
+  const work: Promise<RunOutcome> = runReminders(purpose, force).catch((e: any) => {
     console.error('Lỗi lượt chạy send-due-reminders:', e);
     return { status: 500, body: { ok: false, reason: String(e?.message || e) } };
   });

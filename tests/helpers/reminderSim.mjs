@@ -168,11 +168,11 @@ export async function createSim({ source, now = '2026-11-04T01:00:00Z', maxRows 
   sim.consoleErrors = [];
   // wait=true (mặc định): chạy ngay trong lần gọi và trả về bảng số liệu — dễ kiểm tra.
   // wait=false: gọi như lịch chạy thật (hàm trả lời 202 ngay, việc chạy tiếp qua EdgeRuntime.waitUntil).
-  sim.invoke = async (purpose = '', { secret = 'bi-mat', wait = true } = {}) => {
+  sim.invoke = async (purpose = '', { secret = 'bi-mat', wait = true, force = false } = {}) => {
     globalThis.fetch = fakeFetch;
     if (sim.hasEdgeRuntime) globalThis.EdgeRuntime = { waitUntil: (promise) => { sim.background.push(promise); } };
     else delete globalThis.EdgeRuntime;
-    const query = [purpose && `purpose=${purpose}`, wait && 'wait=1'].filter(Boolean).join('&');
+    const query = [purpose && `purpose=${purpose}`, wait && 'wait=1', force && 'force=1'].filter(Boolean).join('&');
     const url = `https://p.supabase.co/functions/v1/send-due-reminders${query ? `?${query}` : ''}`;
     const realError = console.error, realInfo = console.info;
     console.error = (...a) => { sim.consoleErrors.push(a.map(String).join(' ')); };
@@ -209,7 +209,7 @@ export async function createSim({ source, now = '2026-11-04T01:00:00Z', maxRows 
     };
     sim.tables.contracts.push(row); return row;
   };
-  sim.addAuto = (a) => { const row = { id: `a${++seq}`, kind: 'lai_hang_thang_auto', custom_day: null, interval_months: 2, ...a }; sim.tables.zalo_auto_send_list.push(row); return row; };
+  sim.addAuto = (a) => { const row = { id: `a${++seq}`, kind: 'lai_hang_thang_auto', custom_day: null, interval_months: 2, created_at: new Date().toISOString(), ...a }; sim.tables.zalo_auto_send_list.push(row); return row; };
   // Hợp đồng vay 04/09/2026, lãi trả đến 05/09 → mốc ngày 04: định kỳ 2 tháng thì đến lượt đúng 04/11/2026.
   sim.addDue = (i, over = {}) => {
     const customer = sim.addCustomer({ id: `c${i}`, name: `Khách ${i}`, phone: `09${String(10000000 + i).slice(-8)}` });
