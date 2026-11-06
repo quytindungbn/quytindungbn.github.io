@@ -3668,6 +3668,14 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - Tiện sửa: nút tròn **Nạp cân đối** không còn bị đổi thành chữ "Nạp cân đối" sau khi kiểm tra file hoặc bấm Hủy (`previewImport` trước đây ghi đè biểu tượng bằng chữ; nay khôi phục đúng biểu tượng).
 - Mã: `js/lib/balanceSheet.js`, `js/lib/balanceSheetMetrics.js` (`loanTermChildren`; tham số `showZero` giữ cả loại bằng 0, dùng cho cửa sổ kiểm tra), `js/views/admin/balanceSheet.js` (`assetItems`, `loanTermImportRows`); bài thử 5 bài trong `tests/balanceSheet.test.mjs` (gồm bài kiểm tra 2111 / 2112 / 2113 không bị đọc thành kỳ hạn) và 1 bài trong `tests/balanceSheetMetrics.test.mjs` (loại bằng 0 thì ẩn). Phiên bản 1.0.17.
 
+### 10.118 Biểu tượng ứng dụng: bỏ khung trắng quanh ô xanh trên màn hình chính điện thoại (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Hiện tượng**: trên một số điện thoại (ví dụ Samsung), icon "QTD Bình Nguyên" hiện ô xanh nằm giữa một khung trắng bo góc (trông như ảnh dán trong khung).
+- **Nguyên nhân**: icon `purpose: any` (`icons/icon-192.png`, `icons/icon-512.png`, mẫu B từ 21/10, mục "Icon app mới") chừa viền trong suốt khoảng 7% quanh ô xanh (chỗ đổ bóng). Khi điện thoại hoặc trình duyệt không dùng bản tràn viền `maskable` mà đặt icon `any` lên nền trắng của màn hình chính thì viền trong suốt đó hiện thành khung trắng.
+- **Đã sửa**: `icon-192.png` và `icon-512.png` được cắt sát mép ô xanh (viền vàng sát mép khung, bốn góc vẫn bo trong suốt cho máy tính) nên ô xanh phủ kín khung trắng của điện thoại; không còn đổ bóng ngoài ô. Icon `maskable` và `apple-touch-icon` không đổi. Đường dẫn icon trong `manifest.json`, `index.html` (icon tab) và `js/components/installBtn.js` (ảnh trong thẻ mời cài) đổi `?v=2` → `?v=3` để trình duyệt tải icon mới. Phiên bản 1.0.18.
+- **Máy đã cài**: ứng dụng cài bằng Chrome (WebAPK) tự cập nhật icon khi trình duyệt kiểm tra lại (thường 1–3 ngày sau khi mở app); lối tắt tạo bằng trình duyệt khác (Samsung Internet, Cốc Cốc, Firefox…) thì xóa icon cũ rồi cài lại. Máy tính: icon đổi ở lần mở app tiếp theo.
+- **Quay lại logo PCF nền trắng như trước ngày 21/10**: file cũ còn trong git (`git show 288969e~1:icons/icon-192.png` và `icon-512.png`); `icons/logo-pcf.png` vẫn là logo gốc.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

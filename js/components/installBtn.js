@@ -148,7 +148,7 @@ function showInstallBanner(onGo, onLater) {
   bannerEl.setAttribute('aria-label', 'Cài đặt ứng dụng');
   bannerEl.innerHTML = `
     <div class="inst-banner-top">
-      <img class="inst-banner-ic" src="icons/icon-192.png?v=2" alt="" width="44" height="44">
+      <img class="inst-banner-ic" src="icons/icon-192.png?v=3" alt="" width="44" height="44">
       <div class="inst-banner-tx"><b>Cài ứng dụng QTD Bình Nguyên</b><span>Mở nhanh từ màn hình chính, nhận thông báo</span></div>
     </div>
     <div class="inst-banner-act">
