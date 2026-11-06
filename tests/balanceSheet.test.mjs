@@ -226,34 +226,56 @@ test('lãi và phí phải thu tách theo TK 394 (tiền gửi) và TK 391 (ho�
   assert.deepEqual(onlyDeposits.accountDetails.accruedReceivables.map(({ code, balance }) => [code, balance]), [['394', 7]]);
 });
 
-test('dư nợ cho vay tách ngắn hạn, trung hạn, dài hạn theo TK 2111, 2112, 2113 (đầu kỳ và cuối kỳ riêng)', () => {
+test('dư nợ cho vay tách ngắn hạn, trung hạn, dài hạn theo 3 số đầu TK 211, 212, 213 (đầu kỳ và cuối kỳ riêng)', () => {
   const rows = sample();
-  rows[26] = ['Cho vay ngắn hạn', '2111', 130, 0, 0, 0, 110, 0];
-  rows[27] = ['Cho vay trung hạn', '2112', 60, 0, 0, 0, 80, 0];
-  rows[28] = ['Cho vay dài hạn', '2113', 10, 0, 0, 0, 10, 0];
+  rows[15] = ['Cho vay ngắn hạn', '211', 130, 0, 0, 0, 110, 0];
+  rows[16] = ['Cho vay trung hạn', '212', 60, 0, 0, 0, 80, 0];
+  rows[26] = ['Cho vay dài hạn', '213', 10, 0, 0, 0, 10, 0];
   const { start, end } = parseBalanceSheetRows(rows);
-  assert.deepEqual([start.loanShortTerm, start.loanMediumTerm, start.loanLongTerm, start.loanOtherTerm], [130, 60, 10, 0]);
-  assert.deepEqual([end.loanShortTerm, end.loanMediumTerm, end.loanLongTerm, end.loanOtherTerm], [110, 80, 10, 0]);
-  assert.equal(end.loanShortTerm + end.loanMediumTerm + end.loanLongTerm + end.loanOtherTerm, end.grossLoans);
+  assert.deepEqual([start.loanTermShort, start.loanTermMedium, start.loanTermLong, start.loanTermOther], [130, 60, 10, 0]);
+  assert.deepEqual([end.loanTermShort, end.loanTermMedium, end.loanTermLong, end.loanTermOther], [110, 80, 10, 0]);
+  assert.equal(end.loanTermShort + end.loanTermMedium + end.loanTermLong + end.loanTermOther, end.grossLoans);
 });
 
-test('dư nợ theo kỳ hạn: tài khoản không có dòng thì tính 0, phần còn lại ghi vào "khác", cộng đủ các tài khoản con', () => {
+test('dư nợ theo kỳ hạn cộng cả tài khoản con (21122 là ngắn hạn nhóm 2); loại không có tài khoản thì tính 0', () => {
   const rows = sample();
-  rows[26] = ['', '211101', 90, 0, 0, 0, 90, 0];
-  rows[27] = ['', '211102', 30, 0, 0, 0, 30, 0];
-  rows[28] = ['Cho vay trung hạn', '2112', 50, 0, 0, 0, 50, 0];
+  rows[15] = [];
+  rows[16] = [];
+  rows[26] = ['Ngắn hạn nhóm 1', '21111', 90, 0, 0, 0, 90, 0];
+  rows[27] = ['Ngắn hạn nhóm 2', '21122', 30, 0, 0, 0, 30, 0];
+  rows[28] = ['Trung hạn nhóm 1', '21211', 80, 0, 0, 0, 80, 0];
   const { end } = parseBalanceSheetRows(rows);
-  assert.equal(end.loanShortTerm, 120);
-  assert.equal(end.loanMediumTerm, 50);
-  assert.equal(end.loanLongTerm, 0);
-  assert.equal(end.loanOtherTerm, 30);
+  assert.deepEqual([end.loanTermShort, end.loanTermMedium, end.loanTermLong, end.loanTermOther], [120, 80, 0, 0]);
   assert.equal(end.grossLoans, 200);
 });
 
-test('file không có tài khoản 2111 / 2112 / 2113 thì không lưu số theo kỳ hạn', () => {
-  const { start, end } = parseBalanceSheetRows(sample());
+test('số sau 211 là nhóm nợ: 2111, 2112, 2113 không bị đọc thành ngắn, trung, dài hạn', () => {
+  const rows = sample();
+  rows[26] = ['Nợ đủ tiêu chuẩn', '2111', 150, 0, 0, 0, 150, 0];
+  rows[27] = ['Nợ cần chú ý', '2112', 40, 0, 0, 0, 40, 0];
+  rows[28] = ['Nợ dưới tiêu chuẩn', '2113', 10, 0, 0, 0, 10, 0];
+  const { end } = parseBalanceSheetRows(rows);
+  assert.deepEqual([end.loanTermShort, end.loanTermMedium, end.loanTermLong, end.loanTermOther], [200, 0, 0, 0]);
+});
+
+test('khoản cho vay ngoài 211 / 212 / 213 ghi vào "khác" để ba loại cộng lại vẫn khớp dư nợ', () => {
+  const rows = sample();
+  rows[14][2] = rows[14][6] = 210;
+  rows[23][3] = rows[23][7] = 90;
+  rows[26] = ['Cho vay khác', '214', 10, 0, 0, 0, 10, 0];
+  const { end } = parseBalanceSheetRows(rows);
+  assert.equal(end.grossLoans, 210);
+  assert.deepEqual([end.loanTermShort, end.loanTermMedium, end.loanTermLong, end.loanTermOther], [200, 0, 0, 10]);
+});
+
+test('file không có tài khoản 211 / 212 / 213 thì không lưu số theo kỳ hạn', () => {
+  const rows = sample();
+  rows[15] = [];
+  rows[16] = [];
+  rows[26] = ['Cho vay khác', '214', 200, 0, 0, 0, 200, 0];
+  const { start, end } = parseBalanceSheetRows(rows);
   for (const period of [start, end]) {
-    for (const key of ['loanShortTerm', 'loanMediumTerm', 'loanLongTerm', 'loanOtherTerm']) assert.equal(key in period, false);
+    for (const key of ['loanTermShort', 'loanTermMedium', 'loanTermLong', 'loanTermOther']) assert.equal(key in period, false);
   }
   assert.equal(end.grossLoans, 200);
 });

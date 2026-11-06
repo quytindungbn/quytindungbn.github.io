@@ -149,13 +149,13 @@ test('chênh lệch dự phòng lấy theo dòng Tổng dự phòng: một số 
 });
 
 test('mục con dư nợ cho vay theo kỳ hạn chỉ có khi kỳ đó đã lưu đủ ngắn, trung, dài hạn; "Khác" chỉ hiện khi có số', () => {
-  const terms = { loanShortTerm: 100, loanMediumTerm: 50, loanLongTerm: 0, loanOtherTerm: 0 };
+  const terms = { loanTermShort: 100, loanTermMedium: 50, loanTermLong: 0, loanTermOther: 0 };
   assert.deepEqual(loanTermChildren({ ...terms }, { ...terms }),
-    [['Ngắn hạn', 'loanShortTerm'], ['Trung hạn', 'loanMediumTerm'], ['Dài hạn', 'loanLongTerm']]);
-  assert.deepEqual(loanTermChildren({ ...terms }, { ...terms, loanOtherTerm: 7 }).at(-1), ['Khác', 'loanOtherTerm']);
-  assert.deepEqual(loanTermChildren({ ...terms, loanOtherTerm: 3 }, { ...terms }).at(-1), ['Khác', 'loanOtherTerm']);
+    [['Ngắn hạn', 'loanTermShort'], ['Trung hạn', 'loanTermMedium'], ['Dài hạn', 'loanTermLong']]);
+  assert.deepEqual(loanTermChildren({ ...terms }, { ...terms, loanTermOther: 7 }).at(-1), ['Khác', 'loanTermOther']);
+  assert.deepEqual(loanTermChildren({ ...terms, loanTermOther: 3 }, { ...terms }).at(-1), ['Khác', 'loanTermOther']);
   assert.deepEqual(loanTermChildren(null, { ...terms }).length, 3);
   assert.deepEqual(loanTermChildren({ grossLoans: 150 }, { grossLoans: 150 }), []);
-  assert.deepEqual(loanTermChildren({ ...terms }, { loanShortTerm: 100, loanMediumTerm: 50 }), []);
+  assert.deepEqual(loanTermChildren({ ...terms }, { loanTermShort: 100, loanTermMedium: 50 }), []);
   assert.deepEqual(loanTermChildren(undefined, undefined), []);
 });

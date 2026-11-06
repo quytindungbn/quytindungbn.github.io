@@ -5,7 +5,7 @@ function amount(value, row, column) {
   return n;
 }
 
-const LOAN_TERM_ACCOUNTS = { loanShortTerm: '2111', loanMediumTerm: '2112', loanLongTerm: '2113' };
+const LOAN_TERM_ACCOUNTS = { loanTermShort: '211', loanTermMedium: '212', loanTermLong: '213' };
 
 function periodFromRows(rows) {
   const heading = rows.slice(0, 12).map((row) => String(row?.[0] || '')).join(' ');
@@ -123,7 +123,7 @@ export function parseBalanceSheetRows(rows) {
     const termBalances = Object.entries(LOAN_TERM_ACCOUNTS).map(([key, code]) => [key, debit(code)]);
     const loanTerms = Object.values(LOAN_TERM_ACCOUNTS).some((code) => account(code)) ? {
       ...Object.fromEntries(termBalances),
-      loanOtherTerm: grossLoans - termBalances.reduce((sum, [, value]) => sum + value, 0),
+      loanTermOther: grossLoans - termBalances.reduce((sum, [, value]) => sum + value, 0),
     } : {};
     const fixedAssetsGross = debit('301');
     const accumulatedDepreciation = credit('305');

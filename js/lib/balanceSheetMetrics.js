@@ -54,11 +54,11 @@ export function accountDetailChanges(endLines, startLines, yearLines, historyLin
   }));
 }
 
-const LOAN_TERM_ROWS = [['Ngắn hạn', 'loanShortTerm'], ['Trung hạn', 'loanMediumTerm'], ['Dài hạn', 'loanLongTerm']];
+const LOAN_TERM_ROWS = [['Ngắn hạn', 'loanTermShort'], ['Trung hạn', 'loanTermMedium'], ['Dài hạn', 'loanTermLong']];
 
 export function loanTermChildren(start, end) {
   if (!LOAN_TERM_ROWS.every(([, key]) => Number.isFinite(end?.[key]))) return [];
-  return end.loanOtherTerm || start?.loanOtherTerm ? [...LOAN_TERM_ROWS, ['Khác', 'loanOtherTerm']] : LOAN_TERM_ROWS;
+  return end.loanTermOther || start?.loanTermOther ? [...LOAN_TERM_ROWS, ['Khác', 'loanTermOther']] : LOAN_TERM_ROWS;
 }
 
 export function selectLatestBalanceImports(imports) {
