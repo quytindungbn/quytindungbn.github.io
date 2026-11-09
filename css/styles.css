@@ -730,15 +730,23 @@ svg { display: block; }
   .customer-ledger-disbursed, .customer-ledger-due, .customer-ledger-paid { display: none; }
 }
 
-.installment-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 2px; }
+.installment-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: clamp(11px, 3.2vw, 12.5px); margin-top: 2px; }
 .installment-table th {
-  text-align: left; font-weight: 600; color: var(--text-faint); font-size: 11px;
-  text-transform: uppercase; letter-spacing: .02em; padding: 4px 6px; border-bottom: 1px solid var(--border);
+  text-align: left; font-weight: 600; color: var(--text-faint); font-size: clamp(9.5px, 2.8vw, 11px); white-space: nowrap;
+  text-transform: uppercase; letter-spacing: .02em; padding: 4px; border-bottom: 1px solid var(--border);
 }
+.installment-table th:nth-child(1) { width: 33%; }
+.installment-table th:nth-child(2) { width: 26%; }
+.installment-table th:nth-child(2), .installment-table td:nth-child(2) { text-align: center; }
 .installment-table th:last-child, .installment-table td:last-child { text-align: right; }
-.installment-table td { padding: 7px 6px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+.installment-table td { padding: 7px 4px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; white-space: nowrap; }
 .installment-table tr:last-child td { border-bottom: none; }
 .installment-table tr.is-next-due td { background: var(--surface-alt); }
+.installment-table tr.installment-note-row td { padding-top: 0; white-space: normal; }
+.installment-plan-alert { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+.installment-plan-alert svg { flex: none; }
+.installment-plan-alert.is-overdue { color: var(--danger); }
+.installment-plan-alert.is-near-due { color: var(--warning); }
 
 .installment-next-btn {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
@@ -748,8 +756,9 @@ svg { display: block; }
 .installment-next-btn:hover { background: var(--surface); border-color: var(--border-strong); }
 .installment-next-btn.is-overdue { border-color: #f3c6c4; background: #fdf1f0; }
 .installment-next-btn.is-near-due { border-color: #f6e2b8; background: #fdf7ea; }
-.installment-next-col { display: flex; flex-direction: column; font-size: 13px; font-weight: 600; }
+.installment-next-col { display: flex; flex-direction: column; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .installment-next-col .field-hint { margin: 0 0 2px; }
+.installment-next-date { flex: 1; align-items: center; }
 .installment-next-amount { margin-left: auto; text-align: right; }
 
 .log-group-head { margin-bottom: 4px; }

@@ -167,7 +167,7 @@ export function installmentNextBoxHtml(contract, elId = 'installment-next-box') 
   return `
     <button type="button" id="${elId}" class="installment-next-btn ${cls}">
       <span class="installment-next-col"><span class="field-hint">Kỳ</span>Kỳ ${idx + 1}</span>
-      <span class="installment-next-col"><span class="field-hint">Ngày</span>${formatDate(next.dueDate)}</span>
+      <span class="installment-next-col installment-next-date"><span class="field-hint">Ngày</span>${formatDate(next.dueDate)}</span>
       <span class="installment-next-col installment-next-amount"><span class="field-hint">Số tiền trả nợ gốc</span>${formatVND(next.dueAmount)}</span>
       ${icon('chevronRight', 'icon-sm')}
     </button>
@@ -184,9 +184,15 @@ export function openInstallmentPlanModal(contract) {
   const plan = S.computeInstallmentPlan(contract);
   if (!plan) return;
   const nextIdx = plan.findIndex((p) => p.dueAmount > 0);
+  const nextRow = nextIdx >= 0 ? plan[nextIdx] : null;
+  const nextUrgency = nextRow ? (nextRow.daysLeft < 0 ? 'qua_han' : nextRow.daysLeft <= S.NEAR_DUE_DAYS ? 'gan_den_han' : null) : null;
+  const alertHtml = nextUrgency
+    ? `<div class="installment-plan-alert ${nextUrgency === 'qua_han' ? 'is-overdue' : 'is-near-due'}">${icon('alert', 'icon-sm')}<span>${nextUrgency === 'qua_han' ? `Kỳ ${nextIdx + 1} đã quá hạn ${Math.abs(nextRow.daysLeft)} ngày` : `Kỳ ${nextIdx + 1} còn ${nextRow.daysLeft} ngày nữa đến hạn`}</span></div>`
+    : '';
   openModal({
     title: `Kế hoạch trả nợ — HĐ ${contract.code}`,
     bodyHtml: `
+      ${alertHtml}
       <table class="installment-table">
         <thead><tr><th>Kỳ hạn trả nợ</th><th>Ngày</th><th>Số tiền trả nợ gốc</th></tr></thead>
         <tbody>
@@ -195,19 +201,14 @@ export function openInstallmentPlanModal(contract) {
             const amountToShow = p.dueAmount > 0 ? p.dueAmount : p.amount;
             const urgency = p.dueAmount > 0 ? (p.daysLeft < 0 ? 'qua_han' : p.daysLeft <= S.NEAR_DUE_DAYS ? 'gan_den_han' : null) : null;
             const color = urgency === 'qua_han' ? 'var(--danger)' : urgency === 'gan_den_han' ? 'var(--warning)' : 'var(--text)';
-            const badge = urgency === 'qua_han'
-              ? `<span class="badge badge-red" style="margin-left:6px">Quá hạn ${Math.abs(p.daysLeft)} ngày</span>`
-              : urgency === 'gan_den_han'
-                ? `<span class="badge badge-yellow" style="margin-left:6px">Còn ${p.daysLeft} ngày</span>`
-                : '';
             const diffNote = urgency && p.dueAmount !== p.amount
-              ? `<tr class="${i === nextIdx ? 'is-next-due' : ''}"><td colspan="3" class="field-hint" style="text-align:right;padding-top:0">(kỳ ghi ${formatVND(p.amount)}, đã trừ phần trả dư từ trước)</td></tr>`
+              ? `<tr class="installment-note-row${i === nextIdx ? ' is-next-due' : ''}"><td colspan="3" class="field-hint">(kỳ ghi ${formatVND(p.amount)}, đã trừ phần trả dư từ trước)</td></tr>`
               : '';
             return `
             <tr class="${i === nextIdx ? 'is-next-due' : ''}${p.paid ? ' is-paid' : ''}">
               <td>Kỳ ${i + 1}${i === nextIdx ? ` <span class="field-hint" style="display:inline">(kỳ tới)</span>` : ''}</td>
               <td>${formatDate(p.dueDate)}</td>
-              <td style="color:${color};font-weight:600">${p.paid ? `<s class="installment-paid" title="Đã trả đủ kỳ này">${formatVND(amountToShow)}</s>` : `${formatVND(amountToShow)}${badge}`}</td>
+              <td style="color:${color};font-weight:600">${p.paid ? `<s class="installment-paid" title="Đã trả đủ kỳ này">${formatVND(amountToShow)}</s>` : formatVND(amountToShow)}</td>
             </tr>
             ${diffNote}
           `;
