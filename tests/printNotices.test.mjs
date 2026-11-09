@@ -110,3 +110,12 @@ test('bốn nhãn của dải hợp đồng in thường, màu đen, để các 
     assert.match(css, /\.contract strong\{font-weight:700/);
   }
 });
+
+test('dòng địa chỉ và Hotline dưới tên Quỹ in thường, màu đen', () => {
+  for (const type of ['interest', 'due']) {
+    const css = buildNoticeHtml({ ...base, type }).match(/<style>([\s\S]*?)<\/style>/)[1];
+    const rule = css.match(/\.contact\{([^}]*)\}/)[1];
+    assert.match(rule, /^font:400 /);
+    assert.doesNotMatch(rule, /color/);
+  }
+});

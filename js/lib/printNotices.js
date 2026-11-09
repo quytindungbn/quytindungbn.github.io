@@ -127,7 +127,7 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
       .head::after{content:"";position:absolute;left:0;right:0;bottom:-1.5mm;border-bottom:.35pt solid var(--ink)}
       .logo{width:16mm;height:16mm;object-fit:contain;display:block}.logo[hidden]{display:none}
       .org{font:700 14pt/1.25 ${SERIF};letter-spacing:.06em;text-transform:uppercase}
-      .contact{font:600 9.5pt/1.4 ${SERIF};margin-top:1.2mm}
+      .contact{font:400 9.5pt/1.4 ${SERIF};margin-top:1.2mm}
       .meta{display:flex;justify-content:space-between;align-items:baseline;margin:8mm 0 7mm;font-size:10.6pt}.meta .when{font-style:italic}
       .title{text-align:center;margin-bottom:7mm}
       h1{margin:0;font:700 16.5pt/1.3 ${SERIF};letter-spacing:.12em}
@@ -181,7 +181,7 @@ function whenFontsReady(page) {
   const logo = doc.querySelector('img.logo');
   const logoDone = logo && !logo.complete ? new Promise((res) => { logo.addEventListener('load', res); logo.addEventListener('error', res); }) : Promise.resolve();
   const loaded = Promise.all([logoDone, linkDone
-    .then(() => Promise.all(['600 10px "Inter"', '700 10px "Inter"', '400 10px "Source Serif 4"', '600 10px "Source Serif 4"', '700 20px "Source Serif 4"', 'italic 400 10px "Source Serif 4"'].map((f) => doc.fonts.load(f).catch(() => null))))
+    .then(() => Promise.all(['600 10px "Inter"', '700 10px "Inter"', '400 10px "Source Serif 4"', '700 20px "Source Serif 4"', 'italic 400 10px "Source Serif 4"'].map((f) => doc.fonts.load(f).catch(() => null))))
     .then(() => doc.fonts.ready)]);
   return Promise.race([loaded, new Promise((res) => setTimeout(res, 3000))]);
 }
