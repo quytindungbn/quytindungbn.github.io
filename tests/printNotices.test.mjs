@@ -102,3 +102,11 @@ test('giấy báo chỉ dùng chữ và đường kẻ đen thuần để máy i
     assert.match(css, /--ink:#000\b/);
   }
 });
+
+test('bốn nhãn của dải hợp đồng in thường, màu đen, để các số bên dưới nổi bật', () => {
+  for (const type of ['interest', 'due']) {
+    const css = buildNoticeHtml({ ...base, type }).match(/<style>([\s\S]*?)<\/style>/)[1];
+    assert.doesNotMatch(css.match(/\.contract span\{([^}]*)\}/)[1], /font-weight|color/);
+    assert.match(css, /\.contract strong\{font-weight:700/);
+  }
+});

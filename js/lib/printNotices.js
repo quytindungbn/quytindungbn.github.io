@@ -135,7 +135,7 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
       .to{margin:0 0 5mm}.to .who{font-weight:700;margin:0 0 .6mm}.to .addr{margin:0}
       .contract{display:grid;grid-template-columns:1fr 1.25fr 1.2fr 1fr;border-top:.75pt solid #000;border-bottom:.75pt solid #000;padding:3mm 0;margin-bottom:6mm}
       .contract>div{padding:0 3.5mm;border-left:.75pt solid #000}.contract>div:first-child{padding-left:0;border-left:0}
-      .contract span{display:block;font-size:9pt;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:.8mm}.contract strong{font-weight:700;font-size:11.5pt;white-space:nowrap}
+      .contract span{display:block;font-size:9pt;letter-spacing:.05em;text-transform:uppercase;margin-bottom:.8mm}.contract strong{font-weight:700;font-size:11.5pt;white-space:nowrap}
       main{text-align:justify}p{margin:0 0 3.6mm;text-wrap:pretty}
       .statement{margin:0 0 3.4mm}
       .line{display:flex;justify-content:space-between;align-items:baseline;gap:6mm;padding:1.3mm 0;line-height:1.35;border-bottom:.75pt solid #000;font-size:11pt}.line i{display:none}.line strong{font-weight:700}
