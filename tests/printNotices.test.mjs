@@ -92,3 +92,13 @@ test('thư đầu trang: logo và dòng liên hệ chỉ hiện khi có dữ li�
   assert.match(full, /<img class="logo" src="https:\/\/x\.test\/icons\/logo\.png"/);
   assert.match(full, /Thôn &lt;b&gt;1&lt;\/b&gt;\s+·\s+Hotline: 1900 1234/);
 });
+
+test('giấy báo chỉ dùng chữ và đường kẻ đen thuần để máy in không bị rỗ', () => {
+  for (const type of ['interest', 'due']) {
+    const css = buildNoticeHtml({ ...base, type }).match(/<style>([\s\S]*?)<\/style>/)[1].replace(/\.toolbar[^{]*\{[^}]*\}/g, '');
+    const colors = (css.match(/#[0-9a-f]{3,8}\b/gi) || []).map((color) => color.toLowerCase());
+    assert.deepEqual(colors.filter((color) => !['#000', '#fff', '#e9ebea'].includes(color)), []);
+    assert.doesNotMatch(css, /var\(--(mut|rule)\)/);
+    assert.match(css, /--ink:#000\b/);
+  }
+});

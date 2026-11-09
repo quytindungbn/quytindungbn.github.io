@@ -3678,6 +3678,14 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Nếu GitHub Pages báo lỗi khi đưa lên** (log ghi `Failed to create deployment (status: 504)`; bước build vẫn thành công): đó là lỗi tạm thời phía GitHub, nội dung web không sai. Vào Actions → lượt "pages build and deployment" vừa lỗi → "Re-run failed jobs"; nếu lượt chạy lại bị kẹt hàng đợi thì đẩy một commit mới lên `main` để GitHub tạo lượt đưa lên mới.
 - **Quay lại logo PCF nền trắng như trước ngày 21/10**: file cũ còn trong git (`git show 288969e~1:icons/icon-192.png` và `icon-512.png`); `icons/logo-pcf.png` vẫn là logo gốc.
 
+### 10.119 Giấy báo in ra bị "rỗ" (như nhiều chấm ghép lại): chữ và đường kẻ đen thuần, chữ nhỏ đậm hơn (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Hiện tượng** (cả hai giấy báo **THÔNG BÁO NỘP LÃI** và **GIẤY BÁO HỢP ĐỒNG ĐẾN HẠN**, vì dùng chung `buildNoticeHtml` trong `js/lib/printNotices.js`): khi in ra giấy, dòng địa chỉ + Hotline dưới tên Quỹ, dòng "Số: ……", bốn nhãn **Số HĐTD / Dư nợ hiện tại / Ngày đến hạn HĐ / Lãi suất** bị rỗ như các chấm nhỏ ghép lại; chữ đen (tên Quỹ, tiêu đề, nội dung) vẫn liền nét.
+- **Nguyên nhân**: đúng các dòng đó đang tô **màu xám** (`#5a5a5a`), chữ nhỏ 8,8–9pt, nét mảnh. Máy in không in được "xám đặc" mà phải chia chấm (halftone): xám `#5a5a5a` chỉ phủ mực khoảng 65% diện tích nên nét chữ nhỏ vỡ thành chấm, đường kẻ nhạt thành đường chấm chấm. Cùng lý do với dòng "Hợp đồng tín dụng số …" (`#333`), "(Ký, ghi rõ họ tên)", và các đường kẻ mảnh `#9a9a9a` / `#cfcfcf`. Chữ đen thuần luôn đủ mực nên liền nét.
+- **Đã sửa** (phiên bản 1.0.19): mọi chữ và đường kẻ của giấy báo đều **đen thuần** `#000` (bỏ `--mut`, `--rule`, `#161616`, `#333`, `#cfcfcf`, `#9a9a9a`); dòng liên hệ dưới tên Quỹ cỡ 9,5pt, bốn nhãn cỡ 9pt, cả hai đậm vừa (600, trước là 400); đường kẻ giữ nguyên độ dày (Chrome vốn làm tròn nét mảnh lên 1 điểm ảnh, đã đo trên PDF: cùng 4 điểm ảnh ở 300 dpi) chỉ đổi từ xám sang đen. Bố cục, kiểu chữ, cỡ chữ phần thân và logo không đổi; hai giấy báo vẫn vừa 1 trang A4.
+- **Kiểm chứng**: dựng hai giấy báo thành PDF bằng Chrome → ảnh 300 dpi → mô phỏng máy laser đen trắng (chia chấm kiểu `h8x8a` của ImageMagick). Bản cũ lộ đúng các chỗ trên (kèm các đường kẻ thành chấm), bản mới liền nét hết. Bài thử mới trong `tests/printNotices.test.mjs` ("chỉ dùng chữ và đường kẻ đen thuần") khóa việc phần giấy chỉ dùng `#000` / trắng, sau này không ai vô tình đưa màu xám lại.
+- **Nếu in ra vẫn còn rỗ**: xem hộp thoại in của máy in, tắt "Tiết kiệm mực" (Toner Save / EcoPrint / Draft) và chọn chất lượng cao (Best / 600 dpi) — chế độ tiết kiệm mực làm mọi chữ rỗng ruột, kể cả chữ đen. Riêng logo PCF màu đỏ / xanh khi in trên máy đen trắng sẽ thành xám chấm, đó là đặc điểm của ảnh màu, không phải lỗi giấy báo.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

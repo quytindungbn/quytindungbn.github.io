@@ -117,7 +117,7 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${h(title)} - HĐTD ${code}</title>
     <link data-fonts rel="stylesheet" href="${FONTS_CSS_URL}">
     <style>
-      :root{--ink:#161616;--mut:#5a5a5a;--rule:#9a9a9a}
+      :root{--ink:#000}
       @page{size:A4;margin:0}*{box-sizing:border-box}
       body{margin:0;color:var(--ink);background:#e9ebea;font:11pt/1.58 ${SERIF};font-variant-numeric:lining-nums tabular-nums;-webkit-font-smoothing:antialiased}
       .toolbar{font:600 13px ${SANS};padding:11px 18px;background:#fff;border-bottom:1px solid #d5dfdc;display:flex;gap:12px;align-items:center;color:#41524c}
@@ -127,22 +127,22 @@ export function buildNoticeHtml({ type, contract, customer, org, interest, asOf 
       .head::after{content:"";position:absolute;left:0;right:0;bottom:-1.5mm;border-bottom:.35pt solid var(--ink)}
       .logo{width:16mm;height:16mm;object-fit:contain;display:block}.logo[hidden]{display:none}
       .org{font:700 14pt/1.25 ${SERIF};letter-spacing:.06em;text-transform:uppercase}
-      .contact{font:400 9pt/1.4 ${SERIF};color:var(--mut);margin-top:1.2mm}
-      .meta{display:flex;justify-content:space-between;align-items:baseline;margin:8mm 0 7mm;font-size:10.6pt}.meta .no{color:var(--mut)}.meta .when{font-style:italic}
+      .contact{font:600 9.5pt/1.4 ${SERIF};margin-top:1.2mm}
+      .meta{display:flex;justify-content:space-between;align-items:baseline;margin:8mm 0 7mm;font-size:10.6pt}.meta .when{font-style:italic}
       .title{text-align:center;margin-bottom:7mm}
       h1{margin:0;font:700 16.5pt/1.3 ${SERIF};letter-spacing:.12em}
-      h2{margin:2mm 0 0;font:400 11.5pt ${SERIF};font-style:italic;color:#333}
+      h2{margin:2mm 0 0;font:400 11.5pt ${SERIF};font-style:italic}
       .to{margin:0 0 5mm}.to .who{font-weight:700;margin:0 0 .6mm}.to .addr{margin:0}
-      .contract{display:grid;grid-template-columns:1fr 1.25fr 1.2fr 1fr;border-top:.5pt solid var(--rule);border-bottom:.5pt solid var(--rule);padding:3mm 0;margin-bottom:6mm}
-      .contract>div{padding:0 3.5mm;border-left:.4pt solid #cfcfcf}.contract>div:first-child{padding-left:0;border-left:0}
-      .contract span{display:block;font-size:8.8pt;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-bottom:.8mm}.contract strong{font-weight:700;font-size:11.5pt;white-space:nowrap}
+      .contract{display:grid;grid-template-columns:1fr 1.25fr 1.2fr 1fr;border-top:.75pt solid #000;border-bottom:.75pt solid #000;padding:3mm 0;margin-bottom:6mm}
+      .contract>div{padding:0 3.5mm;border-left:.75pt solid #000}.contract>div:first-child{padding-left:0;border-left:0}
+      .contract span{display:block;font-size:9pt;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:.8mm}.contract strong{font-weight:700;font-size:11.5pt;white-space:nowrap}
       main{text-align:justify}p{margin:0 0 3.6mm;text-wrap:pretty}
       .statement{margin:0 0 3.4mm}
-      .line{display:flex;justify-content:space-between;align-items:baseline;gap:6mm;padding:1.3mm 0;line-height:1.35;border-bottom:.4pt solid #cfcfcf;font-size:11pt}.line i{display:none}.line strong{font-weight:700}
+      .line{display:flex;justify-content:space-between;align-items:baseline;gap:6mm;padding:1.3mm 0;line-height:1.35;border-bottom:.75pt solid #000;font-size:11pt}.line i{display:none}.line strong{font-weight:700}
       .line.total{padding:1.7mm 0 1.5mm;font-weight:700}.line.total strong{font-size:14pt}
       .line.words{display:block;border-bottom:1pt double var(--ink);padding:1.5mm 0 1.7mm;font-size:10.8pt;text-align:left}
       .sign{display:grid;grid-template-columns:1fr 1fr;margin-top:8mm;text-align:center;break-inside:avoid}
-      .sign strong{display:block;font:700 10.5pt ${SERIF};letter-spacing:.1em;text-transform:uppercase}.sign small{display:block;font-style:italic;font-size:10pt;color:var(--mut);margin-top:.6mm}
+      .sign strong{display:block;font:700 10.5pt ${SERIF};letter-spacing:.1em;text-transform:uppercase}.sign small{display:block;font-style:italic;font-size:10pt;margin-top:.6mm}
       .sign div{height:36mm}
       @media print{body{background:#fff}.toolbar{display:none}.sheet{margin:0;box-shadow:none;width:210mm;height:296.5mm;min-height:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body><div class="toolbar"><button onclick="window.print()">In giấy báo</button><span>Kiểm tra số liệu và ngày yêu cầu trước khi phát hành.</span></div><article class="sheet">
@@ -181,7 +181,7 @@ function whenFontsReady(page) {
   const logo = doc.querySelector('img.logo');
   const logoDone = logo && !logo.complete ? new Promise((res) => { logo.addEventListener('load', res); logo.addEventListener('error', res); }) : Promise.resolve();
   const loaded = Promise.all([logoDone, linkDone
-    .then(() => Promise.all(['600 10px "Inter"', '700 10px "Inter"', '400 10px "Source Serif 4"', '700 20px "Source Serif 4"', 'italic 400 10px "Source Serif 4"'].map((f) => doc.fonts.load(f).catch(() => null))))
+    .then(() => Promise.all(['600 10px "Inter"', '700 10px "Inter"', '400 10px "Source Serif 4"', '600 10px "Source Serif 4"', '700 20px "Source Serif 4"', 'italic 400 10px "Source Serif 4"'].map((f) => doc.fonts.load(f).catch(() => null))))
     .then(() => doc.fonts.ready)]);
   return Promise.race([loaded, new Promise((res) => setTimeout(res, 3000))]);
 }
