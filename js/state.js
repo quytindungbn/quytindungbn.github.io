@@ -1,5 +1,5 @@
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
-import { describeOrgPatch } from './lib/activityLabels.js';
+import { describeOrgPatch, describeSearch, clipLabel } from './lib/activityLabels.js';
 import { heirNamesOf, heirOfContract, savedCoPeopleOf, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, phoneHolders } from './lib/coBorrower.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { validateDraft, planChanged, firstRemindOn, nextAfterDone, addDaysIso, todayIso, isDue } from './lib/customerNotes.js';
@@ -2225,7 +2225,19 @@ export function logAdminAction(action, extra = {}) {
 }
 
 export function logUiAction(kind, label) {
-  logAdminAction('ui-action', { kind, label });
+  logAdminAction('ui-action', { kind, label: clipLabel(label) });
+}
+
+const trailTimers = new Map();
+export function logUiActionLater(key, kind, label, delay = 1500) {
+  clearTimeout(trailTimers.get(key));
+  trailTimers.delete(key);
+  if (!label) return;
+  trailTimers.set(key, setTimeout(() => { trailTimers.delete(key); logUiAction(kind, label); }, delay));
+}
+
+export function logSearchAction(where, query, delay) {
+  logUiActionLater(`search:${where}`, 'search', describeSearch(where, query), delay);
 }
 
 export function getSession() { return state.session; }

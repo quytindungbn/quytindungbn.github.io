@@ -11,6 +11,7 @@ import { escapeHtml, formatNumber, formatVND, compactParts } from '../../utils.j
 import { icon } from '../../icons.js';
 import { periodStepperHtml } from '../../components/ui.js';
 import { kvGet, kvSet } from '../../lib/kvCache.js';
+import { trailText } from '../../lib/activityLabels.js';
 
 let reports = [];
 let selectedMonth = null;
@@ -25,6 +26,7 @@ const pendingProvisions = new Set();
 const openRows = new Set();
 
 const monthName = (ym) => `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)}`;
+const logMonthPick = (ym) => S.logUiActionLater('bs-month', 'bs-view', `Quản trị: xem bảng cân đối **${monthName(ym)}**`);
 const reportDate = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso || '')
   ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—';
 const money = (value) => formatVND(value || 0);
@@ -487,6 +489,7 @@ function fundingComposition(figures) {
 }
 
 function showProfitDetails(report) {
+  S.logUiAction('bs-view', `Quản trị: xem **Doanh thu – Chi phí** (${monthName(report.year_month)})`);
   const { start, end } = report.figures;
   if (!Number.isFinite(end.revenue) || !Number.isFinite(end.expenses)) {
     openModal({ title: 'Doanh thu – Chi phí', bodyHtml: '<p class="text-muted">Báo cáo này được nạp trước khi lưu chi tiết Doanh thu – Chi phí. Cần nạp lại file của kỳ này để xem số liệu.</p>' });
@@ -616,6 +619,7 @@ function draw(contentEl) {
   contentEl.querySelectorAll('.bs-bar .period-step-btn').forEach((button) => button.addEventListener('click', () => {
     const target = reports[reports.findIndex((r) => r.year_month === selectedMonth) + Number(button.dataset.step)];
     if (!target) return;
+    logMonthPick(target.year_month);
     const scrollY = window.scrollY;
     selectedMonth = target.year_month;
     remoteProvisions.delete(selectedMonth);
@@ -623,6 +627,7 @@ function draw(contentEl) {
     window.scrollTo(0, scrollY);
   }));
   contentEl.querySelector('#bs-month')?.addEventListener('change', (event) => {
+    logMonthPick(event.target.value);
     selectedMonth = event.target.value;
     remoteProvisions.delete(selectedMonth);
     draw(contentEl);
@@ -632,6 +637,7 @@ function draw(contentEl) {
   }
   bindTrendPoints(contentEl, (yearMonth) => {
     if (yearMonth === selectedMonth) return;
+    logMonthPick(yearMonth);
     trendScrollLeft = contentEl.querySelector('.bs-chart-scroll:not([data-chart])')?.scrollLeft ?? null;
     const scrollY = window.scrollY;
     selectedMonth = yearMonth;
@@ -644,13 +650,20 @@ function draw(contentEl) {
   contentEl.querySelectorAll('[data-expand]').forEach((button) => button.addEventListener('click', () => {
     const id = button.dataset.expand;
     const open = button.getAttribute('aria-expanded') !== 'true';
+    S.logUiAction('bs-view', `Quản trị: ${open ? 'mở' : 'thu gọn'} chi tiết **${trailText(button.textContent.replace(':', ''))}** (${monthName(report.year_month)})`);
     button.setAttribute('aria-expanded', String(open));
     button.closest('.bs-management-row')?.classList.toggle('is-open', open);
     contentEl.querySelector(`[data-sub="${id}"]`)?.classList.toggle('is-open', open);
     if (open) openRows.add(id); else openRows.delete(id);
   }));
-  contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => { reloadFromServer(contentEl); });
-  contentEl.querySelector('#bs-import')?.addEventListener('click', () => contentEl.querySelector('#bs-file')?.click());
+  contentEl.querySelector('#bs-refresh')?.addEventListener('click', () => {
+    S.logUiAction('bs-view', 'Quản trị: bấm **Làm mới** số liệu từ máy chủ');
+    reloadFromServer(contentEl);
+  });
+  contentEl.querySelector('#bs-import')?.addEventListener('click', () => {
+    S.logUiAction('bs-import', 'Quản trị: bấm **Nạp file bảng cân đối**');
+    contentEl.querySelector('#bs-file')?.click();
+  });
   contentEl.querySelector('#bs-file')?.addEventListener('change', async (event) => {
     const files = [...(event.target.files || [])];
     event.target.value = '';
@@ -712,6 +725,7 @@ async function previewImport(files, contentEl) {
           const { error } = await makeClient().from('balance_sheet_reports').upsert(rows, { onConflict: 'year_month' });
           if (error) { toast(`Không lưu được: ${error.message}`, 'error'); button.disabled = false; return; }
           selectedMonth = selected.at(-1).parsed.yearMonth;
+          S.logUiAction('bs-import', `Quản trị: lưu số liệu bảng cân đối **${selected.map(({ parsed }) => monthName(parsed.yearMonth)).join(', ')}** (${selected.length} kỳ)`);
           close();
           toast(`Đã lưu ${selected.length} kỳ cân đối`, 'success');
           await reloadFromServer(contentEl);

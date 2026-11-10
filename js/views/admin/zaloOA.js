@@ -9,11 +9,18 @@ import { openCustomerDetail, openContractView } from './customers.js';
 import { shortPersonName, logRecipient } from '../../lib/coBorrower.js';
 import { formatPhoneDisplay } from '../../lib/callHistory.js';
 import { groupSendLogs } from '../../lib/sendLogGroups.js';
+import { describeThonXom, describeDateRange, trailText } from '../../lib/activityLabels.js';
+
+const oaLog = (kind, section, text) => S.logUiAction(kind, `Quản lý OA${section ? ` › ${section}` : ''}: ${text}`);
+const oaSearch = (section, v) => S.logSearchAction(`Quản lý OA › ${section}`, v);
+const OA_RCV_LABELS = { all: 'Tất cả', main: 'Người vay', co: 'Người cùng vay', both: 'Cả 2 người' };
+const LOG_STATUS_LABELS = { all: 'Tất cả', success: 'Thành công', error: 'Lỗi' };
 
 const AUTO_SEND_SECTIONS = [
   { kind: 'lai_hang_thang_auto', title: 'Báo lãi tự động hàng tháng' },
   { kind: 'lai_hang_thang_custom_day', title: 'Gửi theo ngày cụ thể' },
 ];
+const sectionTitle = (kind) => AUTO_SEND_SECTIONS.find((s) => s.kind === kind)?.title || kind;
 const PAGE_SIZE = 20;
 const pendingAdds = new Set();
 
@@ -107,13 +114,14 @@ function summaryHtml(isSuper) {
 }
 function bindSummary(root, contentEl) {
   const go = root.querySelector('[data-go-config]');
-  if (go) go.addEventListener('click', () => { activeTab = 'config'; render(contentEl); });
+  if (go) go.addEventListener('click', () => { oaLog('oa-tab', null, 'mở tab **Cấu hình** (bấm nút trong lời nhắc chưa nhập mẫu tin)'); activeTab = 'config'; render(contentEl); });
   const brk = root.querySelector('[data-auto-breakdown]');
   if (brk) brk.addEventListener('click', openAutoBreakdownModal);
 }
 
 function openAutoBreakdownModal() {
   if (S.getAdmin(S.getSession()?.id)?.role !== 'super') return;
+  oaLog('oa-view', null, 'xem **Gửi tự động theo từng người**');
   const { total, owners } = S.summarizeZaloAutoByOwner();
   const full = S.hasZaloAutoOverview();
   openModal({
@@ -170,7 +178,10 @@ export function render(contentEl) {
   `;
   bindSummary(contentEl.querySelector('#oa-summary'), contentEl);
   contentEl.querySelectorAll('[data-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => { activeTab = btn.dataset.tab; render(contentEl); });
+    btn.addEventListener('click', () => {
+      if (btn.dataset.tab !== activeTab) oaLog('oa-tab', null, `mở tab **${OA_TABS.find((t) => t.k === btn.dataset.tab)?.label || btn.dataset.tab}**`);
+      activeTab = btn.dataset.tab; render(contentEl);
+    });
   });
 
   const slot = contentEl.querySelector('#zalo-tab-content');
@@ -200,12 +211,18 @@ function thonXomFilterPillsHtml(idPrefix, thon, xom) {
     ${pillSelectHtml(`${idPrefix}-xom`, multiPillLabel('Xóm', xom), xom.length > 0)}
   `;
 }
-function bindThonXomFilterPills(wrap, idPrefix, allowedThon, getState, setState, onChange) {
+function bindThonXomFilterPills(wrap, idPrefix, allowedThon, getState, setState, onChange, where) {
+  const apply = (change) => {
+    const before = JSON.stringify(getState());
+    change();
+    if (JSON.stringify(getState()) !== before) oaLog('oa-filter', where, describeThonXom(getState().thon, getState().xom));
+    onChange();
+  };
   wrap.querySelector(`#${idPrefix}-thon`).addEventListener('click', () => {
     openPicker({
       title: 'Chọn Thôn (chọn được nhiều)', selected: getState().thon, multiSelect: true,
       options: allowedThon.map((t) => ({ value: t, label: t })),
-      onSelect: (vals) => { setState(vals, []); onChange(); },
+      onSelect: (vals) => apply(() => setState(vals, [])),
     });
   });
   wrap.querySelector(`#${idPrefix}-xom`).addEventListener('click', () => {
@@ -213,16 +230,17 @@ function bindThonXomFilterPills(wrap, idPrefix, allowedThon, getState, setState,
     openPicker({
       title: 'Chọn Xóm (chọn được nhiều)', selected: getState().xom, multiSelect: true,
       options: xomList.map((x) => ({ value: x, label: x })),
-      onSelect: (vals) => { setState(getState().thon, vals); onChange(); },
+      onSelect: (vals) => apply(() => setState(getState().thon, vals)),
     });
   });
   wrap.querySelectorAll('[data-pill-clear]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = btn.dataset.pillClear;
-      if (id === `${idPrefix}-thon`) setState([], []);
-      else if (id === `${idPrefix}-xom`) setState(getState().thon, []);
-      onChange();
+      apply(() => {
+        if (id === `${idPrefix}-thon`) setState([], []);
+        else if (id === `${idPrefix}-xom`) setState(getState().thon, []);
+      });
     });
   });
 }
@@ -251,14 +269,17 @@ function drawOATab(slot, admin) {
     <div class="oa-rseg" id="oa-rseg" role="group" aria-label="Lọc theo người nhận Zalo"></div>
     <div id="oa-list"></div>
   `;
-  slot.querySelector('#btn-add-oa').addEventListener('click', () => openAddCustomerToOAModal(admin, drawList));
+  slot.querySelector('#btn-add-oa').addEventListener('click', () => {
+    oaLog('oa-open', 'Danh sách OA', 'mở **Thêm khách hàng vào OA**');
+    openAddCustomerToOAModal(admin, drawList);
+  });
   slot.querySelector('#btn-oa-filter').addEventListener('click', () => openThonXomFilterModal({
-    title: 'Lọc danh sách OA', hint: 'Chọn Thôn / Xóm để chỉ xem khách ở nơi đó (chọn được nhiều).', allowedThon,
+    title: 'Lọc danh sách OA', hint: 'Chọn Thôn / Xóm để chỉ xem khách ở nơi đó (chọn được nhiều).', allowedThon, where: 'Danh sách OA',
     getState: () => ({ thon: filterThon, xom: filterXom }),
     setState: (t, x) => { filterThon = t; filterXom = x; },
     onChange: () => { updateFilterBtn(); drawList(); },
   }));
-  bindSearchBox(slot, 'oa-search', (v) => { oaQuery = v; drawList(); });
+  bindSearchBox(slot, 'oa-search', (v) => { oaQuery = v; oaSearch('Danh sách OA', v); drawList(); });
   updateFilterBtn();
   drawList();
 
@@ -289,7 +310,10 @@ function drawOATab(slot, admin) {
     else {
       rseg.innerHTML = [['all', 'Tất cả'], ['main', 'Người vay'], ['co', 'Người cùng vay'], ['both', 'Cả 2 người']]
         .map(([k, label]) => `<button type="button" class="${oaRcv === k ? 'on' : ''}" data-rcv="${k}">${label}<em>${rcvCount[k]}</em></button>`).join('');
-      rseg.querySelectorAll('[data-rcv]').forEach((b) => b.addEventListener('click', () => { oaRcv = b.dataset.rcv; drawList(); }));
+      rseg.querySelectorAll('[data-rcv]').forEach((b) => b.addEventListener('click', () => {
+        if (oaRcv !== b.dataset.rcv) oaLog('oa-filter', 'Danh sách OA', `lọc theo người nhận: **${OA_RCV_LABELS[b.dataset.rcv] || b.dataset.rcv}**`);
+        oaRcv = b.dataset.rcv; drawList();
+      }));
     }
     if (oaRcv !== 'all') rows = rows.filter((x) => rcvOf(x.customer.id).mode === oaRcv);
 
@@ -323,11 +347,15 @@ function drawOATab(slot, admin) {
       row.addEventListener('click', () => openCustomerDetail(row.dataset.open, { readOnly: false, context: 'customer' }));
     });
 
-    listEl.querySelectorAll('[data-stop-row]').forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
+    listEl.querySelectorAll('[data-stop-row]').forEach((a) => a.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const c = S.getCustomer(a.closest('[data-open]')?.dataset.open);
+      if (c && c.phone) S.logCall(c.id, c.phone);
+    }));
   }
 }
 
-function openThonXomFilterModal({ title, hint, allowedThon, getState, setState, onChange }) {
+function openThonXomFilterModal({ title, hint, allowedThon, getState, setState, onChange, where }) {
   openModal({
     title,
     bodyHtml: `
@@ -341,11 +369,15 @@ function openThonXomFilterModal({ title, hint, allowedThon, getState, setState, 
       function renderPills() {
         const { thon, xom } = getState();
         wrap.innerHTML = thonXomFilterPillsHtml('flt-pill', thon, xom);
-        bindThonXomFilterPills(wrap, 'flt-pill', allowedThon, getState, setState, () => { renderPills(); onChange(); });
+        bindThonXomFilterPills(wrap, 'flt-pill', allowedThon, getState, setState, () => { renderPills(); onChange(); }, where);
         clearBtn.disabled = !thon.length && !xom.length;
       }
       renderPills();
-      clearBtn.addEventListener('click', () => { setState([], []); renderPills(); onChange(); });
+      clearBtn.addEventListener('click', () => {
+        setState([], []);
+        oaLog('oa-filter', where, describeThonXom([], []));
+        renderPills(); onChange();
+      });
       sheet.querySelector('#oa-flt-done').addEventListener('click', () => close());
     },
   });
@@ -386,7 +418,7 @@ function openAddCustomerToOAModal(admin, onDone) {
         bindThonXomFilterPills(wrap, 'add-oa-pill', allowedThon,
           () => ({ thon: pThon, xom: pXom }),
           (t, x) => { pThon = t; pXom = x; },
-          () => { renderPills(); draw(); });
+          () => { renderPills(); draw(); }, 'Thêm khách hàng vào OA');
       }
       function updateConfirmBtn() {
         const btn = sheet.querySelector('#add-oa-confirm');
@@ -451,7 +483,7 @@ function openAddCustomerToOAModal(admin, onDone) {
         }
         await doAdd();
       });
-      bindSearchBox(sheet, 'add-oa-search', (v) => { query = v; draw(); });
+      bindSearchBox(sheet, 'add-oa-search', (v) => { query = v; oaSearch('Thêm khách hàng vào OA', v); draw(); });
       renderPills();
       draw();
     },
@@ -476,12 +508,18 @@ function drawAutoTab(slot, admin) {
   `;
   AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind));
   slot.querySelectorAll('[data-add-kind]').forEach((btn) => {
-    btn.addEventListener('click', () => openAddAutoSendModal(btn.dataset.addKind, admin, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind))));
+    btn.addEventListener('click', () => {
+      oaLog('oa-open', 'Gửi tự động', `mở **Thêm hợp đồng vào "${sectionTitle(btn.dataset.addKind)}"**`);
+      openAddAutoSendModal(btn.dataset.addKind, admin, () => AUTO_SEND_SECTIONS.forEach((s) => drawSection(s.kind)));
+    });
   });
 
   slot.querySelectorAll('[data-view-all]').forEach((btn) => {
     const kind = btn.dataset.viewAll;
-    btn.addEventListener('click', () => openAutoSendListModal(kind, admin, () => drawSection(kind)));
+    btn.addEventListener('click', () => {
+      oaLog('oa-open', 'Gửi tự động', `xem tất cả hợp đồng **"${sectionTitle(kind)}"**`);
+      openAutoSendListModal(kind, admin, () => drawSection(kind));
+    });
   });
 
   function drawSection(kind) {
@@ -625,9 +663,9 @@ function openAutoSendListModal(kind, admin, onDone) {
           : `<p class="text-sm text-muted">Không có hợp đồng nào phù hợp.</p>`;
         bindAutoRowHandlers(listEl, kind, refreshAll);
       }
-      bindSearchBox(sheet, 'auto-list-search', (v) => { query = v; draw(); });
+      bindSearchBox(sheet, 'auto-list-search', (v) => { query = v; oaSearch(`Gửi tự động › ${sectionTitle(kind)}`, v); draw(); });
       sheet.querySelector('#auto-list-filter').addEventListener('click', () => openThonXomFilterModal({
-        title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon,
+        title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon, where: `Gửi tự động › ${sectionTitle(kind)}`,
         getState: () => ({ thon: pThon, xom: pXom }),
         setState: (t, x) => { pThon = t; pXom = x; },
         onChange: () => { updateFilterBtn(); draw(); },
@@ -641,6 +679,8 @@ function openAutoSendListModal(kind, admin, onDone) {
 
 function openEditCustomDayModal(id, onDone) {
   const row = S.listZaloAutoSend().find((r) => r.id === id);
+  const code = S.getContract(row?.contractId)?.code;
+  oaLog('oa-open', 'Gửi tự động', `mở **Sửa ngày gửi hàng tháng**${code ? ` của hợp đồng **${trailText(code)}**` : ''}`);
   const close = openModal({
     title: 'Sửa ngày gửi hàng tháng',
     bodyHtml: `<div class="field"><label>Ngày trong tháng (1-30)</label><input type="number" id="edit-day-input" min="1" max="30" value="${row ? row.customDay || 1 : 1}"/></div>`,
@@ -670,6 +710,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
   let pXom = [];
   let visibleCount = PAGE_SIZE;
   const isCustomDay = kind === 'lai_hang_thang_custom_day';
+  const where = `Gửi tự động › Thêm vào "${sectionTitle(kind)}"`;
 
   const close = openModal({
     title: 'Click chọn hợp đồng để thêm vào danh sách',
@@ -767,8 +808,11 @@ function openAddAutoSendModal(kind, admin, onDone) {
           });
         });
       }
-      sheet.querySelector('#add-auto-more').addEventListener('click', () => { visibleCount += PAGE_SIZE; draw(); });
-      bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; draw(); });
+      sheet.querySelector('#add-auto-more').addEventListener('click', () => {
+        oaLog('oa-view', where, 'bấm **Xem thêm**');
+        visibleCount += PAGE_SIZE; draw();
+      });
+      bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; oaSearch(where, v); draw(); });
       if (isCustomDay) {
 
         const dayInput = sheet.querySelector('#day-input');
@@ -781,7 +825,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
         dayInput.addEventListener('blur', () => { dayInput.value = String(clampDay(dayInput.value)).padStart(2, '0'); });
       }
       sheet.querySelector('#add-auto-filter').addEventListener('click', () => openThonXomFilterModal({
-        title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon,
+        title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon, where,
         getState: () => ({ thon: pThon, xom: pXom }),
         setState: (t, x) => { pThon = t; pXom = x; },
         onChange: () => { visibleCount = PAGE_SIZE; updateFilterBtn(); draw(); },
@@ -911,9 +955,17 @@ function drawLogTab(slot) {
     </div>
     <div id="log-list"></div>
   `;
-  bindSearchBox(slot, 'log-search', (v) => { logQuery = v; drawList(); });
-  slot.querySelector('#log-from').addEventListener('change', (e) => { logFromDate = e.target.value; drawList(); });
-  slot.querySelector('#log-to').addEventListener('change', (e) => { logToDate = e.target.value; drawList(); });
+  bindSearchBox(slot, 'log-search', (v) => { logQuery = v; oaSearch('Lịch sử gửi', v); drawList(); });
+  slot.querySelector('#log-from').addEventListener('change', (e) => {
+    logFromDate = e.target.value;
+    oaLog('oa-filter', 'Lịch sử gửi', describeDateRange(logFromDate, logToDate));
+    drawList();
+  });
+  slot.querySelector('#log-to').addEventListener('change', (e) => {
+    logToDate = e.target.value;
+    oaLog('oa-filter', 'Lịch sử gửi', describeDateRange(logFromDate, logToDate));
+    drawList();
+  });
   drawList();
 
   function drawList() {
@@ -966,10 +1018,14 @@ function drawLogTab(slot) {
       ${moreHtml}
       </div>
     `;
-    slot.querySelectorAll('[data-lg-status]').forEach((b) => b.addEventListener('click', () => { logStatusFilter = b.dataset.lgStatus; drawList(); }));
+    slot.querySelectorAll('[data-lg-status]').forEach((b) => b.addEventListener('click', () => {
+      if (logStatusFilter !== b.dataset.lgStatus) oaLog('oa-filter', 'Lịch sử gửi', `lọc trạng thái: **${LOG_STATUS_LABELS[b.dataset.lgStatus] || b.dataset.lgStatus}**`);
+      logStatusFilter = b.dataset.lgStatus; drawList();
+    }));
     const moreBtn = slot.querySelector('#log-more');
     if (moreBtn) {
       moreBtn.addEventListener('click', async () => {
+        oaLog('oa-view', 'Lịch sử gửi', 'bấm **Xem thêm lịch sử cũ hơn**');
         moreBtn.disabled = true;
         moreBtn.textContent = 'Đang tải...';
         try {

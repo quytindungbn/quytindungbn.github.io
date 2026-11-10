@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeOrgPatch, describeLoanCalc } from '../js/lib/activityLabels.js';
+import { describeOrgPatch, describeLoanCalc, trailText, trailList, describeThonXom, describeDateRange, describeSearch, clipLabel } from '../js/lib/activityLabels.js';
 import { METHOD_LABELS, KIND_LABELS } from '../js/lib/loanCalcExport.js';
 
 test('mô tả mục cài đặt vừa sửa: gọn, bỏ trùng, không ghi giá trị', () => {
@@ -33,4 +33,47 @@ test('nhãn cách trả / loại số tiền trong Nhật ký khớp đúng nhã
   for (const [kind, label] of Object.entries(KIND_LABELS)) {
     assert.ok(describeLoanCalc({ tab: 'pay', principal: 1e6, ratePercent: 10, startDate: start, payment: 1e5, kind }).includes(label.toLowerCase()), kind);
   }
+});
+
+test('chữ người dùng gõ đưa vào Nhật ký: bỏ dấu *, xuống dòng, khoảng trắng thừa và cắt gọn', () => {
+  assert.equal(trailText('  nguyễn **văn**\n  an  '), 'nguyễn văn an');
+  assert.equal(trailText(null), '');
+  assert.equal(trailText('a'.repeat(100), 10), `${'a'.repeat(9)}…`);
+  assert.equal(trailText('abc', 10), 'abc');
+});
+
+test('danh sách Thôn/Xóm đã lọc: nêu tối đa 3 nơi, còn lại gộp thành số', () => {
+  assert.equal(trailList(['A', 'B']), 'A, B');
+  assert.equal(trailList(['A', 'B', 'C', 'D', 'E']), 'A, B, C và 2 nơi khác');
+  assert.equal(trailList([]), '');
+});
+
+test('mô tả lọc Thôn/Xóm: có lọc, chỉ Thôn, chỉ Xóm và bỏ lọc', () => {
+  assert.equal(describeThonXom(['Bình Bắc'], ['Xóm 05']), 'lọc Thôn: **Bình Bắc** · Xóm: **Xóm 05**');
+  assert.equal(describeThonXom(['Đông Bình'], []), 'lọc Thôn: **Đông Bình**');
+  assert.equal(describeThonXom([], ['Xóm 3']), 'lọc Xóm: **Xóm 3**');
+  assert.equal(describeThonXom([], []), 'bỏ lọc Thôn/Xóm');
+});
+
+test('mô tả lọc theo ngày ở Lịch sử gửi: đủ 2 đầu, một đầu và bỏ lọc', () => {
+  assert.equal(describeDateRange('2026-10-01', '2026-10-31'), 'lọc từ ngày **01/10/2026** đến ngày **31/10/2026**');
+  assert.equal(describeDateRange('2026-10-01', ''), 'lọc từ ngày **01/10/2026**');
+  assert.equal(describeDateRange('', '2026-10-31'), 'lọc đến ngày **31/10/2026**');
+  assert.equal(describeDateRange('', ''), 'bỏ lọc theo ngày');
+});
+
+test('mô tả tìm kiếm: ghi rõ ở đâu và gõ gì, ô trống thì không ghi', () => {
+  assert.equal(describeSearch('Quản lý OA › Danh sách OA', ' Ái Nhi '), 'Quản lý OA › Danh sách OA: tìm **Ái Nhi**');
+  assert.equal(describeSearch('Quản lý OA', '   '), '');
+});
+
+test('dòng Nhật ký quá dài được cắt trong 200 ký tự và không để lại dấu ** lẻ (chữ đậm không bị hỏng)', () => {
+  const thon = Array.from({ length: 9 }, (_, i) => `Thôn có tên rất dài số ${i}`);
+  const label = `Quản lý OA › Gửi tự động › Thêm vào "Báo lãi tự động hàng tháng": ${describeThonXom(thon, thon)}`;
+  assert.ok(label.length > 200);
+  const clipped = clipLabel(label);
+  assert.ok(clipped.length <= 200, String(clipped.length));
+  assert.equal((clipped.match(/\*\*/g) || []).length % 2, 0);
+  assert.equal(clipLabel('Xem **Nhóm 3** (Tháng 10/2026)'), 'Xem **Nhóm 3** (Tháng 10/2026)');
+  assert.equal(clipLabel('  a \n b  '), 'a b');
 });

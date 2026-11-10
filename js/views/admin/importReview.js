@@ -3,6 +3,7 @@ import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import * as S from '../../state.js';
 import { formatVND, formatDate, formatDateTime, escapeHtml } from '../../utils.js';
+import { trailText } from '../../lib/activityLabels.js';
 
 const PAGE = 50;
 
@@ -89,6 +90,7 @@ export function importSummaryHtml(summary, kind = 'import') {
 
 export function openImportPreview({ title, kind = 'import', summary, details, fullSync, notes = [], confirmLabel = 'Xác nhận nhập', onConfirm }) {
   const deleting = (summary?.deletedContracts || 0) + (summary?.deletedCustomers || 0);
+  S.logUiAction('import-open', `Xem trước khi nhập dữ liệu: **${trailText(title)}**`);
   openModal({
     title: escapeHtml(title),
     sheetClass: 'imp-sheet',
@@ -137,6 +139,7 @@ function summaryLine(item) {
 }
 
 function openImportDetail(id) {
+  S.logUiAction('import-open', 'Xem **Chi tiết lần nhập** file');
   openModal({
     title: 'Chi tiết lần nhập',
     sheetClass: 'imp-sheet',
@@ -157,6 +160,7 @@ function openImportDetail(id) {
 }
 
 export function openImportHistory({ onChanged } = {}) {
+  S.logUiAction('import-open', 'Mở **Lịch sử nhập file** & quay lại bản trước');
   openModal({
     title: 'Lịch sử nhập file',
     sheetClass: 'imp-sheet',

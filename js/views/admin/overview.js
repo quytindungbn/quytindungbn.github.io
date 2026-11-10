@@ -262,10 +262,12 @@ function bindAttention(root, m, live) {
     onChange: () => redrawAttention(root),
   }));
   root.querySelector('#tile-overdue')?.addEventListener('click', () => {
+    S.logUiAction('overview', `Tổng quan: xem **Hợp đồng quá hạn** (${m.label})`);
     if (useLive) openContractListModal('Hợp đồng quá hạn', live.overdue, isStaff, 'var(--danger)');
     else openSnapshotAttentionModal(m, 'qua_han');
   });
   root.querySelector('#tile-neardue')?.addEventListener('click', () => {
+    S.logUiAction('overview', `Tổng quan: xem **Gần đến hạn** (${m.label})`);
     if (useLive) openContractListModal('Gần đến hạn', live.upcoming, isStaff, 'var(--warning)');
     else openSnapshotAttentionModal(m, 'gan_den_han');
   });
@@ -372,7 +374,10 @@ function bindNhomNoClicks(root) {
   const { months } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === slot.dataset.ym) || months[months.length - 1];
   slot.querySelectorAll('[data-id]').forEach((el) => {
-    el.addEventListener('click', () => openDebtGroupModal(Number(el.dataset.id), isStaff, m));
+    el.addEventListener('click', () => {
+      S.logUiAction('overview', `Tổng quan: xem danh sách **Nhóm ${el.dataset.id}** (${m.label})`);
+      openDebtGroupModal(Number(el.dataset.id), isStaff, m);
+    });
   });
 }
 
@@ -514,6 +519,7 @@ function compositionPanelHtml(m) {
 function openCompositionCategoryModal(m, tab, code) {
   const item = compositionData(m, tab).items.find((entry) => entry.code === code);
   if (!item) return;
+  S.logUiAction('overview', `Tổng quan: xem danh sách **${item.label}** (${COMPOSITION_OPTIONS[tab]?.label || tab}, ${m.label})`);
   const rows = compositionRows(m).filter((row) => compositionBucket(row, tab) === code);
   const { isStaff } = currentRoles();
   const rowHtml = rows.map((row, index) => {
@@ -549,6 +555,7 @@ function openCompositionCategoryModal(m, tab, code) {
 function bindCompositionTabs(root) {
   const tabs = [...root.querySelectorAll('[data-composition-tab]')];
   const activate = (tab, focus = false) => {
+    if (activeCompositionTab !== tab.dataset.compositionTab) S.logUiAction('overview', `Tổng quan: xem tỷ trọng dư nợ theo **${COMPOSITION_OPTIONS[tab.dataset.compositionTab]?.label || tab.dataset.compositionTab}**`);
     activeCompositionTab = tab.dataset.compositionTab;
     for (const button of tabs) {
       const selected = button === tab;
@@ -585,6 +592,7 @@ function bindCompositionTabs(root) {
     }
     const button = event.target.closest('[data-composition-metric]');
     if (!button || button.disabled) return;
+    if (activeCompositionMetric !== button.dataset.compositionMetric) S.logUiAction('overview', `Tổng quan: xem tỷ trọng **${button.dataset.compositionMetric === 'count' ? 'theo số món vay' : 'theo dư nợ'}**`);
     activeCompositionMetric = button.dataset.compositionMetric;
     const { months } = buildDebtDashboardData();
     const ym = root.querySelector('#nhom-no-slot')?.dataset.ym;
@@ -706,11 +714,15 @@ function bindProvisionDetails(root) {
   };
   root.querySelector('#general-provision-detail')?.addEventListener('click', () => {
     const month = selectedMonth();
-    if (month) openGeneralProvisionModal(month);
+    if (!month) return;
+    S.logUiAction('overview', `Tổng quan: xem cách tính **Dự phòng chung** (${month.label})`);
+    openGeneralProvisionModal(month);
   });
   root.querySelector('#specific-provision-detail')?.addEventListener('click', () => {
     const month = selectedMonth();
-    if (month) openSpecificProvisionModal(month);
+    if (!month) return;
+    S.logUiAction('overview', `Tổng quan: xem cách tính **Dự phòng cụ thể** (${month.label})`);
+    openSpecificProvisionModal(month);
   });
 }
 
@@ -891,6 +903,7 @@ function monthlyDetailPanelHtml(metric, months, prevMonthOf, yearStartOf) {
 
 function openMonthlyDetailModal() {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
+  S.logUiAction('overview', `Tổng quan: mở **Chi tiết theo từng tháng** (${DETAIL_METRICS[0].label})`);
   openModal({
     title: 'Chi tiết theo từng tháng',
     sheetClass: 'month-detail-sheet',
@@ -902,6 +915,7 @@ function openMonthlyDetailModal() {
       sheet.querySelectorAll('.mdl-tab').forEach((tab) => {
         tab.addEventListener('click', () => {
           const metric = DETAIL_METRICS[Number(tab.dataset.metric)];
+          S.logUiAction('overview', `Tổng quan › Chi tiết theo từng tháng: xem **${metric.label}**`);
           sheet.querySelectorAll('.mdl-tab').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
           panel.className = `mdl-panel mdl-panel--${metric.tone}`;
           panel.innerHTML = monthlyDetailPanelHtml(metric, months, prevMonthOf, yearStartOf);
@@ -995,6 +1009,7 @@ function extractReportAsOfDate(rawRows) {
 
 function openImportHistoricalModal() {
   let preview = null;
+  S.logUiAction('overview', 'Tổng quan: mở **Nạp dữ liệu cũ**');
   openModal({
     title: 'Nạp dữ liệu cũ',
     bodyHtml: `
@@ -1085,6 +1100,7 @@ function selectMonth(root, ym) {
   const { months, prevMonthOf, yearStartOf } = buildDebtDashboardData();
   const m = months.find((x) => x.yearMonth === ym);
   if (!m) return;
+  S.logUiActionLater('overview-month', 'overview', `Tổng quan: chọn kỳ báo cáo **${m.label}**`);
   selectedDashboardMonth = m.yearMonth;
   const nhomNoSlot = root.querySelector('#nhom-no-slot');
   nhomNoSlot.dataset.ym = m.yearMonth;

@@ -279,6 +279,7 @@ function dueBodyHtml(ui) {
 export function openDueNotesModal({ onOpenCustomer, onChange } = {}) {
   const ui = { snoozeId: null, snoozeDays: SNOOZE_DEFAULT };
   let busy = false;
+  S.logUiAction('note-open', `Xem **Nhắc việc đến hạn** (${S.listDueNotes().length} việc)`);
   openModal({
     title: `Nhắc việc đến hạn (${S.listDueNotes().length})`,
     sheetClass: 'attention-ledger-sheet nt-scope',

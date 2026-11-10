@@ -121,7 +121,7 @@ export function render(contentEl, filterEl) {
       <div class="filter-sum"></div>
     </div></div>
   `;
-  bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(); });
+  bindSearchBox(filterEl, 'search-input', (v) => { query = v; S.logSearchAction('Danh sách khách hàng', v); draw(); });
   mountScrollTopButton(filterEl);
   if (!isStaff) {
     filterEl.querySelector('#btn-import').addEventListener('click', openImportModal);
@@ -1931,6 +1931,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
         function render(from) {
           const days = S.interestDaysAccrued(contract, asOf);
           accrued = S.accruedInterest(contract, asOf);
+          S.logUiActionLater(`asof:${contract.id}`, 'interest-date', `Tính lãi hợp đồng **${contract.code}** đến ngày **${formatDate(asOf)}** (${days} ngày lãi)`);
           if (from !== 'date') asOfInput.value = formatDate(asOf);
           if (from !== 'days') { daysInput.value = String(days); sizeDays(); }
           accruedEl.textContent = formatVND(accrued);
@@ -2141,6 +2142,7 @@ function bindCoPhoneImport(sheet) {
 }
 
 function openImportModal() {
+  S.logUiAction('import-open', 'Mở cửa sổ **Nhập dữ liệu từ Excel**');
   const close = openModal({
     title: 'Nhập dữ liệu từ Excel',
     bodyHtml: `

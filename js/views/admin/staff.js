@@ -6,11 +6,13 @@ import { openModal, confirmDialog } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { initials, colorFor, maskCccd, formatNumber, escapeHtml } from '../../utils.js';
 import { openCustomerDetail } from './customers.js';
+import { trailText } from '../../lib/activityLabels.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Quản lý User' });
 }
 
+const ROLE_FILTER_LABELS = { all: 'Tất cả', use: 'Use (khách hàng)', admin: 'Quản trị viên' };
 let filterRole = 'all';
 let query = '';
 
@@ -29,8 +31,11 @@ function buildFrame(contentEl) {
       <button type="button" class="oa-add us-add" id="btn-add-user" title="Tạo User" aria-label="Tạo User">${icon('userPlus')}<span>Tạo User</span></button>
     </div>
     <div id="us-body"></div>`;
-  bindSearchBox(contentEl, 'search-input', (v) => { query = v; draw(contentEl); });
-  contentEl.querySelector('#btn-add-user').addEventListener('click', () => openCreateUserModal(S.thonXomTree(), contentEl));
+  bindSearchBox(contentEl, 'search-input', (v) => { query = v; S.logSearchAction('Quản lý User', v); draw(contentEl); });
+  contentEl.querySelector('#btn-add-user').addEventListener('click', () => {
+    S.logUiAction('user-open', 'Quản lý User: mở **Tạo User**');
+    openCreateUserModal(S.thonXomTree(), contentEl);
+  });
 }
 
 export function refresh(contentEl) {
@@ -102,13 +107,20 @@ function draw(contentEl) {
   `;
 
   contentEl.querySelectorAll('[data-role]').forEach((btn) => {
-    btn.addEventListener('click', () => { filterRole = btn.dataset.role; draw(contentEl); });
+    btn.addEventListener('click', () => {
+      if (filterRole !== btn.dataset.role) S.logUiAction('user-filter', `Quản lý User: lọc theo **${ROLE_FILTER_LABELS[btn.dataset.role] || btn.dataset.role}**`);
+      filterRole = btn.dataset.role; draw(contentEl);
+    });
   });
   contentEl.querySelectorAll('[data-open-use]').forEach((row) => {
     row.addEventListener('click', () => openCustomerDetail(row.dataset.openUse, { readOnly: false, context: 'use' }));
   });
   contentEl.querySelectorAll('[data-open-admin]').forEach((row) => {
-    row.addEventListener('click', () => openAdminDetail(S.getAdmin(row.dataset.openAdmin), tree, contentEl));
+    row.addEventListener('click', () => {
+      const a = S.getAdmin(row.dataset.openAdmin);
+      S.logUiAction('user-open', `Quản lý User: xem tài khoản quản trị **${trailText(a?.name || a?.username || row.dataset.openAdmin)}**`);
+      openAdminDetail(a, tree, contentEl);
+    });
   });
   const loggedInTile = contentEl.querySelector('[data-stat="logged-in"]');
   if (loggedInTile) loggedInTile.addEventListener('click', () => openStatListModal('Use đã đăng nhập', customers.filter((c) => S.hasCustomerLoggedIn(c))));
@@ -117,6 +129,7 @@ function draw(contentEl) {
 }
 
 function openStatListModal(title, list) {
+  S.logUiAction('user-open', `Quản lý User: xem danh sách **${title}** (${list.length})`);
   openModal({
     title: `${title} (${list.length})`,
     bodyHtml: list.length ? list.map((c) => userRowHtml(c)).join('') : emptyState({ iconName: 'idCard', title: 'Chưa có Use nào', message: 'Danh sách hiện đang trống.' }),

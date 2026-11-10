@@ -3704,6 +3704,30 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Sửa gốc**: `parseAddress` (web và `supabase/functions/create-account/index.ts`) không còn lấy phần đầu địa chỉ làm xóm khi phần đó đã là thôn / xã / tỉnh (địa chỉ không có từ khóa nào vẫn đoán như cũ). Web đúng ngay khi cập nhật; **deploy lại `create-account` là tùy chọn**, chỉ để các lần nhập file sau không lưu "xóm = thôn" nữa (dữ liệu cũ không cần sửa vì web đã tự bỏ qua giá trị không phải xóm).
 - **Kiểm chứng**: dựng lại app với dữ liệu mẫu đúng như báo lỗi (cột `xom` lưu sẵn "thôn Đông Bình"): trước khi sửa hiện đúng các lỗi trên; sau khi sửa hiện "thôn Đông Bình", "Xóm 05, thôn Bình Bắc", "Xóm 11, thôn Bình Nguyên", "Xóm 3, thôn An Hòa, xã Bình Thạnh", bộ lọc Xóm chỉ còn Xóm 3 / 05 / 11, chi tiết khách giữ nguyên địa chỉ đã nạp. Bài thử `tests/addressText.test.mjs` (11 bài); `parseAddress` của web và của Edge Function cho kết quả giống nhau trên 10 địa chỉ mẫu.
 
+### 10.122 Nhật ký: ghi lại mọi thao tác trong từng chức năng của Quản lý OA và các màn hình còn thiếu (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Theo yêu cầu**: "bổ sung mọi thao tác đều có ghi lịch sử; hiện tại vào Quản lý OA thì có nhưng vào từng chức năng trong OA không có ghi lịch sử".
+- **Trước đó**: Nhật ký chỉ có dòng "Vào trang Quản lý OA" (`nav-page`) cùng các việc máy chủ tự ghi (thêm/bỏ khách vào OA, thêm/bỏ/sửa gửi tự động, gửi tay, lưu người nhận…). Mọi bước đi lại bên trong (đổi tab, tìm kiếm, lọc, mở cửa sổ) không để lại dấu nào.
+- **Cách ghi**: đi theo đường `ui-action` đã có của `create-account` (loại thao tác dạng `a-z`, `0-9`, gạch nối, tối đa 40 ký tự; mô tả tối đa 200 ký tự; máy chủ lưu thành `ui-<loại>`), nên **không cần deploy lại Edge Function và không cần SQL** — mở web bản mới là có hiệu lực. Hàm ghi chung nằm ở `js/state.js`: `logUiAction`, `logUiActionLater` (ghi trễ 1,5 giây, thay đổi liên tục chỉ ghi lần cuối), `logSearchAction` (tìm kiếm, gõ nhiều lần chỉ ghi chữ cuối khi ngừng gõ). Nhãn dựng ở `js/lib/activityLabels.js` (`describeThonXom`, `describeDateRange`, `describeSearch`, `trailText`, `clipLabel`): luôn cắt trong 200 ký tự, bỏ dấu `*` người dùng gõ vào, không để lại dấu `**` lẻ làm hỏng chữ đậm.
+- **Quản lý OA — ghi những gì** (mỗi dòng mở đầu "Quản lý OA › <mục>: …"):
+  - đổi tab (Danh sách OA / Gửi tự động / Lịch sử gửi / Cấu hình; bấm lại đúng tab đang mở thì không ghi), nút "Cấu hình" trong lời nhắc chưa nhập mẫu tin, ô "Báo lãi tự động" (xem theo từng người);
+  - **Danh sách OA**: tìm kiếm, lọc Thôn/Xóm (ghi giá trị đã chọn hoặc "bỏ lọc"), lọc theo người nhận, mở "Thêm khách hàng vào OA", bấm số điện thoại trên dòng khách (ghi như mọi nút Gọi khác và vào "Lịch sử cuộc gọi" của khách), bấm vào khách (đã có dòng "Xem chi tiết khách hàng");
+  - **cửa sổ Thêm khách hàng vào OA**: tìm kiếm, lọc Thôn/Xóm;
+  - **Gửi tự động**: mở "Thêm hợp đồng vào …", "Xem tất cả hợp đồng …", mở "Sửa ngày gửi hàng tháng" (kèm số hợp đồng), tìm kiếm và lọc Thôn/Xóm trong từng cửa sổ, "Xem thêm";
+  - **Lịch sử gửi**: tìm kiếm, lọc Từ ngày / Đến ngày, lọc trạng thái (Tất cả / Thành công / Lỗi), "Xem thêm lịch sử cũ hơn";
+  - **Cấu hình**: "Lưu cấu hình" đã có dòng "Sửa cài đặt: …" từ trước.
+  - **Không ghi lần hai** những việc máy chủ đã tự ghi (thêm/bỏ khách vào OA, thêm/bỏ/sửa gửi tự động, gửi tay…).
+- **Các màn hình khác — bổ sung**:
+  - **Khách hàng & Hợp đồng**: tìm kiếm; mở "Nhập dữ liệu từ Excel", "Lịch sử nhập file", "Chi tiết lần nhập", "Xem trước khi nhập dữ liệu"; trong chi tiết hợp đồng, đổi ngày / số ngày tính lãi ("Tính lãi hợp đồng … đến ngày …").
+  - **Tổng quan**: ô Hợp đồng quá hạn / Gần đến hạn, Nhóm nợ 1–5, Dự phòng chung / cụ thể, tỷ trọng dư nợ (đổi tab, theo dư nợ / theo số món vay, từng nhóm), Chi tiết theo từng tháng (kèm tab chỉ tiêu), Nạp dữ liệu cũ, đổi kỳ báo cáo, Nhắc việc đến hạn.
+  - **Quản trị**: đổi tháng xem, mở / thu gọn từng mục, Doanh thu – Chi phí, Làm mới, Nạp file bảng cân đối, và **Lưu số liệu bảng cân đối** — việc này trước đây KHÔNG có dòng nào vì trình duyệt ghi thẳng vào cơ sở dữ liệu, không qua máy chủ.
+  - **Hỗ trợ**: đổi tab, lọc trạng thái, tìm kiếm, mở hội thoại tư vấn với khách.
+  - **Quản lý User**: tìm kiếm, lọc loại tài khoản, xem tài khoản quản trị, mở Tạo User, xem danh sách "Use đã đăng nhập / đã bật thông báo".
+- **Đã có từ trước, giữ nguyên**: vào trang, xem khách / hợp đồng, bấm gọi, bộ lọc ở danh sách khách, in giấy báo, QR, SMS, sao chép, Tính lãi vay, ghi chú nhắc việc, cài đặt, đổi mật khẩu, đăng xuất, và mọi thao tác làm thay đổi dữ liệu qua máy chủ (nhập file, tạo / sửa / xóa khách và tài khoản, đặt lại mật khẩu, gửi thông báo, gửi Zalo…).
+- **Chủ ý không ghi**: tick chọn từng khách trong danh sách (chỉ ghi khi bấm "Thêm đã chọn", mỗi khách một dòng do máy chủ ghi), từng ký tự đang gõ (chỉ ghi sau khi ngừng gõ 1,5 giây), mở hộp chọn Thôn / Xóm khi chưa đổi gì, bấm Hủy, và chính trang Nhật ký (để không tự sinh thêm dòng mỗi lần mở xem).
+- **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu, bắt từng lời gọi `log-admin-action` khi bấm thử toàn bộ chức năng trên: mỗi thao tác ra đúng 1 dòng, gõ ba lần liên tiếp chỉ ra 1 dòng, bấm lại tab đang mở không ra dòng, không có lỗi trang. Bộ kiểm thử mới `tests/activityTrail.test.mjs` canh giữ: loại thao tác luôn đúng quy định của máy chủ, các chức năng Quản lý OA và việc lưu bảng cân đối luôn còn dòng ghi.
+- **Lưu ý**: Nhật ký tự xóa dòng cũ hơn 60 ngày (mục 10.34) nên nhiều dòng hơn cũng không làm phình bảng; chỉ tài khoản toàn quyền xem được Nhật ký.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

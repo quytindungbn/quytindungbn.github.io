@@ -6,6 +6,7 @@ import { openChatPanel, DEFAULT_CHAT_TITLE } from '../../components/chatPanel.js
 import { openCustomerDetail } from './customers.js';
 import { formatVND, formatDateTime, initials, colorFor, escapeHtml, stripDiacritics } from '../../utils.js';
 import { lsGetJson, lsSetJson } from '../../lib/kvCache.js';
+import { trailText } from '../../lib/activityLabels.js';
 
 export function renderHeader(headerEl) {
   headerEl.innerHTML = pageHeader({ title: 'Hỗ trợ' });
@@ -91,15 +92,21 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
   filterEl.innerHTML = `<div class="sup-align">${tabsHtml}${subFilterHtml}</div>`;
 
   filterEl.querySelectorAll('[data-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => { activeTab = btn.dataset.tab; render(contentEl, filterEl); });
+    btn.addEventListener('click', () => {
+      if (btn.dataset.tab !== activeTab) S.logUiAction('support-tab', `Hỗ trợ: mở tab **${btn.dataset.tab === 'chat' ? 'Tư vấn' : 'Hỗ trợ'}**`);
+      activeTab = btn.dataset.tab; render(contentEl, filterEl);
+    });
   });
   if (activeTab === 'requests') {
     filterEl.querySelectorAll('[data-s]').forEach((chip) => {
-      chip.addEventListener('click', () => { activeStatus = chip.dataset.s; render(contentEl, filterEl); });
+      chip.addEventListener('click', () => {
+        if (chip.dataset.s !== activeStatus) S.logUiAction('support-filter', `Hỗ trợ: lọc yêu cầu theo trạng thái **${chip.dataset.s === 'all' ? 'Tất cả' : S.REQUEST_STATUS_MAP[chip.dataset.s]?.label || chip.dataset.s}**`);
+        activeStatus = chip.dataset.s; render(contentEl, filterEl);
+      });
     });
   } else {
 
-    bindSearchBox(filterEl, 'support-search', (v) => { searchQuery = v; drawConversationList(contentEl, filterEl); });
+    bindSearchBox(filterEl, 'support-search', (v) => { searchQuery = v; S.logSearchAction('Hỗ trợ › Tư vấn', v); drawConversationList(contentEl, filterEl); });
   }
 }
 
@@ -228,6 +235,7 @@ function drawConversationList(contentEl, filterEl) {
     row.addEventListener('click', () => {
       const customerId = row.dataset.id;
       const c = S.getCustomer(customerId);
+      S.logUiAction('open-chat', `Hỗ trợ: mở hội thoại tư vấn với khách hàng "**${trailText(c?.name || customerId)}**"`);
       openChatPanel(customerId, c?.name || DEFAULT_CHAT_TITLE, {
 
         onClose: () => { lastConversationsAt = 1; render(contentEl, filterEl); },
