@@ -1,6 +1,6 @@
 {
- "v": "1.0.25",
- "h": "d5c1382d4c94",
+ "v": "1.0.26",
+ "h": "1b4d50911162",
  "files": [
   "css/styles.css",
   "index.html",
@@ -37,6 +37,7 @@
   "js/lib/loanCalcExport.js",
   "js/lib/loanCalcPdf.js",
   "js/lib/loanSummary.js",
+  "js/lib/moneyChange.js",
   "js/lib/printNotices.js",
   "js/lib/push.js",
   "js/lib/qrEncode.js",

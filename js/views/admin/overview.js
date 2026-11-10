@@ -11,6 +11,7 @@ import { openContractView, openCustomerDetail, customerLedgerHtml, bindCustomerL
 import { openDueNotesModal, dueNotesSummary } from './customerNotes.js';
 import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
 import { icon } from '../../icons.js';
+import { moneyChange } from '../../lib/moneyChange.js';
 
 const COLLATERAL_NAMES = Object.freeze({
   '01': 'Quyền sử dụng đất chính chủ',
@@ -124,13 +125,21 @@ function isCurrentMonth(m) {
   return !!m.live || m.yearMonth === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function heroChangeHtml(change, prevLabel) {
+  if (!change || change.tone === 'flat') return '';
+  const amount = `${change.sign}${change.num}<small>${change.unit}</small>`;
+  const pct = change.percent !== null ? `<span class="lux-chg-pct">${formatPercent(change.percent)}</span>` : '';
+  const say = `Dư nợ ${change.tone === 'up' ? 'tăng' : 'giảm'} ${change.num} ${change.unit}${change.percent !== null ? ` (${formatPercent(change.percent)})` : ''}`;
+  return `<span class="lux-chg ${change.tone}" role="img" aria-label="${say} so với tháng trước, ${prevLabel}"><span class="lux-chg-ic"><i class="lux-tri"></i></span><b class="lux-chg-amt">${amount}</b>${pct}</span>`;
+}
+
 function heroInnerHtml(m, ctx) {
   const { months, prevMonthOf } = ctx.dashboardData;
   const useLive = isCurrentMonth(m);
   const snap = useLive ? null : snapshotOverview(m);
   const balance = useLive ? ctx.live.totalOutstanding : m.balance;
   const prev = prevMonthOf(m.yearMonth);
-  const delta = prev && prev.balance > 0 ? ((balance - prev.balance) / prev.balance) * 100 : null;
+  const change = prev && prev.balance > 0 ? moneyChange(balance, prev.balance) : null;
   const money = compactVnd(balance);
   const interest = compactVnd(m.interest || 0);
   const spark = months.filter((x) => x.yearMonth <= m.yearMonth).slice(-6).map((x) => x.balance);
@@ -139,7 +148,7 @@ function heroInnerHtml(m, ctx) {
   return `
       <span class="lux-eyebrow">Tổng dư nợ${useLive ? '' : ` · ${m.label}`}</span>
       <div class="lux-num">${money.num}<small>${money.unit}</small></div>
-      <div class="lux-sub">${delta !== null ? `<span class="lux-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${formatPercent(Math.abs(delta))} so với tháng trước</span> · ` : ''}lãi phải thu ${interest.num} ${interest.unit.replace(' ₫', '')}</div>
+      <div class="lux-sub">${heroChangeHtml(change, prev ? prev.label : '')}<span class="lux-int">lãi phải thu ${interest.num} ${interest.unit.replace(' ₫', '')}</span></div>
       ${spark.length >= 2 ? `<div class="lux-spark">${sparklineSvg(spark)}</div>` : ''}
       <div class="lux-trio">
         <div><span class="lux-eyebrow">Khách hàng</span><b>${customers}</b></div>

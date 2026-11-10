@@ -3728,6 +3728,14 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu, bắt từng lời gọi `log-admin-action` khi bấm thử toàn bộ chức năng trên: mỗi thao tác ra đúng 1 dòng, gõ ba lần liên tiếp chỉ ra 1 dòng, bấm lại tab đang mở không ra dòng, không có lỗi trang. Bộ kiểm thử mới `tests/activityTrail.test.mjs` canh giữ: loại thao tác luôn đúng quy định của máy chủ, các chức năng Quản lý OA và việc lưu bảng cân đối luôn còn dòng ghi.
 - **Lưu ý**: Nhật ký tự xóa dòng cũ hơn 60 ngày (mục 10.34) nên nhiều dòng hơn cũng không làm phình bảng; chỉ tài khoản toàn quyền xem được Nhật ký.
 
+### 10.123 Tổng quan: nhãn thay đổi dư nợ có số tiền tăng / giảm, bỏ chữ "so với tháng trước" (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Theo yêu cầu**: dòng "▲ 1,0% so với tháng trước · lãi phải thu 387,81 triệu đ" ở khung "Tổng dư nợ" đầu trang Tổng quan — thêm số tiền tăng / giảm để nhìn vào biết ngay, thiết kế đẹp mắt chuyên nghiệp. Sau khi xem ảnh: "Bỏ so với tháng trước, Lãi phải thu giữ như cũ" và "Không đổi thì ẩn đi".
+- **Đã làm** (hàm `heroInnerHtml` trong `js/views/admin/overview.js`, kiểu dáng `.lux-chg*` trong `css/styles.css`): dòng chữ nhỏ được thay bằng một nhãn bo tròn gồm mũi tên trong vòng tròn, **số tiền tăng / giảm** (rút gọn tỷ / triệu / đồng, có dấu + hoặc −) và tỷ lệ %, ví dụ **▲ +55 triệu đ | 1,0%**. Xanh là dư nợ tăng, đỏ là giảm; có mũi tên và dấu nên không chỉ dựa vào màu. Không còn chữ "so với tháng trước" hiển thị (ý đó vẫn nằm trong nhãn đọc màn hình `aria-label`). "lãi phải thu …" giữ nguyên chữ và kiểu như cũ: điện thoại nằm dưới nhãn, máy tính nằm cùng hàng sau dấu "·" (nhãn to hơn một chút cho cân với con số 60px).
+- **Ẩn khi không có gì để so**: dư nợ bằng đúng tháng trước thì ẩn hẳn nhãn (bản cũ hiện "▲ 0,0%" màu xanh dễ hiểu nhầm là tăng); kỳ đầu chưa có tháng trước (hoặc tháng trước dư nợ 0) cũng không hiện nhãn — chỉ còn dòng lãi phải thu.
+- **Cách tính**: `js/lib/moneyChange.js` (`moneyChange(hiện tại, tháng trước)`) cho ra hướng thay đổi, số tiền rút gọn bằng `compactParts` (cùng cách làm tròn với ô số lớn) và phần trăm; tháng trước là bản chốt của tháng liền trước (`prevMonthOf`), kỳ đang cập nhật so với bản chốt tháng trước.
+- **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu (tái hiện đúng dòng "▲ 1,0% … 387,81 triệu đ") ở điện thoại 390px và máy tính 1366px: trường hợp tăng, giảm, không đổi, kỳ đầu — không lỗi trang. Bài thử mới `tests/moneyChange.test.mjs`.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,
