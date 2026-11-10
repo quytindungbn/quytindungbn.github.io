@@ -3736,6 +3736,12 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Cách tính**: `js/lib/moneyChange.js` (`moneyChange(hiện tại, tháng trước)`) cho ra hướng thay đổi, số tiền rút gọn bằng `compactParts` (cùng cách làm tròn với ô số lớn) và phần trăm; tháng trước là bản chốt của tháng liền trước (`prevMonthOf`), kỳ đang cập nhật so với bản chốt tháng trước.
 - **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu (tái hiện đúng dòng "▲ 1,0% … 387,81 triệu đ") ở điện thoại 390px và máy tính 1366px: trường hợp tăng, giảm, không đổi, kỳ đầu — không lỗi trang. Bài thử mới `tests/moneyChange.test.mjs`.
 
+### 10.124 Tổng quan: thu nhỏ nhãn thay đổi dư nợ cho gọn, đẹp mắt hơn (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Theo yêu cầu**: "+431,41 triệu đ | 1,0% — khung này nhỏ lại đẹp mắt hơn". Với số thật (dư nợ 43,13 tỷ đ, tăng 431,41 triệu đ) nhãn ở mục 10.123 cao 32px (máy tính 38px), rộng 192px (219px) — nặng hơn hẳn dòng "lãi phải thu" nằm dưới.
+- **Đã làm** (khối `.lux-sub` / `.lux-chg*` trong `css/styles.css`, hàm `heroChangeHtml` trong `js/views/admin/overview.js`): bỏ vòng tròn đặc chứa mũi tên (bỏ luôn thẻ `.lux-chg-ic`), thay bằng tam giác nhỏ cùng màu chữ; nền xanh / đỏ nhạt có viền mảnh; số tiền 13px đậm (máy tính 15px), đơn vị 10,5px (11,5px), tỷ lệ % 11,5px (12,5px); đơn vị cách số 3px (bản cũ dính sát nên chép ra thành "431,41triệu đ"). Nhãn cao 24px trên điện thoại (trước 32px) và 28px trên máy tính (trước 38px); với số thật rộng 159px / 180px (trước 192px / 219px). Màu, dấu +/−, quy tắc ẩn khi không đổi / kỳ đầu và dòng "lãi phải thu" giữ nguyên.
+- **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu theo quy mô thật (dư nợ 43,13 tỷ) ở điện thoại 320 / 360 / 390px và máy tính 1366px, kể cả số dài nhất (−999,99 triệu đ | 12,5%): nhãn luôn nằm 1 hàng, không tràn khung, không lỗi trang. Thêm 1 bài thử vào `tests/moneyChange.test.mjs` canh kích thước nhãn và việc không còn vòng tròn lớn.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

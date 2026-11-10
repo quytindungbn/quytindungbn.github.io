@@ -130,7 +130,7 @@ function heroChangeHtml(change, prevLabel) {
   const amount = `${change.sign}${change.num}<small>${change.unit}</small>`;
   const pct = change.percent !== null ? `<span class="lux-chg-pct">${formatPercent(change.percent)}</span>` : '';
   const say = `Dư nợ ${change.tone === 'up' ? 'tăng' : 'giảm'} ${change.num} ${change.unit}${change.percent !== null ? ` (${formatPercent(change.percent)})` : ''}`;
-  return `<span class="lux-chg ${change.tone}" role="img" aria-label="${say} so với tháng trước, ${prevLabel}"><span class="lux-chg-ic"><i class="lux-tri"></i></span><b class="lux-chg-amt">${amount}</b>${pct}</span>`;
+  return `<span class="lux-chg ${change.tone}" role="img" aria-label="${say} so với tháng trước, ${prevLabel}"><i class="lux-tri"></i><b class="lux-chg-amt">${amount}</b>${pct}</span>`;
 }
 
 function heroInnerHtml(m, ctx) {

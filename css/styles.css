@@ -1299,30 +1299,28 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 .lux-hero::before { content: ''; position: absolute; left: 18px; right: 18px; top: 0; height: 2px; background: linear-gradient(90deg, var(--lux-gold), transparent); }
 .lux-num { font-family: var(--lux-display); font-size: 48px; line-height: 1.05; font-weight: 800; color: var(--lux-em); margin: 6px 0 4px; letter-spacing: -.035em; }
 .lux-num small { font-family: var(--lux-sans); font-size: 16px; font-weight: 600; margin-left: 6px; color: #3d6a60; letter-spacing: 0; }
-.lux-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; font-size: 12.5px; color: var(--lux-mut); font-weight: 500; }
+.lux-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 9px; font-size: 12.5px; color: var(--lux-mut); font-weight: 500; }
 .lux-int { flex-basis: 100%; }
-.lux-chg { display: inline-flex; align-items: center; gap: 8px; padding: 4px 13px 4px 4px; border: 1px solid; border-radius: 999px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.lux-chg.up { color: #0f7a5c; background: #e3f3ec; border-color: #c4e3d4; }
-.lux-chg.down { color: #b4372d; background: #fbe9e6; border-color: #f1cbc5; }
-.lux-chg-ic { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; border-radius: 50%; background: currentColor; }
-.lux-tri { display: block; width: 0; height: 0; border-style: solid; border-width: 0 4.5px 7px; border-color: transparent transparent #fff; }
-.lux-chg.down .lux-tri { border-width: 7px 4.5px 0; border-color: #fff transparent transparent; }
-.lux-chg-amt { font: 700 15px/1 var(--lux-sans); letter-spacing: -.01em; }
-.lux-chg-amt small { margin-left: 3px; font-size: 11.5px; font-weight: 600; letter-spacing: 0; opacity: .85; }
-.lux-chg-pct { padding-left: 9px; border-left: 1px solid; font: 700 12.5px/1 var(--lux-sans); }
+.lux-chg { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 9px; border: 1px solid; border-radius: 999px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lux-chg.up { color: #0f7a5c; background: rgba(15, 122, 92, .1); border-color: rgba(15, 122, 92, .2); }
+.lux-chg.down { color: #b4372d; background: rgba(180, 55, 45, .09); border-color: rgba(180, 55, 45, .2); }
+.lux-tri { display: block; flex: none; width: 0; height: 0; border-style: solid; border-width: 0 3.5px 6px; border-color: transparent transparent currentColor; }
+.lux-chg.down .lux-tri { border-width: 6px 3.5px 0; border-color: currentColor transparent transparent; }
+.lux-chg-amt { font: 700 13px/1 var(--lux-sans); letter-spacing: -.01em; }
+.lux-chg-amt small { margin-left: 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0; opacity: .85; }
+.lux-chg-pct { padding-left: 7px; border-left: 1px solid; font: 700 11.5px/1 var(--lux-sans); }
 .lux-chg.up .lux-chg-pct { border-left-color: rgba(15, 122, 92, .3); }
 .lux-chg.down .lux-chg-pct { border-left-color: rgba(180, 55, 45, .3); }
 @media (min-width: 900px) {
   .lux-int { flex-basis: auto; }
   .lux-chg + .lux-int::before { content: '·'; margin-right: 10px; }
-  .lux-sub { gap: 8px 12px; margin-top: 12px; }
-  .lux-chg { gap: 10px; padding: 5px 16px 5px 5px; }
-  .lux-chg-ic { width: 26px; height: 26px; }
-  .lux-tri { border-width: 0 5px 8px; }
-  .lux-chg.down .lux-tri { border-width: 8px 5px 0; }
-  .lux-chg-amt { font-size: 17px; }
-  .lux-chg-amt small { font-size: 12.5px; }
-  .lux-chg-pct { padding-left: 11px; font-size: 13.5px; }
+  .lux-sub { margin-top: 10px; }
+  .lux-chg { gap: 7px; height: 28px; padding: 0 12px 0 10px; }
+  .lux-tri { border-width: 0 4px 7px; }
+  .lux-chg.down .lux-tri { border-width: 7px 4px 0; }
+  .lux-chg-amt { font-size: 15px; }
+  .lux-chg-amt small { font-size: 11.5px; }
+  .lux-chg-pct { padding-left: 8px; font-size: 12.5px; }
 }
 .lux-spark { margin-top: 10px; }
 .lux-trio { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 12px; border-top: 1px solid var(--lux-line); padding-top: 12px; }

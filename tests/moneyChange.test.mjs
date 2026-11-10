@@ -45,3 +45,12 @@ test('Tổng quan: dư nợ không đổi thì ẩn nhãn thay đổi, không hi
   assert.ok(hero.includes("if (!change || change.tone === 'flat') return '';"));
   assert.ok(!hero.includes('Không đổi'));
 });
+
+test('Tổng quan: nhãn thay đổi dư nợ gọn (cao 24px điện thoại, 28px máy tính), không còn vòng tròn lớn', () => {
+  const css = readFileSync(new URL('../css/styles.css', import.meta.url), 'utf8');
+  const block = css.slice(css.indexOf('.lux-sub {'), css.indexOf('.lux-spark {'));
+  assert.match(block.split('@media')[0], /\.lux-chg \{[^}]*height: 24px/);
+  assert.match(block.slice(block.indexOf('@media')), /\.lux-chg \{[^}]*height: 28px/);
+  const src = readFileSync(new URL('../js/views/admin/overview.js', import.meta.url), 'utf8');
+  assert.ok(!css.includes('lux-chg-ic') && !src.includes('lux-chg-ic'));
+});
