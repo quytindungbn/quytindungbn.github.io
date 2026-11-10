@@ -293,7 +293,7 @@ function openSnapshotAttentionModal(m, kind) {
             <span class="text-sm" style="flex-shrink:0;color:${color}">${dayText(d)}</span>
           </div>
           <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
-            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${d.code ? `HĐTD ${d.code} · ` : ''}${d.address || 'Chưa có địa bàn'}</span>
+            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${d.code ? `HĐTD ${d.code} · ` : ''}${escapeHtml(S.snapshotAreaText(d) || 'Chưa có địa bàn')}</span>
             <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(snap.amountOf(d))}</b>
           </div>
         </div>`).join('') : emptyState({ iconName: 'checkCircle', title: 'Không có hợp đồng nào', message: `${m.label} không có hợp đồng ${overdue ? 'quá hạn' : 'gần đến hạn'}.` })}`,
@@ -519,9 +519,7 @@ function openCompositionCategoryModal(m, tab, code) {
   const rowHtml = rows.map((row, index) => {
     const customer = m.live ? S.getCustomer(row.customerId) : null;
     const name = m.live ? customer?.name : row.name;
-    const address = m.live
-      ? ([customer?.xom, customer?.thon, customer?.tinh].filter(Boolean).join(', ') || customer?.address)
-      : row.address;
+    const address = m.live ? S.customerAreaText(customer) : S.snapshotAreaText(row);
     return `<div class="list-row" ${m.live ? `data-composition-row="${index}" style="cursor:pointer"` : ''}>
       <div class="row-main">
         <div class="row-title">${escapeHtml(name || '—')}</div>
@@ -1150,7 +1148,7 @@ function openDebtGroupModal(g, isStaff, m) {
             <span class="text-sm text-muted" style="flex-shrink:0">${d.daysOverdue > 0 ? `Quá hạn ${d.daysOverdue} ngày` : 'Trong hạn'}</span>
           </div>
           <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
-            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${d.address || 'Chưa có địa bàn'}</span>
+            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${escapeHtml(S.snapshotAreaText(d) || 'Chưa có địa bàn')}</span>
             <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(d.balance)}</b>
           </div>
           ${showTsbd ? `<div class="text-sm text-muted" style="margin-top:2px">${collateralDescription(d)}</div>` : ''}
@@ -1167,7 +1165,7 @@ function openDebtGroupModal(g, isStaff, m) {
       ${list.length ? list.map((ct) => {
         const cust = S.getCustomer(ct.customerId);
         const days = S.daysOverdue(ct, now);
-        const addressLabel = cust ? ([cust.xom, cust.thon, cust.tinh].filter(Boolean).join(', ') || cust.address || 'Chưa có địa bàn') : '—';
+        const addressLabel = cust ? (S.customerAreaText(cust) || 'Chưa có địa bàn') : '—';
         return `
         <div class="list-row" data-view-ct="${ct.id}" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:2px">
           <div class="flex items-center gap-6" style="flex-wrap:nowrap">
@@ -1175,7 +1173,7 @@ function openDebtGroupModal(g, isStaff, m) {
             <span class="text-sm text-muted" style="flex-shrink:0">${days > 0 ? `Quá hạn ${days} ngày` : 'Trong hạn'}</span>
           </div>
           <div class="flex justify-between items-center gap-6" style="flex-wrap:nowrap">
-            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${addressLabel}</span>
+            <span class="row-sub" style="margin-top:0;flex:1;min-width:0">${escapeHtml(addressLabel)}</span>
             <b style="color:${color};font-size:13px;flex-shrink:0">${formatVND(ct.balance)}</b>
           </div>
           ${installmentHintHtml(ct)}

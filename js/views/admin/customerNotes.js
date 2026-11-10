@@ -265,7 +265,7 @@ function dueBodyHtml(ui) {
   const money = groups.reduce((s, g) => s + g.notes.reduce((x, n) => x + (n.amount || 0), 0), 0);
   const head = `<div class="nz-sum">${groups.length} khách hàng · ${total} việc${money ? ` · Cần thu hôm nay: <strong>${formatVND(money)}</strong>` : ''}</div>`;
   const list = groups.map((g) => {
-    const addr = g.c.address || [g.c.xom, g.c.thon, g.c.tinh].filter(Boolean).join(', ');
+    const addr = S.customerAreaText(g.c);
     const phone = g.c.phone ? `<a class="nt-btn call" href="tel:${escapeHtml(g.c.phone)}" data-nt-call="${g.c.id}">${ic('phone')}Gọi</a>` : '';
     return `<div class="nz-g"><div class="nz-gh">
       <span class="av" style="background:${colorFor(g.c.id)}">${escapeHtml(initials(g.c.name))}</span>

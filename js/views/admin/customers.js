@@ -443,7 +443,7 @@ export function render(contentEl, filterEl) {
 export function customerLedgerGroupsHtml(groups, canManageZalo) {
   const dueCounts = S.dueNoteCounts();
   return groups.map(({ c, contracts, totalBalance }) => {
-        const location = [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || c.address || 'Chưa có địa bàn';
+        const location = S.customerAreaText(c) || 'Chưa có địa bàn';
         const dialPhone = String(c.phone || '').replace(/[^\d+]/g, '');
         const dueCount = dueCounts.get(c.id) || 0;
         return `<section class="customer-ledger-group" style="--g-n:${contracts.length}">
@@ -1098,7 +1098,7 @@ export function openCustomerDetail(customerId, { readOnly = false, context = 'cu
     ...(canEditProfile ? [tile('btn-edit-cust', 'edit', 'Sửa', 'Sửa hồ sơ khách hàng')] : []),
     ...(canDeleteUse ? [tile('btn-del-cust', 'trash', 'Xóa Use', 'Xóa tài khoản Use của khách', 'is-danger')] : []),
   ] : [];
-  const addressText = c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ');
+  const addressText = c.address || [S.cleanXom(c.xom), c.thon, c.xa, c.tinh].filter(Boolean).join(', ');
   const coShown = coCardShown(customerId, contracts, { canOa: canManageZalo, canEdit: canManageZalo || canManageUse });
 
   const chip = (on, text, extra = '') => `<span class="cd-chip ${on ? 'on' : 'off'}" ${extra}><i></i>${text}</span>`;

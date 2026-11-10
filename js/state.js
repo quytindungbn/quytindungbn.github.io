@@ -4,6 +4,7 @@ import { heirNamesOf, heirOfContract, savedCoPeopleOf, samePerson, normPersonNam
 import { interestDaysBetween } from './lib/interestDays.js';
 import { validateDraft, planChanged, firstRemindOn, nextAfterDone, addDaysIso, todayIso, isDue } from './lib/customerNotes.js';
 import { restoreLeadingInstallment } from './lib/installmentPlan.js';
+import { parseAddress, isXomName, shortAddress } from './lib/addressText.js';
 import { clearDeviceCaches } from './lib/kvCache.js';
 import { getSupabaseClient, callLoginFunction, callCreateAccountFunction, callImportDataFunction, callForgotPasswordFunction } from './lib/supabaseClient.js';
 import { specificProvisionForLoan, SPECIFIC_PROVISION_RATE, GENERAL_PROVISION_RATE, inheritCurrentCollateral } from './lib/collateral.js';
@@ -189,32 +190,19 @@ export async function updateOrg(patch) {
   notify();
 }
 
-export function parseAddress(raw) {
-  const text = String(raw || '').trim();
-  const withoutNote = text.replace(/\([^)]*\)/g, '');
-  const parts = withoutNote.split(',').map((s) => s.trim()).filter(Boolean);
-  const result = { xom: '', thon: '', xa: '', tinh: '' };
-  const rest = [];
+export { parseAddress };
 
-  let currentField = null;
-  for (const p of parts) {
-    const low = p.toLowerCase();
-    let field = null;
-    if (low.startsWith('xóm') || low.startsWith('xom')) field = 'xom';
-    else if (low.startsWith('thôn') || low.startsWith('thon')) field = 'thon';
-    else if (low.startsWith('xã') || low.startsWith('xa ') || low.startsWith('phường') || low.startsWith('thị trấn') || low.startsWith('huyện')) field = 'xa';
-    else if (low.startsWith('tỉnh') || low.startsWith('tp') || low.startsWith('thành phố')) field = 'tinh';
+export function cleanXom(xom) { return isXomName(xom) ? xom : ''; }
 
-    if (field) { result[field] = p; currentField = field; }
-    else if (currentField) result[currentField] += ', ' + p;
-    else rest.push(p);
-  }
+export function customerAreaText(customer) {
+  if (!customer) return '';
+  return shortAddress(customer.address) || shortAddress([cleanXom(customer.xom), customer.thon, customer.xa, customer.tinh].filter(Boolean).join(', '));
+}
 
-  if (!result.tinh && parts.length) result.tinh = parts[parts.length - 1];
-  if (!result.xa && rest.length) result.xa = rest.shift();
-  if (!result.thon && parts.length >= 2) result.thon = parts[1];
-  if (!result.xom && parts.length >= 1) result.xom = parts[0];
-  return result;
+export function snapshotAreaText(row) {
+  const contract = row && row.code ? state.contracts.find((ct) => ct.code === row.code) : null;
+  const customer = contract ? getCustomer(contract.customerId) : null;
+  return (customer && customerAreaText(customer)) || shortAddress(row && row.address);
 }
 
 export function listCustomers(filters = {}) {
@@ -850,7 +838,7 @@ export function distinctThon() {
 export function distinctXom(thon) {
   const thonList = [].concat(thon || []).filter(Boolean);
   const list = thonList.length ? state.customers.filter((c) => thonList.includes(c.thon)) : state.customers;
-  return [...new Set(list.map((c) => c.xom).filter(Boolean))].sort(naturalXomCompare);
+  return [...new Set(list.map((c) => c.xom).filter(isXomName))].sort(naturalXomCompare);
 }
 
 function territoryOf(adminId) {

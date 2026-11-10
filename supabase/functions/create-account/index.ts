@@ -74,6 +74,15 @@ async function logActivity(adminId: string, adminName: string, adminUsername: st
   }
 }
 
+function addressFieldOf(part: string): string | null {
+  const low = part.toLowerCase();
+  if (low.startsWith('xóm') || low.startsWith('xom')) return 'xom';
+  if (low.startsWith('thôn') || low.startsWith('thon')) return 'thon';
+  if (low.startsWith('xã') || low.startsWith('xa ') || low.startsWith('phường') || low.startsWith('thị trấn') || low.startsWith('huyện')) return 'xa';
+  if (low.startsWith('tỉnh') || low.startsWith('tp') || low.startsWith('thành phố')) return 'tinh';
+  return null;
+}
+
 function parseAddress(raw: string) {
   const text = String(raw || '').trim();
   const withoutNote = text.replace(/\([^)]*\)/g, '');
@@ -82,13 +91,7 @@ function parseAddress(raw: string) {
   const rest: string[] = [];
   let currentField: string | null = null;
   for (const p of parts) {
-    const low = p.toLowerCase();
-    let field: string | null = null;
-    if (low.startsWith('xóm') || low.startsWith('xom')) field = 'xom';
-    else if (low.startsWith('thôn') || low.startsWith('thon')) field = 'thon';
-    else if (low.startsWith('xã') || low.startsWith('xa ') || low.startsWith('phường') || low.startsWith('thị trấn') || low.startsWith('huyện')) field = 'xa';
-    else if (low.startsWith('tỉnh') || low.startsWith('tp') || low.startsWith('thành phố')) field = 'tinh';
-
+    const field = addressFieldOf(p);
     if (field) { result[field] = p; currentField = field; }
     else if (currentField) result[currentField] += ', ' + p;
     else rest.push(p);
@@ -96,7 +99,7 @@ function parseAddress(raw: string) {
   if (!result.tinh && parts.length) result.tinh = parts[parts.length - 1];
   if (!result.xa && rest.length) result.xa = rest.shift()!;
   if (!result.thon && parts.length >= 2) result.thon = parts[1];
-  if (!result.xom && parts.length >= 1) result.xom = parts[0];
+  if (!result.xom && parts.length >= 1 && !addressFieldOf(parts[0])) result.xom = parts[0];
   return result;
 }
 

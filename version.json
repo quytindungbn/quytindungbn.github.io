@@ -1,6 +1,6 @@
 {
- "v": "1.0.22",
- "h": "e44d46a569ad",
+ "v": "1.0.23",
+ "h": "fc2b451f88d3",
  "files": [
   "css/styles.css",
   "index.html",
@@ -16,6 +16,7 @@
   "js/components/ui.js",
   "js/icons.js",
   "js/lib/activityLabels.js",
+  "js/lib/addressText.js",
   "js/lib/balanceSheet.js",
   "js/lib/balanceSheetMetrics.js",
   "js/lib/callHistory.js",

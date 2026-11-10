@@ -312,7 +312,7 @@ function drawOATab(slot, admin) {
           <div class="row-thumb" style="background:${colorFor(customer.id)}">${initials(customer.name)}</div>
           <div class="row-main">
             <div class="row-title oa-ttl"><span class="oa-nm">${customer.name}</span>${chipsFor(customer.id)}</div>
-            <div class="row-sub oa-addr"><span class="oa-ad">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</span>${customer.phone ? `<a class="oa-ph" href="tel:${customer.phone.replace(/\s/g, '')}" data-stop-row title="Gọi/tìm Zalo nhanh">${customer.phone}</a>` : ''}</div>
+            <div class="row-sub oa-addr"><span class="oa-ad">${escapeHtml(S.customerAreaText(customer) || 'Chưa có địa bàn')}</span>${customer.phone ? `<a class="oa-ph" href="tel:${customer.phone.replace(/\s/g, '')}" data-stop-row title="Gọi/tìm Zalo nhanh">${customer.phone}</a>` : ''}</div>
             ${rcvChipsHtml(customer)}
           </div>
         </div>
@@ -403,7 +403,7 @@ function openAddCustomerToOAModal(admin, onDone) {
             <div class="row-thumb" style="background:${colorFor(c.id)};width:28px;height:28px;font-size:11px;border-radius:8px;flex-shrink:0">${initials(c.name)}</div>
             <div class="row-main">
               <div class="row-title" style="font-size:13.5px">${c.name}</div>
-              <div class="row-sub">${c.address || [c.xom, c.thon, c.tinh].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
+              <div class="row-sub">${escapeHtml(S.customerAreaText(c) || 'Chưa có địa bàn')}</div>
               ${c.coPrevName ? '<div class="oa-warn-tag">Người cùng vay đã đổi — cần xem lại</div>' : ''}
             </div>
             <b style="font-size:13px;white-space:nowrap;flex-shrink:0">${c.phone || `<span style="font-size:11.5px;font-weight:600;color:var(--text-muted)">Người cùng vay · ${escapeHtml((S.listCoPeople(c.id).find((p) => p.phone) || {}).phone || '')}</span>`}</b>
@@ -507,7 +507,7 @@ function intervalSelectHtml(rowId, intervalMonths) {
 }
 
 function autoSendRowHtml(kind, r, customer, contract) {
-  const addr = [customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn';
+  const addr = escapeHtml(S.customerAreaText(customer) || 'Chưa có địa bàn');
   const dayLabel = kind === 'lai_hang_thang_custom_day' ? ` · <span style="font-weight:400;font-size:12px">Ngày ${r.customDay || '?'}</span>` : '';
   return `
     <div class="list-row" data-row="${r.id}" data-contract="${contract.id}" data-customer="${customer.id}" style="cursor:pointer;padding:8px 4px">
@@ -727,7 +727,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
           <div class="list-row" style="padding:8px 4px;opacity:.55">
             <div class="row-main">
               <div class="row-title" style="font-size:13.5px">${customer.name}</div>
-              <div class="row-sub">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
+              <div class="row-sub">${escapeHtml(S.customerAreaText(customer) || 'Chưa có địa bàn')}</div>
             </div>
             <span class="text-sm" style="white-space:nowrap">Đã do ${owner ? `"${owner}"` : 'người khác'} thêm</span>
           </div>`).join('');
@@ -735,7 +735,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
           <div class="list-row" data-add="${contract.id}" style="cursor:pointer;padding:8px 4px">
             <div class="row-main">
               <div class="row-title" style="font-size:13.5px">${customer.name} · ${contract.code}</div>
-              <div class="row-sub">${[customer.xom, customer.thon].filter(Boolean).join(', ') || 'Chưa có địa bàn'}</div>
+              <div class="row-sub">${escapeHtml(S.customerAreaText(customer) || 'Chưa có địa bàn')}</div>
             </div>
             <b style="color:var(--color-primary);font-size:13px;white-space:nowrap">${formatVND(contract.balance)}</b>
           </div>
