@@ -3718,7 +3718,7 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
   - **Cấu hình**: "Lưu cấu hình" đã có dòng "Sửa cài đặt: …" từ trước.
   - **Không ghi lần hai** những việc máy chủ đã tự ghi (thêm/bỏ khách vào OA, thêm/bỏ/sửa gửi tự động, gửi tay…).
 - **Các màn hình khác — bổ sung**:
-  - **Khách hàng & Hợp đồng**: tìm kiếm; mở "Nhập dữ liệu từ Excel", "Lịch sử nhập file", "Chi tiết lần nhập", "Xem trước khi nhập dữ liệu"; trong chi tiết hợp đồng, đổi ngày / số ngày tính lãi ("Tính lãi hợp đồng … đến ngày …").
+  - **Khách hàng & Hợp đồng**: tìm kiếm; mở "Nhập dữ liệu từ Excel", "Lịch sử nhập file", "Chi tiết lần nhập", "Xem trước khi nhập dữ liệu"; trong chi tiết hợp đồng, đổi ngày / số ngày tính lãi ("Tính lãi hợp đồng … đến ngày …"); chuyển từ Hợp đồng sang Hồ sơ khách (chấm tròn, vuốt, nút "Hồ sơ khách" / phím K) giờ cũng ghi "Xem chi tiết khách hàng" / "Xem chi tiết hợp đồng" — chỉ ghi lần đầu, lật qua lại trong 10 phút không ghi lặp.
   - **Tổng quan**: ô Hợp đồng quá hạn / Gần đến hạn, Nhóm nợ 1–5, Dự phòng chung / cụ thể, tỷ trọng dư nợ (đổi tab, theo dư nợ / theo số món vay, từng nhóm), Chi tiết theo từng tháng (kèm tab chỉ tiêu), Nạp dữ liệu cũ, đổi kỳ báo cáo, Nhắc việc đến hạn.
   - **Quản trị**: đổi tháng xem, mở / thu gọn từng mục, Doanh thu – Chi phí, Làm mới, Nạp file bảng cân đối, và **Lưu số liệu bảng cân đối** — việc này trước đây KHÔNG có dòng nào vì trình duyệt ghi thẳng vào cơ sở dữ liệu, không qua máy chủ.
   - **Hỗ trợ**: đổi tab, lọc trạng thái, tìm kiếm, mở hội thoại tư vấn với khách.

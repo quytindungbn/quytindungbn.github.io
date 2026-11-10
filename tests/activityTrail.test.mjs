@@ -45,3 +45,11 @@ test('lưu số liệu bảng cân đối (ghi thẳng vào cơ sở dữ liệu
   const log = src.indexOf("logUiAction('bs-import', `Quản trị: lưu số liệu");
   assert.ok(upsert > 0 && log > upsert);
 });
+
+test('chuyển từ Hợp đồng sang Hồ sơ khách (và ngược lại) vẫn ghi "xem" nhưng không ghi lặp khi lật qua lại', () => {
+  const src = viewSource('customers.js');
+  assert.ok(src.includes("logViewPage('view-customer', customerId, { customerId }, reopen)"));
+  assert.ok(src.includes("logViewPage('view-contract', contract.id, { contractId: contract.id }, reopen)"));
+  assert.ok(src.includes('if (reopen && Date.now() - (viewLoggedAt.get(key) || 0) < 600000) return;'));
+  assert.ok(!src.includes("if (!reopen) S.logAdminAction('view-"));
+});

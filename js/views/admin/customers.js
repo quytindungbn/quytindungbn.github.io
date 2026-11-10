@@ -1070,11 +1070,19 @@ function contractCardHtml(ct) {
   </div>`;
 }
 
+const viewLoggedAt = new Map();
+function logViewPage(action, id, payload, reopen) {
+  const key = `${action}:${id}`;
+  if (reopen && Date.now() - (viewLoggedAt.get(key) || 0) < 600000) return;
+  viewLoggedAt.set(key, Date.now());
+  S.logAdminAction(action, payload);
+}
+
 export function openCustomerDetail(customerId, { readOnly = false, context = 'customer', showActions = context === 'use', reopen = false } = {}) {
   const c = S.getCustomer(customerId);
   if (pagePair.customerId !== customerId) pagePair.contractId = '';
   pagePair.customerId = customerId; pagePair.cd = { readOnly, context, showActions };
-  if (!reopen) S.logAdminAction('view-customer', { customerId });
+  logViewPage('view-customer', customerId, { customerId }, reopen);
 
   const contracts = S.listContractsByCustomer(customerId).filter((ct) => S.effectiveContractStatus(ct) !== 'da_tat_toan');
   const session = S.getSession();
@@ -1583,7 +1591,7 @@ export function openContractView(customerId, contract, { readOnly = false, reope
   const customer = S.getCustomer(customerId);
   if (pagePair.customerId !== customerId) pagePair.cd = { readOnly, context: 'customer', showActions: false };
   pagePair.customerId = customerId; pagePair.contractId = contract.id;
-  if (!reopen) S.logAdminAction('view-contract', { contractId: contract.id });
+  logViewPage('view-contract', contract.id, { contractId: contract.id }, reopen);
 
   const info = S.contractStatusInfo(contract);
   const interestPaidUntil = contract.interestPaidUntil || contract.disbursedDate;
