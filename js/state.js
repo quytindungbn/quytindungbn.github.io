@@ -1,5 +1,6 @@
 import { genId, mulberry32, randInt, addDays, daysBetween, detectDeviceKind } from './utils.js';
 import { describeOrgPatch, describeSearch, clipLabel } from './lib/activityLabels.js';
+import { translateZaloError } from './lib/zaloErrors.js';
 import { heirNamesOf, heirOfContract, savedCoPeopleOf, samePerson, normPersonName, coPhoneOf, contractOa, customerOaSummary, hasOaPhone, phoneHolders } from './lib/coBorrower.js';
 import { interestDaysBetween } from './lib/interestDays.js';
 import { validateDraft, planChanged, firstRemindOn, nextAfterDone, addDaysIso, todayIso, isDue } from './lib/customerNotes.js';
@@ -1122,7 +1123,7 @@ export async function sendZaloManual(contractId, { asOf = null } = {}) {
   }
 
   refreshSessionData().catch(() => {});
-  return res;
+  return res.ok ? res : { ...res, reason: translateZaloError(res.reason) };
 }
 
 export async function deleteCustomer(id) {
@@ -1642,10 +1643,6 @@ function mapZaloAutoSendRow(row) {
   return { id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, customDay: row.custom_day, intervalMonths: row.interval_months || 1, createdBy: row.created_by, createdAt: row.created_at };
 }
 
-function translateZaloError(msg) {
-  if (msg && /account\s+not\s+exist/i.test(msg)) return 'Số điện thoại này chưa đăng ký Zalo';
-  return msg;
-}
 function mapZaloSendLogRow(row) {
   return {
     id: row.id, contractId: row.contract_id, customerId: row.customer_id, kind: row.kind, templateId: row.template_id,

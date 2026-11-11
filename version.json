@@ -1,6 +1,6 @@
 {
- "v": "1.0.27",
- "h": "a5cd7b86c16c",
+ "v": "1.0.28",
+ "h": "ad1359d16d8e",
  "files": [
   "css/styles.css",
   "index.html",
@@ -49,6 +49,7 @@
   "js/lib/xlsLite.js",
   "js/lib/xlsxLite.js",
   "js/lib/xlsxWrite.js",
+  "js/lib/zaloErrors.js",
   "js/state.js",
   "js/utils.js",
   "js/version.js",
