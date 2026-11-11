@@ -106,7 +106,7 @@ function renderFilterBar(contentEl, filterEl, admin, canChat) {
     });
   } else {
 
-    bindSearchBox(filterEl, 'support-search', (v) => { searchQuery = v; S.logSearchAction('Hỗ trợ › Tư vấn', v); drawConversationList(contentEl, filterEl); });
+    bindSearchBox(filterEl, 'support-search', (v) => { searchQuery = v; drawConversationList(contentEl, filterEl); }, { onEnter: (v) => S.logSearchAction('Hỗ trợ › Tư vấn', v) });
   }
 }
 

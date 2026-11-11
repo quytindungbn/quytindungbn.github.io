@@ -279,7 +279,7 @@ function drawOATab(slot, admin) {
     setState: (t, x) => { filterThon = t; filterXom = x; },
     onChange: () => { updateFilterBtn(); drawList(); },
   }));
-  bindSearchBox(slot, 'oa-search', (v) => { oaQuery = v; oaSearch('Danh sách OA', v); drawList(); });
+  bindSearchBox(slot, 'oa-search', (v) => { oaQuery = v; drawList(); }, { onEnter: (v) => oaSearch('Danh sách OA', v) });
   updateFilterBtn();
   drawList();
 
@@ -483,7 +483,7 @@ function openAddCustomerToOAModal(admin, onDone) {
         }
         await doAdd();
       });
-      bindSearchBox(sheet, 'add-oa-search', (v) => { query = v; oaSearch('Thêm khách hàng vào OA', v); draw(); });
+      bindSearchBox(sheet, 'add-oa-search', (v) => { query = v; draw(); }, { onEnter: (v) => oaSearch('Thêm khách hàng vào OA', v) });
       renderPills();
       draw();
     },
@@ -663,7 +663,7 @@ function openAutoSendListModal(kind, admin, onDone) {
           : `<p class="text-sm text-muted">Không có hợp đồng nào phù hợp.</p>`;
         bindAutoRowHandlers(listEl, kind, refreshAll);
       }
-      bindSearchBox(sheet, 'auto-list-search', (v) => { query = v; oaSearch(`Gửi tự động › ${sectionTitle(kind)}`, v); draw(); });
+      bindSearchBox(sheet, 'auto-list-search', (v) => { query = v; draw(); }, { onEnter: (v) => oaSearch(`Gửi tự động › ${sectionTitle(kind)}`, v) });
       sheet.querySelector('#auto-list-filter').addEventListener('click', () => openThonXomFilterModal({
         title: 'Lọc theo Thôn / Xóm', hint: 'Chọn Thôn / Xóm để chỉ xem hợp đồng của khách ở nơi đó (chọn được nhiều).', allowedThon, where: `Gửi tự động › ${sectionTitle(kind)}`,
         getState: () => ({ thon: pThon, xom: pXom }),
@@ -812,7 +812,7 @@ function openAddAutoSendModal(kind, admin, onDone) {
         oaLog('oa-view', where, 'bấm **Xem thêm**');
         visibleCount += PAGE_SIZE; draw();
       });
-      bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; oaSearch(where, v); draw(); });
+      bindSearchBox(sheet, 'add-auto-search', (v) => { query = v; visibleCount = PAGE_SIZE; draw(); }, { onEnter: (v) => oaSearch(where, v) });
       if (isCustomDay) {
 
         const dayInput = sheet.querySelector('#day-input');
@@ -955,7 +955,7 @@ function drawLogTab(slot) {
     </div>
     <div id="log-list"></div>
   `;
-  bindSearchBox(slot, 'log-search', (v) => { logQuery = v; oaSearch('Lịch sử gửi', v); drawList(); });
+  bindSearchBox(slot, 'log-search', (v) => { logQuery = v; drawList(); }, { onEnter: (v) => oaSearch('Lịch sử gửi', v) });
   slot.querySelector('#log-from').addEventListener('change', (e) => {
     logFromDate = e.target.value;
     oaLog('oa-filter', 'Lịch sử gửi', describeDateRange(logFromDate, logToDate));

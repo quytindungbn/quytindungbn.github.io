@@ -39,6 +39,24 @@ test('Quản lý OA: mỗi chức năng đều có ghi Nhật ký (tab, tìm ki�
   assert.ok(src.includes('S.logCall('));
 });
 
+test('ô tìm kiếm chỉ ghi Nhật ký khi bấm Enter, không ghi từng chữ đang gõ', () => {
+  const ui = sources.find(({ file }) => file.endsWith(join('components', 'ui.js'))).src;
+  assert.ok(ui.includes("if (e.key === 'Enter' && !e.isComposing && !e.repeat) onEnter(input.value);"));
+  const state = sources.find(({ file }) => file.endsWith(join('js', 'state.js'))).src;
+  const fn = state.slice(state.indexOf('export function logSearchAction'), state.indexOf('export function getSession'));
+  assert.ok(fn.includes("logUiAction('search'") && !fn.includes('logUiActionLater'));
+  let boxes = 0;
+  for (const { src } of sources) {
+    for (const line of src.split('\n')) {
+      if (!line.includes('bindSearchBox(') || !/logSearchAction\(|oaSearch\(/.test(line)) continue;
+      boxes += 1;
+      assert.ok(line.includes('onEnter:'), line.trim());
+      assert.ok(!/\(v\) => \{[^}]*(logSearchAction|oaSearch)\(/.test(line), line.trim());
+    }
+  }
+  assert.ok(boxes >= 8, `chỉ tìm thấy ${boxes} ô tìm kiếm có ghi Nhật ký`);
+});
+
 test('lưu số liệu bảng cân đối (ghi thẳng vào cơ sở dữ liệu từ trình duyệt) có ghi Nhật ký', () => {
   const src = viewSource('balanceSheet.js');
   const upsert = src.indexOf(".from('balance_sheet_reports').upsert(");

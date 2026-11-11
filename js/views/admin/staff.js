@@ -31,7 +31,7 @@ function buildFrame(contentEl) {
       <button type="button" class="oa-add us-add" id="btn-add-user" title="Tạo User" aria-label="Tạo User">${icon('userPlus')}<span>Tạo User</span></button>
     </div>
     <div id="us-body"></div>`;
-  bindSearchBox(contentEl, 'search-input', (v) => { query = v; S.logSearchAction('Quản lý User', v); draw(contentEl); });
+  bindSearchBox(contentEl, 'search-input', (v) => { query = v; draw(contentEl); }, { onEnter: (v) => S.logSearchAction('Quản lý User', v) });
   contentEl.querySelector('#btn-add-user').addEventListener('click', () => {
     S.logUiAction('user-open', 'Quản lý User: mở **Tạo User**');
     openCreateUserModal(S.thonXomTree(), contentEl);

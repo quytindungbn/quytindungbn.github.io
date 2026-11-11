@@ -121,7 +121,7 @@ export function render(contentEl, filterEl) {
       <div class="filter-sum"></div>
     </div></div>
   `;
-  bindSearchBox(filterEl, 'search-input', (v) => { query = v; S.logSearchAction('Danh sách khách hàng', v); draw(); });
+  bindSearchBox(filterEl, 'search-input', (v) => { query = v; draw(); }, { onEnter: (v) => S.logSearchAction('Danh sách khách hàng', v) });
   mountScrollTopButton(filterEl);
   if (!isStaff) {
     filterEl.querySelector('#btn-import').addEventListener('click', openImportModal);

@@ -2233,8 +2233,9 @@ export function logUiActionLater(key, kind, label, delay = 1500) {
   trailTimers.set(key, setTimeout(() => { trailTimers.delete(key); logUiAction(kind, label); }, delay));
 }
 
-export function logSearchAction(where, query, delay) {
-  logUiActionLater(`search:${where}`, 'search', describeSearch(where, query), delay);
+export function logSearchAction(where, query) {
+  const label = describeSearch(where, query);
+  if (label) logUiAction('search', label);
 }
 
 export function getSession() { return state.session; }

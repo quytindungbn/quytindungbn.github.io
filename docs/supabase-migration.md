@@ -3749,6 +3749,13 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Không đổi dữ liệu**: cột `error_message` của `zalo_send_log` vẫn lưu nguyên văn Zalo để tra cứu, chỉ khi hiển thị mới dịch — nên không cần deploy lại `create-account` / `send-due-reminders`.
 - **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu: Lịch sử gửi hiện "OA không có quyền sử dụng tính năng này" cho dòng lỗi tiếng Anh, dòng "Account not exist" vẫn là "Số điện thoại này chưa đăng ký Zalo", lỗi chưa biết giữ nguyên; bấm "Gửi tin Zalo OA ngay" khi máy chủ báo lỗi này thì thông báo cũng bằng tiếng Việt; không lỗi trang. Bài thử mới `tests/zaloErrors.test.mjs`.
 
+### 10.126 Nhật ký: ô tìm kiếm chỉ ghi khi bấm Enter, không ghi từng chữ đang gõ (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Theo yêu cầu**: Nhật ký đang ra nhiều dòng liên tiếp "Danh sách khách hàng: tìm P / PH / PHAN THỊ / PHAN THỊ PHƯỢ / PHAN THỊ PHƯỢNG" — "tìm nhập từng chữ thì không cần thể hiện, khi nhập xong bấm Enter hãy ghi lịch sử".
+- **Nguyên nhân**: mục 10.122 ghi lần tìm kiếm sau khi ngừng gõ 1,5 giây, nên gõ chậm hoặc ngập ngừng giữa chừng là ra thêm dòng.
+- **Đã làm**: `bindSearchBox` (`js/components/ui.js`) có thêm tùy chọn `onEnter`; ô tìm kiếm chỉ ghi Nhật ký khi bấm **Enter** (phím tìm kiếm trên bàn phím điện thoại cũng là Enter), ghi 1 dòng đủ chữ đã gõ ("… : tìm **PHAN THỊ PHƯỢNG**"). Danh sách vẫn lọc ngay theo chữ đang gõ như cũ. Áp dụng cho mọi ô tìm kiếm có ghi Nhật ký: Danh sách khách hàng, Quản lý User, Hỗ trợ › Tư vấn, Quản lý OA (Danh sách OA, Thêm khách hàng vào OA, Gửi tự động, Lịch sử gửi). Không ghi khi ô trống, khi giữ phím Enter (lặp phím) hoặc khi đang gõ dấu tiếng Việt chưa chốt chữ. Gõ xong mà không bấm Enter thì không ghi dòng nào (đúng như yêu cầu). Các dòng ghi trễ 1,5 giây khác (đổi ngày tính lãi, chọn kỳ báo cáo / tháng bảng cân đối) giữ nguyên.
+- **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu, bắt từng lời gọi `log-admin-action` ở 5 ô (Khách hàng, Danh sách OA, Lịch sử gửi, Quản lý User, Hỗ trợ): gõ từng chữ chậm rồi dừng 2,6 giây → 0 dòng; bấm Enter → đúng 1 dòng đủ chữ; gõ thêm rồi dừng → không ghi thêm; giữ Enter → 1 dòng; ô trống hoặc đang gõ dấu → 0 dòng; không lỗi trang. Bài thử canh giữ mới trong `tests/activityTrail.test.mjs` bảo đảm mọi ô tìm kiếm có ghi Nhật ký đều đi qua `onEnter` (kể cả các cửa sổ Thêm khách hàng vào OA và Gửi tự động).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

@@ -12,7 +12,7 @@ export function searchBoxHtml(id, placeholder, value = '') {
     </div>`;
 }
 
-export function bindSearchBox(root, id, onChange, { debounceMs = 200 } = {}) {
+export function bindSearchBox(root, id, onChange, { debounceMs = 200, onEnter } = {}) {
   const input = root.querySelector('#' + id);
   const clearBtn = root.querySelector('#' + id + '-clear');
   if (!input) return;
@@ -20,6 +20,9 @@ export function bindSearchBox(root, id, onChange, { debounceMs = 200 } = {}) {
   input.addEventListener('input', () => {
     if (clearBtn) clearBtn.style.display = input.value ? 'flex' : 'none';
     debounced(input.value);
+  });
+  if (onEnter) input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing && !e.repeat) onEnter(input.value);
   });
   if (clearBtn) clearBtn.addEventListener('click', () => {
     input.value = '';
