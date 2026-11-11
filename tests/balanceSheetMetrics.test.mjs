@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, loanTermChildren, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios, monthlyProfit, previousMonthReport, provisionAlertTarget, provisionAdjustment } from '../js/lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, loanTermChildren, selectLatestBalanceImports, provisionDifference, nextProvisionDeadline, managementRatios, monthlyProfit, previousMonthReport, provisionAlertTargets, provisionAdjustment } from '../js/lib/balanceSheetMetrics.js';
 
 test('biến động dùng số gốc tuyệt đối và không tạo tỷ lệ giả khi gốc bằng 0', () => {
   assert.deepEqual(compareBalance(70_147_510_875, 70_726_277_233), {
@@ -116,20 +116,41 @@ test('tháng liền trước kể cả qua năm', () => {
   assert.equal(previousMonthReport(reports, 'abc'), null);
 });
 
-test('nhắc trích / hoàn nhập dự phòng chỉ hiện từ ngày 01 đến hết ngày 07, cho tháng liền trước, khi xem tháng đó hoặc tháng hiện tại', () => {
+const alertMonths = (reports, viewed, today) => provisionAlertTargets(reports, viewed, today).map((report) => report.year_month);
+const calendarDay = (year, month, date) => new Date(year, month - 1, date, 12);
+
+test('cảnh báo dự phòng của tháng nào thì tháng đó luôn hiện, không mất theo thời gian', () => {
+  const reports = ['2026-09', '2026-10'].map((year_month) => ({ year_month }));
+  for (const today of [calendarDay(2026, 10, 25), calendarDay(2026, 11, 4), calendarDay(2026, 11, 11), calendarDay(2026, 11, 28), calendarDay(2027, 3, 15)]) {
+    assert.deepEqual(alertMonths(reports, '2026-10', today), ['2026-10']);
+    assert.deepEqual(alertMonths(reports, '2026-09', today), ['2026-09']);
+  }
+  assert.deepEqual(alertMonths(reports, '2026-08', calendarDay(2026, 11, 4)), []);
+  assert.deepEqual(alertMonths([], '2026-10', calendarDay(2026, 11, 4)), []);
+});
+
+test('sang tháng sau: xem tháng hiện tại vẫn nhắc cảnh báo tháng liền trước, hết ngày 10 thì ẩn', () => {
+  const closed = ['2026-09', '2026-10'].map((year_month) => ({ year_month }));
+  for (const date of [1, 4, 7, 8, 10]) assert.deepEqual(alertMonths(closed, '2026-11', calendarDay(2026, 11, date)), ['2026-10'], `ngày ${date}`);
+  for (const date of [11, 15, 30]) assert.deepEqual(alertMonths(closed, '2026-11', calendarDay(2026, 11, date)), [], `ngày ${date}`);
+  assert.deepEqual(alertMonths(closed, '2026-10', calendarDay(2026, 11, 20)), ['2026-10']);
+});
+
+test('nhắc sang tháng sau chỉ áp dụng khi đang xem tháng hiện tại và đã có báo cáo tháng liền trước', () => {
   const reports = ['2026-09', '2026-10', '2026-11'].map((year_month) => ({ year_month }));
-  const day = (year, month, date) => new Date(year, month - 1, date, 12);
-  assert.equal(provisionAlertTarget(reports, '2026-11', day(2026, 11, 4)).year_month, '2026-10');
-  assert.equal(provisionAlertTarget(reports, '2026-10', day(2026, 11, 4)).year_month, '2026-10');
-  assert.equal(provisionAlertTarget(reports, '2026-11', day(2026, 11, 1)).year_month, '2026-10');
-  assert.equal(provisionAlertTarget(reports, '2026-11', day(2026, 11, 7)).year_month, '2026-10');
-  assert.equal(provisionAlertTarget(reports, '2026-11', day(2026, 11, 8)), null);
-  assert.equal(provisionAlertTarget(reports, '2026-10', day(2026, 11, 8)), null);
-  assert.equal(provisionAlertTarget(reports, '2026-09', day(2026, 11, 4)), null);
-  assert.equal(provisionAlertTarget(reports, '2026-10', day(2026, 10, 25)), null);
-  assert.equal(provisionAlertTarget(reports, '2026-10', day(2026, 10, 5)).year_month, '2026-09');
-  assert.equal(provisionAlertTarget(reports.filter((item) => item.year_month !== '2026-10'), '2026-11', day(2026, 11, 4)), null);
-  assert.equal(provisionAlertTarget([{ year_month: '2026-12' }], '2027-01', day(2027, 1, 3)).year_month, '2026-12');
+  assert.deepEqual(alertMonths(reports, '2026-11', calendarDay(2026, 11, 4)), ['2026-10', '2026-11']);
+  assert.deepEqual(alertMonths(reports, '2026-11', calendarDay(2026, 11, 12)), ['2026-11']);
+  assert.deepEqual(alertMonths(reports, '2026-09', calendarDay(2026, 11, 4)), ['2026-09']);
+  assert.deepEqual(alertMonths(reports.filter((item) => item.year_month !== '2026-10'), '2026-11', calendarDay(2026, 11, 4)), ['2026-11']);
+  assert.deepEqual(alertMonths(['2026-10'].map((year_month) => ({ year_month })), '2026-12', calendarDay(2026, 12, 4)), []);
+});
+
+test('nhắc cảnh báo qua năm: tháng 12 được nhắc ở tháng 1 đến hết ngày 10', () => {
+  const reports = [{ year_month: '2026-12' }];
+  assert.deepEqual(alertMonths(reports, '2027-01', calendarDay(2027, 1, 3)), ['2026-12']);
+  assert.deepEqual(alertMonths(reports, '2027-01', calendarDay(2027, 1, 10)), ['2026-12']);
+  assert.deepEqual(alertMonths(reports, '2027-01', calendarDay(2027, 1, 11)), []);
+  assert.deepEqual(alertMonths(reports, '2026-12', calendarDay(2027, 6, 1)), ['2026-12']);
 });
 
 test('chênh lệch dự phòng lấy theo dòng Tổng dự phòng: một số tiền, dư hay thiếu, hạn ngày 07 tháng sau', () => {

@@ -3536,6 +3536,7 @@ create policy "admins add note log" on customer_note_log
 - Chỉ hiện từ ngày 01 đến hết ngày 07 của tháng hiện tại (giờ máy), nhắc cho tháng liền trước, khi đang xem báo cáo của tháng liền trước hoặc của tháng hiện tại (app mở sẵn tháng mới nhất nên sau khi nạp file tháng mới vẫn thấy). Sang ngày 08 là hết nhắc ở cả hai; các tháng cũ hơn không còn cảnh báo, chỉ còn bảng so sánh. Giữa tháng thì nhắc tháng trước chỉ trong 07 ngày đầu; cần có báo cáo tháng liền trước và số "Phải trích" đã chốt của tháng đó, chưa có thì không hiện.
 - Mã: `provisionAlertTarget(reports, viewedMonth, today)` chọn báo cáo cần nhắc và `provisionAdjustment(report, required)` tính chênh lệch tổng + hạn (`nextProvisionDeadline`) trong `js/lib/balanceSheetMetrics.js`; `provisionComparison` trong `js/views/admin/balanceSheet.js` chỉ dựng câu chữ. Bài thử trong `tests/balanceSheetMetrics.test.mjs` (các ngày 01, 04, 07, 08 của tháng, giữa tháng, qua năm).
 - Lịch sử: bản 1.0.9 từng hiện 2 dòng (chung, cụ thể) suốt tháng hiện tại; đã đổi theo yêu cầu thành 1 dòng và chỉ đến ngày 07.
+- **Đã đổi ở mục 10.127** (bản 1.0.30): thời hạn hiện cảnh báo không còn "chỉ đến hết ngày 07" — tháng nào luôn hiện ở chính tháng đó, sang tháng sau nhắc đến hết ngày 10. Hàm `provisionAlertTarget` thành `provisionAlertTargets`.
 
 ### 10.111 Tổng quan — "Tổng hợp tăng giảm" → "Xem chi tiết": 3 tab cùng một kích thước (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
 
@@ -3755,6 +3756,16 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Nguyên nhân**: mục 10.122 ghi lần tìm kiếm sau khi ngừng gõ 1,5 giây, nên gõ chậm hoặc ngập ngừng giữa chừng là ra thêm dòng.
 - **Đã làm**: `bindSearchBox` (`js/components/ui.js`) có thêm tùy chọn `onEnter`; ô tìm kiếm chỉ ghi Nhật ký khi bấm **Enter** (phím tìm kiếm trên bàn phím điện thoại cũng là Enter), ghi 1 dòng đủ chữ đã gõ ("… : tìm **PHAN THỊ PHƯỢNG**"). Danh sách vẫn lọc ngay theo chữ đang gõ như cũ. Áp dụng cho mọi ô tìm kiếm có ghi Nhật ký: Danh sách khách hàng, Quản lý User, Hỗ trợ › Tư vấn, Quản lý OA (Danh sách OA, Thêm khách hàng vào OA, Gửi tự động, Lịch sử gửi). Không ghi khi ô trống, khi giữ phím Enter (lặp phím) hoặc khi đang gõ dấu tiếng Việt chưa chốt chữ. Gõ xong mà không bấm Enter thì không ghi dòng nào (đúng như yêu cầu). Các dòng ghi trễ 1,5 giây khác (đổi ngày tính lãi, chọn kỳ báo cáo / tháng bảng cân đối) giữ nguyên.
 - **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu, bắt từng lời gọi `log-admin-action` ở 5 ô (Khách hàng, Danh sách OA, Lịch sử gửi, Quản lý User, Hỗ trợ): gõ từng chữ chậm rồi dừng 2,6 giây → 0 dòng; bấm Enter → đúng 1 dòng đủ chữ; gõ thêm rồi dừng → không ghi thêm; giữ Enter → 1 dòng; ô trống hoặc đang gõ dấu → 0 dòng; không lỗi trang. Bài thử canh giữ mới trong `tests/activityTrail.test.mjs` bảo đảm mọi ô tìm kiếm có ghi Nhật ký đều đi qua `onEnter` (kể cả các cửa sổ Thêm khách hàng vào OA và Gửi tự động).
+
+### 10.127 Quản trị — cảnh báo trích / hoàn nhập dự phòng: tháng nào luôn hiện ở tháng đó, sang tháng sau nhắc đến hết ngày 10 (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Theo yêu cầu**: "Dòng cảnh báo trích dự phòng của tháng nào thì tháng đó luôn hiển thị cảnh báo (không bị mất theo thời gian). Còn qua tháng sau thì cảnh báo đến ngày 10 thì ẩn đi." Trước đó (mục 10.110) cảnh báo chỉ hiện từ ngày 01 đến hết ngày 07 của tháng hiện tại nên xem lại tháng cũ sau ngày 07 là mất.
+- **Quy tắc mới** (`provisionAlertTargets(reports, viewedMonth, today)` trong `js/lib/balanceSheetMetrics.js`):
+  1. **Chính tháng đó**: xem báo cáo tháng nào thì luôn hiện cảnh báo của tháng đó (nếu có chênh lệch ở dòng Tổng dự phòng), bất kể hôm nay là ngày nào — xem lại Tháng 10/2026 vào tháng 3/2027 vẫn thấy.
+  2. **Sang tháng sau**: khi đang xem tháng hiện tại, vẫn nhắc thêm cảnh báo của tháng liền trước từ ngày 01 đến **hết ngày 10**; từ ngày 11 thì ẩn dòng nhắc này ở tháng hiện tại (cảnh báo ấy vẫn còn nguyên khi mở lại tháng trước theo mục 1). Hằng số `PROVISION_REMINDER_LAST_DAY = 10`.
+  - Xem tháng hiện tại có cả hai thì hiện tháng cũ trước, tháng hiện tại sau; mỗi dòng ghi rõ "Tháng MM/YYYY:". Cần có báo cáo và số "Phải trích" đã chốt của tháng đó, chưa có thì không hiện.
+- **Không đổi**: câu chữ cảnh báo và hạn ghi trong câu ("chậm nhất ngày 07 của tháng sau", `nextProvisionDeadline`), cách tính chênh lệch (`provisionAdjustment`), kiểu dáng khung đỏ.
+- **Kiểm chứng**: dựng app bằng Chrome với đồng hồ giả: xem Tháng 10/2026 vào ngày 04/11, 20/11 và 15/03/2027 đều hiện cảnh báo; Tháng 09/2026 (dư → hoàn nhập) vẫn hiện; xem tháng 11 vào ngày 09 và hết ngày 10/11 còn nhắc tháng 10, ngày 11/11 và 25/11 thì ẩn; mở lại tháng 10 ngày 25/11 vẫn hiện; không lỗi trang. Bài thử trong `tests/balanceSheetMetrics.test.mjs` (mọi ngày, ngày 1/4/7/8/10/11/15/30, qua năm, thiếu báo cáo tháng trước).
 
 ---
 

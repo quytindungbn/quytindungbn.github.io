@@ -5,7 +5,7 @@ import { openModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { readExcelFirstSheet } from '../../lib/excelLite.js';
 import { parseBalanceSheetRows } from '../../lib/balanceSheet.js';
-import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, loanTermChildren, selectLatestBalanceImports, provisionDifference, managementRatios, monthlyProfit, previousMonthReport, provisionAlertTarget, provisionAdjustment } from '../../lib/balanceSheetMetrics.js';
+import { compareBalance, yearOpeningReport, previousDecemberReport, historicAccountLines, accountDetailChanges, loanTermChildren, selectLatestBalanceImports, provisionDifference, managementRatios, monthlyProfit, previousMonthReport, provisionAlertTargets, provisionAdjustment } from '../../lib/balanceSheetMetrics.js';
 import { callCreateAccountFunction, getSupabaseClient } from '../../lib/supabaseClient.js';
 import { escapeHtml, formatNumber, formatVND, compactParts } from '../../utils.js';
 import { icon } from '../../icons.js';
@@ -519,9 +519,9 @@ function provisionComparison(report) {
   const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const isUnclosedMonth = report.year_month >= currentMonth;
 
-  const alertTarget = provisionAlertTarget(reports, report.year_month, today);
-  const alertRequired = alertTarget ? S.provisionFromSnapshot(S.listMonthlySnapshots().find((x) => x.yearMonth === alertTarget.year_month)) : null;
-  const adjustment = provisionAdjustment(alertTarget, alertRequired);
+  const adjustments = provisionAlertTargets(reports, report.year_month, today)
+    .map((target) => provisionAdjustment(target, S.provisionFromSnapshot(S.listMonthlySnapshots().find((x) => x.yearMonth === target.year_month))))
+    .filter(Boolean);
   const provisions = [
     ['Dự phòng chung', end.generalProvision, app?.generalProvision],
     ['Dự phòng cụ thể', end.specificProvision, app?.specificProvision],
@@ -530,9 +530,9 @@ function provisionComparison(report) {
     const gap = provisionDifference(fileValue, appValue);
     return `<tr><th scope="row">${label}</th><td>${money(fileValue)}</td><td>${Number.isFinite(appValue) ? money(appValue) : 'Chưa có số liệu'}</td><td class="${gap == null ? '' : gap === 0 ? 'bs-match' : gap > 0 ? 'bs-overprovision' : 'bs-negative'}">${gap == null ? '—' : signed(gap)}</td></tr>`;
   };
-  const alerts = !adjustment ? '' : adjustment.gap > 0
+  const alerts = adjustments.map((adjustment) => adjustment.gap > 0
     ? `<p><b>${monthName(adjustment.yearMonth)}:</b> Tổng dự phòng dư <strong>${money(adjustment.gap)}</strong> so với mức phải trích; cần hoàn nhập chậm nhất ngày ${adjustment.deadline}.</p>`
-    : `<p><b>${monthName(adjustment.yearMonth)}:</b> Tổng dự phòng thiếu <strong>${money(-adjustment.gap)}</strong> so với mức phải trích; cần trích bổ sung chậm nhất ngày ${adjustment.deadline}.</p>`;
+    : `<p><b>${monthName(adjustment.yearMonth)}:</b> Tổng dự phòng thiếu <strong>${money(-adjustment.gap)}</strong> so với mức phải trích; cần trích bổ sung chậm nhất ngày ${adjustment.deadline}.</p>`).join('');
   return `<div class="card card-pad bs-section bs-provision-section" id="bs-sec-prov"><h3 class="bs-sec-h">Trích lập dự phòng${isUnclosedMonth ? ' <span class="bs-provision-pending">(Chưa chốt số liệu tháng này)</span>' : ''}</h3>
     ${remote?.error && !app ? '<p class="bs-warning">Không tải được số Phải trích. Bấm Làm mới để thử lại.</p>' : ''}
     ${alerts ? `<div class="bs-provision-alerts" role="status">${alerts}</div>` : ''}

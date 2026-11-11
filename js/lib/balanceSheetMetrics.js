@@ -108,11 +108,13 @@ export function previousMonthReport(reports, yearMonth) {
 
 const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-export function provisionAlertTarget(reports, viewedMonth, today = new Date()) {
-  if (today.getDate() > 7) return null;
-  const due = monthKey(new Date(today.getFullYear(), today.getMonth() - 1, 1));
-  if (viewedMonth !== due && viewedMonth !== monthKey(today)) return null;
-  return reports.find((report) => report.year_month === due) || null;
+export const PROVISION_REMINDER_LAST_DAY = 10;
+
+export function provisionAlertTargets(reports, viewedMonth, today = new Date()) {
+  const own = reports.find((report) => report.year_month === viewedMonth) || null;
+  const carried = viewedMonth === monthKey(today) && today.getDate() <= PROVISION_REMINDER_LAST_DAY
+    ? previousMonthReport(reports, viewedMonth) : null;
+  return [carried, own].filter(Boolean);
 }
 
 export function provisionAdjustment(report, required) {
