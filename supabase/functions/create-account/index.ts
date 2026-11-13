@@ -1916,7 +1916,7 @@ Deno.serve(async (req) => {
         GOC_PHAI_TRA: formatVNDZaloTemplate(goc),
         LAI_PHAI_TRA: formatVNDZaloTemplate(interest),
         SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
-        NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`TRA ${usesDueTemplate ? '' : 'LAI '}HDTD ${contract.code} ${nameNoDiacritics}`),
+        NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`${usesDueTemplate ? 'TAT TOAN' : 'TRA LAI'} HDTD ${contract.code} ${nameNoDiacritics}`),
         NGAY_DAO_HAN: formatDateVNZalo(dueDateForZalo),
 
         NGAY_KE_HOACH: formatDateVNZalo(asOfText || now.toISOString()),

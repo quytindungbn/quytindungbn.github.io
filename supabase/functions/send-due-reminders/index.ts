@@ -729,7 +729,7 @@ function buildZaloTemplateData(ct: any, customer: { name: string; phone: string 
     LAI_PHAI_TRA: formatVNDZaloTemplate(interest),
     SO_TIEN_CHUYEN_KHOAN: formatVNDZaloTemplate(total),
     NGAY_KE_HOACH: formatDateVN(now.toISOString()),
-    NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`TRA ${dueTemplate ? '' : 'LAI '}HDTD ${ct.code} ${nameNoDiacritics}`),
+    NOI_DUNG_CHUYEN_KHOAN: stripDiacriticsUpper(`${dueTemplate ? 'TAT TOAN' : 'TRA LAI'} HDTD ${ct.code} ${nameNoDiacritics}`),
     NGAY_DAO_HAN: formatDateVN(dueDate),
   };
 }

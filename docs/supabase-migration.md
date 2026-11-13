@@ -3775,6 +3775,14 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Nhật ký**: mở hợp đồng ghi "xem hợp đồng" như mọi nơi khác (mục 10.122).
 - **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu ở điện thoại 390px và máy tính 1366px: bấm dòng → đúng hợp đồng; Enter và phím cách; hợp đồng đã xóa → hồ sơ khách; dòng không còn gì thì không bấm được; bôi đen chữ không mở; lọc "Lỗi" rồi bấm vẫn đúng và chỉ mở 1 cửa sổ; Nhật ký ghi xem hợp đồng; không tràn ngang, không lỗi trang. Bài thử mới `tests/zaloLogLink.test.mjs`.
 
+### 10.129 Tin Zalo mẫu "Đến hạn": nội dung chuyển khoản đổi từ "TRA HDTD …" thành "TAT TOAN HDTD …" (CẦN deploy lại `create-account` và `send-due-reminders`; KHÔNG cần SQL, KHÔNG đổi web)
+
+- **Theo yêu cầu**: sau khi kiểm tra thấy tin Zalo mẫu Đến hạn đang ghi "TRA HDTD <số HĐ> <TÊN KHÔNG DẤU>" → đổi thành "TAT TOAN HDTD …".
+- **Đã làm**: biến `NOI_DUNG_CHUYEN_KHOAN` truyền vào mẫu Zalo nay là — mẫu **Đến hạn** (`den_han`): `TAT TOAN HDTD <số HĐ> <TÊN KHÔNG DẤU>`, ví dụ HĐ 455/26 của PHẠM THỊ TÀI → `TAT TOAN HDTD 455 26 PHAM THI TAI`; mẫu **Báo lãi** (`lai_hang_thang`) giữ nguyên `TRA LAI HDTD …`. Áp dụng cả gửi tay (`create-account`, nút "Gửi tin Zalo OA ngay") lẫn gửi tự động (`send-due-reminders`, `buildZaloTemplateData`). Không đổi: mã QR trong chi tiết hợp đồng (vẫn TRA LAI / TRA GOC / TRA GOC LAI / TAT TOAN theo lựa chọn), số tiền chuyển khoản (`SO_TIEN_CHUYEN_KHOAN` = gốc phải trả + lãi) và lời văn mẫu trên Zalo.
+- **Lưu ý**: mẫu Đến hạn dùng chung cho cả hợp đồng có phân kỳ trả nợ — tin của kỳ tới cũng ghi "TAT TOAN" dù số tiền chỉ là gốc kỳ đó + lãi.
+- **Việc cần làm**: deploy lại **cả hai** Edge Function `create-account` và `send-due-reminders` (dán code mới, bấm Deploy). Chưa deploy thì tin vẫn ghi "TRA HDTD" như cũ. Bản `create-account` mới cũng mang theo bản sửa tách địa chỉ ở mục 10.121 (trước đó là tùy chọn).
+- **Kiểm chứng**: chạy thật hàm gửi tự động trong môi trường giả lập (`tests/sendDueReminders.test.mjs`): hợp đồng 455/26 còn 6 ngày đến hạn → `TAT TOAN HDTD 455 26 PHAM THI TAI`; hợp đồng xa hạn → `TRA LAI HDTD 2 26 LE QUANG NINH`; bài thử này báo lỗi khi chạy trên bản cũ (ghi "TRA HDTD") nên thật sự canh giữ thay đổi; thêm bài thử canh cả hai file; cú pháp hai hàm hợp lệ.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

@@ -512,3 +512,25 @@ test('không ghi được nhật ký thông báo (khóa/dấu xong/tin đã gử
   assert.equal(sim.okLogsOf('k1').length, 1);
   assert.ok(sim.consoleErrors.some((m) => m.includes('Không đặt được dấu "đang chạy"')));
 });
+
+test('nội dung chuyển khoản trong tin Zalo: mẫu Đến hạn ghi "TAT TOAN HDTD …", mẫu Báo lãi vẫn "TRA LAI HDTD …"', { skip }, async (t) => {
+  const sim = await newSim(t);
+  sim.addDue(1, { code: '455/26', due_date: '2026-11-10' }).customer.name = 'Phạm Thị Tài'; // còn 6 ngày là đến hạn → mẫu Đến hạn
+  sim.addDue(2).customer.name = 'Lê Quang Ninh'; // đáo hạn năm 2027 → mẫu Báo lãi
+
+  await sim.invoke();
+  const byTemplate = Object.fromEntries(sim.zalo.calls.map((c) => [c.templateId, c.data]));
+  assert.deepEqual(Object.keys(byTemplate).sort(), ['T_HAN', 'T_LAI']);
+  assert.equal(byTemplate.T_HAN.NOI_DUNG_CHUYEN_KHOAN, 'TAT TOAN HDTD 455 26 PHAM THI TAI');
+  assert.equal(byTemplate.T_LAI.NOI_DUNG_CHUYEN_KHOAN, 'TRA LAI HDTD 2 26 LE QUANG NINH');
+});
+
+test('gửi tay (create-account) và gửi tự động (send-due-reminders) dùng cùng nội dung chuyển khoản, không còn "TRA HDTD"', () => {
+  for (const file of ['create-account', 'send-due-reminders']) {
+    const src = readFileSync(new URL(`../supabase/functions/${file}/index.ts`, import.meta.url), 'utf8');
+    const lines = src.split('\n').filter((l) => l.includes('NOI_DUNG_CHUYEN_KHOAN'));
+    assert.equal(lines.length, 1, file);
+    assert.ok(lines[0].includes("? 'TAT TOAN' : 'TRA LAI'} HDTD"), `${file}: ${lines[0].trim()}`);
+    assert.ok(!/`TRA \$\{/.test(lines[0]), file);
+  }
+});
