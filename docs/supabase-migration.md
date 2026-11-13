@@ -3767,6 +3767,14 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Không đổi**: câu chữ cảnh báo và hạn ghi trong câu ("chậm nhất ngày 07 của tháng sau", `nextProvisionDeadline`), cách tính chênh lệch (`provisionAdjustment`), kiểu dáng khung đỏ.
 - **Kiểm chứng**: dựng app bằng Chrome với đồng hồ giả: xem Tháng 10/2026 vào ngày 04/11, 20/11 và 15/03/2027 đều hiện cảnh báo; Tháng 09/2026 (dư → hoàn nhập) vẫn hiện; xem tháng 11 vào ngày 09 và hết ngày 10/11 còn nhắc tháng 10, ngày 11/11 và 25/11 thì ẩn; mở lại tháng 10 ngày 25/11 vẫn hiện; không lỗi trang. Bài thử trong `tests/balanceSheetMetrics.test.mjs` (mọi ngày, ngày 1/4/7/8/10/11/15/30, qua năm, thiếu báo cáo tháng trước).
 
+### 10.128 Lịch sử gửi OA: bấm vào dòng để xem chi tiết hợp đồng (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Theo yêu cầu**: "Trong lịch sử gửi OA khi click vào có thể xem chi tiết hợp đồng luôn."
+- **Đã làm** (`logRowHtml`, `drawLogTab` trong `js/views/admin/zaloOA.js`; `.lg-row.is-link` trong `css/styles.css`): mỗi dòng ở Quản lý OA › Lịch sử gửi bấm được và mở **chi tiết hợp đồng** của lần gửi đó (`openContractView`, chế độ chỉ xem như các danh sách Gửi tự động) ngay trên trang lịch sử; đóng lại là quay về danh sách đang xem. Hợp đồng đã bị xóa nhưng còn khách thì mở **hồ sơ khách hàng**; dòng không còn cả hai thì không bấm được. Bàn phím: Tab tới dòng rồi Enter hoặc phím cách (có viền khi chọn bằng bàn phím). Đang bôi đen chữ để sao chép thì bấm không mở (tránh mở nhầm). Sự kiện bấm gắn một lần cho cả danh sách nên lọc / tìm / xem thêm vẽ lại vẫn đúng và không mở 2 lần.
+- **Giao diện**: không thêm phần tử, không đổi bố cục dòng; chỉ có con trỏ tay, tên khách đổi màu + gạch chân khi rê chuột, tô nhạt khi bấm trên điện thoại.
+- **Nhật ký**: mở hợp đồng ghi "xem hợp đồng" như mọi nơi khác (mục 10.122).
+- **Kiểm chứng**: dựng app bằng Chrome với dữ liệu mẫu ở điện thoại 390px và máy tính 1366px: bấm dòng → đúng hợp đồng; Enter và phím cách; hợp đồng đã xóa → hồ sơ khách; dòng không còn gì thì không bấm được; bôi đen chữ không mở; lọc "Lỗi" rồi bấm vẫn đúng và chỉ mở 1 cửa sổ; Nhật ký ghi xem hợp đồng; không tràn ngang, không lỗi trang. Bài thử mới `tests/zaloLogLink.test.mjs`.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

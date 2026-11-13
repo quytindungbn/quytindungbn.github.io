@@ -932,8 +932,10 @@ function logRowHtml(it) {
   const errHtml = !fails.length ? '' : (recips.length === 1 || sameMsg
     ? `<div class="lg-err">${icon('info', 'icon-sm')}<span>${escapeHtml(fails[0].l.errorMessage)}</span></div>`
     : fails.map((r) => `<div class="lg-err">${icon('info', 'icon-sm')}<span><b>${escapeHtml(logWhoLabel(r.rc))}:</b> ${escapeHtml(r.l.errorMessage)}</span></div>`).join(''));
+  const customerId = customer ? customer.id : (contract ? contract.customerId : '');
+  const linkAttrs = !contract && !customer ? '' : ` is-link" data-customer="${escapeHtml(customerId)}" data-contract="${contract ? escapeHtml(contract.id) : ''}" role="button" tabindex="0" title="${contract ? 'Xem chi tiết hợp đồng' : 'Xem hồ sơ khách hàng'}`;
   return `
-    <div class="lg-row ${it.allOk ? 'is-ok' : it.partial ? 'is-part' : 'is-err'}">
+    <div class="lg-row ${it.allOk ? 'is-ok' : it.partial ? 'is-part' : 'is-err'}${linkAttrs}">
       <span class="lg-st" title="${stTitle}">${icon(stIcon, 'icon-sm')}</span>
       <div class="lg-main">
         <div class="lg-who"><b class="lg-name">${customer ? escapeHtml(customer.name) : '—'}</b>${contract ? `<span class="lg-code">${escapeHtml(contract.code)}</span>` : ''}</div>
@@ -965,6 +967,20 @@ function drawLogTab(slot) {
     logToDate = e.target.value;
     oaLog('oa-filter', 'Lịch sử gửi', describeDateRange(logFromDate, logToDate));
     drawList();
+  });
+  const logListEl = slot.querySelector('#log-list');
+  const openLogTarget = (row) => {
+    const contract = row.dataset.contract ? S.getContract(row.dataset.contract) : null;
+    if (contract) openContractView(row.dataset.customer, contract, { readOnly: true });
+    else if (S.getCustomer(row.dataset.customer)) openCustomerDetail(row.dataset.customer, { readOnly: false, context: 'customer' });
+    else toast('Không tìm thấy hợp đồng này (có thể đã bị xóa).', 'error');
+  };
+  logListEl.addEventListener('click', (e) => {
+    const row = e.target.closest('.lg-row.is-link');
+    if (row && !String(window.getSelection?.() || '').trim()) openLogTarget(row);
+  });
+  logListEl.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('is-link')) { e.preventDefault(); openLogTarget(e.target); }
   });
   drawList();
 
