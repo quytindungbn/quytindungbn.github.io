@@ -2599,10 +2599,11 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
 .lg-dc.is-zero { font-weight: 600; color: var(--text-muted); }
 .lg-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; padding: 13px 2px; border-bottom: 1px solid var(--border); }
 .lg-row:last-of-type { border-bottom: 0; }
-.lg-row.is-link { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.lg-row.is-link:hover .lg-name { color: var(--color-primary); text-decoration: underline; text-underline-offset: 2px; }
-.lg-row.is-link:active { background: rgba(12, 74, 63, .05); }
-.lg-row.is-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 10px; }
+.lg-row.is-link { cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
+.lg-row.is-link:focus-visible { border-radius: 10px; background: #eef6f2; box-shadow: -8px 0 0 #eef6f2, 8px 0 0 #eef6f2; }
+@media (hover: hover) {
+  .lg-row.is-link:hover { border-radius: 10px; background: #eef6f2; box-shadow: -8px 0 0 #eef6f2, 8px 0 0 #eef6f2; }
+}
 .lg-st { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; }
 .lg-row.is-ok .lg-st { background: #e3f3ef; color: #16803c; }
 .lg-row.is-err .lg-st { background: #fdeceb; color: #b4261f; }

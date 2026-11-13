@@ -31,8 +31,12 @@ test('Lịch sử gửi: gắn sự kiện bấm một lần cho cả danh sách
   assert.equal(tabFn.split("addEventListener('click', (e) => {\n    const row = e.target.closest('.lg-row.is-link')").length, 2);
 });
 
-test('Lịch sử gửi: dòng bấm được có con trỏ tay, viền khi dùng bàn phím và không đổi bố cục', () => {
-  assert.match(css, /\.lg-row\.is-link \{ cursor: pointer;/);
-  assert.match(css, /\.lg-row\.is-link:focus-visible \{ outline:/);
-  assert.ok(!/\.lg-row\.is-link \{[^}]*(padding|margin|display|width|height)/.test(css));
+test('Lịch sử gửi: dòng bấm được chỉ đổi màu nền khi rê chuột, không có khung viền khi bấm và không đổi bố cục', () => {
+  const rules = [...css.matchAll(/\.lg-row\.is-link[^{]*\{[^}]*\}/g)].map((m) => m[0]);
+  assert.equal(rules.length, 3);
+  assert.match(css, /\.lg-row\.is-link \{ cursor: pointer; outline: none;/);
+  assert.match(css, /@media \(hover: hover\) \{\s*\.lg-row\.is-link:hover \{[^}]*background: #eef6f2/);
+  assert.match(css, /\.lg-row\.is-link:focus-visible \{[^}]*background: #eef6f2/);
+  for (const rule of rules) assert.ok(!/outline:\s*(?!none)\S/.test(rule) && !/border:|text-decoration|:active/.test(rule), rule);
+  assert.ok(!rules.some((rule) => /(padding|margin|display|width|height)\s*:/.test(rule)));
 });
