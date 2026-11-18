@@ -189,6 +189,15 @@ export function render(contentEl, filterEl) {
     draw();
   }
 
+  function bindSortControl(optsEl) {
+    optsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-sort]');
+      if (!btn) return;
+      applySort(btn.dataset.sort);
+      optsEl.innerHTML = sortControlHtml(sortMode);
+    });
+  }
+
   function openSortDialog() {
     openModal({
       title: 'Sắp xếp & lọc',
@@ -197,13 +206,7 @@ export function render(contentEl, filterEl) {
         <div class="sortdlg-h sortdlg-h2"><span>Lọc theo khoảng</span><button type="button" id="sortdlg-clear">Xóa lọc số tiền &amp; ngày</button></div>${amountRangeHtml()}`,
       footHtml: `<button class="btn btn-primary btn-block" data-done>Xong</button>`,
       onMount(sheet, closeSheet) {
-        const optsEl = sheet.querySelector('#sortdlg-opts');
-        optsEl.addEventListener('click', (e) => {
-          const btn = e.target.closest('[data-sort]');
-          if (!btn) return;
-          applySort(btn.dataset.sort);
-          optsEl.innerHTML = sortControlHtml(sortMode);
-        });
+        bindSortControl(sheet.querySelector('#sortdlg-opts'));
         const syncInputs = bindAmountRange(sheet, closeSheet);
         sheet.querySelector('#sortdlg-clear').addEventListener('click', () => {
           clearAmountRange(); syncInputs(); renderFilterPills(); draw();
@@ -218,15 +221,10 @@ export function render(contentEl, filterEl) {
     openModal({
       title: 'Sắp xếp theo',
       bodyHtml: `<div class="sortdlg-ctl" id="sortsheet-opts">${sortControlHtml(sortMode)}</div>`,
+      footHtml: `<button class="btn btn-primary btn-block" data-done>Xong</button>`,
       onMount(sheet, closeSheet) {
-        const optsEl = sheet.querySelector('#sortsheet-opts');
-        optsEl.addEventListener('click', (e) => {
-          const btn = e.target.closest('[data-sort]');
-          if (!btn) return;
-          applySort(btn.dataset.sort);
-          optsEl.innerHTML = sortControlHtml(sortMode);
-          setTimeout(closeSheet, 160);
-        });
+        bindSortControl(sheet.querySelector('#sortsheet-opts'));
+        sheet.querySelector('[data-done]').addEventListener('click', closeSheet);
       },
     });
   }

@@ -16,13 +16,24 @@ test('Sắp xếp: khung chọn có Mặc định + hai hàng Gốc, Lãi, mỗi
   for (const name of ['sortAsc', 'sortDesc', 'percent']) assert.ok(icons.includes(`  ${name}: '`), name);
 });
 
-test('Sắp xếp: máy tính và điện thoại dùng chung một khung chọn và một hàm áp dụng; điện thoại không còn danh sách chữ', () => {
-  assert.equal(view.split('sortControlHtml(sortMode)').length - 1, 4);
-  assert.equal(view.split('applySort(').length - 1, 3);
-  assert.ok(view.includes('function openSortSheet()') && view.includes('setTimeout(closeSheet, 160)'));
+test('Sắp xếp: máy tính và điện thoại dùng chung một khung chọn, một hàm áp dụng và một cách bắt sự kiện; điện thoại không còn danh sách chữ', () => {
+  assert.equal(view.split('sortControlHtml(sortMode)').length - 1, 3);
+  assert.equal(view.split('applySort(').length - 1, 2);
+  assert.equal(view.split('bindSortControl(').length - 1, 3);
+  assert.ok(view.includes('function openSortSheet()'));
   assert.ok(view.includes('matchMedia(\'(max-width: 899px)\').matches) openSortSheet(); else openSortDialog();'));
   assert.ok(!/openPicker\(\{\s*title: 'Sắp xếp theo'/.test(view));
   assert.ok(view.includes("S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: **${SORT_LABEL[sortMode]}**` })"));
+});
+
+test('Sắp xếp: điện thoại chọn xong KHÔNG tự đóng; chỉ đóng khi bấm Xong (hoặc X)', () => {
+  const sheet = view.slice(view.indexOf('function openSortSheet()'), view.indexOf('function clearAllFilters()'));
+  assert.ok(!sheet.includes('setTimeout'));
+  assert.ok(!view.includes('setTimeout(closeSheet'));
+  assert.ok(sheet.includes('footHtml: `<button class="btn btn-primary btn-block" data-done>Xong</button>`'));
+  assert.ok(sheet.includes("sheet.querySelector('[data-done]').addEventListener('click', closeSheet)"));
+  const bind = view.slice(view.indexOf('function bindSortControl'), view.indexOf('function openSortDialog()'));
+  assert.ok(!bind.includes('closeSheet') && !bind.includes('close('));
 });
 
 test('Sắp xếp: nhãn trên thanh lọc và trong Nhật ký vẫn lấy từ SORT_OPTIONS (không đổi chữ)', () => {
