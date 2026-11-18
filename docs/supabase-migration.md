@@ -3783,6 +3783,14 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Việc cần làm**: deploy lại **cả hai** Edge Function `create-account` và `send-due-reminders` (dán code mới, bấm Deploy). Chưa deploy thì tin vẫn ghi "TRA HDTD" như cũ. Bản `create-account` mới cũng mang theo bản sửa tách địa chỉ ở mục 10.121 (trước đó là tùy chọn).
 - **Kiểm chứng**: chạy thật hàm gửi tự động trong môi trường giả lập (`tests/sendDueReminders.test.mjs`): hợp đồng 455/26 còn 6 ngày đến hạn → `TAT TOAN HDTD 455 26 PHAM THI TAI`; hợp đồng xa hạn → `TRA LAI HDTD 2 26 LE QUANG NINH`; bài thử này báo lỗi khi chạy trên bản cũ (ghi "TRA HDTD") nên thật sự canh giữ thay đổi; thêm bài thử canh cả hai file; cú pháp hai hàm hợp lệ.
 
+
+### 10.130 Quản trị › Lợi nhuận: chọn một tháng chỉ tô khung tháng đó, giữ nguyên màu cột (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Theo yêu cầu**: "Lợi nhuận trong Quản trị khi chọn cột biểu đồ nào đó thì chỉ tô màu khung tháng đó là đủ, còn màu cột biểu đồ hãy giữ nguyên. Ví dụ xanh thì vẫn để xanh cho dễ nhận biết."
+- **Trước đây** (`profitSvg` trong `js/views/admin/balanceSheet.js`): tháng đang chọn đổi cột lợi nhuận sang vàng, số trên cột sang vàng sẫm, chấm trên đường lũy kế sang vàng và to hơn, số lũy kế sang vàng sẫm — nên cột dương bị lẫn với màu vàng, khó nhận ra là lãi hay lỗ.
+- **Đã làm** (bản 1.0.33): cột luôn đúng màu của nó — dương xanh `#4f9d86`, âm đỏ `#b4372d` — kể cả tháng đang chọn; số trên cột, chấm và số trên đường lũy kế cũng giữ màu thường (chấm không to lên). Dấu hiệu của tháng đang chọn chỉ còn là **khung vàng nhạt** chạy suốt chiều cao hai biểu đồ (độ mờ 10%, như cũ) và nhãn tháng ở trục dưới đậm hơn. Câu chú thích đổi thành "Khung tháng đang chọn tô vàng. Bấm vào một tháng để xem số liệu tháng đó."
+- **Kiểm chứng**: dựng trang Quản trị bằng Chrome với 10 tháng dữ liệu (tháng 8 lỗ −8 triệu) ở máy tính 1280px và điện thoại 390px, chọn tháng 5 và tháng 8: mọi cột đúng màu, trong biểu đồ chỉ còn đúng 1 phần tử tô vàng là khung tháng; cùng bài thử trên bản cũ còn 3–5 phần tử vàng (cột, chấm, các số). `tests/profitChartSelection.test.mjs` giữ các điều này.
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

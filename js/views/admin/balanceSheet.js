@@ -394,8 +394,8 @@ function profitSvg(list, mobile) {
     const top = Math.min(edge, zero);
     const height = Math.max(Math.abs(zero - edge), 1.5);
     const loss = monthly[i] < 0;
-    svg += `<rect x="${(x(i) - slot * 0.28).toFixed(1)}" y="${top.toFixed(1)}" width="${(slot * 0.56).toFixed(1)}" height="${height.toFixed(1)}" rx="2" fill="${loss ? '#b4372d' : i === selected ? '#b08d3c' : '#4f9d86'}"/>`;
-    svg += label(x(i), loss ? top + height + font + 1 : top - 6, trieu(monthly[i]), loss ? '#b4372d' : i === selected ? '#8a6a22' : '#0c4a3f');
+    svg += `<rect x="${(x(i) - slot * 0.28).toFixed(1)}" y="${top.toFixed(1)}" width="${(slot * 0.56).toFixed(1)}" height="${height.toFixed(1)}" rx="2" fill="${loss ? '#b4372d' : '#4f9d86'}"/>`;
+    svg += label(x(i), loss ? top + height + font + 1 : top - 6, trieu(monthly[i]), loss ? '#b4372d' : '#0c4a3f');
   });
   svg += caption(g.capB, 'LỢI NHUẬN LŨY KẾ TỪ ĐẦU NĂM', 'triệu đồng');
   svg += rule(yLine(0));
@@ -405,8 +405,8 @@ function profitSvg(list, mobile) {
   list.forEach((r, i) => {
     const cy = yLine(cumulative[i]);
     const active = i === selected;
-    svg += `<circle cx="${x(i).toFixed(1)}" cy="${cy.toFixed(1)}" r="${(mobile ? 3.5 : 5) + (active ? 2 : 0)}" fill="${active ? '#b08d3c' : '#0c4a3f'}" stroke="white" stroke-width="1.5"/>`;
-    if (showCumulative[i]) svg += label(x(i), cy - (mobile ? 9 : 12), trieu(cumulative[i]), active ? '#8a6a22' : '#0c4a3f');
+    svg += `<circle cx="${x(i).toFixed(1)}" cy="${cy.toFixed(1)}" r="${mobile ? 3.5 : 5}" fill="#0c4a3f" stroke="white" stroke-width="1.5"/>`;
+    if (showCumulative[i]) svg += label(x(i), cy - (mobile ? 9 : 12), trieu(cumulative[i]), '#0c4a3f');
     svg += `<text x="${x(i).toFixed(1)}" y="${g.axis}" text-anchor="middle" font-size="${mobile ? 10 : 13}" font-weight="${active ? 800 : 700}" fill="${active ? '#0c4a3f' : '#475569'}">${mobile ? `T${Number(r.year_month.slice(5, 7))}` : `${r.year_month.slice(5, 7)}/${r.year_month.slice(2, 4)}`}</text>`;
     svg += `<rect class="bs-profit-hit" data-trend-month="${r.year_month}" x="${(pad + slot * i).toFixed(1)}" y="${g.capA + 8}" width="${slot.toFixed(1)}" height="${g.axis - g.capA + 6}" fill="transparent" tabindex="0" role="button" aria-label="${monthName(r.year_month)} · lợi nhuận hàng tháng ${money(monthly[i])}, lũy kế ${money(cumulative[i])}"/>`;
   });
@@ -427,7 +427,7 @@ function profitSection(report) {
   return `<div class="card card-pad bs-section bs-profit-section" id="bs-sec-profit"><h3 class="bs-sec-h">Lợi nhuận</h3>
     <div class="bs-profit-figures">${figure('Lợi nhuận hàng tháng', month, previousMonth)}${figure('Lợi nhuận lũy kế', Number(end.profit) || 0, report.figures.start?.profit)}</div>
     <div class="bs-chart-scroll" data-chart="profit">${profitSvg(yearList, false)}${profitSvg(yearList, true)}</div>
-    <p class="bs-chart-note">Tháng đang chọn tô vàng. Bấm vào một tháng để xem số liệu tháng đó.</p></div>`;
+    <p class="bs-chart-note">Khung tháng đang chọn tô vàng. Bấm vào một tháng để xem số liệu tháng đó.</p></div>`;
 }
 
 let trendScrollLeft = null;
