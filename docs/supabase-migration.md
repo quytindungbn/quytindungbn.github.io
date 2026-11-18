@@ -3791,6 +3791,15 @@ Kiểm tra: `select jobid, jobname, schedule, active, left(command, 80) as lenh 
 - **Đã làm** (bản 1.0.33): cột luôn đúng màu của nó — dương xanh `#4f9d86`, âm đỏ `#b4372d` — kể cả tháng đang chọn; số trên cột, chấm và số trên đường lũy kế cũng giữ màu thường (chấm không to lên). Dấu hiệu của tháng đang chọn chỉ còn là **khung vàng nhạt** chạy suốt chiều cao hai biểu đồ (độ mờ 10%, như cũ) và nhãn tháng ở trục dưới đậm hơn. Câu chú thích đổi thành "Khung tháng đang chọn tô vàng. Bấm vào một tháng để xem số liệu tháng đó."
 - **Kiểm chứng**: dựng trang Quản trị bằng Chrome với 10 tháng dữ liệu (tháng 8 lỗ −8 triệu) ở máy tính 1280px và điện thoại 390px, chọn tháng 5 và tháng 8: mọi cột đúng màu, trong biểu đồ chỉ còn đúng 1 phần tử tô vàng là khung tháng; cùng bài thử trên bản cũ còn 3–5 phần tử vàng (cột, chấm, các số). `tests/profitChartSelection.test.mjs` giữ các điều này.
 
+
+### 10.131 Khách hàng & Hợp đồng › Sắp xếp: khung chọn Gốc / Lãi thiết kế lại (chỉ cập nhật web — KHÔNG cần SQL, KHÔNG cần deploy)
+
+- **Theo yêu cầu**: "Thiết kế lại khung sắp xếp gốc lãi cao thấp thấp cao trên điện thoại và máy tính nhìn chuyên nghiệp và trực quan hơn", rồi "khi chọn thì đã ok, thiết kế lại khi chưa chọn vẫn trực quan tách biệt hơn". Đã gửi ảnh mẫu 2 lần, được duyệt ("triển khai").
+- **Trước đây** (`openSortDialog` trong `js/views/admin/customers.js`): hộp "Sắp xếp & lọc" ở máy tính là lưới 5 ô chữ (Mặc định + 4 ô "Gốc: Thấp → Cao" …); điện thoại là danh sách chữ trong `openPicker` ("Sắp xếp theo").
+- **Đã làm** (bản 1.0.34): một khung chọn dùng chung `sortControlHtml()` gồm dòng **Mặc định** ("Hợp đồng vay mới nhất lên đầu"), rồi hai thẻ **Gốc** ("Dư nợ gốc") và **Lãi** ("Lãi phải thu"); mỗi thẻ có hai nút **Thấp → Cao** / **Cao → Thấp** kèm hình cột tăng / giảm (biểu tượng mới `sortAsc`, `sortDesc`, `percent` trong `js/icons.js`). Khi chưa chọn, mỗi nút là một nút trắng có viền và bóng nhẹ, hai nút cách nhau 8px, hai thẻ cách nhau; rê chuột (thiết bị có chuột) thì viền chuyển xanh. Nút đang chọn tô xanh đậm (chữ trắng, hình cột vàng nhạt); Mặc định đang chọn cũng xanh đậm kèm dấu tick vàng. Máy tính: mỗi thẻ là một hàng (nhãn bên trái, hai nút bên phải). Điện thoại: nhãn ở trên, hai nút ở dưới, cao 44px.
+- **Hành vi**: máy tính vẫn mở hộp "Sắp xếp & lọc" (giữ phần "Lọc theo khoảng" và nút Xong; chọn xong hộp vẫn mở). Điện thoại: dòng "Sắp xếp" trong khung Bộ lọc mở khung "Sắp xếp theo" mới (thay danh sách chữ), chọn xong tự đóng sau 0,16 giây rồi quay lại Bộ lọc. Cả hai gọi chung `applySort()` (đặt kiểu sắp xếp, vẽ lại nhãn lọc, ghi Nhật ký "Sắp xếp: …", vẽ lại danh sách). Nhãn "Sắp xếp: Gốc: Cao → Thấp" trên thanh lọc và trong Nhật ký không đổi (vẫn lấy từ `SORT_OPTIONS`).
+- **Kiểm chứng**: dựng trang bằng Chrome với 24 khách mẫu ở 1366px, 390px và 320px: cả 4 kiểu xếp đúng thứ tự tăng / giảm cho cả 24 dòng, Mặc định về lại đúng thứ tự ban đầu, nút cao từ 40px, chữ nằm gọn trong nút, không tràn ngang, không lỗi trang. `tests/sortControl.test.mjs` giữ cấu trúc và kiểu chính (bản cũ không qua bài thử này).
+
 ---
 
 *Tài liệu hướng dẫn — code triển khai thật đã có trong repo này (`js/state.js`, `js/lib/`,

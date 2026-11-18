@@ -31,6 +31,16 @@ const SORT_OPTIONS = [
   { value: 'interest-desc', label: 'Lãi: Cao → Thấp' },
 ];
 const SORT_LABEL = Object.fromEntries(SORT_OPTIONS.map((o) => [o.value, o.label]));
+const SORT_FIELDS = [
+  { label: 'Gốc', hint: 'Dư nợ gốc', iconName: 'wallet', asc: 'principal-asc', desc: 'principal-desc' },
+  { label: 'Lãi', hint: 'Lãi phải thu', iconName: 'percent', asc: 'interest-asc', desc: 'interest-desc' },
+];
+function sortControlHtml(current) {
+  const seg = (value, text, glyph) => `<button type="button" class="sortdlg-seg${value === current ? ' is-on' : ''}" data-sort="${value}" aria-pressed="${value === current}">${icon(glyph)}<span>${text}</span></button>`;
+  const row = (f) => `<div class="sortdlg-row" role="group" aria-label="${f.label}: ${f.hint}"><div class="sortdlg-lbl"><i>${icon(f.iconName)}</i><span><b>${f.label}</b><small>${f.hint}</small></span></div><div class="sortdlg-segs">${seg(f.asc, 'Thấp → Cao', 'sortAsc')}${seg(f.desc, 'Cao → Thấp', 'sortDesc')}</div></div>`;
+  const def = `<button type="button" class="sortdlg-def${current === 'default' ? ' is-on' : ''}" data-sort="default" aria-pressed="${current === 'default'}"><span><b>Mặc định</b><small>Hợp đồng vay mới nhất lên đầu</small></span>${current === 'default' ? icon('check', 'icon-sm') : ''}</button>`;
+  return def + SORT_FIELDS.map(row).join('');
+}
 const COLLATERAL_NAMES = Object.freeze({
   '01': 'Quyền sử dụng đất chính chủ',
   '02': 'Quyền sử dụng đất bên thứ 3',
@@ -172,12 +182,18 @@ export function render(contentEl, filterEl) {
     return () => { root.querySelectorAll('[data-amt]').forEach((input) => { const v = amountRange[input.dataset.amt]; input.value = v ? formatNumber(v) : ''; }); check(); };
   }
 
+  function applySort(value) {
+    sortMode = value;
+    renderFilterPills();
+    S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: **${SORT_LABEL[sortMode]}**` });
+    draw();
+  }
+
   function openSortDialog() {
-    const optionsHtml = () => SORT_OPTIONS.map((o) => `<button type="button" class="sortdlg-opt${o.value === sortMode ? ' is-on' : ''}" data-sort="${o.value}"><span>${o.label}</span>${o.value === sortMode ? icon('check', 'icon-sm') : ''}</button>`).join('');
     openModal({
       title: 'Sắp xếp & lọc',
       sheetClass: 'sheet-sortdlg',
-      bodyHtml: `<div class="sortdlg-h">Sắp xếp theo</div><div class="sortdlg-opts" id="sortdlg-opts">${optionsHtml()}</div>
+      bodyHtml: `<div class="sortdlg-h">Sắp xếp theo</div><div class="sortdlg-ctl" id="sortdlg-opts">${sortControlHtml(sortMode)}</div>
         <div class="sortdlg-h sortdlg-h2"><span>Lọc theo khoảng</span><button type="button" id="sortdlg-clear">Xóa lọc số tiền &amp; ngày</button></div>${amountRangeHtml()}`,
       footHtml: `<button class="btn btn-primary btn-block" data-done>Xong</button>`,
       onMount(sheet, closeSheet) {
@@ -185,11 +201,8 @@ export function render(contentEl, filterEl) {
         optsEl.addEventListener('click', (e) => {
           const btn = e.target.closest('[data-sort]');
           if (!btn) return;
-          sortMode = btn.dataset.sort;
-          optsEl.innerHTML = optionsHtml();
-          renderFilterPills();
-          S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: **${SORT_LABEL[sortMode]}**` });
-          draw();
+          applySort(btn.dataset.sort);
+          optsEl.innerHTML = sortControlHtml(sortMode);
         });
         const syncInputs = bindAmountRange(sheet, closeSheet);
         sheet.querySelector('#sortdlg-clear').addEventListener('click', () => {
@@ -197,6 +210,23 @@ export function render(contentEl, filterEl) {
           S.logAdminAction('filter-customers', { filterDesc: 'Xóa lọc số tiền & ngày lãi' });
         });
         sheet.querySelector('[data-done]').addEventListener('click', closeSheet);
+      },
+    });
+  }
+
+  function openSortSheet() {
+    openModal({
+      title: 'Sắp xếp theo',
+      bodyHtml: `<div class="sortdlg-ctl" id="sortsheet-opts">${sortControlHtml(sortMode)}</div>`,
+      onMount(sheet, closeSheet) {
+        const optsEl = sheet.querySelector('#sortsheet-opts');
+        optsEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-sort]');
+          if (!btn) return;
+          applySort(btn.dataset.sort);
+          optsEl.innerHTML = sortControlHtml(sortMode);
+          setTimeout(closeSheet, 160);
+        });
       },
     });
   }
@@ -265,17 +295,7 @@ export function render(contentEl, filterEl) {
     });
     filterEl.querySelector('#pill-sort').addEventListener('click', () => {
 
-      if (!window.matchMedia('(max-width: 899px)').matches) { openSortDialog(); return; }
-      openPicker({
-        title: 'Sắp xếp theo', selected: sortMode,
-        options: SORT_OPTIONS,
-        onSelect: (val) => {
-          sortMode = val;
-          renderFilterPills();
-          S.logAdminAction('filter-customers', { filterDesc: `Sắp xếp: **${SORT_LABEL[val]}**` });
-          draw();
-        },
-      });
+      if (window.matchMedia('(max-width: 899px)').matches) openSortSheet(); else openSortDialog();
     });
   }
   renderFilterPills();
