@@ -2904,7 +2904,6 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   70% { box-shadow: 0 0 0 9px rgba(224, 54, 47, 0), 0 4px 10px -3px rgba(224, 54, 47, .55); }
   100% { box-shadow: 0 0 0 0 rgba(224, 54, 47, 0), 0 4px 10px -3px rgba(224, 54, 47, .55); }
 }
-@media (prefers-reduced-motion: reduce) { .lux-bubble { animation: none; } }
 .nt-snz { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .nt-snzrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .nt-snzbox { width: 150px; min-height: 36px; }
@@ -3137,8 +3136,12 @@ button.cdo-ck.need:disabled { cursor: not-allowed; }
   .cv-del { width: 100%; }
 }
 
-.nav-badge.is-due, .bottom-nav-badge.is-due { box-shadow: 0 4px 10px -3px rgba(224, 54, 47, .55); animation: luxBubble 2.4s ease-out infinite; }
-@media (prefers-reduced-motion: reduce) { .nav-badge.is-due, .bottom-nav-badge.is-due { animation: none; } }
+.nav-badge.is-due, .bottom-nav-badge.is-due { box-shadow: 0 4px 10px -3px rgba(224, 54, 47, .55); animation: luxBubbleDark 2.4s ease-out infinite; }
+@keyframes luxBubbleDark {
+  0% { box-shadow: 0 0 0 0 rgba(255, 112, 102, .75), 0 4px 10px -3px rgba(224, 54, 47, .55); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 112, 102, 0), 0 4px 10px -3px rgba(224, 54, 47, .55); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 112, 102, 0), 0 4px 10px -3px rgba(224, 54, 47, .55); }
+}
 .cv-card .customer-contract-oa-auto-added { color: #0a5c36; font-weight: 700; }
 
 @media (min-width: 640px) {
