@@ -268,8 +268,10 @@ function dueBodyHtml(ui) {
     const addr = S.customerAreaText(g.c);
     const phone = g.c.phone ? `<a class="nt-btn call" href="tel:${escapeHtml(g.c.phone)}" data-nt-call="${g.c.id}">${ic('phone')}Gọi</a>` : '';
     return `<div class="nz-g"><div class="nz-gh">
-      <span class="av" style="background:${colorFor(g.c.id)}">${escapeHtml(initials(g.c.name))}</span>
-      <div class="nz-gt"><b>${escapeHtml(g.c.name)}</b><small>${escapeHtml(addr)}</small></div>${phone}
+      <button type="button" class="nz-who" data-nt-open="${g.c.id}" aria-label="Mở hồ sơ khách hàng ${escapeHtml(g.c.name)}">
+        <span class="av" style="background:${colorFor(g.c.id)}">${escapeHtml(initials(g.c.name))}</span>
+        <span class="nz-gt"><b>${escapeHtml(g.c.name)}</b><small>${escapeHtml(addr)}</small></span>
+      </button>${phone}
       <button type="button" class="nz-open" data-nt-open="${g.c.id}">Mở hồ sơ ›</button>
     </div><div class="nz-gl">${g.notes.map((n) => dueRowHtml(n, today, ui)).join('')}</div></div>`;
   }).join('');
