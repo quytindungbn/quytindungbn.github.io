@@ -12,6 +12,7 @@ import { openDueNotesModal, dueNotesSummary } from './customerNotes.js';
 import { SPECIFIC_PROVISION_RATE, specificProvisionCalculation } from '../../lib/collateral.js';
 import { icon } from '../../icons.js';
 import { moneyChange } from '../../lib/moneyChange.js';
+import { countChange } from '../../lib/countChange.js';
 
 const COLLATERAL_NAMES = Object.freeze({
   '01': 'Quyền sử dụng đất chính chủ',
@@ -125,6 +126,24 @@ function isCurrentMonth(m) {
   return !!m.live || m.yearMonth === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function trioChanges(m, prev, ctx, useLive, snap) {
+  if (!prev) return {};
+  const before = snapshotOverview(prev);
+  const countable = before.hasDetail && (useLive ? !ctx.live.isStaff : snap.hasDetail);
+  return {
+    customers: countable ? countChange(useLive ? ctx.live.activeCustomerCount : snap.customers, before.customers) : null,
+    contracts: countable ? countChange(useLive ? ctx.live.activeContractCount : snap.contracts, before.contracts) : null,
+    bad: countChange(m.badDebtRatio || 0, prev.badDebtRatio, { worseWhenUp: true, decimals: 1 }),
+  };
+}
+
+function trioMarkHtml(change, amountText, prevLabel) {
+  if (!change) return '';
+  const say = change.dir === 'flat' ? 'Không đổi' : `${change.dir === 'up' ? 'Tăng' : 'Giảm'} ${amountText(change.diff)}`;
+  const text = `${say} so với tháng trước, ${prevLabel}`;
+  return `<i class="lux-tm ${change.dir} ${change.tone}" role="img" aria-label="${text}" title="${text}"></i>`;
+}
+
 function heroChangeHtml(change, prevLabel) {
   if (!change || change.tone === 'flat') return '';
   const amount = `${change.sign}${change.num}<small>${change.unit}</small>`;
@@ -139,6 +158,8 @@ function heroInnerHtml(m, ctx) {
   const snap = useLive ? null : snapshotOverview(m);
   const balance = useLive ? ctx.live.totalOutstanding : m.balance;
   const prev = prevMonthOf(m.yearMonth);
+  const trend = trioChanges(m, prev, ctx, useLive, snap);
+  const prevLabel = prev ? prev.label : '';
   const change = prev && prev.balance > 0 ? moneyChange(balance, prev.balance) : null;
   const money = compactVnd(balance);
   const interest = compactVnd(m.interest || 0);
@@ -148,12 +169,12 @@ function heroInnerHtml(m, ctx) {
   return `
       <span class="lux-eyebrow">Tổng dư nợ${useLive ? '' : ` · ${m.label}`}</span>
       <div class="lux-num">${money.num}<small>${money.unit}</small></div>
-      <div class="lux-sub">${heroChangeHtml(change, prev ? prev.label : '')}<span class="lux-int">lãi phải thu ${interest.num} ${interest.unit.replace(' ₫', '')}</span></div>
+      <div class="lux-sub">${heroChangeHtml(change, prevLabel)}<span class="lux-int">lãi phải thu ${interest.num} ${interest.unit.replace(' ₫', '')}</span></div>
       ${spark.length >= 2 ? `<div class="lux-spark">${sparklineSvg(spark)}</div>` : ''}
       <div class="lux-trio">
-        <div><span class="lux-eyebrow">Khách hàng</span><b>${customers}</b></div>
-        <div><span class="lux-eyebrow">Hợp đồng</span><b>${contractCount}</b></div>
-        <div><span class="lux-eyebrow">Nợ xấu</span><b class="${(m.badDebtRatio || 0) > 0 ? 'bad' : ''}">${formatPercent(m.badDebtRatio || 0)}</b></div>
+        <div><span class="lux-eyebrow">Khách hàng</span><b>${customers}${trioMarkHtml(trend.customers, (n) => `${formatNumber(n)} khách`, prevLabel)}</b></div>
+        <div><span class="lux-eyebrow">Hợp đồng</span><b>${contractCount}${trioMarkHtml(trend.contracts, (n) => `${formatNumber(n)} hợp đồng`, prevLabel)}</b></div>
+        <div><span class="lux-eyebrow">Nợ xấu</span><b class="${(m.badDebtRatio || 0) > 0 ? 'bad' : ''}">${formatPercent(m.badDebtRatio || 0)}${trioMarkHtml(trend.bad, (n) => formatPercent(n), prevLabel)}</b></div>
       </div>`;
 }
 

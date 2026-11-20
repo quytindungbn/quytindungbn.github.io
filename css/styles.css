@@ -1348,8 +1348,13 @@ body.nav-hidden .scroll-top-btn { bottom: calc(14px + env(safe-area-inset-bottom
 .lux-trio > div { padding: 0 12px; border-left: 1px solid var(--lux-line); min-width: 0; }
 .lux-trio > div:first-child { padding-left: 0; border-left: 0; }
 .lux-trio .lux-eyebrow { color: var(--lux-mut); letter-spacing: .12em; font-size: 9.5px; display: block; }
-.lux-trio b { display: block; font-family: var(--lux-display); font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin-top: 3px; }
+.lux-trio b { display: block; font-family: var(--lux-display); font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin-top: 3px; white-space: nowrap; }
 .lux-trio b.bad { color: var(--lux-red); }
+.lux-tm { display: inline-block; flex: none; vertical-align: middle; margin: -3px 0 0 7px; width: 0; height: 0; border-style: solid; border-width: 0 6px 11px; border-color: transparent transparent currentColor; }
+.lux-tm.down { border-width: 11px 6px 0; border-color: currentColor transparent transparent; }
+.lux-tm.flat { width: 12px; height: 3px; border: 0; border-radius: 2px; background: #a3b0aa; }
+.lux-tm.good { color: #0f7a5c; }
+.lux-tm.bad { color: #b4372d; }
 .lux-attn { padding: 4px 16px; }
 .lux-attn-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 0; border: 0; border-bottom: 1px solid var(--lux-line); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .lux-attn-row:last-child { border-bottom: 0; }

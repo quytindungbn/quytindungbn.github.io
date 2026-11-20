@@ -1,6 +1,6 @@
 {
- "v": "1.0.36",
- "h": "2325bb10ae09",
+ "v": "1.0.37",
+ "h": "8ac77f8f6d90",
  "files": [
   "css/styles.css",
   "index.html",
@@ -24,6 +24,7 @@
   "js/lib/coPhoneFile.js",
   "js/lib/collateral.js",
   "js/lib/contractOrder.js",
+  "js/lib/countChange.js",
   "js/lib/customerNotes.js",
   "js/lib/dateInput.js",
   "js/lib/diag.js",
